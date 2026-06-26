@@ -3,12 +3,15 @@
 import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import { Plus, Edit2, Trash2, GripVertical, Check, X, Tag, Loader2, Image as ImageIcon, Globe, Upload, Link, Search } from 'lucide-react'
-import type { MenuCategory, MenuItem } from '@/types/database'
+import type { MenuCategory, MenuItem, Ingredient } from '@/types/database'
 import { createClient } from '@/lib/supabase/client'
 import {
     addCategoryAction, updateCategoryAction, deleteCategoryAction,
-    addItemAction, updateItemAction, deleteItemAction
+    addItemAction, updateItemAction, deleteItemAction,
+    getItemRecipeAction
 } from '@/app/(admin)/admin/menu/actions'
+import { createIngredientAction } from '@/app/(admin)/admin/ingredients/actions'
+import { convertToStockUnit } from '@/lib/conversions'
 import { getRestaurantTranslationConfig } from '@/app/(admin)/admin/menu/translation-actions'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
@@ -24,15 +27,35 @@ let uploadSeq = 0
 export default function MenuManager({
     initialCategories,
     initialItems,
+    initialIngredients,
     restaurantId
 }: {
     initialCategories: MenuCategory[]
     initialItems: MenuItem[]
+    initialIngredients: Ingredient[]
     restaurantId: string
 }) {
     const [categories, setCategories] = useState<MenuCategory[]>(initialCategories)
     const money = useCurrency()
     const [items, setItems] = useState<MenuItem[]>(initialItems)
+    const [ingredients, setIngredients] = useState<Ingredient[]>(initialIngredients)
+    const [recipe, setRecipe] = useState<{
+        ingredient_id: string;
+        quantity_needed: number;
+        input_quantity?: number;
+        input_unit?: string;
+        input_raw?: string;
+    }[]>([])
+    const [showAddStockModal, setShowAddStockModal] = useState(false)
+    const [newStockForm, setNewStockForm] = useState({
+        name: '',
+        unit: 'kg',
+        stock_quantity: '',
+        cost_per_unit: '',
+        reorder_level: '10',
+        supplier: ''
+    })
+    const [isCreatingStock, setIsCreatingStock] = useState(false)
     const [activeTab, setActiveTab] = useState<'categories' | 'items'>('items')
     const { confirm } = useConfirmStore()
 
@@ -200,12 +223,26 @@ export default function MenuManager({
     }
 
     // --- Item Handlers ---
-    const openItemModal = (item?: MenuItem) => {
+    const openItemModal = async (item?: MenuItem) => {
         if (item) {
             setEditingItem(item)
             setItemFormData({ ...item })
             setHasVariations(!!(item.variations && item.variations.length > 0))
             setItemVariations(item.variations ? item.variations.map(v => ({ ...v, is_available: v.is_available ?? true })) : [])
+            const res = await getItemRecipeAction(item.id)
+            if (res.data) {
+                setRecipe(res.data.map(r => {
+                    const ing = ingredients.find(i => i.id === r.ingredient_id)
+                    return {
+                        ingredient_id: r.ingredient_id,
+                        quantity_needed: r.quantity_needed,
+                        input_quantity: r.quantity_needed,
+                        input_unit: ing?.unit || 'g'
+                    }
+                }))
+            } else {
+                setRecipe([])
+            }
         } else {
             setEditingItem(null)
             setItemFormData({
@@ -214,6 +251,7 @@ export default function MenuManager({
             })
             setHasVariations(false)
             setItemVariations([])
+            setRecipe([])
         }
         setIsItemModalOpen(true)
     }
@@ -243,9 +281,11 @@ export default function MenuManager({
         }
 
         const variationsPayload = hasVariations ? itemVariations : []
+        const validRecipe = recipe.filter(r => r.ingredient_id && Number(r.quantity_needed) > 0)
+            .map(r => ({ ...r, quantity_needed: Number(r.quantity_needed) }))
 
         if (editingItem) {
-            const res = await updateItemAction(editingItem.id, payload, variationsPayload)
+            const res = await updateItemAction(editingItem.id, payload, variationsPayload, validRecipe)
             if (res.success) {
                 setItems(items.map(i => i.id === editingItem.id ? { 
                     ...i, 
@@ -257,7 +297,7 @@ export default function MenuManager({
                 toast.error(res.error || 'Failed to update item')
             }
         } else {
-            const res = await addItemAction(payload, variationsPayload)
+            const res = await addItemAction(payload, variationsPayload, validRecipe)
             if (res.data) {
                 toast.success('Item added')
                 setTimeout(() => window.location.reload(), 800)
@@ -285,6 +325,108 @@ export default function MenuManager({
             toast.success('Item deleted')
         } else {
             toast.error(res.error || 'Failed to delete item')
+        }
+    }
+
+    const getAvailableUnits = (baseUnit: string) => {
+        const bu = baseUnit.toLowerCase();
+        if (['pcs', 'pieces', 'box'].includes(bu)) {
+            return [baseUnit];
+        }
+        
+        const isWeightBase = ['kg', 'g'].includes(bu);
+        const isVolumeBase = ['l', 'ml'].includes(bu);
+        
+        if (isWeightBase) {
+            const units = [baseUnit, 'tbsp', 'tsp', 'cup', 'g', 'kg'];
+            return units.filter((value, index, self) => self.findIndex(v => v.toLowerCase() === value.toLowerCase()) === index);
+        }
+        
+        if (isVolumeBase) {
+            const units = [baseUnit, 'tbsp', 'tsp', 'cup', 'ml', 'L'];
+            return units.filter((value, index, self) => self.findIndex(v => v.toLowerCase() === value.toLowerCase()) === index);
+        }
+        
+        return [baseUnit];
+    };
+
+    const handleRecipeRowChange = (
+        index: number,
+        fields: { ingredient_id?: string; input_quantity?: number; input_unit?: string; input_raw?: string }
+    ) => {
+        setRecipe(prev => prev.map((row, idx) => {
+            if (idx !== index) return row;
+
+            const updated = { ...row, ...fields } as typeof row & typeof fields;
+
+            const ingId = updated.ingredient_id;
+            const ing = ingredients.find(i => i.id === ingId);
+
+            if ('ingredient_id' in fields) {
+                updated.input_unit = ing?.unit || 'g';
+                updated.input_quantity = 0; // reset to 0 initially
+                updated.input_raw = '';
+            }
+
+            const qty = Number(updated.input_quantity || 0);
+            const unit = updated.input_unit || ing?.unit || 'g';
+            const baseUnit = ing?.unit || 'g';
+
+            updated.quantity_needed = convertToStockUnit(
+                ing?.name || '',
+                qty,
+                unit,
+                baseUnit
+            );
+
+            return updated;
+        }));
+    };
+
+    const handleCreateStock = async () => {
+        if (!newStockForm.name.trim()) {
+            toast.error('Stock name is required')
+            return
+        }
+        setIsCreatingStock(true)
+        try {
+            const res = await createIngredientAction({
+                restaurant_id: restaurantId,
+                name: newStockForm.name,
+                unit: newStockForm.unit,
+                stock_quantity: parseFloat(newStockForm.stock_quantity) || 0,
+                cost_per_unit: parseFloat(newStockForm.cost_per_unit) || 0,
+                reorder_level: parseFloat(newStockForm.reorder_level) || 0,
+                supplier: newStockForm.supplier || null
+            })
+            if (res.error) {
+                toast.error(res.error)
+            } else if (res.data) {
+                toast.success('Stock item created!')
+                const created: Ingredient = res.data as any
+                setIngredients(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
+                setRecipe(prev => {
+                    const index = prev.findIndex(r => r.ingredient_id === '')
+                    if (index !== -1) {
+                        return prev.map((r, i) => i === index ? { ...r, ingredient_id: created.id } : r)
+                    }
+                    return [...prev, { ingredient_id: created.id, quantity_needed: 0 }]
+                })
+                setNewStockForm({
+                    name: '',
+                    unit: 'kg',
+                    stock_quantity: '',
+                    cost_per_unit: '',
+                    reorder_level: '10',
+                    supplier: ''
+                })
+                setShowAddStockModal(false)
+            }
+        } catch (err) {
+            toast.error('Failed to create stock item')
+            console.error(err)
+        } finally {
+            setIsCreatingStock(false)
         }
     }
 
@@ -806,6 +948,104 @@ export default function MenuManager({
                                 )}
                             </div>
 
+                            {/* Recipe Section */}
+                            <div className="border-t border-gray-100 pt-4 mt-2">
+                                <div className="flex items-center justify-between mb-2">
+                                    <div>
+                                        <span className="text-sm font-medium text-gray-900 block">Recipe (Stock Setup)</span>
+                                        <span className="text-xs text-gray-500">Deduct stock items when this product is ordered</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setRecipe([...recipe, { ingredient_id: '', quantity_needed: 0, input_quantity: 0, input_unit: '' }])}
+                                        className="flex items-center gap-1 text-xs font-semibold text-[var(--color-primary)] hover:opacity-80"
+                                    >
+                                        <Plus size={14} /> Add Ingredient
+                                    </button>
+                                </div>
+
+                                {recipe.length > 0 ? (
+                                    <div className="space-y-2 mt-3 bg-gray-50/50 p-3 rounded-xl border border-gray-100">
+                                        {recipe.map((r, idx) => {
+                                            const selectedIng = ingredients.find(ing => ing.id === r.ingredient_id)
+                                            return (
+                                                <div key={idx} className="flex flex-wrap gap-2 items-center bg-white p-2 rounded-lg border border-gray-200">
+                                                    <div className="flex-1 min-w-[120px]">
+                                                        <select
+                                                            value={r.ingredient_id}
+                                                            onChange={e => handleRecipeRowChange(idx, { ingredient_id: e.target.value })}
+                                                            className="w-full border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] text-xs p-2 border bg-white"
+                                                        >
+                                                            <option value="" disabled>Select Stock Item</option>
+                                                            {ingredients.map(ing => (
+                                                                <option key={ing.id} value={ing.id}>{ing.name}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                    <div className="w-16 shrink-0">
+                                                        <input
+                                                            type="text"
+                                                            inputMode="decimal"
+                                                            value={r.input_raw ?? (r.input_quantity ? String(r.input_quantity) : '')}
+                                                            onChange={e => {
+                                                                const val = e.target.value
+                                                                if (/^\d*\.?\d*$/.test(val)) {
+                                                                    const n = val === '' || val === '.' ? 0 : Number(val)
+                                                                    handleRecipeRowChange(idx, { input_raw: val, input_quantity: n })
+                                                                }
+                                                            }}
+                                                            placeholder="Qty"
+                                                            className="w-full border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] text-xs p-2 border bg-white"
+                                                        />
+                                                    </div>
+                                                    <div className="w-20 shrink-0">
+                                                        <select
+                                                            value={r.input_unit || selectedIng?.unit || 'g'}
+                                                            onChange={e => handleRecipeRowChange(idx, { input_unit: e.target.value })}
+                                                            className="w-full border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] text-xs p-2 border bg-white"
+                                                        >
+                                                            {getAvailableUnits(selectedIng?.unit || 'g').map(u => (
+                                                                <option key={u} value={u}>{u}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                    {selectedIng && r.input_unit && r.input_unit !== selectedIng.unit && (
+                                                        <span className="text-[10px] text-gray-400 font-mono shrink-0 ml-1">
+                                                            (= {Number(r.quantity_needed).toFixed(3)} {selectedIng.unit})
+                                                        </span>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setRecipe(recipe.filter((_, i) => i !== idx))}
+                                                        className="p-1.5 text-gray-400 hover:text-red-500 rounded ml-auto"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                            )
+                                        })}
+                                        
+                                        <div className="flex justify-start mt-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowAddStockModal(true)}
+                                                className="text-[11px] font-semibold text-purple-600 hover:underline"
+                                            >
+                                                + Create New Stock Item
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => setRecipe([{ ingredient_id: '', quantity_needed: 0, input_quantity: 0, input_unit: '' }])}
+                                        className="w-full py-2 border border-dashed border-gray-200 text-gray-500 hover:text-[var(--color-primary)] hover:border-[var(--color-primary)] rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors bg-white mt-1"
+                                    >
+                                        <Plus size={14} /> Add Recipe
+                                    </button>
+                                )}
+                            </div>
+
                             <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100 mt-2">
                                 <div>
                                     <span className="text-sm font-medium text-gray-900 block">Availability</span>
@@ -843,6 +1083,115 @@ export default function MenuManager({
                         getRestaurantTranslationConfig().then(({ translations: t }) => setTranslations(t))
                     }}
                 />
+            )}
+
+            {/* Create Stock Modal Overlay */}
+            {showAddStockModal && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+                            <h3 className="font-semibold text-gray-900">Create New Stock Item</h3>
+                            <button onClick={() => setShowAddStockModal(false)} className="text-gray-400 hover:text-gray-600">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Item Name *</label>
+                                <input
+                                    type="text"
+                                    value={newStockForm.name}
+                                    onChange={e => setNewStockForm({ ...newStockForm, name: e.target.value })}
+                                    className="w-full border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] sm:text-sm p-2.5 border"
+                                    placeholder="e.g. Tomato Sauce"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Unit *</label>
+                                    <select
+                                        value={newStockForm.unit}
+                                        onChange={e => setNewStockForm({ ...newStockForm, unit: e.target.value })}
+                                        className="w-full border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] sm:text-sm p-2.5 border bg-white"
+                                    >
+                                        {['kg', 'g', 'L', 'mL', 'pcs', 'lbs', 'oz', 'cups', 'tbsp', 'tsp'].map(u => (
+                                            <option key={u} value={u}>{u}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Initial Quantity *</label>
+                                    <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={newStockForm.stock_quantity}
+                                        onChange={e => {
+                                            const v = e.target.value
+                                            if (/^\d*\.?\d*$/.test(v)) setNewStockForm({ ...newStockForm, stock_quantity: v })
+                                        }}
+                                        className="w-full border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] sm:text-sm p-2.5 border"
+                                        placeholder="e.g. 50"
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Cost per Unit ($) *</label>
+                                    <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={newStockForm.cost_per_unit}
+                                        onChange={e => {
+                                            const v = e.target.value
+                                            if (/^\d*\.?\d*$/.test(v)) setNewStockForm({ ...newStockForm, cost_per_unit: v })
+                                        }}
+                                        className="w-full border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] sm:text-sm p-2.5 border"
+                                        placeholder="e.g. 2.50"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Reorder Level</label>
+                                    <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={newStockForm.reorder_level}
+                                        onChange={e => {
+                                            const v = e.target.value
+                                            if (/^\d*\.?\d*$/.test(v)) setNewStockForm({ ...newStockForm, reorder_level: v })
+                                        }}
+                                        className="w-full border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] sm:text-sm p-2.5 border"
+                                        placeholder="e.g. 10"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
+                                <input
+                                    type="text"
+                                    value={newStockForm.supplier}
+                                    onChange={e => setNewStockForm({ ...newStockForm, supplier: e.target.value })}
+                                    className="w-full border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] sm:text-sm p-2.5 border"
+                                    placeholder="e.g. Wholesale Inc."
+                                />
+                            </div>
+                        </div>
+                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                            <button
+                                onClick={() => setShowAddStockModal(false)}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                disabled={!newStockForm.name.trim() || isCreatingStock}
+                                onClick={handleCreateStock}
+                                className="px-4 py-2 text-sm font-medium text-white bg-[var(--color-primary)] rounded-lg shadow-sm hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {isCreatingStock ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} Create Stock
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     )

@@ -46,7 +46,11 @@ export async function deleteCategoryAction(id: string) {
     return { success: true }
 }
 
-export async function addItemAction(item: Record<string, unknown>, variations?: { name: string; price: number; is_available?: boolean; image_url?: string | null }[]) {
+export async function addItemAction(
+    item: Record<string, unknown>,
+    variations?: { name: string; price: number; is_available?: boolean; image_url?: string | null }[],
+    recipe?: { ingredient_id: string; quantity_needed: number }[]
+) {
     const supabase = await createAdminClient()
 
     // Enforce plan menu item limit
@@ -79,6 +83,34 @@ export async function addItemAction(item: Record<string, unknown>, variations?: 
 
     if (error) return { error: error.message }
 
+    // Best-effort rollback of the just-created item (and any children written so
+    // far) when a child insert fails. Without this the item is left orphaned and
+    // the caller — which only reloads on `data` — silently drops it, so a retry
+    // creates a duplicate.
+    const rollbackItem = async () => {
+        await supabase.from('recipes').delete().eq('menu_item_id', data.id)
+        await supabase.from('menu_item_variations').delete().eq('menu_item_id', data.id)
+        await supabase.from('menu_items').delete().eq('id', data.id)
+    }
+
+    // If recipe is provided, insert it
+    if (recipe && recipe.length > 0) {
+        const recipesToInsert = recipe.map(r => ({
+            menu_item_id: data.id,
+            ingredient_id: r.ingredient_id,
+            quantity_needed: Number(r.quantity_needed)
+        }))
+        const { error: recipeError } = await supabase
+            .from('recipes')
+            .insert(recipesToInsert)
+
+        if (recipeError) {
+            console.error('Failed to save recipe:', recipeError)
+            await rollbackItem()
+            return { error: `Failed to save recipe: ${recipeError.message}` }
+        }
+    }
+
     // If variations are provided, insert them
     if (variations && variations.length > 0) {
         const variationsToInsert = variations.map(v => ({
@@ -94,7 +126,8 @@ export async function addItemAction(item: Record<string, unknown>, variations?: 
 
         if (varError) {
             console.error('Failed to save variations:', varError)
-            return { error: `Item saved, but variations failed: ${varError.message}` }
+            await rollbackItem()
+            return { error: `Failed to save variations: ${varError.message}` }
         }
     }
 
@@ -102,7 +135,12 @@ export async function addItemAction(item: Record<string, unknown>, variations?: 
     return { data }
 }
 
-export async function updateItemAction(id: string, updates: Record<string, unknown>, variations?: { id?: string; name: string; price: number; is_available?: boolean; image_url?: string | null }[]) {
+export async function updateItemAction(
+    id: string,
+    updates: Record<string, unknown>,
+    variations?: { id?: string; name: string; price: number; is_available?: boolean; image_url?: string | null }[],
+    recipe?: { ingredient_id: string; quantity_needed: number }[]
+) {
     const supabase = await createAdminClient()
     
     // Exclude variations from updates object if present
@@ -114,6 +152,46 @@ export async function updateItemAction(id: string, updates: Record<string, unkno
         .eq('id', id)
 
     if (error) return { error: error.message }
+
+    // If recipe is provided, sync it. The delete-then-insert is not atomic, so
+    // snapshot the existing rows first and restore them if the insert fails —
+    // otherwise a transient error silently wipes the item's saved recipe.
+    if (recipe) {
+        const { data: prevRecipe } = await supabase
+            .from('recipes')
+            .select('ingredient_id, quantity_needed')
+            .eq('menu_item_id', id)
+
+        await supabase
+            .from('recipes')
+            .delete()
+            .eq('menu_item_id', id)
+
+        if (recipe.length > 0) {
+            const recipesToInsert = recipe.map(r => ({
+                menu_item_id: id,
+                ingredient_id: r.ingredient_id,
+                quantity_needed: Number(r.quantity_needed)
+            }))
+            const { error: recipeError } = await supabase
+                .from('recipes')
+                .insert(recipesToInsert)
+            if (recipeError) {
+                console.error('Failed to save recipe:', recipeError)
+                // Restore the previous recipe so the edit doesn't lose it.
+                if (prevRecipe && prevRecipe.length > 0) {
+                    await supabase.from('recipes').insert(
+                        prevRecipe.map(r => ({
+                            menu_item_id: id,
+                            ingredient_id: r.ingredient_id,
+                            quantity_needed: r.quantity_needed
+                        }))
+                    )
+                }
+                return { error: `Failed to save recipe: ${recipeError.message}` }
+            }
+        }
+    }
 
     // If variations are provided, sync them
     if (variations) {
@@ -168,6 +246,16 @@ export async function updateItemAction(id: string, updates: Record<string, unkno
 
     revalidatePath('/admin/menu')
     return { success: true }
+}
+
+export async function getItemRecipeAction(menuItemId: string) {
+    const supabase = await createAdminClient()
+    const { data, error } = await supabase
+        .from('recipes')
+        .select('ingredient_id, quantity_needed, ingredients(name, unit)')
+        .eq('menu_item_id', menuItemId)
+    if (error) return { error: error.message }
+    return { data }
 }
 
 export async function deleteItemAction(id: string) {

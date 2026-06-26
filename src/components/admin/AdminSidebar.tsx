@@ -74,7 +74,7 @@ export default function AdminSidebar({ userRole, restaurantName }: { userRole?: 
                 <NavItem href="/admin/analytics"   icon={TrendingUp}      label="Analytics"      path={pathname} />
 
                 <SectionLabel>Operations</SectionLabel>
-                <NavItem href="/admin/ingredients" icon={Package}         label="Ingredients"  path={pathname} />
+                <NavItem href="/admin/ingredients" icon={Package}         label="Stock"  path={pathname} />
                 <NavItem href="/admin/staff"       icon={Users}           label="Staff"          path={pathname} />
                 <NavItem href="/admin/shifts"      icon={Clock}           label="Staff Shifts" path={pathname} />
 
