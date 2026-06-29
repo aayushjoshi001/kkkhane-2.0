@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useState } from 'react'
@@ -19,30 +20,21 @@ export default function LoyaltyManager({ initialConfig, initialMembers, restaura
     restaurantId: string
 }) {
     const [config, setConfig] = useState({
-        points_per_dollar: String(initialConfig?.points_per_dollar ?? 1),
-        redemption_threshold: String(initialConfig?.redemption_threshold ?? 100),
-        redemption_value: String(initialConfig?.redemption_value ?? 5),
-        signup_bonus_points: String(initialConfig?.signup_bonus_points ?? 10),
-        birthday_bonus_points: String(initialConfig?.birthday_bonus_points ?? 0),
-        silver_threshold: String(initialConfig?.silver_threshold ?? 500),
-        gold_threshold: String(initialConfig?.gold_threshold ?? 2000),
-        platinum_threshold: String(initialConfig?.platinum_threshold ?? 5000),
+        points_per_dollar: initialConfig?.points_per_dollar ?? 1,
+        redemption_threshold: initialConfig?.redemption_threshold ?? 100,
+        redemption_value: initialConfig?.redemption_value ?? 5,
+        signup_bonus_points: initialConfig?.signup_bonus_points ?? 10,
+        birthday_bonus_points: initialConfig?.birthday_bonus_points ?? 0,
+        silver_threshold: initialConfig?.silver_threshold ?? 500,
+        gold_threshold: initialConfig?.gold_threshold ?? 2000,
+        platinum_threshold: initialConfig?.platinum_threshold ?? 5000,
         is_active: initialConfig?.is_active ?? true,
     })
     const [saving, setSaving] = useState(false)
 
     async function handleSave() {
         setSaving(true)
-        const result = await upsertLoyaltyConfigAction({ restaurant_id: restaurantId, ...config,
-            points_per_dollar: parseFloat(config.points_per_dollar) || 0,
-            redemption_threshold: parseFloat(config.redemption_threshold) || 0,
-            redemption_value: parseFloat(config.redemption_value) || 0,
-            signup_bonus_points: parseFloat(config.signup_bonus_points) || 0,
-            birthday_bonus_points: parseFloat(config.birthday_bonus_points) || 0,
-            silver_threshold: parseFloat(config.silver_threshold) || 0,
-            gold_threshold: parseFloat(config.gold_threshold) || 0,
-            platinum_threshold: parseFloat(config.platinum_threshold) || 0,
-        })
+        const result = await upsertLoyaltyConfigAction({ restaurant_id: restaurantId, ...config })
         setSaving(false)
         if (result.error) { toast.error(result.error); return }
         toast.success('Loyalty config saved!')
@@ -64,30 +56,22 @@ export default function LoyaltyManager({ initialConfig, initialMembers, restaura
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-600 mb-1">Points per $1</label>
-                        <input type="text" inputMode="decimal" value={config.points_per_dollar}
-                            onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setConfig({ ...config, points_per_dollar: v }) }}
-                            placeholder="e.g. 1"
+                        <input type="number" step="0.1" value={config.points_per_dollar} onChange={e => setConfig({ ...config, points_per_dollar: +e.target.value })}
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-600 mb-1">Redeem Threshold (pts)</label>
-                        <input type="text" inputMode="numeric" value={config.redemption_threshold}
-                            onChange={e => { const v = e.target.value; if (/^\d*$/.test(v)) setConfig({ ...config, redemption_threshold: v }) }}
-                            placeholder="e.g. 100"
+                        <input type="number" value={config.redemption_threshold} onChange={e => setConfig({ ...config, redemption_threshold: +e.target.value })}
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-600 mb-1">Redeem Value ($)</label>
-                        <input type="text" inputMode="decimal" value={config.redemption_value}
-                            onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setConfig({ ...config, redemption_value: v }) }}
-                            placeholder="e.g. 5"
+                        <input type="number" step="0.01" value={config.redemption_value} onChange={e => setConfig({ ...config, redemption_value: +e.target.value })}
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-600 mb-1">Signup Bonus (pts)</label>
-                        <input type="text" inputMode="numeric" value={config.signup_bonus_points}
-                            onChange={e => { const v = e.target.value; if (/^\d*$/.test(v)) setConfig({ ...config, signup_bonus_points: v }) }}
-                            placeholder="e.g. 10"
+                        <input type="number" value={config.signup_bonus_points} onChange={e => setConfig({ ...config, signup_bonus_points: +e.target.value })}
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                     </div>
                 </div>
@@ -97,23 +81,17 @@ export default function LoyaltyManager({ initialConfig, initialMembers, restaura
                     <div className="grid grid-cols-3 gap-4">
                         <div>
                             <label className="block text-xs text-gray-500 mb-1">🥈 Silver</label>
-                            <input type="text" inputMode="numeric" value={config.silver_threshold}
-                                onChange={e => { const v = e.target.value; if (/^\d*$/.test(v)) setConfig({ ...config, silver_threshold: v }) }}
-                                placeholder="e.g. 500"
+                            <input type="number" value={config.silver_threshold} onChange={e => setConfig({ ...config, silver_threshold: +e.target.value })}
                                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                         </div>
                         <div>
                             <label className="block text-xs text-gray-500 mb-1">🥇 Gold</label>
-                            <input type="text" inputMode="numeric" value={config.gold_threshold}
-                                onChange={e => { const v = e.target.value; if (/^\d*$/.test(v)) setConfig({ ...config, gold_threshold: v }) }}
-                                placeholder="e.g. 2000"
+                            <input type="number" value={config.gold_threshold} onChange={e => setConfig({ ...config, gold_threshold: +e.target.value })}
                                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                         </div>
                         <div>
                             <label className="block text-xs text-gray-500 mb-1">💎 Platinum</label>
-                            <input type="text" inputMode="numeric" value={config.platinum_threshold}
-                                onChange={e => { const v = e.target.value; if (/^\d*$/.test(v)) setConfig({ ...config, platinum_threshold: v }) }}
-                                placeholder="e.g. 5000"
+                            <input type="number" value={config.platinum_threshold} onChange={e => setConfig({ ...config, platinum_threshold: +e.target.value })}
                                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                         </div>
                     </div>

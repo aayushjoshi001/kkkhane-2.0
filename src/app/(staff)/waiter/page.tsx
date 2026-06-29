@@ -94,7 +94,7 @@ export default async function WaiterPage() {
                 id, status, total_amount, placed_at, ready_at, customer_note, payment_status, session_id,
                 claimed_by, claimed_at,
                 sessions ( id, tables ( label ) ),
-                order_items ( id, quantity, menu_items ( name ) )
+                order_items ( id, quantity, status, menu_items ( name ) )
             `)
             .eq('restaurant_id', restaurantId)
             .eq('order_type', 'dine_in')

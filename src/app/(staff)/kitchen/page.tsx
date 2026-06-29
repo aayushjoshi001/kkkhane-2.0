@@ -1,6 +1,6 @@
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
-import OrderQueue, { type KitchenOrder } from '@/components/kitchen/OrderQueue'
+import OrderQueue, { type KitchenOrder, type ComboItemRow } from '@/components/kitchen/OrderQueue'
 import TakeoutQueue from '@/components/kitchen/TakeoutQueue'
 import KitchenStats from '@/components/kitchen/KitchenStats'
 import StaffShiftClock from '@/components/shared/StaffShiftClock'
@@ -40,6 +40,7 @@ export default async function KitchenPage() {
                     menu_item_id,
                     quantity,
                     special_request,
+                    status,
                     menu_items ( name, is_combo ),
                     order_item_modifiers ( modifier_name, price_adjustment )
                 )
@@ -82,7 +83,7 @@ export default async function KitchenPage() {
     ])
 
     // Fetch combo items safely (without breaking kitchen display if table is missing)
-    let comboItems: any[] = []
+    let comboItems: ComboItemRow[] = []
     try {
         const { data: rawComboItems, error: comboErr } = await adminSupabase
             .from('combo_items')
@@ -90,7 +91,7 @@ export default async function KitchenPage() {
             .select('id, combo_id, item_id, quantity, menu_items!item_id(name), combo:menu_items!combo_id!inner(restaurant_id)')
             .eq('combo.restaurant_id', restaurantId)
         if (comboErr) throw comboErr
-        comboItems = rawComboItems || []
+        comboItems = (rawComboItems || []) as unknown as ComboItemRow[]
     } catch (err) {
         console.warn('Could not fetch combo_items in KitchenPage:', err)
     }

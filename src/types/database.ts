@@ -3,6 +3,9 @@
 // These are placeholder types matching our schema for development
 
 export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled'
+// Per-line-item lifecycle. Enables Select Item(s)/Select All + partial ready/served.
+// orders.status is the rolled-up aggregate of its items' statuses.
+export type OrderItemStatus = 'pending' | 'preparing' | 'ready' | 'served' | 'cancelled'
 export type SessionStatus = 'active' | 'closed' | 'expired'
 export type PaymentStatus = 'unpaid' | 'pending' | 'paid' | 'refunded' | 'failed'
 export type RoleName = 'super_admin' | 'manager' | 'kitchen' | 'waiter' | 'cashier' | 'customer'
@@ -223,6 +226,7 @@ export interface OrderItem {
     quantity: number
     unit_price: number
     special_request: string | null
+    status: OrderItemStatus
     created_at: string
     // Joined fields
     menu_items?: MenuItem

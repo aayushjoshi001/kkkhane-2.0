@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { logAudit } from '@/lib/audit'
 import { requireRole } from '@/lib/auth'
+import { rollUpOrderStatus } from '@/lib/orderRollup'
+import type { OrderStatus, OrderItemStatus } from '@/types/database'
 
 /**
  * Soft-claim a ready order ("On my way"). Advisory only — it doesn't block
@@ -21,7 +23,9 @@ export async function claimOrder(
         .from('orders')
         .update({ claimed_by: currentUser.id, claimed_at: new Date().toISOString() })
         .eq('id', orderId)
-        .eq('status', 'ready')
+        // A partially-ready order sits at 'preparing' but already has servable
+        // items, so it must be claimable too — not just fully 'ready' orders.
+        .in('status', ['preparing', 'ready'])
         .is('claimed_by', null)
         .select('id')
 
@@ -58,7 +62,7 @@ export async function releaseOrder(
         .from('orders')
         .update({ claimed_by: null, claimed_at: null })
         .eq('id', orderId)
-        .eq('status', 'ready')
+        .in('status', ['preparing', 'ready'])
 
     if (error) {
         console.error('Failed to release order:', error)
@@ -98,6 +102,14 @@ export async function markOrderDelivered(orderId: string) {
         return { conflict: true, error: 'Order is no longer awaiting delivery' }
     }
     const order = rows[0]
+
+    // Delivering the whole order serves every (non-cancelled) line item, keeping
+    // item-level state consistent with the rolled-up order status.
+    await adminSupabase
+        .from('order_items')
+        .update({ status: 'served' })
+        .eq('order_id', orderId)
+        .neq('status', 'cancelled')
 
     void logAudit({
         restaurantId: order.restaurant_id,
@@ -240,6 +252,13 @@ export async function markDeliveredAndCashPaid(
         return { error: 'Order is already marked as paid' }
     }
 
+    // Mark every line item served — this order was delivered in this same step.
+    await supabase
+        .from('order_items')
+        .update({ status: 'served' })
+        .eq('order_id', orderId)
+        .neq('status', 'cancelled')
+
     await supabase.from('payment_verifications').insert({
         restaurant_id: order.restaurant_id,
         order_id: orderId,
@@ -291,4 +310,79 @@ export async function markDeliveredAndCashPaid(
 
     revalidatePath('/waiter')
     return { success: true, tableClosed }
+}
+
+/**
+ * Waiter serves a selected subset of an order's READY items (partial serving
+ * across multiple trips), then recomputes the parent order's status. When the
+ * last item is served the order rolls up to 'delivered' and leaves the feed.
+ *
+ * Only items currently 'ready' can be served — guarding on that prior state
+ * means two waiters tapping the same item can't both "serve" it.
+ */
+export async function markOrderItemsServed(
+    orderId: string,
+    itemIds: string[]
+): Promise<{ success?: boolean; error?: string; conflict?: boolean; delivered?: boolean }> {
+    if (itemIds.length === 0) return { error: 'No items selected' }
+    const currentUser = await requireRole('cashier', 'waiter', 'manager', 'super_admin')
+    const supabase = await createAdminClient()
+
+    const { data: served, error } = await supabase
+        .from('order_items')
+        .update({ status: 'served' })
+        .eq('order_id', orderId)
+        .in('id', itemIds)
+        .eq('status', 'ready')
+        .select('id')
+
+    if (error) {
+        console.error('Failed to mark items served:', error)
+        return { error: error.message }
+    }
+    if (!served || served.length === 0) {
+        return { conflict: true, error: 'Those items were already served by someone else' }
+    }
+
+    // Recompute the order's rolled-up status from ALL its items, written once.
+    const { data: allItems } = await supabase
+        .from('order_items')
+        .select('status')
+        .eq('order_id', orderId)
+
+    const rolled = rollUpOrderStatus((allItems || []).map(i => i.status as OrderItemStatus))
+    let delivered = false
+    if (rolled) {
+        const patch: { status: OrderStatus; ready_at?: string; delivered_at?: string } = { status: rolled }
+        const nowIso = new Date().toISOString()
+        if (rolled === 'ready') patch.ready_at = nowIso
+        if (rolled === 'delivered') { patch.delivered_at = nowIso; delivered = true }
+        await supabase
+            .from('orders')
+            .update(patch)
+            .eq('id', orderId)
+            .not('status', 'in', '("delivered","cancelled")')
+    }
+
+    if (delivered) {
+        const { data: ord } = await supabase
+            .from('orders')
+            .select('restaurant_id')
+            .eq('id', orderId)
+            .single()
+        if (ord?.restaurant_id) {
+            void logAudit({
+                restaurantId: ord.restaurant_id,
+                userId: currentUser.id,
+                action: 'order_delivered',
+                entityType: 'order',
+                entityId: orderId,
+                newValue: { via: 'item_serve' },
+            })
+        }
+    }
+
+    revalidatePath('/waiter')
+    revalidatePath('/kitchen')
+    return { success: true, delivered }
 }
