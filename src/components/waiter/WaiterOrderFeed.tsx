@@ -101,6 +101,14 @@ export default function WaiterOrderFeed({ initialOrders, restaurantId, userId, s
             const prevReady = prev ? readyCount(prev) : 0
             const newReady = readyCount(fresh)
 
+            // Name the specific dishes that just crossed into 'ready' so the waiter
+            // knows exactly what to pick up — not just a count.
+            const prevReadyIds = new Set((prev?.order_items || []).filter(i => i.status === 'ready').map(i => i.id))
+            const justReady = (fresh.order_items || []).filter(i => i.status === 'ready' && !prevReadyIds.has(i.id))
+            const dishLine = justReady
+                .map(i => `${i.quantity}× ${i.menu_items?.name ?? 'Item'}`)
+                .join(', ')
+
             setOrders(cur => cur.some(o => o.id === fresh.id)
                 ? cur.map(o => o.id === fresh.id ? fresh : o)
                 : [fresh, ...cur])
@@ -115,7 +123,7 @@ export default function WaiterOrderFeed({ initialOrders, restaurantId, userId, s
                         <span className="text-xl mt-0.5">✅</span>
                         <div>
                             <p className="font-bold text-sm text-emerald-700">Ready to Serve!</p>
-                            <p className="text-xs text-ink-subtle mt-0.5">{tbl ? `Table ${tbl}` : 'Takeout'} · {newReady} item{newReady > 1 ? 's' : ''} up</p>
+                            <p className="text-xs text-ink-subtle mt-0.5">{tbl ? `Table ${tbl}` : 'Takeout'} · {dishLine || `${newReady} item${newReady > 1 ? 's' : ''} up`}</p>
                         </div>
                     </div>
                 ), { duration: 8000, position: 'top-right' })

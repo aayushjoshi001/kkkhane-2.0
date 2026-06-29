@@ -227,6 +227,10 @@ export interface OrderItem {
     unit_price: number
     special_request: string | null
     status: OrderItemStatus
+    // Per-dish chef ownership: set when a chef clicks Cook; only this chef may
+    // mark the dish ready. Null until cooking starts (or for legacy rows).
+    claimed_by?: string | null
+    claimed_at?: string | null
     created_at: string
     // Joined fields
     menu_items?: MenuItem

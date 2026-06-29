@@ -41,6 +41,8 @@ export default async function KitchenPage() {
                     quantity,
                     special_request,
                     status,
+                    claimed_by,
+                    claimed_at,
                     menu_items ( name, is_combo ),
                     order_item_modifiers ( modifier_name, price_adjustment )
                 )
@@ -81,6 +83,15 @@ export default async function KitchenPage() {
             .order('clock_in', { ascending: false })
             .limit(5),
     ])
+
+    // Names for per-dish chef ownership labels ("👤 Ram") on the cooking column.
+    const { data: staff } = await adminSupabase
+        .from('users')
+        .select('id, full_name')
+        .eq('restaurant_id', restaurantId)
+    const staffNames: Record<string, string> = Object.fromEntries(
+        (staff || []).map(s => [s.id, s.full_name as string])
+    )
 
     // Fetch combo items safely (without breaking kitchen display if table is missing)
     let comboItems: ComboItemRow[] = []
@@ -134,6 +145,8 @@ export default async function KitchenPage() {
                         initialOrders={(activeOrders || []) as unknown as KitchenOrder[]}
                         restaurantId={restaurantId}
                         comboItems={comboItems}
+                        userId={userId}
+                        staffNames={staffNames}
                     />
                 </div>
 

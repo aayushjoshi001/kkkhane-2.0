@@ -70,21 +70,43 @@ const ALLOWED_ITEM_PRIOR: Partial<Record<OrderItemStatus, OrderItemStatus[]>> = 
 export async function setOrderItemsStatus(
     orderId: string,
     itemIds: string[],
-    nextStatus: OrderItemStatus
+    nextStatus: OrderItemStatus,
+    actorUserId?: string
 ): Promise<{ success?: boolean; error?: string; conflict?: boolean }> {
     if (itemIds.length === 0) return { error: 'No items selected' }
     const adminSupabase = await createAdminClient()
 
-    // Only flip the items that are still in a legal prior state. If another cook
-    // already advanced them, zero rows update and we report a conflict so the
-    // caller can resync rather than silently "win".
-    const priorStates = ALLOWED_ITEM_PRIOR[nextStatus]
+    // Build the write, then constrain it so only legal transitions land — the DB,
+    // not a lagging tab, decides who wins. Each transition has its own guard:
+    //   • Cook (→preparing): claim the dish for this chef, but only if it is still
+    //     pending AND unclaimed, so two cooks can't both "start" the same item.
+    //   • Mark Ready (→ready): only the owning chef (or an unclaimed dish) may
+    //     advance it — enforced here so a non-owner's click changes nothing.
+    //   • Anything else (e.g. served): plain prior-state guard.
+    const updateData: { status: OrderItemStatus; claimed_by?: string | null; claimed_at?: string | null } = {
+        status: nextStatus,
+    }
+    if (nextStatus === 'preparing') {
+        updateData.claimed_by = actorUserId ?? null
+        updateData.claimed_at = new Date().toISOString()
+    }
+
     let query = adminSupabase
         .from('order_items')
-        .update({ status: nextStatus })
+        .update(updateData)
         .eq('order_id', orderId)
         .in('id', itemIds)
-    if (priorStates) query = query.in('status', priorStates)
+
+    if (nextStatus === 'preparing') {
+        query = query.eq('status', 'pending').is('claimed_by', null)
+    } else if (nextStatus === 'ready') {
+        query = query.eq('status', 'preparing')
+        // Owner-only: the claiming chef, or a dish that was never claimed (legacy).
+        if (actorUserId) query = query.or(`claimed_by.eq.${actorUserId},claimed_by.is.null`)
+    } else {
+        const priorStates = ALLOWED_ITEM_PRIOR[nextStatus]
+        if (priorStates) query = query.in('status', priorStates)
+    }
 
     const { data: updated, error } = await query.select('id')
 
@@ -93,7 +115,14 @@ export async function setOrderItemsStatus(
         return { error: error.message }
     }
     if (!updated || updated.length === 0) {
-        return { conflict: true, error: 'Those items were already updated by someone else' }
+        // Either someone else advanced these, or (for Mark Ready) the actor doesn't
+        // own them. Both are surfaced as a conflict so the caller resyncs.
+        return {
+            conflict: true,
+            error: nextStatus === 'ready'
+                ? 'Only the chef who started a dish can mark it ready'
+                : 'Those items were already updated by someone else',
+        }
     }
 
     // Recompute the order's status from ALL of its items and write it once.
