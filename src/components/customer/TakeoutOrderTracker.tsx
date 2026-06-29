@@ -126,18 +126,32 @@ export default function TakeoutOrderTracker({ orderId, initialOrder, restaurantS
         )
     }
 
+    const isDelivery = order.order_type === 'delivery'
+
     return (
         <div className="space-y-6">
             {/* Order number */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-center">
-                <p className="text-sm text-gray-500">Order</p>
+                <p className="text-sm text-gray-500">{isDelivery ? 'Delivery Order' : 'Order'}</p>
                 <p className="text-2xl font-mono font-bold text-gray-900 mt-1">
                     #{orderId.slice(0, 8).toUpperCase()}
                 </p>
             </div>
 
-            {/* Countdown */}
-            {order.status !== 'picked_up' && (
+            {/* Delivery verification code — customer reads this to the rider */}
+            {isDelivery && order.delivery_verification_code && (
+                <div className="bg-[#FB6303] text-white rounded-2xl shadow-sm p-6 text-center">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-white/80">Delivery Code</p>
+                    <p className="text-4xl font-black font-mono tracking-[0.3em] mt-2">{order.delivery_verification_code}</p>
+                    <p className="text-xs text-white/80 mt-2">Share this code with the delivery person on arrival.</p>
+                    {order.delivery_address && (
+                        <p className="text-[11px] text-white/70 mt-3 border-t border-white/20 pt-2">{order.delivery_address}</p>
+                    )}
+                </div>
+            )}
+
+            {/* Countdown — pickup orders only */}
+            {!isDelivery && order.status !== 'picked_up' && (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
                     <CountdownDisplay pickupTime={order.pickup_time} />
                 </div>

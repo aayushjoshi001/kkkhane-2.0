@@ -34,6 +34,7 @@ export const TAKEOUT_ORDER_SELECT = `
     pickup_time, status, subtotal_amount, tax_amount, total_amount, payment_status,
     stripe_payment_intent_id, promo_code_id, discount_amount, customer_note,
     placed_at, confirmed_at, ready_at, delivered_at,
+    order_type, delivery_address, delivery_verification_code,
     order_items ( menu_item_id, quantity, unit_price, special_request, menu_items ( name ) )
 `
 
@@ -66,6 +67,9 @@ export interface TakeoutOrderRow {
     confirmed_at: string | null
     ready_at: string | null
     delivered_at: string | null
+    order_type?: 'dine_in' | 'takeout' | 'delivery'
+    delivery_address?: string | null
+    delivery_verification_code?: string | null
     order_items?: OrderItemRow[] | null
 }
 
@@ -109,5 +113,8 @@ export function mapOrderRowToTakeout(row: TakeoutOrderRow): TakeoutOrder {
         ready_at: row.ready_at ?? null,
         picked_up_at: row.delivered_at ?? null,
         cancelled_at: null,
+        order_type: row.order_type ?? 'takeout',
+        delivery_address: row.delivery_address ?? null,
+        delivery_verification_code: row.delivery_verification_code ?? null,
     }
 }

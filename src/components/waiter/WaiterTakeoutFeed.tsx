@@ -26,6 +26,9 @@ export default function WaiterTakeoutFeed({ initialOrders, restaurantId }: Props
         if (row?.order_type !== 'takeout') return
         const becameReady = row.status === 'ready'
         getTakeoutOrders(restaurantId, 'ready_for_pickup')
+            // Delivery orders share the takeout pipeline but are handled in the
+            // delivery feed, not this pickup feed — keep takeaway only here.
+            .then((all) => all.filter((o) => o.order_type !== 'delivery'))
             .then((ready) => {
                 setOrders((prev) => {
                     if (becameReady && ready.length > prev.length) playOrderReady().catch(() => {})

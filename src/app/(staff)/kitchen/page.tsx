@@ -56,7 +56,7 @@ export default async function KitchenPage() {
             .from('orders')
             .select(TAKEOUT_ORDER_SELECT)
             .eq('restaurant_id', restaurantId)
-            .eq('order_type', 'takeout')
+            .in('order_type', ['takeout', 'delivery'])
             .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
             .order('pickup_time', { ascending: true }),
         // Orders completed (delivered) today

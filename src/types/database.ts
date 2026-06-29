@@ -587,6 +587,11 @@ export interface TakeoutOrder {
     ready_at: string | null
     picked_up_at: string | null
     cancelled_at: string | null
+    // Online delivery (order_type='delivery'): address + the verification code the
+    // customer reads back to the delivery staff. Null/undefined for takeaway.
+    order_type?: 'dine_in' | 'takeout' | 'delivery'
+    delivery_address?: string | null
+    delivery_verification_code?: string | null
 }
 
 // ============================================================

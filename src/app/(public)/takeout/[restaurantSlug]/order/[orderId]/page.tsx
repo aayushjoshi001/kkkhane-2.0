@@ -17,7 +17,7 @@ export default async function TakeoutOrderPage({
         .from('orders')
         .select(TAKEOUT_ORDER_SELECT)
         .eq('id', orderId)
-        .eq('order_type', 'takeout')
+        .in('order_type', ['takeout', 'delivery'])
         .single()
 
     if (!orderRow) return notFound()

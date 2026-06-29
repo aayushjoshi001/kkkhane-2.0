@@ -25,6 +25,70 @@ interface TakeoutInput {
     clientRequestId?: string | null
 }
 
+interface DeliveryInput {
+    restaurantId: string
+    customerName: string
+    customerPhone: string
+    deliveryAddress: string
+    customerEmail?: string
+    items: CartItem[]
+    customerNote?: string
+    promoCode?: string | null
+    loyaltyMemberId?: string | null
+    clientRequestId?: string | null
+}
+
+/**
+ * Place an online delivery order through the unified orders pipeline
+ * (place_delivery_order RPC). Same as takeout, plus a delivery address and a
+ * 4-digit verification code the customer reads back to the delivery staff.
+ */
+export async function createDeliveryOrder(
+    input: DeliveryInput
+): Promise<{ orderId?: string; total?: number; code?: string; error?: string }> {
+    const supabase = await createAdminClient()
+
+    const payload = input.items.map((i) => ({
+        menu_item_id: i.menuItemId,
+        quantity: i.quantity,
+        special_request: i.specialRequest || null,
+        modifiers: (i.modifiers || []).map((m) => ({ modifier_id: m.modifierId })),
+    }))
+
+    const { data, error } = await supabase.rpc('place_delivery_order', {
+        p_restaurant_id: input.restaurantId,
+        p_items: payload,
+        p_customer_name: input.customerName,
+        p_customer_phone: input.customerPhone,
+        p_delivery_address: input.deliveryAddress,
+        p_customer_email: input.customerEmail || null,
+        p_customer_note: input.customerNote || null,
+        p_promo_code: input.promoCode || null,
+        p_loyalty_member_id: input.loyaltyMemberId || null,
+        p_client_request_id: input.clientRequestId || null,
+    })
+
+    if (error) {
+        console.error('Delivery order RPC error:', error)
+        if (error.message?.includes('OUT_OF_STOCK') || error.message?.includes('ITEM_UNAVAILABLE')) {
+            return { error: 'Sorry, one or more items just sold out or are unavailable.' }
+        }
+        if (error.message?.includes('INVALID_RESTAURANT')) {
+            return { error: 'This restaurant is not currently accepting orders.' }
+        }
+        return { error: 'Failed to place delivery order. Please try again.' }
+    }
+
+    const result = data as { order_id: string; total: number; code: string }
+    if (result.order_id) void checkAndAlertLowStock(input.restaurantId)
+
+    revalidatePath('/kitchen')
+    revalidatePath('/waiter')
+    revalidatePath('/admin/takeout')
+
+    return { orderId: result.order_id, total: result.total, code: result.code }
+}
+
 /**
  * Place a takeout order through the unified orders pipeline (place_takeout_order
  * RPC): real order_items, ingredient deduction, dynamic pricing, promo, tax and
@@ -93,7 +157,7 @@ export async function getTakeoutOrders(
         .from('orders')
         .select(TAKEOUT_ORDER_SELECT)
         .eq('restaurant_id', restaurantId)
-        .eq('order_type', 'takeout')
+        .in('order_type', ['takeout', 'delivery'])
         .order('pickup_time', { ascending: true })
         .limit(limit)
 
@@ -128,7 +192,7 @@ export async function updateTakeoutStatus(
         .from('orders')
         .update(updateData)
         .eq('id', orderId)
-        .eq('order_type', 'takeout')
+        .in('order_type', ['takeout', 'delivery'])
 
     if (error) return { error: 'Failed to update status.' }
 

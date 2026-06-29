@@ -61,7 +61,8 @@ export default function TakeoutQueue({ restaurantId, initialOrders }: TakeoutQue
     // Takeout now lives in the unified `orders` table. On any takeout-order
     // change, refetch the mapped list (keeps the TakeoutOrder shape intact).
     useRestaurantTable(restaurantId, 'orders', (payload) => {
-        if ((payload.new as { order_type?: string } | null)?.order_type !== 'takeout') return
+        // Takeout + delivery share this kitchen queue; ignore only dine-in.
+        if ((payload.new as { order_type?: string } | null)?.order_type === 'dine_in') return
         if (payload.eventType === 'INSERT') playKitchenPing()
         getTakeoutOrders(restaurantId).then(setOrders).catch(() => {})
     })

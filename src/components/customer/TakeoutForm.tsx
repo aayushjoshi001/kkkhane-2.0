@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createTakeoutOrder } from '@/app/api/takeout/actions'
+import { createTakeoutOrder, createDeliveryOrder } from '@/app/api/takeout/actions'
 import { useCartStore } from '@/lib/stores/cart'
 import { useActiveOrders } from '@/lib/stores/activeOrders'
 import { useHydratedStore } from '@/lib/stores/useHydratedStore'
@@ -24,9 +24,11 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
     const totalAmount = useCartStore((s) => s.totalAmount)
     const clearCart = useCartStore((s) => s.clearCart)
 
+    const [orderMode, setOrderMode] = useState<'takeaway' | 'delivery'>('takeaway')
     const [customerName, setCustomerName] = useState('')
     const [customerPhone, setCustomerPhone] = useState('')
     const [customerEmail, setCustomerEmail] = useState('')
+    const [deliveryAddress, setDeliveryAddress] = useState('')
     const [pickupTime, setPickupTime] = useState('')
     const [note, setNote] = useState('')
     const [promo, setPromo] = useState<PromoCode | null>(null)
@@ -52,8 +54,16 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
-        if (!customerName.trim() || !customerPhone.trim() || !pickupTime) {
+        if (!customerName.trim() || !customerPhone.trim()) {
             toast.error('Please fill in all required fields.')
+            return
+        }
+        if (orderMode === 'takeaway' && !pickupTime) {
+            toast.error('Please choose a pickup time.')
+            return
+        }
+        if (orderMode === 'delivery' && !deliveryAddress.trim()) {
+            toast.error('Please enter your delivery address.')
             return
         }
         if (!items || items.length === 0) {
@@ -63,25 +73,35 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
 
         setIsSubmitting(true)
 
-        const result = await createTakeoutOrder({
-            restaurantId,
-            customerName: customerName.trim(),
-            customerPhone: customerPhone.trim(),
-            customerEmail: customerEmail.trim() || undefined,
-            pickupTime,
-            items,
-            customerNote: note || undefined,
-            promoCode: promo?.code || undefined,
-        })
+        const result = orderMode === 'delivery'
+            ? await createDeliveryOrder({
+                restaurantId,
+                customerName: customerName.trim(),
+                customerPhone: customerPhone.trim(),
+                deliveryAddress: deliveryAddress.trim(),
+                customerEmail: customerEmail.trim() || undefined,
+                items,
+                customerNote: note || undefined,
+                promoCode: promo?.code || undefined,
+            })
+            : await createTakeoutOrder({
+                restaurantId,
+                customerName: customerName.trim(),
+                customerPhone: customerPhone.trim(),
+                customerEmail: customerEmail.trim() || undefined,
+                pickupTime,
+                items,
+                customerNote: note || undefined,
+                promoCode: promo?.code || undefined,
+            })
 
         if (result.error) {
             toast.error(result.error)
             setIsSubmitting(false)
         } else if (result.orderId) {
-            toast.success('Takeout order placed successfully!')
+            toast.success(orderMode === 'delivery' ? 'Delivery order placed!' : 'Takeout order placed successfully!')
             useActiveOrders.getState().addActiveOrder({ id: result.orderId, type: 'takeout', slug: restaurantSlug })
             clearCart()
-            // Redirect to order tracking page
             router.push(`/takeout/${restaurantSlug}/order/${result.orderId}`)
         }
     }
@@ -105,12 +125,28 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                     <ArrowLeft size={20} />
                 </button>
                 <div>
-                    <h1 className="text-xl font-semibold text-gray-900">Takeout Order</h1>
+                    <h1 className="text-xl font-semibold text-gray-900">{orderMode === 'delivery' ? 'Delivery Order' : 'Takeout Order'}</h1>
                     <p className="text-xs text-gray-500">{restaurantName}</p>
                 </div>
             </header>
 
             <form onSubmit={handleSubmit} className="max-w-xl mx-auto px-4 mt-6 space-y-6">
+                {/* Order type toggle */}
+                <div className="grid grid-cols-2 gap-2 bg-white rounded-xl shadow-sm border border-gray-100 p-1.5">
+                    {([['takeaway', 'Takeaway'], ['delivery', 'Delivery']] as const).map(([mode, label]) => (
+                        <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setOrderMode(mode)}
+                            className={`py-2.5 rounded-lg text-sm font-semibold transition-colors ${
+                                orderMode === mode ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'
+                            }`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+
                 {/* Order items summary */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
                     <h2 className="font-semibold text-gray-700 mb-3">
@@ -164,29 +200,46 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                     </div>
                 </div>
 
-                {/* Pickup Time */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                    <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                        <Clock size={18} className="text-gray-500" />
-                        Pickup Time *
-                    </h2>
-                    <div className="grid grid-cols-4 gap-2">
-                        {timeSlots.map((slot) => (
-                            <button
-                                key={slot}
-                                type="button"
-                                onClick={() => setPickupTime(slot)}
-                                className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                                    pickupTime === slot
-                                        ? 'bg-gray-900 text-white border-gray-900'
-                                        : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
-                                }`}
-                            >
-                                {formatTime(slot)}
-                            </button>
-                        ))}
+                {/* Delivery address (delivery mode) */}
+                {orderMode === 'delivery' && (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                        <label className="block text-sm font-medium text-gray-600 mb-1">Delivery Address *</label>
+                        <textarea
+                            rows={2}
+                            value={deliveryAddress}
+                            onChange={(e) => setDeliveryAddress(e.target.value)}
+                            required
+                            placeholder="House no, street, area, landmark…"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+                        />
                     </div>
-                </div>
+                )}
+
+                {/* Pickup Time (takeaway mode) */}
+                {orderMode === 'takeaway' && (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                        <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                            <Clock size={18} className="text-gray-500" />
+                            Pickup Time *
+                        </h2>
+                        <div className="grid grid-cols-4 gap-2">
+                            {timeSlots.map((slot) => (
+                                <button
+                                    key={slot}
+                                    type="button"
+                                    onClick={() => setPickupTime(slot)}
+                                    className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                                        pickupTime === slot
+                                            ? 'bg-gray-900 text-white border-gray-900'
+                                            : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
+                                    }`}
+                                >
+                                    {formatTime(slot)}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Promo Code */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
@@ -239,7 +292,7 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                         {isSubmitting ? (
                             <><Loader2 className="animate-spin" size={20} /> Placing Order...</>
                         ) : (
-                            'Place Takeout Order'
+                            orderMode === 'delivery' ? 'Place Delivery Order' : 'Place Takeout Order'
                         )}
                     </button>
                 </div>
