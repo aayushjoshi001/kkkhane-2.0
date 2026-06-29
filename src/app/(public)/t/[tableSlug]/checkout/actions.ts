@@ -68,15 +68,23 @@ export async function placeOrder(
     })
 
     // Format items payload for the place_order RPC (includes modifiers)
-    const payload: PlaceOrderItemPayload[] = items.map((i) => ({
-        menu_item_id: i.menuItemId,
-        quantity: i.quantity,
-        special_request: i.specialRequest || null,
-        modifiers: (i.modifiers || []).map((m) => ({
-            modifier_id: m.modifierId,
-        })),
-        variation_id: i.variationId || null,
-    }))
+    const payload: PlaceOrderItemPayload[] = items.map((i) => {
+        let specialRequest = i.specialRequest || ''
+        if (i.variationName) {
+            specialRequest = specialRequest
+                ? `[${i.variationName}] ${specialRequest}`
+                : `[${i.variationName}]`
+        }
+        return {
+            menu_item_id: i.menuItemId,
+            quantity: i.quantity,
+            special_request: specialRequest || null,
+            modifiers: (i.modifiers || []).map((m) => ({
+                modifier_id: m.modifierId,
+            })),
+            variation_id: i.variationId || null,
+        }
+    })
 
     const validation = validateInput(PlaceOrderInputSchema, {
         sessionId,
@@ -203,6 +211,97 @@ export async function placeOrder(
     }
 
     if (result.order_id) {
+        // If there are variations, look up their prices and update order_items
+        const variationIds = items.map(i => i.variationId).filter(Boolean) as string[]
+        let variations: { id: string; price: number }[] = []
+        if (variationIds.length > 0) {
+            const { data: varData } = await supabase
+                .from('menu_item_variations')
+                .select('id, price')
+                .in('id', variationIds)
+            variations = varData || []
+        }
+
+        const { data: dbOrderItems } = await supabase
+            .from('order_items')
+            .select('id, menu_item_id, quantity, special_request')
+            .eq('order_id', result.order_id)
+
+        let calculatedSubtotal = 0
+        if (dbOrderItems && dbOrderItems.length > 0) {
+            const matchedDbItemIds = new Set<string>()
+
+            for (const item of items) {
+                let basePrice = item.price
+                if (item.variationId) {
+                    const v = variations.find(x => x.id === item.variationId)
+                    if (v) basePrice = Number(v.price)
+                }
+                const modifierTotal = (item.modifiers || []).reduce((sum, mod) => sum + mod.priceAdjustment, 0)
+                calculatedSubtotal += (basePrice + modifierTotal) * item.quantity
+
+                // Build the special request we sent to the DB
+                let expectedSpecialRequest = item.specialRequest || ''
+                if (item.variationName) {
+                    expectedSpecialRequest = expectedSpecialRequest
+                        ? `[${item.variationName}] ${expectedSpecialRequest}`
+                        : `[${item.variationName}]`
+                }
+                
+                // Find matching row in the database, excluding already matched ones
+                const match = dbOrderItems.find(
+                    x => !matchedDbItemIds.has(x.id) &&
+                         x.menu_item_id === item.menuItemId &&
+                         x.quantity === item.quantity &&
+                         (x.special_request || '') === expectedSpecialRequest
+                )
+
+                if (match) {
+                    matchedDbItemIds.add(match.id)
+                    if (item.variationId) {
+                        // Update the unit price to the correct variation price
+                        await supabase
+                            .from('order_items')
+                            .update({ unit_price: basePrice })
+                            .eq('id', match.id)
+                    }
+                }
+            }
+
+            // Recalculate order totals in TypeScript to match database consistency
+            const { data: settings } = await supabase
+                .from('settings')
+                .select('features_v2')
+                .eq('restaurant_id', sessionData.restaurant_id)
+                .single()
+            const taxRate = Number(settings?.features_v2?.defaultTaxRate ?? 0)
+
+            const { data: orderData } = await supabase
+                .from('orders')
+                .select('discount_amount')
+                .eq('id', result.order_id)
+                .single()
+
+            const discountAmount = Number(orderData?.discount_amount ?? 0)
+            const finalTax = Math.round(calculatedSubtotal * (taxRate / 100) * 100) / 100
+            const finalOrderTotal = Math.max(0, calculatedSubtotal - discountAmount + finalTax)
+
+            // Update the order totals in the database
+            await supabase
+                .from('orders')
+                .update({
+                    subtotal_amount: calculatedSubtotal,
+                    tax_amount: finalTax,
+                    total_amount: finalOrderTotal
+                })
+                .eq('id', result.order_id)
+
+            // Update local variables returned in action response
+            result.subtotal = calculatedSubtotal
+            result.tax = finalTax
+            result.total = finalOrderTotal
+        }
+
         const [pricingResult, deductResult] = await Promise.allSettled([
             supabase.rpc('apply_pricing_rules_to_order', { p_order_id: result.order_id }),
             supabase.rpc('deduct_ingredients_for_order',  { p_order_id: result.order_id }),
