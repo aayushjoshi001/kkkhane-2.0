@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { logAudit } from '@/lib/audit'
 import { requireRole } from '@/lib/auth'
+import { markTableDirtyForSession } from '@/lib/tableLifecycle'
 
 export async function verifyPayment(
     claimId: string,
@@ -129,6 +130,8 @@ export async function verifyPaymentAndCloseTable(
             })
             .eq('id', order.session_id)
             .eq('status', 'active')
+
+        await markTableDirtyForSession(supabase, order.session_id)
 
         void logAudit({
             restaurantId: order.restaurant_id,

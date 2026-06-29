@@ -90,6 +90,10 @@ export interface Table {
     capacity: number | null
     is_active: boolean
     table_status: TableStatus
+    // Cleaning ownership: set when a waiter claims a dirty table ("I am going");
+    // only this waiter may mark it clean. Null when available/occupied/unclaimed.
+    cleaning_claimed_by?: string | null
+    cleaning_claimed_at?: string | null
     created_at: string
 }
 

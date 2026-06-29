@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { logAudit } from '@/lib/audit'
 import { requireRole } from '@/lib/auth'
 import { rollUpOrderStatus } from '@/lib/orderRollup'
+import { markTableDirtyForSession } from '@/lib/tableLifecycle'
 import type { OrderStatus, OrderItemStatus } from '@/types/database'
 
 /**
@@ -200,6 +201,8 @@ export async function markCashPaid(
                 .eq('id', order.session_id)
                 .eq('status', 'active')
 
+            await markTableDirtyForSession(supabase, order.session_id)
+
             void logAudit({
                 restaurantId: order.restaurant_id,
                 userId: currentUser.id,
@@ -294,6 +297,8 @@ export async function markDeliveredAndCashPaid(
                 .update({ status: 'closed', closed_at: now })
                 .eq('id', order.session_id)
                 .eq('status', 'active')
+
+            await markTableDirtyForSession(supabase, order.session_id)
 
             void logAudit({
                 restaurantId: order.restaurant_id,

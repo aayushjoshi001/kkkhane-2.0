@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
-import { openSession, closeSession, setTableStatus } from '@/app/(staff)/waiter/actions'
-import { Users, QrCode, PowerOff, Power, Sparkles, CalendarClock, UtensilsCrossed } from 'lucide-react'
+import { openSession, closeSession, setTableStatus, claimTableCleaning, releaseTableCleaning, markTableClean } from '@/app/(staff)/waiter/actions'
+import { Users, QrCode, PowerOff, Power, Sparkles, CalendarClock, UtensilsCrossed, Footprints, Check, X } from 'lucide-react'
 import type { Table, Session } from '@/types/database'
 import { QRCodeSVG } from 'qrcode.react'
 import { toast } from 'react-hot-toast'
@@ -14,7 +14,7 @@ export type TableWithSession = Table & { activeSession?: Session | null }
 
 // Status → semantic tokens (active=success, dirty=warning, reserved=info).
 const STATUS_CONFIG = {
-    active:    { dot: 'bg-success animate-pulse', card: 'border-success/30 bg-success-bg/50', label: 'Active',   labelCls: 'text-success-fg' },
+    active:    { dot: 'bg-success animate-pulse', card: 'border-success/30 bg-success-bg/50', label: 'Occupied', labelCls: 'text-success-fg' },
     dirty:     { dot: 'bg-warning',               card: 'border-warning/25 bg-warning-bg/50', label: 'Dirty',    labelCls: 'text-warning-fg' },
     reserved:  { dot: 'bg-info',                  card: 'border-info/25 bg-info-bg/50',       label: 'Reserved', labelCls: 'text-info-fg' },
     available: { dot: 'bg-[var(--text-subtle)]',  card: 'border-hairline bg-surface',         label: '',         labelCls: '' },
@@ -25,11 +25,13 @@ function getEffectiveStatus(table: TableWithSession): string {
     return table.table_status || 'available'
 }
 
-export default function TableManager({ initialTables, restaurantId, appUrl, initialOrders = [] }: {
+export default function TableManager({ initialTables, restaurantId, appUrl, initialOrders = [], userId, staffNames = {} }: {
     initialTables: TableWithSession[]
     restaurantId: string
     appUrl: string
     initialOrders?: { id: string; session_id: string | null; status: string }[]
+    userId: string
+    staffNames?: Record<string, string>
 }) {
     const [tables, setTables] = useState<TableWithSession[]>(initialTables)
     const [selectedTable, setSelectedTable] = useState<TableWithSession | null>(null)
@@ -77,8 +79,20 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
     useRestaurantTable(restaurantId, 'tables', (payload) => {
         if (payload.eventType !== 'UPDATE') return
         const u = payload.new as TableWithSession
-        setTables(prev => prev.map(t => t.id === u.id ? { ...t, table_status: u.table_status } : t))
-        setSelectedTable(prev => prev?.id === u.id ? { ...prev, table_status: u.table_status } : prev)
+        const patch = {
+            table_status: u.table_status,
+            cleaning_claimed_by: u.cleaning_claimed_by ?? null,
+            cleaning_claimed_at: u.cleaning_claimed_at ?? null,
+        }
+        // Alert the floor when a table newly needs cleaning (e.g. payment closed it).
+        setTables(prev => {
+            const before = prev.find(t => t.id === u.id)
+            if (u.table_status === 'dirty' && before && before.table_status !== 'dirty') {
+                toast(`Table ${u.label ?? before.label} needs cleaning`, { icon: '🧹', duration: 6000 })
+            }
+            return prev.map(t => t.id === u.id ? { ...t, ...patch } : t)
+        })
+        setSelectedTable(prev => prev?.id === u.id ? { ...prev, ...patch } : prev)
     })
 
     const handleOpenSession = async (tableId: string) => {
@@ -123,6 +137,41 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
             toast.success(status === 'dirty' ? 'Marked dirty' : status === 'reserved' ? 'Reserved' : 'Cleared')
             setTables(prev => prev.map(t => t.id === tableId ? { ...t, table_status: status } : t))
             setSelectedTable(prev => prev?.id === tableId ? { ...prev, table_status: status } : prev)
+        }
+        setIsProcessing(false)
+    }
+
+    const patchTable = (tableId: string, patch: Partial<TableWithSession>) => {
+        setTables(prev => prev.map(t => t.id === tableId ? { ...t, ...patch } : t))
+        setSelectedTable(prev => prev?.id === tableId ? { ...prev, ...patch } : prev)
+    }
+
+    const handleClaimCleaning = async (tableId: string) => {
+        setIsProcessing(true)
+        patchTable(tableId, { cleaning_claimed_by: userId, cleaning_claimed_at: new Date().toISOString() })
+        const res = await claimTableCleaning(tableId)
+        if (res.error) {
+            patchTable(tableId, { cleaning_claimed_by: null, cleaning_claimed_at: null })
+            toast.error(res.conflict ? 'Another waiter already took this table' : res.error)
+        } else {
+            toast.success('On your way 🧹')
+        }
+        setIsProcessing(false)
+    }
+
+    const handleReleaseCleaning = async (tableId: string) => {
+        patchTable(tableId, { cleaning_claimed_by: null, cleaning_claimed_at: null })
+        await releaseTableCleaning(tableId)
+    }
+
+    const handleMarkClean = async (tableId: string) => {
+        setIsProcessing(true)
+        const res = await markTableClean(tableId)
+        if (res.error) {
+            toast.error(res.error)
+        } else {
+            toast.success('Table cleaned ✓')
+            patchTable(tableId, { table_status: 'available', cleaning_claimed_by: null, cleaning_claimed_at: null })
         }
         setIsProcessing(false)
     }
@@ -212,7 +261,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                     <h3 className="text-h3 text-ink">Table {selectedTable.label}</h3>
                                     <p className="text-caption text-ink-subtle mt-0.5">
                                         {selectedTable.activeSession
-                                            ? 'Session active'
+                                            ? 'Occupied'
                                             : selectedTable.table_status === 'dirty'
                                                 ? 'Needs cleaning'
                                                 : selectedTable.table_status === 'reserved'
@@ -247,6 +296,51 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                         Close Session &amp; Checkout
                                     </Button>
                                 </div>
+                            ) : selectedTable.table_status === 'dirty' ? (
+                                // Dirty table — cleaning ownership flow. "I am going" claims it;
+                                // only the claiming waiter may then Mark Clean.
+                                (() => {
+                                    const claimedBy = selectedTable.cleaning_claimed_by
+                                    const mine = claimedBy === userId
+                                    const byOther = !!claimedBy && !mine
+                                    return (
+                                        <div className="space-y-4">
+                                            <div className="flex flex-col items-center py-4 text-warning-fg">
+                                                <Sparkles size={48} strokeWidth={1.5} />
+                                                <p className="text-center text-body font-semibold text-ink mt-3">Needs cleaning</p>
+                                                {byOther && (
+                                                    <p className="text-center text-caption text-ink-subtle mt-1 flex items-center gap-1.5">
+                                                        <Footprints size={13} /> {staffNames[claimedBy!] || 'A colleague'} is on it
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            {!claimedBy && (
+                                                <Button block icon={Footprints} loading={isProcessing} onClick={() => handleClaimCleaning(selectedTable.id)}>
+                                                    I am going
+                                                </Button>
+                                            )}
+
+                                            {mine && (
+                                                <div className="space-y-2">
+                                                    <Button block icon={Check} loading={isProcessing} onClick={() => handleMarkClean(selectedTable.id)}>
+                                                        Mark Clean
+                                                    </Button>
+                                                    <button
+                                                        onClick={() => handleReleaseCleaning(selectedTable.id)}
+                                                        className="text-caption text-ink-muted hover:text-ink flex items-center gap-1 mx-auto"
+                                                    >
+                                                        <X size={12} /> Release
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            {byOther && (
+                                                <p className="text-center text-caption text-ink-muted">Only {staffNames[claimedBy!] || 'the assigned waiter'} can mark this clean.</p>
+                                            )}
+                                        </div>
+                                    )
+                                })()
                             ) : (
                                 <div className="space-y-4">
                                     <div className="flex flex-col items-center py-4 text-ink-subtle/40">
