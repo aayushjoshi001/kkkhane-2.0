@@ -5,6 +5,7 @@ import ServiceRequestFeed, { type ServiceRequestWithTable } from '@/components/w
 import StaffShiftClock from '@/components/shared/StaffShiftClock'
 import PaymentVerificationFeed, { type PaymentClaim } from '@/components/waiter/PaymentVerificationFeed'
 import WaiterOrderFeed, { type WaiterOrder } from '@/components/waiter/WaiterOrderFeed'
+import OrderConfirmFeed, { type ConfirmOrder } from '@/components/waiter/OrderConfirmFeed'
 import WaiterTakeoutFeed from '@/components/waiter/WaiterTakeoutFeed'
 import FloorStats from '@/components/waiter/FloorStats'
 import CashPaymentFeed, { type UnpaidOrder } from '@/components/waiter/CashPaymentFeed'
@@ -98,6 +99,7 @@ export default async function WaiterPage() {
             `)
             .eq('restaurant_id', restaurantId)
             .eq('order_type', 'dine_in')
+            .eq('needs_confirmation', false)
             .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
             .order('placed_at', { ascending: true }),
         adminSupabase
@@ -121,6 +123,21 @@ export default async function WaiterPage() {
             .order('delivered_at', { ascending: true })
             .limit(30),
     ])
+
+    // Mode 2 — orders waiting for a waiter to confirm the customer is seated.
+    const { data: ordersToConfirm } = await adminSupabase
+        .from('orders')
+        .select(`
+            id, status, total_amount, placed_at, customer_note, needs_confirmation,
+            sessions ( tables ( label ) ),
+            order_items ( id, quantity, status, menu_items ( name ) )
+        `)
+        .eq('restaurant_id', restaurantId)
+        .eq('order_type', 'dine_in')
+        .eq('needs_confirmation', true)
+        .neq('status', 'cancelled')
+        .order('placed_at', { ascending: true })
+        .limit(30)
 
     // Map of staff id → name so feeds can show who claimed/acknowledged work
     // (realtime payloads only carry the claimer's UUID, not their name).
@@ -179,6 +196,16 @@ export default async function WaiterPage() {
                 tablesMap={tablesMap}
                 restaurantId={restaurantId}
             />
+
+            {/* 0. Orders to Confirm — Mode 2 gate, must clear before the kitchen cooks */}
+            {features?.waiterOrderConfirmation && (
+                <OrderConfirmFeed
+                    initialOrders={(ordersToConfirm || []) as unknown as ConfirmOrder[]}
+                    restaurantId={restaurantId}
+                    userId={userId}
+                    staffNames={staffNames}
+                />
+            )}
 
             {/* 1. Service Requests — most urgent, someone needs help NOW */}
             {features?.serviceRequestsEnabled !== false && (

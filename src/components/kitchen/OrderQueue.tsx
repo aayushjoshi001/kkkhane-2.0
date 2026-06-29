@@ -73,7 +73,10 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     useRestaurantTable(restaurantId, 'orders', async (payload) => {
         // Takeout orders live in the dedicated TakeoutQueue — ignore them here.
         if ((payload.new as { order_type?: string } | null)?.order_type === 'takeout') return
+        // Mode 2: orders awaiting waiter confirmation aren't in the kitchen yet.
+        const needsConfirmation = (payload.new as { needs_confirmation?: boolean } | null)?.needs_confirmation === true
         if (payload.eventType === 'INSERT') {
+            if (needsConfirmation) return
             const supabase = supabaseRef.current
             const { data } = await supabase.from('orders').select(ORDER_SELECT).eq('id', payload.new.id).single()
             if (!data) return
@@ -101,20 +104,25 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             ), { duration: 6000, position: 'top-right' })
         } else if (payload.eventType === 'UPDATE') {
             const newStatus = payload.new.status as string
-            if (newStatus === 'delivered' || newStatus === 'cancelled') {
+            // Gone from the kitchen: finished, cancelled, or still awaiting confirmation.
+            if (newStatus === 'delivered' || newStatus === 'cancelled' || needsConfirmation) {
                 setOrders(prev => prev.filter(o => o.id !== payload.new.id))
                 return
             }
-            // An item's status/owner may have changed without the order leaving the
-            // board (e.g. 1 of 3 items now cooking). Refetch the full row so every
-            // kitchen tab sees the per-dish progress.
+            // Refetch the full row. An item's status/owner may have changed without the
+            // order leaving the board (1 of 3 cooking), OR a waiter just confirmed it —
+            // in which case it's new to the kitchen and we add it (with a chime).
             const supabase = supabaseRef.current
             const { data } = await supabase.from('orders').select(ORDER_SELECT).eq('id', payload.new.id).single()
             if (!data) return
             const fresh = data as unknown as KitchenOrder
-            setOrders(prev => prev.some(o => o.id === fresh.id)
-                ? prev.map(o => o.id === fresh.id ? fresh : o)
-                : prev)
+            let added = false
+            setOrders(prev => {
+                if (prev.some(o => o.id === fresh.id)) return prev.map(o => o.id === fresh.id ? fresh : o)
+                added = true
+                return [...prev, fresh]
+            })
+            if (added) playNewOrder().catch(() => {})
         }
     })
 

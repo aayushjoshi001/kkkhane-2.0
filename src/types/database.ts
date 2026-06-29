@@ -208,6 +208,10 @@ export interface Order {
     loyalty_member_id: string | null
     refunded_amount: number
     client_request_id: string | null
+    // Mode 2 (waiter confirmation): true while a placed order is waiting for a
+    // waiter to confirm the customer is seated; the kitchen hides these until then.
+    needs_confirmation?: boolean
+    cancellation_reason?: string | null
     placed_at: string
     confirmed_at: string | null
     ready_at: string | null
@@ -283,6 +287,10 @@ export interface Settings {
         // When true, a waiter must open a table session before guests can order.
         // When false/undefined (default), sessions auto-open on QR scan (self-service).
         waiterSessionEnabled?: boolean
+        // When true (Mode 2 / low plans), placed dine-in orders wait for a waiter to
+        // confirm before the kitchen sees them; stock is deducted on confirm. When
+        // false (Mode 1 / premium), orders go straight to the kitchen at placement.
+        waiterOrderConfirmation?: boolean
         defaultTaxRate: number
         currency: string
         currencySymbol: string

@@ -10,6 +10,7 @@ import { validateInput, OrderItemSchema } from '@/lib/validation'
 import { z } from 'zod'
 import { sendOrderConfirmationSms, sendLoyaltyPointsSms } from '@/lib/sms'
 import { checkAndAlertLowStock } from '@/app/(admin)/admin/ingredients/actions'
+import { getRestaurantFeatures } from '@/lib/features'
 import { verifyClientIp } from '@/lib/ip-check'
 
 type PlaceOrderItemPayload = {
@@ -302,20 +303,32 @@ export async function placeOrder(
             result.total = finalOrderTotal
         }
 
-        const [pricingResult, deductResult] = await Promise.allSettled([
-            supabase.rpc('apply_pricing_rules_to_order', { p_order_id: result.order_id }),
-            supabase.rpc('deduct_ingredients_for_order',  { p_order_id: result.order_id }),
-        ])
-        if (pricingResult.status === 'rejected') {
-            console.error('[order]', result.order_id, 'apply_pricing_rules failed:', pricingResult.reason)
+        // Pricing is always normalised. Stock deduction + kitchen visibility depend
+        // on the restaurant's order mode:
+        //   • Mode 1 (direct): deduct stock now; the kitchen sees the order immediately.
+        //   • Mode 2 (waiter confirmation): flag the order as needs_confirmation so the
+        //     kitchen hides it, and defer stock deduction until a waiter confirms.
+        const features = await getRestaurantFeatures(sessionData.restaurant_id)
+        const requireConfirmation =
+            (features as { waiterOrderConfirmation?: boolean } | null)?.waiterOrderConfirmation === true
+
+        const pricingResult = await supabase.rpc('apply_pricing_rules_to_order', { p_order_id: result.order_id })
+        if (pricingResult.error) {
+            console.error('[order]', result.order_id, 'apply_pricing_rules failed:', pricingResult.error)
         }
-        if (deductResult.status === 'rejected') {
-            console.error('[order]', result.order_id, 'deduct_ingredients failed:', deductResult.reason)
-        } else if (deductResult.status === 'fulfilled' && deductResult.value.error) {
-            console.error('[order]', result.order_id, 'deduct_ingredients RPC error:', deductResult.value.error)
+
+        if (requireConfirmation) {
+            await supabase
+                .from('orders')
+                .update({ needs_confirmation: true })
+                .eq('id', result.order_id)
         } else {
-            // Deduction succeeded — fire low-stock check in background (never blocks the order)
-            if (sessionData.restaurant_id) void checkAndAlertLowStock(sessionData.restaurant_id)
+            const deductResult = await supabase.rpc('deduct_ingredients_for_order', { p_order_id: result.order_id })
+            if (deductResult.error) {
+                console.error('[order]', result.order_id, 'deduct_ingredients RPC error:', deductResult.error)
+            } else if (sessionData.restaurant_id) {
+                void checkAndAlertLowStock(sessionData.restaurant_id)
+            }
         }
 
         // SMS notifications — best-effort, never block the order

@@ -6,6 +6,7 @@ import { logAudit } from '@/lib/audit'
 import { requireRole } from '@/lib/auth'
 import { rollUpOrderStatus } from '@/lib/orderRollup'
 import { markTableDirtyForSession } from '@/lib/tableLifecycle'
+import { checkAndAlertLowStock } from '@/app/(admin)/admin/ingredients/actions'
 import type { OrderStatus, OrderItemStatus } from '@/types/database'
 
 /**
@@ -390,4 +391,90 @@ export async function markOrderItemsServed(
     revalidatePath('/waiter')
     revalidatePath('/kitchen')
     return { success: true, delivered }
+}
+
+/**
+ * Mode 2 — waiter order confirmation.
+ *
+ * confirmOrder: the customer is really seated → release the order to the kitchen
+ * and deduct stock now (deduction was deferred at placement). Atomic on
+ * needs_confirmation so two waiters can't both confirm/reject the same order.
+ *
+ * rejectOrder: not a real order → cancel it with a reason shown to the customer.
+ * No stock to restore (it was never deducted).
+ */
+export async function confirmOrder(
+    orderId: string
+): Promise<{ success?: boolean; error?: string; conflict?: boolean }> {
+    const currentUser = await requireRole('waiter', 'manager', 'super_admin', 'cashier')
+    const supabase = await createAdminClient()
+
+    const { data, error } = await supabase
+        .from('orders')
+        .update({ needs_confirmation: false, status: 'confirmed', confirmed_at: new Date().toISOString() })
+        .eq('id', orderId)
+        .eq('needs_confirmation', true)
+        .select('id, restaurant_id')
+
+    if (error) return { error: error.message }
+    if (!data || data.length === 0) {
+        return { conflict: true, error: 'This order was already handled by someone else' }
+    }
+
+    // Deduction was deferred to confirmation — do it now (best-effort, never blocks).
+    const { error: deductError } = await supabase.rpc('deduct_ingredients_for_order', { p_order_id: orderId })
+    if (deductError) {
+        console.error('[confirmOrder] deduct_ingredients failed:', deductError)
+    } else if (data[0].restaurant_id) {
+        void checkAndAlertLowStock(data[0].restaurant_id)
+    }
+
+    void logAudit({
+        restaurantId: data[0].restaurant_id,
+        userId: currentUser.id,
+        action: 'order_confirmed',
+        entityType: 'order',
+        entityId: orderId,
+        newValue: { mode: 'waiter_confirmation' },
+    })
+
+    revalidatePath('/waiter')
+    revalidatePath('/kitchen')
+    return { success: true }
+}
+
+export async function rejectOrder(
+    orderId: string,
+    reason: string
+): Promise<{ success?: boolean; error?: string; conflict?: boolean }> {
+    const currentUser = await requireRole('waiter', 'manager', 'super_admin', 'cashier')
+    const supabase = await createAdminClient()
+
+    const cleanReason = (reason || '').trim().slice(0, 200) || 'Rejected by waiter'
+
+    const { data, error } = await supabase
+        .from('orders')
+        .update({ status: 'cancelled', needs_confirmation: false, cancellation_reason: cleanReason })
+        .eq('id', orderId)
+        .eq('needs_confirmation', true)
+        .neq('status', 'cancelled')
+        .select('id, restaurant_id')
+
+    if (error) return { error: error.message }
+    if (!data || data.length === 0) {
+        return { conflict: true, error: 'This order was already handled by someone else' }
+    }
+
+    void logAudit({
+        restaurantId: data[0].restaurant_id,
+        userId: currentUser.id,
+        action: 'order_rejected',
+        entityType: 'order',
+        entityId: orderId,
+        newValue: { reason: cleanReason },
+    })
+
+    revalidatePath('/waiter')
+    revalidatePath('/kitchen')
+    return { success: true }
 }

@@ -49,6 +49,7 @@ export default async function KitchenPage() {
             `)
             .eq('restaurant_id', restaurantId)
             .eq('order_type', 'dine_in')
+            .eq('needs_confirmation', false)
             .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
             .order('placed_at', { ascending: true }),
         adminSupabase

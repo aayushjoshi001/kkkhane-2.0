@@ -25,34 +25,37 @@ const TIER_FEATURES: Record<Tier, {
     // When true, a waiter must open a table session before guests can order.
     // When false (default), sessions auto-open on QR scan (self-service ordering).
     waiterSessionEnabled: boolean
+    // When true (low plans), placed dine-in orders wait for waiter confirmation
+    // before reaching the kitchen. Premium tiers default to direct-to-kitchen.
+    waiterOrderConfirmation: boolean
 }> = {
     free: {
         loyaltyEnabled: false, promosEnabled: true, takeoutEnabled: false,
         multiLanguageEnabled: false, serviceRequestsEnabled: true,
         splitBillingEnabled: true, dynamicPricingEnabled: false,
         ingredientTrackingEnabled: false, staffShiftsEnabled: false,
-        waiterSessionEnabled: false,
+        waiterSessionEnabled: false, waiterOrderConfirmation: true,
     },
     basic: {
         loyaltyEnabled: false, promosEnabled: true, takeoutEnabled: true,
         multiLanguageEnabled: false, serviceRequestsEnabled: true,
         splitBillingEnabled: true, dynamicPricingEnabled: false,
         ingredientTrackingEnabled: false, staffShiftsEnabled: false,
-        waiterSessionEnabled: false,
+        waiterSessionEnabled: false, waiterOrderConfirmation: true,
     },
     pro: {
         loyaltyEnabled: true, promosEnabled: true, takeoutEnabled: true,
         multiLanguageEnabled: false, serviceRequestsEnabled: true,
         splitBillingEnabled: true, dynamicPricingEnabled: true,
         ingredientTrackingEnabled: true, staffShiftsEnabled: true,
-        waiterSessionEnabled: false,
+        waiterSessionEnabled: false, waiterOrderConfirmation: false,
     },
     enterprise: {
         loyaltyEnabled: true, promosEnabled: true, takeoutEnabled: true,
         multiLanguageEnabled: true, serviceRequestsEnabled: true,
         splitBillingEnabled: true, dynamicPricingEnabled: true,
         ingredientTrackingEnabled: true, staffShiftsEnabled: true,
-        waiterSessionEnabled: false,
+        waiterSessionEnabled: false, waiterOrderConfirmation: false,
     },
 }
 

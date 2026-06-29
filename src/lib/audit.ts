@@ -9,6 +9,8 @@ export type AuditAction =
     | 'order_status_changed'
     | 'order_delivered'
     | 'order_cancelled'
+    | 'order_confirmed'
+    | 'order_rejected'
     | 'session_opened'
     | 'session_closed'
     | 'menu_item_toggled'

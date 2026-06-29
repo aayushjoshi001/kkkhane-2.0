@@ -236,7 +236,9 @@ export default function OrderTracker({
                     {isCancelled ? (
                         <>
                             <p className="text-base font-black text-red-650">Order Cancelled</p>
-                            <p className="text-xs text-[#8C6A50] font-semibold mt-0.5">Please contact a waiter for assistance.</p>
+                            <p className="text-xs text-[#8C6A50] font-semibold mt-0.5">
+                                {order.cancellation_reason || 'Please contact a waiter for assistance.'}
+                            </p>
                         </>
                     ) : (
                         <>
