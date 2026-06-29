@@ -7,6 +7,8 @@ import PaymentVerificationFeed, { type PaymentClaim } from '@/components/waiter/
 import WaiterOrderFeed, { type WaiterOrder } from '@/components/waiter/WaiterOrderFeed'
 import OrderConfirmFeed, { type ConfirmOrder } from '@/components/waiter/OrderConfirmFeed'
 import WaiterTakeoutFeed from '@/components/waiter/WaiterTakeoutFeed'
+import WaiterDeliveryFeed from '@/components/waiter/WaiterDeliveryFeed'
+import { getReadyDeliveries } from '@/app/api/takeout/actions'
 import FloorStats from '@/components/waiter/FloorStats'
 import CashPaymentFeed, { type UnpaidOrder } from '@/components/waiter/CashPaymentFeed'
 import ActiveSessionsList from '@/components/waiter/ActiveSessionsList'
@@ -123,6 +125,9 @@ export default async function WaiterPage() {
             .order('delivered_at', { ascending: true })
             .limit(30),
     ])
+
+    // Ready online-delivery orders awaiting a delivery person.
+    const readyDeliveries = await getReadyDeliveries(restaurantId)
 
     // Mode 2 — orders waiting for a waiter to confirm the customer is seated.
     const { data: ordersToConfirm } = await adminSupabase
@@ -247,6 +252,16 @@ export default async function WaiterPage() {
                 <WaiterTakeoutFeed
                     initialOrders={((readyTakeouts || []) as unknown as TakeoutOrderRow[]).map(mapOrderRowToTakeout)}
                     restaurantId={restaurantId}
+                />
+            )}
+
+            {/* 5b. Online Delivery Feed — claim → verify code → delivered */}
+            {features?.takeoutEnabled && (
+                <WaiterDeliveryFeed
+                    initialOrders={readyDeliveries}
+                    restaurantId={restaurantId}
+                    userId={userId}
+                    staffNames={staffNames}
                 />
             )}
 

@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { CartItem, TakeoutOrder } from '@/types/database'
 import { checkAndAlertLowStock } from '@/app/(admin)/admin/ingredients/actions'
+import { requireRole } from '@/lib/auth'
 import {
     TAKEOUT_ORDER_SELECT,
     TAKEOUT_STATUS_TO_ORDER,
@@ -229,4 +230,110 @@ export async function completeTakeoutOrder(
     revalidatePath('/admin/takeout')
     revalidatePath('/takeout')
     return {}
+}
+
+// ===== Online delivery: staff claim + code-verified completion =====
+
+export interface DeliveryOrderRow {
+    id: string
+    customer_name: string | null
+    customer_phone: string | null
+    delivery_address: string | null
+    total_amount: number | string | null
+    placed_at: string
+    ready_at: string | null
+    status: string
+    delivery_staff_id: string | null
+    order_items?: { id: string; quantity: number; menu_items: { name: string } | { name: string }[] | null }[] | null
+}
+
+const DELIVERY_SELECT = `
+    id, customer_name, customer_phone, delivery_address, total_amount, placed_at, ready_at,
+    status, delivery_staff_id,
+    order_items ( id, quantity, menu_items ( name ) )
+`
+
+/** Ready delivery orders awaiting a delivery person. */
+export async function getReadyDeliveries(restaurantId: string): Promise<DeliveryOrderRow[]> {
+    const supabase = await createAdminClient()
+    const { data } = await supabase
+        .from('orders')
+        .select(DELIVERY_SELECT)
+        .eq('restaurant_id', restaurantId)
+        .eq('order_type', 'delivery')
+        .eq('status', 'ready')
+        .order('ready_at', { ascending: true })
+        .limit(30)
+    return (data || []) as unknown as DeliveryOrderRow[]
+}
+
+/** "I am going" — claim a ready delivery; first to act owns it. */
+export async function claimDelivery(orderId: string): Promise<{ success?: boolean; error?: string; conflict?: boolean }> {
+    const user = await requireRole('waiter', 'manager', 'super_admin', 'cashier')
+    const supabase = await createAdminClient()
+    const { data, error } = await supabase
+        .from('orders')
+        .update({ delivery_staff_id: user.id })
+        .eq('id', orderId)
+        .eq('order_type', 'delivery')
+        .eq('status', 'ready')
+        .is('delivery_staff_id', null)
+        .select('id')
+    if (error) return { error: error.message }
+    if (!data || data.length === 0) return { conflict: true, error: 'Another delivery person already took this' }
+    revalidatePath('/waiter')
+    return { success: true }
+}
+
+export async function releaseDelivery(orderId: string): Promise<{ success?: boolean; error?: string }> {
+    const user = await requireRole('waiter', 'manager', 'super_admin', 'cashier')
+    const supabase = await createAdminClient()
+    await supabase
+        .from('orders')
+        .update({ delivery_staff_id: null })
+        .eq('id', orderId)
+        .eq('delivery_staff_id', user.id)
+    revalidatePath('/waiter')
+    return { success: true }
+}
+
+/** Mark delivered after verifying the customer's secret code. Owner-only. */
+export async function markDeliveryDelivered(
+    orderId: string,
+    code: string
+): Promise<{ success?: boolean; error?: string; conflict?: boolean; wrongCode?: boolean }> {
+    const user = await requireRole('waiter', 'manager', 'super_admin', 'cashier')
+    const supabase = await createAdminClient()
+
+    const { data: order } = await supabase
+        .from('orders')
+        .select('delivery_verification_code, delivery_staff_id, status')
+        .eq('id', orderId)
+        .eq('order_type', 'delivery')
+        .single()
+
+    if (!order) return { error: 'Order not found' }
+    if (order.status === 'delivered') return { error: 'Already delivered' }
+    if (order.delivery_staff_id && order.delivery_staff_id !== user.id) {
+        return { error: 'This delivery is assigned to someone else' }
+    }
+    if ((code || '').trim() !== (order.delivery_verification_code || '')) {
+        return { wrongCode: true, error: 'Incorrect code — check with the customer' }
+    }
+
+    const now = new Date().toISOString()
+    const { data, error } = await supabase
+        .from('orders')
+        .update({ status: 'delivered', delivered_at: now, delivery_staff_id: user.id })
+        .eq('id', orderId)
+        .eq('status', 'ready')
+        .select('id')
+    if (error) return { error: error.message }
+    if (!data || data.length === 0) return { conflict: true, error: 'Order changed — please refresh' }
+
+    await supabase.from('order_items').update({ status: 'served' }).eq('order_id', orderId).neq('status', 'cancelled')
+
+    revalidatePath('/waiter')
+    revalidatePath('/kitchen')
+    return { success: true }
 }
