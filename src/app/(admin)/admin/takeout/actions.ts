@@ -26,7 +26,7 @@ export async function updateTakeoutStatusAction(orderId: string, newStatus: stri
         .from('orders')
         .update({ status: orderStatus, ...timestamps })
         .eq('id', orderId)
-        .eq('order_type', 'takeout')
+        .in('order_type', ['takeout', 'delivery'])
 
     if (error) return { error: error.message }
     revalidatePath('/admin/takeout')
@@ -41,7 +41,7 @@ export async function getTakeoutOrdersAction(restaurantId: string) {
         .from('orders')
         .select(TAKEOUT_ORDER_SELECT)
         .eq('restaurant_id', restaurantId)
-        .eq('order_type', 'takeout')
+        .in('order_type', ['takeout', 'delivery'])
         // active = not picked up / cancelled
         .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
         .order('placed_at', { ascending: false })

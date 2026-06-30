@@ -57,7 +57,7 @@ export default async function KitchenPage() {
             .select(TAKEOUT_ORDER_SELECT)
             .eq('restaurant_id', restaurantId)
             .in('order_type', ['takeout', 'delivery'])
-            .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
+            .in('status', ['confirmed', 'preparing', 'ready'])
             .order('pickup_time', { ascending: true }),
         // Orders completed (delivered) today
         adminSupabase

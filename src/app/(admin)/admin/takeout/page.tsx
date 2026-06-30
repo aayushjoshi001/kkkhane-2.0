@@ -19,7 +19,7 @@ export default async function AdminTakeoutPage() {
         .from('orders')
         .select(TAKEOUT_ORDER_SELECT)
         .eq('restaurant_id', rid)
-        .eq('order_type', 'takeout')
+        .in('order_type', ['takeout', 'delivery'])
         .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
         .order('placed_at', { ascending: false })
         .limit(50)

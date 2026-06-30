@@ -15,7 +15,6 @@ interface TakeoutQueueProps {
 }
 
 const STATUS_FLOW: Record<string, { next: string; label: string }> = {
-    placed: { next: 'confirmed', label: 'Confirm' },
     confirmed: { next: 'preparing', label: 'Start Prep' },
     preparing: { next: 'ready_for_pickup', label: 'Mark Ready' },
     ready_for_pickup: { next: 'picked_up', label: 'Picked Up' },
