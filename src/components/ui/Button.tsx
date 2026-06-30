@@ -9,9 +9,9 @@ const ICON_SIZE: Record<Size, number> = { sm: 14, md: 16, lg: 18 }
 
 const VARIANTS: Record<Variant, string> = {
     primary:
-        'bg-brand-500 text-white hover:bg-brand-600 active:bg-brand-700 focus-visible:ring-brand-500/40',
+        'bg-gradient-to-b from-brand-500 to-brand-600 border-t border-brand-400 border-x border-brand-600 border-b border-brand-700 text-white shadow-[0_2px_10px_rgb(251,99,3,0.25)] hover:from-brand-400 hover:to-brand-500 active:from-brand-600 active:to-brand-700 focus-visible:ring-brand-500/40',
     secondary:
-        'bg-surface text-ink border border-hairline-strong hover:bg-surface-muted focus-visible:ring-brand-500/40',
+        'bg-gradient-to-b from-white to-surface-muted text-ink border border-hairline-strong shadow-sm hover:from-surface-muted hover:to-surface-muted focus-visible:ring-brand-500/40',
     ghost:
         'bg-transparent text-ink-muted hover:text-ink hover:bg-surface-muted focus-visible:ring-brand-500/30',
     danger:

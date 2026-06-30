@@ -6,6 +6,7 @@ import { upsertLoyaltyConfigAction } from './actions'
 import type { LoyaltyConfig, LoyaltyMember } from '@/types/database'
 import { Save, Crown } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useFeatures } from '@/lib/contexts/FeatureContext'
 
 const TIER_COLORS: Record<string, string> = {
     bronze: 'bg-amber-100 text-amber-800',
@@ -19,6 +20,7 @@ export default function LoyaltyManager({ initialConfig, initialMembers, restaura
     initialMembers: LoyaltyMember[]
     restaurantId: string
 }) {
+    const { currencySymbol } = useFeatures()
     const [config, setConfig] = useState({
         points_per_dollar: initialConfig?.points_per_dollar ?? 1,
         redemption_threshold: initialConfig?.redemption_threshold ?? 100,
@@ -55,7 +57,7 @@ export default function LoyaltyManager({ initialConfig, initialMembers, restaura
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">Points per $1</label>
+                        <label className="block text-sm font-medium text-gray-600 mb-1">Points per {currencySymbol}1</label>
                         <input type="number" step="0.1" value={config.points_per_dollar} onChange={e => setConfig({ ...config, points_per_dollar: +e.target.value })}
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                     </div>
@@ -65,7 +67,7 @@ export default function LoyaltyManager({ initialConfig, initialMembers, restaura
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">Redeem Value ($)</label>
+                        <label className="block text-sm font-medium text-gray-600 mb-1">Redeem Value ({currencySymbol})</label>
                         <input type="number" step="0.01" value={config.redemption_value} onChange={e => setConfig({ ...config, redemption_value: +e.target.value })}
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                     </div>

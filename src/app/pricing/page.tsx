@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { CheckCircle2, ArrowRight, HelpCircle } from 'lucide-react'
 import { MarketingNav, MarketingFooter, MarketingButton, Eyebrow } from '@/components/marketing'
 import Link from 'next/link'
+import { useFeatures } from '@/lib/contexts/FeatureContext'
 
 const PRICING_PLANS = [
     {
@@ -89,6 +90,7 @@ const FAQS = [
 
 export default function PricingPage() {
     const [billingCycle, setBillingCycle] = useState<'yearly' | 'monthly'>('yearly')
+    const { currencySymbol } = useFeatures()
 
     return (
         <div className="min-h-screen bg-[#FAFAF8] text-gray-900 font-sans selection:bg-[var(--color-primary)] selection:text-white">
@@ -157,7 +159,7 @@ export default function PricingPage() {
 
                             <div className="mb-8">
                                 <div className="flex items-baseline gap-1">
-                                    <span className="text-gray-500 font-bold">Rs.</span>
+                                    <span className="text-gray-500 font-bold">{currencySymbol}</span>
                                     <span className="text-4xl font-black text-gray-900 tracking-tight">
                                         {billingCycle === 'yearly' ? plan.price : Math.round(parseInt(plan.price.replace(/,/g, '')) / 10).toLocaleString()}
                                     </span>

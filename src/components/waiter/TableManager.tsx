@@ -14,10 +14,10 @@ export type TableWithSession = Table & { activeSession?: Session | null }
 
 // Status → semantic tokens (active=success, dirty=warning, reserved=info).
 const STATUS_CONFIG = {
-    active:    { dot: 'bg-success animate-pulse', card: 'border-success/30 bg-success-bg/50', label: 'Occupied', labelCls: 'text-success-fg' },
-    dirty:     { dot: 'bg-warning',               card: 'border-warning/25 bg-warning-bg/50', label: 'Dirty',    labelCls: 'text-warning-fg' },
-    reserved:  { dot: 'bg-info',                  card: 'border-info/25 bg-info-bg/50',       label: 'Reserved', labelCls: 'text-info-fg' },
-    available: { dot: 'bg-[var(--text-subtle)]',  card: 'border-hairline bg-surface',         label: '',         labelCls: '' },
+    active:    { dot: 'bg-success animate-pulse', card: 'border-success/20 bg-success/5', label: 'Occupied', labelCls: 'text-success-fg' },
+    dirty:     { dot: 'bg-warning',               card: 'border-warning/20 bg-warning/5', label: 'Dirty',    labelCls: 'text-warning-fg' },
+    reserved:  { dot: 'bg-info',                  card: 'border-info/20 bg-info/5',       label: 'Reserved', labelCls: 'text-info-fg' },
+    available: { dot: 'bg-ink-subtle',            card: 'border-hairline bg-surface',     label: '',         labelCls: '' },
 }
 
 function getEffectiveStatus(table: TableWithSession): string {
@@ -177,9 +177,9 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
     }
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
             {/* Table Grid */}
-            <Card padding={false} className="lg:col-span-2 overflow-hidden">
+            <div className="lg:col-span-2 overflow-hidden rounded-[24px] border border-hairline bg-surface shadow-[0_8px_30px_rgb(0,0,0,0.03)]">
                 <div className="px-5 py-4 border-b border-hairline flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <UtensilsCrossed size={15} className="text-ink-subtle" />
@@ -193,7 +193,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                             </span>
                         ))}
                         <span className="flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-[var(--text-subtle)]" />Available
+                            <span className="w-2 h-2 rounded-full bg-ink-subtle" />Available
                         </span>
                     </div>
                 </div>
@@ -226,11 +226,11 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                             <button
                                 key={table.id}
                                 onClick={() => setSelectedTable(isSelected ? null : table)}
-                                className={`relative aspect-square rounded-xl border-2 flex flex-col items-center justify-center transition-all duration-150 ${cfg.card} ${
-                                    isSelected ? 'ring-2 ring-offset-1 ring-[var(--color-primary)] scale-105 z-10 shadow-md' : 'hover:scale-[1.03] hover:shadow-sm active:scale-95'
+                                className={`relative aspect-square rounded-[20px] border flex flex-col items-center justify-center transition-all duration-300 ${cfg.card} ${
+                                    isSelected ? 'ring-2 ring-offset-2 ring-brand-500 scale-[1.02] z-10 shadow-[0_8px_20px_rgb(251,99,3,0.15)] bg-white' : 'hover:-translate-y-1 hover:shadow-md hover:bg-white active:scale-95'
                                 }`}
                             >
-                                <span className="text-xl font-extrabold text-ink">{table.label}</span>
+                                <span className="text-[28px] font-black tracking-tight text-ink">{table.label}</span>
                                 {table.capacity && (
                                     <span className="flex items-center gap-0.5 text-caption text-ink-subtle mt-0.5">
                                         <Users size={9} />{table.capacity}
@@ -249,10 +249,10 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                         )
                     })}
                 </div>
-            </Card>
+            </div>
 
             {/* Action Panel */}
-            <Card padding={false} className="overflow-hidden sticky top-20 h-fit">
+            <div className="overflow-hidden sticky top-20 h-fit rounded-[24px] border border-hairline bg-surface shadow-[0_8px_30px_rgb(0,0,0,0.06)]">
                 {selectedTable ? (
                     <div>
                         <div className="px-5 py-4 border-b border-hairline">
@@ -316,8 +316,8 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                             </div>
 
                                             {!claimedBy && (
-                                                <Button block icon={Footprints} loading={isProcessing} onClick={() => handleClaimCleaning(selectedTable.id)}>
-                                                    I am going
+                                                <Button block variant="primary" icon={Footprints} loading={isProcessing} onClick={() => handleClaimCleaning(selectedTable.id)}>
+                                                    I'm Going to Clean
                                                 </Button>
                                             )}
 
@@ -360,7 +360,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                         <p className="text-label text-ink-subtle mb-2">Table Status</p>
                                         <div className="grid grid-cols-3 gap-2">
                                             {[
-                                                { status: 'available' as const, icon: <span className="w-2.5 h-2.5 rounded-full bg-[var(--text-subtle)] block" />, label: 'Clear',   cls: 'border-hairline text-ink-muted hover:bg-surface-muted' },
+                                                { status: 'available' as const, icon: <span className="w-2.5 h-2.5 rounded-full bg-ink-subtle block" />, label: 'Clear',   cls: 'border-hairline text-ink-muted hover:bg-surface-muted' },
                                                 { status: 'dirty' as const,     icon: <Sparkles size={12} />,      label: 'Dirty',   cls: 'border-warning/25 text-warning-fg hover:bg-warning-bg' },
                                                 { status: 'reserved' as const,  icon: <CalendarClock size={12} />, label: 'Reserve', cls: 'border-info/25 text-info-fg hover:bg-info-bg' },
                                             ].map(({ status, icon, label, cls }) => (
@@ -387,7 +387,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                         className="h-64"
                     />
                 )}
-            </Card>
+            </div>
         </div>
     )
 }

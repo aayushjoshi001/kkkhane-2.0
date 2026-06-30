@@ -13,6 +13,7 @@ interface Props {
     kitchenOrders: number
     pendingRequests: number
     restaurantId: string
+    onStatClick?: (key: string) => void
 }
 
 export default function FloorStats({
@@ -22,6 +23,7 @@ export default function FloorStats({
     kitchenOrders: initKitchen,
     pendingRequests: initPending,
     restaurantId,
+    onStatClick,
 }: Props) {
     const [occupied, setOccupied] = useState(initOccupied)
     const [ready, setReady] = useState(initReady)
@@ -74,10 +76,22 @@ export default function FloorStats({
     ]
 
     return (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {stats.map(({ key, ...s }) => (
-                <StatCard key={key} {...s} />
-            ))}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {stats.map(({ key, ...s }) => {
+                const content = <StatCard size="sm" {...s} />
+                if (onStatClick) {
+                    return (
+                        <button
+                            key={key}
+                            onClick={() => onStatClick(key)}
+                            className="text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded-[var(--radius-card)] active:scale-[0.98] transition-transform"
+                        >
+                            {content}
+                        </button>
+                    )
+                }
+                return <div key={key}>{content}</div>
+            })}
         </div>
     )
 }

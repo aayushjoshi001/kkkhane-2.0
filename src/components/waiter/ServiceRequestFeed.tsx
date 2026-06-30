@@ -171,7 +171,7 @@ export default function ServiceRequestFeed({
                                     Open
                                 </Button>
                             ) : (
-                                <Button size="sm" onClick={() => handleAcknowledge(req.id)}>On it</Button>
+                                <Button variant="primary" size="sm" onClick={() => handleAcknowledge(req.id)}>I'm Going</Button>
                             )
                         }
                     />

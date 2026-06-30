@@ -12,6 +12,7 @@ import { getReadyDeliveries } from '@/app/api/takeout/actions'
 import FloorStats from '@/components/waiter/FloorStats'
 import CashPaymentFeed, { type UnpaidOrder } from '@/components/waiter/CashPaymentFeed'
 import ActiveSessionsList from '@/components/waiter/ActiveSessionsList'
+import WaiterTabs from '@/components/waiter/WaiterTabs'
 import { getRestaurantFeatures } from '@/lib/features'
 import { TAKEOUT_ORDER_SELECT, mapOrderRowToTakeout, type TakeoutOrderRow } from '@/lib/takeout'
 import type { TakeoutOrder } from '@/types/database'
@@ -182,90 +183,19 @@ export default async function WaiterPage() {
         })
         .sort((a, b) => a.tableLabel.localeCompare(b.tableLabel, undefined, { numeric: true }))
 
-    return (
-        <div className="space-y-6 md:space-y-7">
+    // Counts for tabs
+    const spaceCount = 0 // Not typically badgered
+    const ordersCount = readyOrders + (ordersToConfirm?.length || 0) + (readyTakeouts?.length || 0) + readyDeliveries.length
+    const customerCount = pendingRequests
+    const billingCount = (unpaidDelivered?.length || 0) + (paymentClaims?.length || 0)
 
-            {/* Floor Stats — always-visible at-a-glance bar */}
-            <FloorStats
-                occupiedTables={occupiedTables}
-                totalTables={totalTables}
-                readyOrders={readyOrders}
-                kitchenOrders={kitchenOrders}
-                pendingRequests={pendingRequests}
-                restaurantId={restaurantId}
-            />
-
-            {/* Active sessions list — quick overview of occupied tables */}
+    const spaceContent = (
+        <div className="space-y-6 pt-4">
             <ActiveSessionsList
                 initialEntries={activeSessionEntries}
                 tablesMap={tablesMap}
                 restaurantId={restaurantId}
             />
-
-            {/* 0. Orders to Confirm — Mode 2 gate, must clear before the kitchen cooks */}
-            {features?.waiterOrderConfirmation && (
-                <OrderConfirmFeed
-                    initialOrders={(ordersToConfirm || []) as unknown as ConfirmOrder[]}
-                    restaurantId={restaurantId}
-                    userId={userId}
-                    staffNames={staffNames}
-                />
-            )}
-
-            {/* 1. Service Requests — most urgent, someone needs help NOW */}
-            {features?.serviceRequestsEnabled !== false && (
-                <ServiceRequestFeed
-                    initialRequests={(serviceRequests || []) as unknown as ServiceRequestWithTable[]}
-                    restaurantId={restaurantId}
-                    userId={userId}
-                    staffNames={staffNames}
-                />
-            )}
-
-            {/* 2. Active Order Feed — ready orders need immediate delivery */}
-            <WaiterOrderFeed
-                initialOrders={(activeOrders || []) as unknown as WaiterOrder[]}
-                restaurantId={restaurantId}
-                userId={userId}
-                staffNames={staffNames}
-            />
-
-            {/* 3. Cash Payment Quick-Actions — delivered orders awaiting cash collection */}
-            {unpaidDelivered && unpaidDelivered.length > 0 && (
-                <CashPaymentFeed
-                    initialOrders={unpaidDelivered as unknown as UnpaidOrder[]}
-                    restaurantId={restaurantId}
-                />
-            )}
-
-            {/* 4. Nepal Payment Verification */}
-            {features?.nepalPayEnabled && (
-                <PaymentVerificationFeed
-                    initialClaims={(paymentClaims || []) as unknown as PaymentClaim[]}
-                    restaurantId={restaurantId}
-                    userId={userId}
-                />
-            )}
-
-            {/* 5. Takeout Pickup Feed */}
-            {features?.takeoutEnabled && (
-                <WaiterTakeoutFeed
-                    initialOrders={((readyTakeouts || []) as unknown as TakeoutOrderRow[]).map(mapOrderRowToTakeout)}
-                    restaurantId={restaurantId}
-                />
-            )}
-
-            {/* 5b. Online Delivery Feed — claim → verify code → delivered */}
-            {features?.takeoutEnabled && (
-                <WaiterDeliveryFeed
-                    initialOrders={readyDeliveries}
-                    restaurantId={restaurantId}
-                    userId={userId}
-                    staffNames={staffNames}
-                />
-            )}
-
-            {/* 6. Table Manager — manage floor, open/close sessions */}
             <TableManager
                 initialTables={mappedTables as unknown as TableWithSession[]}
                 restaurantId={restaurantId}
@@ -274,17 +204,111 @@ export default async function WaiterPage() {
                 userId={userId}
                 staffNames={staffNames}
             />
+        </div>
+    )
 
-            {/* 7. Shift Clock — used at start/end of shift only */}
-            {features?.staffShiftsEnabled && (
-                <StaffShiftClock
-                    userId={userId}
+    const ordersContent = (
+        <div className="space-y-6 pt-4">
+            {features?.waiterOrderConfirmation && (
+                <OrderConfirmFeed
+                    initialOrders={(ordersToConfirm || []) as unknown as ConfirmOrder[]}
                     restaurantId={restaurantId}
-                    initialShift={activeShift || null}
-                    initialHistory={shiftHistory || []}
+                    userId={userId}
+                    staffNames={staffNames}
                 />
             )}
+            <WaiterOrderFeed
+                initialOrders={(activeOrders || []) as unknown as WaiterOrder[]}
+                restaurantId={restaurantId}
+                userId={userId}
+                staffNames={staffNames}
+            />
+            {features?.takeoutEnabled && (
+                <WaiterTakeoutFeed
+                    initialOrders={((readyTakeouts || []) as unknown as TakeoutOrderRow[]).map(mapOrderRowToTakeout)}
+                    restaurantId={restaurantId}
+                />
+            )}
+            {features?.takeoutEnabled && (
+                <WaiterDeliveryFeed
+                    initialOrders={readyDeliveries}
+                    restaurantId={restaurantId}
+                    userId={userId}
+                    staffNames={staffNames}
+                />
+            )}
+        </div>
+    )
 
+    const customerContent = (
+        <div className="space-y-6 pt-4">
+            {features?.serviceRequestsEnabled !== false && (
+                <ServiceRequestFeed
+                    initialRequests={(serviceRequests || []) as unknown as ServiceRequestWithTable[]}
+                    restaurantId={restaurantId}
+                    userId={userId}
+                    staffNames={staffNames}
+                />
+            )}
+        </div>
+    )
+
+    const billingContent = (
+        <div className="space-y-6 pt-4">
+            {unpaidDelivered && unpaidDelivered.length > 0 && (
+                <CashPaymentFeed
+                    initialOrders={unpaidDelivered as unknown as UnpaidOrder[]}
+                    restaurantId={restaurantId}
+                />
+            )}
+            {features?.nepalPayEnabled && (
+                <PaymentVerificationFeed
+                    initialClaims={(paymentClaims || []) as unknown as PaymentClaim[]}
+                    restaurantId={restaurantId}
+                    userId={userId}
+                />
+            )}
+        </div>
+    )
+
+    return (
+        <div className="flex flex-col min-h-[calc(100vh-4rem)] md:min-h-[calc(100vh-5rem)]">
+            {/* Shift Clock placed at the top for easy access */}
+            {features?.staffShiftsEnabled && (
+                <div className="pb-4">
+                    <StaffShiftClock
+                        userId={userId}
+                        restaurantId={restaurantId}
+                        initialShift={activeShift || null}
+                        initialHistory={shiftHistory || []}
+                    />
+                </div>
+            )}
+
+            <div className="flex-1 px-3 md:px-6 pb-3 md:pb-6">
+                <WaiterTabs
+                    spaceContent={spaceContent}
+                    ordersContent={ordersContent}
+                    customerContent={customerContent}
+                    billingContent={billingContent}
+                    counts={{
+                        space: spaceCount,
+                        orders: ordersCount,
+                        customer: customerCount,
+                        billing: billingCount
+                    }}
+                    floorStatsElement={
+                        <FloorStats
+                            occupiedTables={occupiedTables}
+                            totalTables={totalTables}
+                            readyOrders={readyOrders}
+                            kitchenOrders={kitchenOrders}
+                            pendingRequests={pendingRequests}
+                            restaurantId={restaurantId}
+                        />
+                    }
+                />
+            </div>
         </div>
     )
 }

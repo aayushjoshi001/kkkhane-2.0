@@ -6,7 +6,7 @@ import type { MenuItem, MenuCategory } from '@/types/database'
 import { createClient } from '@/lib/supabase/client'
 import { addComboAction, updateComboAction, deleteComboAction } from './actions'
 import toast from 'react-hot-toast'
-import { useCurrency } from '@/lib/contexts/FeatureContext'
+import { useCurrency, useFeatures } from '@/lib/contexts/FeatureContext'
 
 // Monotonic counter for unique upload paths — avoids crypto.randomUUID (unavailable
 // on non-HTTPS LAN origins) and Date.now/Math.random (flagged by react-hooks/purity).
@@ -40,6 +40,7 @@ export default function CombosManager({
 }: CombosManagerProps) {
     const [combos, setCombos] = useState<MenuItem[]>(initialCombos)
     const money = useCurrency()
+    const { currencySymbol } = useFeatures()
     const [comboItems, setComboItems] = useState<ComboItemMapping[]>(initialComboItems)
     const [showForm, setShowForm] = useState(false)
     const [editingCombo, setEditingCombo] = useState<MenuItem | null>(null)
@@ -376,7 +377,7 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Price ($) *</label>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Price ({currencySymbol}) *</label>
                                     <input
                                         type="number"
                                         step="0.01"
@@ -485,7 +486,7 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                                         >
                                             {menuItems.map(item => (
                                                 <option key={item.id} value={item.id}>
-                                                    {item.name} (${item.price.toFixed(2)})
+                                                    {item.name} ({money(item.price)})
                                                 </option>
                                             ))}
                                         </select>

@@ -400,7 +400,7 @@ function WaiterOrderCard({
                 {!claimedBy && hasReady && (
                     <div className="pt-2">
                         <Button variant="primary" size="lg" block onClick={() => onClaim(order.id)} loading={claiming} icon={Footprints}>
-                            I&apos;m going
+                            I'm Going to Serve
                         </Button>
                     </div>
                 )}

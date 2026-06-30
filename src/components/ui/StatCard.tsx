@@ -25,6 +25,8 @@ export interface StatCardProps {
     delta?: number | null
     /** Optional sub-label under the value. */
     hint?: string
+    /** Adjusts padding, text sizing, and icon size for tighter layouts. */
+    size?: 'default' | 'sm'
     className?: string
 }
 
@@ -39,16 +41,18 @@ export default function StatCard({
     tone = 'neutral',
     delta,
     hint,
+    size = 'default',
     className,
 }: StatCardProps) {
     const hasDelta = typeof delta === 'number' && Number.isFinite(delta)
     const up = (delta ?? 0) >= 0
+    const isSm = size === 'sm'
     return (
-        <Card padding={20} className={cn('flex flex-col gap-3', className)}>
+        <Card padding={isSm ? 12 : 20} className={cn(isSm ? 'gap-2' : 'gap-3', 'flex flex-col', className)}>
             <div className="flex items-start justify-between gap-3">
                 {Icon && (
-                    <span className={cn('grid size-9 place-items-center rounded-[var(--r-md)]', CHIP[tone])}>
-                        <Icon size={18} strokeWidth={2} />
+                    <span className={cn('grid place-items-center rounded-[var(--r-md)]', CHIP[tone], isSm ? 'size-7' : 'size-9')}>
+                        <Icon size={isSm ? 14 : 18} strokeWidth={2} />
                     </span>
                 )}
                 {hasDelta && (
@@ -63,10 +67,10 @@ export default function StatCard({
                     </span>
                 )}
             </div>
-            <div className="flex flex-col gap-0.5">
-                <span className="text-label text-ink-subtle">{label}</span>
-                <span className="text-display tabular text-ink leading-none">{value}</span>
-                {hint && <span className="text-caption text-ink-subtle mt-1">{hint}</span>}
+            <div className={cn("flex flex-col", isSm ? "gap-0" : "gap-0.5")}>
+                <span className={cn("text-ink-subtle", isSm ? "text-[11px] uppercase tracking-wider font-bold" : "text-label")}>{label}</span>
+                <span className={cn("tabular text-ink leading-none mt-1", isSm ? "text-h2" : "text-display")}>{value}</span>
+                {hint && <span className={cn("text-ink-subtle", isSm ? "text-[10px] mt-0.5" : "text-caption mt-1")}>{hint}</span>}
             </div>
         </Card>
     )

@@ -144,16 +144,22 @@ export async function placeOrder(
 
     const sessionUuid = sessionData.id
 
-    // 2b. Prevent multiple active orders per session (anti-spam / kitchen overload)
-    const { count: activeUndelivered } = await supabase
-        .from('orders')
-        .select('*', { count: 'exact', head: true })
-        .eq('session_id', sessionUuid)
-        .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
-        .neq('client_request_id', clientRequestId || 'none')
+    const features = await getRestaurantFeatures(sessionData.restaurant_id)
+    const waiterSessionEnabled = (features as { waiterSessionEnabled?: boolean } | null)?.waiterSessionEnabled === true
 
-    if (activeUndelivered && activeUndelivered > 0) {
-        return { error: 'You have an active order being prepared. Please wait for it to be delivered before ordering more.' }
+    // 2b. Prevent multiple active orders per session (anti-spam / kitchen overload)
+    // Only apply this anti-spam check if waiter sessions are disabled (self-service mode)
+    if (!waiterSessionEnabled) {
+        const { count: activeUndelivered } = await supabase
+            .from('orders')
+            .select('*', { count: 'exact', head: true })
+            .eq('session_id', sessionUuid)
+            .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
+            .neq('client_request_id', clientRequestId || 'none')
+
+        if (activeUndelivered && activeUndelivered > 0) {
+            return { error: 'You have an active order being prepared. Please wait for it to be delivered before ordering more.' }
+        }
     }
 
     // Call the ACID-safe RPC (returns JSONB with breakdown)
@@ -308,7 +314,6 @@ export async function placeOrder(
         //   • Mode 1 (direct): deduct stock now; the kitchen sees the order immediately.
         //   • Mode 2 (waiter confirmation): flag the order as needs_confirmation so the
         //     kitchen hides it, and defer stock deduction until a waiter confirms.
-        const features = await getRestaurantFeatures(sessionData.restaurant_id)
         const requireConfirmation =
             (features as { waiterOrderConfirmation?: boolean } | null)?.waiterOrderConfirmation === true
 
@@ -572,8 +577,15 @@ async function placeOrderFallback(
         }
     }
 
-    const tax = 0
-    const total = subtotal - discount + tax
+    const { data: settings } = await supabase
+        .from('settings')
+        .select('features_v2')
+        .eq('restaurant_id', restaurantId)
+        .single()
+    const taxRate = Number(settings?.features_v2?.defaultTaxRate ?? 0)
+
+    const tax = Math.round(subtotal * (taxRate / 100) * 100) / 100
+    const total = Math.max(0, subtotal - discount + tax)
 
     const { error: totalsUpdateError } = await supabase
         .from('orders')

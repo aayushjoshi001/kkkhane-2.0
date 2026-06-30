@@ -196,14 +196,14 @@ export async function markCashPaid(
             .eq('request_type', 'request_bill')
             .in('status', ['pending', 'acknowledged'])
 
-        const { count: unpaidCount } = await supabase
+        const { count: unresolvedCount } = await supabase
             .from('orders')
             .select('id', { count: 'exact', head: true })
             .eq('session_id', order.session_id)
-            .not('payment_status', 'in', '("paid","refunded")')
             .neq('status', 'cancelled')
+            .or('payment_status.not.in.(paid,refunded),status.neq.delivered')
 
-        if (unpaidCount === 0) {
+        if (unresolvedCount === 0) {
             await supabase
                 .from('sessions')
                 .update({ status: 'closed', closed_at: new Date().toISOString() })
@@ -257,11 +257,12 @@ export async function markDeliveredAndCashPaid(
         .update({ status: 'delivered', delivered_at: now, payment_status: 'paid', paid_at: now })
         .eq('id', orderId)
         .neq('payment_status', 'paid')
+        .in('status', ['ready', 'delivered'])
         .select('id')
 
     if (updateError) return { error: updateError.message }
     if (!paidRows || paidRows.length === 0) {
-        return { error: 'Order is already marked as paid' }
+        return { error: 'Order is not ready for delivery or is already paid' }
     }
 
     // Mark every line item served — this order was delivered in this same step.
@@ -301,14 +302,14 @@ export async function markDeliveredAndCashPaid(
             .eq('request_type', 'request_bill')
             .in('status', ['pending', 'acknowledged'])
 
-        const { count: unpaidCount } = await supabase
+        const { count: unresolvedCount } = await supabase
             .from('orders')
             .select('id', { count: 'exact', head: true })
             .eq('session_id', order.session_id)
-            .not('payment_status', 'in', '("paid","refunded")')
             .neq('status', 'cancelled')
+            .or('payment_status.not.in.(paid,refunded),status.neq.delivered')
 
-        if (unpaidCount === 0) {
+        if (unresolvedCount === 0) {
             await supabase
                 .from('sessions')
                 .update({ status: 'closed', closed_at: now })

@@ -49,9 +49,9 @@ export default function OrderCard({
                     : undefined
             }
             className={cn(
-                'relative flex items-center gap-3 overflow-hidden rounded-[var(--radius-card)] border border-hairline bg-surface p-4 shadow-sm',
+                'relative flex items-center gap-4 overflow-hidden rounded-[20px] border border-hairline bg-surface p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)]',
                 tappable &&
-                    'cursor-pointer transition-[box-shadow,transform] duration-150 hover:shadow-md hover:-translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                    'cursor-pointer transition-[box-shadow,transform] duration-200 hover:shadow-[0_8px_30px_rgb(251,99,3,0.12)] hover:-translate-y-[2px] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
                 pulse && 'pulse-once animate-scale-in',
                 className,
             )}
@@ -60,11 +60,11 @@ export default function OrderCard({
             {urgent && (
                 <span className="absolute inset-y-0 left-0 w-[3px] bg-danger" aria-hidden />
             )}
-            {tableLabel && <TableChip label={tableLabel} size="md" />}
+            {tableLabel && <TableChip label={tableLabel} size="lg" className="rounded-2xl" />}
             <div className="min-w-0 flex-1">
-                <div className="text-h3 text-ink truncate">{title}</div>
+                <div className="text-[17px] font-bold text-ink truncate tracking-tight">{title}</div>
                 {meta && (
-                    <div className="mt-0.5 flex items-center gap-2 text-caption text-ink-subtle">{meta}</div>
+                    <div className="mt-1 flex items-center gap-2 text-[13px] font-medium text-ink-subtle">{meta}</div>
                 )}
             </div>
             {trailing && <div className="shrink-0 text-right">{trailing}</div>}

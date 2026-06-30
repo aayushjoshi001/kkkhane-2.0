@@ -71,8 +71,8 @@ export default function CashPaymentFeed({
                         trailing={
                             <div className="flex flex-col items-end gap-2">
                                 <span className="text-h3 text-ink tabular">{money(order.total_amount)}</span>
-                                <Button size="sm" icon={CheckCircle} loading={isProcessing} onClick={() => handleCashPaid(order.id)}>
-                                    Cash Received
+                                <Button variant="primary" size="sm" icon={CheckCircle} loading={isProcessing} onClick={() => handleCashPaid(order.id)}>
+                                    I'm Going to Collect
                                 </Button>
                             </div>
                         }

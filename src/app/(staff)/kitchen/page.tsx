@@ -4,6 +4,8 @@ import OrderQueue, { type KitchenOrder, type ComboItemRow } from '@/components/k
 import KitchenStats from '@/components/kitchen/KitchenStats'
 import StaffShiftClock from '@/components/shared/StaffShiftClock'
 import { getRestaurantFeatures } from '@/lib/features'
+import TakeoutQueue from '@/components/kitchen/TakeoutQueue'
+import { TAKEOUT_ORDER_SELECT, mapOrderRowToTakeout, type TakeoutOrderRow } from '@/lib/takeout'
 
 export const revalidate = 0
 
@@ -18,6 +20,7 @@ export default async function KitchenPage() {
         features,
         { data: activeOrders },
         { count: completedToday },
+        { data: takeoutOrders },
         { data: activeShift },
         { data: shiftHistory },
     ] = await Promise.all([
@@ -57,6 +60,14 @@ export default async function KitchenPage() {
             .eq('restaurant_id', restaurantId)
             .eq('status', 'delivered')
             .gte('placed_at', today.toISOString()),
+        // Takeout Orders
+        adminSupabase
+            .from('orders')
+            .select(TAKEOUT_ORDER_SELECT)
+            .eq('restaurant_id', restaurantId)
+            .in('order_type', ['takeout', 'delivery'])
+            .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
+            .order('pickup_time', { ascending: true }),
         // Active shift for clock widget
         adminSupabase
             .from('staff_shifts')
@@ -115,9 +126,9 @@ export default async function KitchenPage() {
     }
 
     return (
-        <div className="h-full flex flex-col overflow-hidden">
+        <div className="h-full flex flex-col overflow-hidden bg-dark-surface">
             {/* Kitchen Stats — always-visible at-a-glance bar */}
-            <div className="shrink-0 border-b border-dark-border px-3 md:px-6 py-3 md:py-4 bg-dark-surface print:hidden">
+            <div className="shrink-0 border-b border-dark-border px-3 md:px-6 py-3 md:py-4 print:hidden">
                 <KitchenStats
                     queuedOrders={queuedOrders}
                     preparingOrders={preparingOrders}
@@ -140,15 +151,22 @@ export default async function KitchenPage() {
                 </div>
             )}
 
-            {/* Order Queue */}
-            <div className="flex-1 overflow-hidden">
-                <OrderQueue
-                    initialOrders={filteredActiveOrders as unknown as KitchenOrder[]}
-                    restaurantId={restaurantId}
-                    comboItems={comboItems}
-                    userId={userId}
-                    staffNames={staffNames}
-                />
+            {/* Order Queue and Takeout */}
+            <div className="flex-1 overflow-hidden flex flex-col gap-4 mt-4">
+                <div className="flex-1 overflow-hidden">
+                    <OrderQueue
+                        initialOrders={filteredActiveOrders as unknown as KitchenOrder[]}
+                        restaurantId={restaurantId}
+                        comboItems={comboItems}
+                        userId={userId}
+                        staffNames={staffNames}
+                    />
+                </div>
+                
+                {/* Takeout Queue at the bottom */}
+                <div className="h-1/3 shrink-0 border-t border-dark-border">
+                    <TakeoutQueue restaurantId={restaurantId} initialOrders={(takeoutOrders || []).map(mapOrderRowToTakeout)} />
+                </div>
             </div>
         </div>
     )

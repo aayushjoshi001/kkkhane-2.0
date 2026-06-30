@@ -221,7 +221,7 @@ export default function StaffShiftClock({ userId, restaurantId, initialShift, in
                         </div>
                         <div className="px-5 pb-5">
                             <button onClick={() => setSummary(null)} className="w-full bg-gray-900 text-white font-bold rounded-xl py-3 text-sm hover:bg-gray-800">
-                                Done
+                                Done & Sign Out
                             </button>
                         </div>
                     </div>
