@@ -62,7 +62,17 @@ export default function TakeoutQueue({ restaurantId, initialOrders }: TakeoutQue
     useRestaurantTable(restaurantId, 'orders', (payload) => {
         // Takeout + delivery share this kitchen queue; ignore only dine-in.
         if ((payload.new as { order_type?: string } | null)?.order_type === 'dine_in') return
-        if (payload.eventType === 'INSERT') playKitchenPing()
+
+        // Only play kitchen ping when a confirmed order is received
+        if (payload.eventType === 'INSERT') {
+            const status = (payload.new as { status?: string } | null)?.status
+            if (status === 'confirmed') playKitchenPing()
+        } else if (payload.eventType === 'UPDATE') {
+            const oldStatus = (payload.old as { status?: string } | null)?.status
+            const newStatus = (payload.new as { status?: string } | null)?.status
+            if (oldStatus === 'pending' && newStatus === 'confirmed') playKitchenPing()
+        }
+
         getTakeoutOrders(restaurantId).then(setOrders).catch(() => {})
     })
 
