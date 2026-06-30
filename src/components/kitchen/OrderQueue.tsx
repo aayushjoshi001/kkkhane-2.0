@@ -22,6 +22,7 @@ export type KitchenOrderItem = OrderItem & {
 export type KitchenOrder = Order & {
     sessions?: Session & { tables?: Partial<Table> }
     order_items?: KitchenOrderItem[]
+    order_type?: 'dine_in' | 'takeout' | 'delivery'
 }
 
 // A combo's constituent line, as fetched in KitchenPage.
@@ -39,7 +40,7 @@ export type ComboItemRow = {
 const QUEUE_AFTER_MS = 2 * 60 * 1000
 
 const ORDER_SELECT = `
-  id, status, total_amount, placed_at, customer_note,
+  id, status, order_type, total_amount, placed_at, customer_note,
   sessions ( tables ( label ) ),
   order_items (
     id, menu_item_id, quantity, special_request, status, claimed_by, claimed_at,
@@ -71,12 +72,15 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
 
     // Live order changes via the shared per-restaurant channel.
     useRestaurantTable(restaurantId, 'orders', async (payload) => {
-        // Takeout orders live in the dedicated TakeoutQueue — ignore them here.
-        if ((payload.new as { order_type?: string } | null)?.order_type === 'takeout') return
+        const orderType = (payload.new as { order_type?: string } | null)?.order_type
+        const isTakeoutDelivery = orderType === 'takeout' || orderType === 'delivery'
+        
         // Mode 2: orders awaiting waiter confirmation aren't in the kitchen yet.
         const needsConfirmation = (payload.new as { needs_confirmation?: boolean } | null)?.needs_confirmation === true
+        
         if (payload.eventType === 'INSERT') {
-            if (needsConfirmation) return
+            // Ignore unconfirmed takeout/delivery orders (they start in pending status)
+            if (needsConfirmation || (isTakeoutDelivery && payload.new.status === 'pending')) return
             const supabase = supabaseRef.current
             const { data } = await supabase.from('orders').select(ORDER_SELECT).eq('id', payload.new.id).single()
             if (!data) return
@@ -92,25 +96,30 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             if (!isNew) return
             playNewOrder().catch(() => {})
             const tbl = order.sessions?.tables?.label
+            const isTakeout = order.order_type === 'takeout'
+            const isDelivery = order.order_type === 'delivery'
+            const sourceLabel = isTakeout ? 'Takeaway' : isDelivery ? 'Delivery' : (tbl ? `Table ${tbl}` : 'Order')
             toast.custom((t) => (
                 <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full shadow-2xl rounded-card px-4 py-3 flex items-start gap-3 border border-yellow-500/30`}
                      style={{ background: '#1a1d27' }}>
                     <span className="text-xl mt-0.5">🔔</span>
                     <div>
                         <p className="font-bold text-sm text-yellow-400">New Order!</p>
-                        <p className="text-xs text-dark-muted mt-0.5">{tbl ? `Table ${tbl}` : 'Takeout'} · {money(order.total_amount)}</p>
+                        <p className="text-xs text-dark-muted mt-0.5">{sourceLabel} · {money(order.total_amount)}</p>
                     </div>
                 </div>
             ), { duration: 6000, position: 'top-right' })
         } else if (payload.eventType === 'UPDATE') {
             const newStatus = payload.new.status as string
-            // Gone from the kitchen: finished, cancelled, or still awaiting confirmation.
-            if (newStatus === 'delivered' || newStatus === 'cancelled' || needsConfirmation) {
+            const isTakeoutDeliveryPending = isTakeoutDelivery && newStatus === 'pending'
+            
+            // Gone from the kitchen: finished, cancelled, awaiting confirmation, or unconfirmed takeout/delivery.
+            if (newStatus === 'delivered' || newStatus === 'cancelled' || needsConfirmation || isTakeoutDeliveryPending) {
                 setOrders(prev => prev.filter(o => o.id !== payload.new.id))
                 return
             }
             // Refetch the full row. An item's status/owner may have changed without the
-            // order leaving the board (1 of 3 cooking), OR a waiter just confirmed it —
+            // order leaving the board (1 of 3 cooking), OR a waiter/cashier just confirmed it —
             // in which case it's new to the kitchen and we add it (with a chime).
             const supabase = supabaseRef.current
             const { data } = await supabase.from('orders').select(ORDER_SELECT).eq('id', payload.new.id).single()
@@ -122,7 +131,23 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
                 added = true
                 return [...prev, fresh]
             })
-            if (added) playNewOrder().catch(() => {})
+            if (added) {
+                playNewOrder().catch(() => {})
+                const tbl = fresh.sessions?.tables?.label
+                const isTakeout = fresh.order_type === 'takeout'
+                const isDelivery = fresh.order_type === 'delivery'
+                const sourceLabel = isTakeout ? 'Takeaway' : isDelivery ? 'Delivery' : (tbl ? `Table ${tbl}` : 'Order')
+                toast.custom((t) => (
+                    <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full shadow-2xl rounded-card px-4 py-3 flex items-start gap-3 border border-yellow-500/30`}
+                         style={{ background: '#1a1d27' }}>
+                        <span className="text-xl mt-0.5">🔔</span>
+                        <div>
+                            <p className="font-bold text-sm text-yellow-400">New Order!</p>
+                            <p className="text-xs text-dark-muted mt-0.5">{sourceLabel} · {money(fresh.total_amount)}</p>
+                        </div>
+                    </div>
+                ), { duration: 6000, position: 'top-right' })
+            }
         }
     })
 
@@ -523,11 +548,14 @@ function TicketHeader({ order, accentColor, borderColor, bgColor, trailing }: {
     trailing?: React.ReactNode
 }) {
     const tbl = order.sessions?.tables?.label || '?'
+    const isTakeout = order.order_type === 'takeout'
+    const isDelivery = order.order_type === 'delivery'
+    const label = isTakeout ? 'Takeaway' : isDelivery ? 'Delivery' : `Table ${tbl}`
     return (
         <div className="px-4 py-2.5 flex items-center justify-between border-b" style={{ borderColor, background: bgColor }}>
             <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: accentColor }} />
-                <span className="font-bold text-dark-ink">Table {tbl}</span>
+                <span className="font-bold text-dark-ink">{label}</span>
             </div>
             {trailing}
         </div>

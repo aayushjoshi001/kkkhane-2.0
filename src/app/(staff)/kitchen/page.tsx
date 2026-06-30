@@ -1,11 +1,9 @@
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import OrderQueue, { type KitchenOrder, type ComboItemRow } from '@/components/kitchen/OrderQueue'
-import TakeoutQueue from '@/components/kitchen/TakeoutQueue'
 import KitchenStats from '@/components/kitchen/KitchenStats'
 import StaffShiftClock from '@/components/shared/StaffShiftClock'
 import { getRestaurantFeatures } from '@/lib/features'
-import { TAKEOUT_ORDER_SELECT, mapOrderRowToTakeout, type TakeoutOrderRow } from '@/lib/takeout'
 
 export const revalidate = 0
 
@@ -19,7 +17,6 @@ export default async function KitchenPage() {
     const [
         features,
         { data: activeOrders },
-        { data: takeoutOrders },
         { count: completedToday },
         { data: activeShift },
         { data: shiftHistory },
@@ -31,6 +28,8 @@ export default async function KitchenPage() {
             .select(`
                 id,
                 status,
+                order_type,
+                needs_confirmation,
                 total_amount,
                 placed_at,
                 customer_note,
@@ -48,17 +47,9 @@ export default async function KitchenPage() {
                 )
             `)
             .eq('restaurant_id', restaurantId)
-            .eq('order_type', 'dine_in')
-            .eq('needs_confirmation', false)
+            .in('order_type', ['dine_in', 'takeout', 'delivery'])
             .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
             .order('placed_at', { ascending: true }),
-        adminSupabase
-            .from('orders')
-            .select(TAKEOUT_ORDER_SELECT)
-            .eq('restaurant_id', restaurantId)
-            .in('order_type', ['takeout', 'delivery'])
-            .in('status', ['confirmed', 'preparing', 'ready'])
-            .order('pickup_time', { ascending: true }),
         // Orders completed (delivered) today
         adminSupabase
             .from('orders')
@@ -84,6 +75,17 @@ export default async function KitchenPage() {
             .order('clock_in', { ascending: false })
             .limit(5),
     ])
+
+    // Filter active orders for the main kitchen queue:
+    // 1. Dine-in orders that don't need confirmation.
+    // 2. Takeout/delivery orders that are confirmed (status is confirmed, preparing, or ready).
+    const filteredActiveOrders = (activeOrders || []).filter(o => {
+        if (o.order_type === 'dine_in') {
+            return !o.needs_confirmation
+        } else {
+            return o.status !== 'pending'
+        }
+    })
 
     // Names for per-dish chef ownership labels ("👤 Ram") on the cooking column.
     const { data: staff } = await adminSupabase
@@ -139,26 +141,15 @@ export default async function KitchenPage() {
                 </div>
             )}
 
-            {/* Order Queue and Takeout */}
-            <div className="flex-1 overflow-hidden flex flex-col gap-4">
-                <div className="flex-1 overflow-hidden">
-                    <OrderQueue
-                        initialOrders={(activeOrders || []) as unknown as KitchenOrder[]}
-                        restaurantId={restaurantId}
-                        comboItems={comboItems}
-                        userId={userId}
-                        staffNames={staffNames}
-                    />
-                </div>
-
-                {features?.takeoutEnabled && (
-                    <div className="px-4 pb-4 shrink-0 print:hidden">
-                        <TakeoutQueue
-                            initialOrders={((takeoutOrders || []) as unknown as TakeoutOrderRow[]).map(mapOrderRowToTakeout)}
-                            restaurantId={restaurantId}
-                        />
-                    </div>
-                )}
+            {/* Order Queue */}
+            <div className="flex-1 overflow-hidden">
+                <OrderQueue
+                    initialOrders={filteredActiveOrders as unknown as KitchenOrder[]}
+                    restaurantId={restaurantId}
+                    comboItems={comboItems}
+                    userId={userId}
+                    staffNames={staffNames}
+                />
             </div>
         </div>
     )
