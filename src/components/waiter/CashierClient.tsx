@@ -4,9 +4,10 @@ import { useRef, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { markDeliveredAndCashPaid } from '@/app/(staff)/waiter/order-actions'
+import { updateTakeoutStatusAction } from '@/app/(admin)/admin/takeout/actions'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
-import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt } from 'lucide-react'
+import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag } from 'lucide-react'
 import PaymentVerificationFeed, { type PaymentClaim } from './PaymentVerificationFeed'
 
 type OrderItem = { quantity: number; menu_items: { name: string } | null }
@@ -29,7 +30,12 @@ export type ActiveOrder = {
     total_amount: number
     placed_at: string
     session_id: string | null
+    order_type?: 'dine_in' | 'takeout' | 'delivery'
+    customer_name?: string | null
+    customer_phone?: string | null
+    delivery_address?: string | null
     sessions: { id: string; tables: TableRef } | null
+    order_items?: { id: string; quantity: number; status: string; menu_items: { name: string } | null }[]
 }
 
 interface Props {
@@ -60,7 +66,7 @@ export default function CashierClient({ restaurantId, userId, initialUnpaid, ini
         if (payload.eventType === 'INSERT') {
             const { data } = await supabase
                 .from('orders')
-                .select(`id, status, total_amount, placed_at, session_id, sessions ( id, tables ( label ) )`)
+                .select(`id, status, total_amount, placed_at, session_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, tables ( label ) ), order_items ( id, quantity, status, menu_items ( name ) )`)
                 .eq('id', payload.new.id)
                 .single()
             if (data) setActive(prev => [...prev, data as unknown as ActiveOrder])
@@ -111,17 +117,34 @@ export default function CashierClient({ restaurantId, userId, initialUnpaid, ini
         return [...groups.entries()].sort(([, a], [, b]) => a.label.localeCompare(b.label))
     }, [unpaid])
 
+    const activeDineIn = useMemo(() => active.filter(o => o.order_type === 'dine_in' || o.session_id !== null), [active])
+    const activeTakeoutDelivery = useMemo(() => active.filter(o => o.order_type === 'takeout' || o.order_type === 'delivery'), [active])
+
     // Group active by session for the pipeline view
     const activePipeline = useMemo(() => {
         const groups = new Map<string, { label: string; orders: ActiveOrder[] }>()
-        for (const o of active) {
+        for (const o of activeDineIn) {
             const key = o.session_id ?? o.id
             const label = tableLabel(o.sessions)
             if (!groups.has(key)) groups.set(key, { label, orders: [] })
             groups.get(key)!.orders.push(o)
         }
         return [...groups.entries()].sort(([, a], [, b]) => a.label.localeCompare(b.label))
-    }, [active])
+    }, [activeDineIn])
+
+    const handleUpdateStatus = async (orderId: string, status: 'confirmed' | 'cancelled') => {
+        const res = await updateTakeoutStatusAction(orderId, status)
+        if (res.error) {
+            toast.error(res.error)
+        } else {
+            toast.success(`Order ${status === 'confirmed' ? 'confirmed' : 'cancelled'}`)
+            if (status === 'cancelled') {
+                setActive(prev => prev.filter(o => o.id !== orderId))
+            } else {
+                setActive(prev => prev.map(o => o.id === orderId ? { ...o, status: 'confirmed' } : o))
+            }
+        }
+    }
 
     const totalUnpaid = unpaid.reduce((s, o) => s + (o.total_amount ?? 0), 0)
 
@@ -218,13 +241,96 @@ export default function CashierClient({ restaurantId, userId, initialUnpaid, ini
                 )}
             </div>
 
+            {/* Takeout & Delivery Requests */}
+            {activeTakeoutDelivery.length > 0 && (
+                <div>
+                    <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                        <ShoppingBag size={14} className="text-blue-400" />
+                        Takeout & Delivery Orders
+                        <span className="ml-1 bg-blue-100 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded-full">{activeTakeoutDelivery.length}</span>
+                    </h2>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        {activeTakeoutDelivery.map(order => {
+                            const isPending = order.status === 'pending'
+                            const items = order.order_items || []
+                            return (
+                                <div key={order.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col justify-between">
+                                    <div>
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-xs font-mono font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded">
+                                                #{order.id.slice(0, 6).toUpperCase()}
+                                            </span>
+                                            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full capitalize ${
+                                                order.order_type === 'delivery' ? 'bg-purple-50 text-purple-700' : 'bg-amber-50 text-amber-700'
+                                            }`}>
+                                                {order.order_type}
+                                            </span>
+                                        </div>
+
+                                        <div className="space-y-1 text-xs text-gray-600 mb-3">
+                                            <p className="font-semibold text-gray-900">{order.customer_name || 'Customer'}</p>
+                                            <p>{order.customer_phone}</p>
+                                            {order.order_type === 'delivery' && order.delivery_address && (
+                                                <p className="text-gray-400 italic bg-gray-50 p-2 rounded mt-1">{order.delivery_address}</p>
+                                            )}
+                                        </div>
+
+                                        <div className="border-t border-dashed border-gray-100 py-2">
+                                            <ul className="text-xs text-gray-600 space-y-1">
+                                                {items.map((it, idx) => (
+                                                    <li key={idx} className="flex gap-1.5">
+                                                        <span className="font-bold text-gray-405 tabular-nums">{it.quantity}×</span>
+                                                        <span>{it.menu_items?.name || 'Item'}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Total Amount</p>
+                                            <p className="text-sm font-extrabold text-gray-900">{money(order.total_amount)}</p>
+                                        </div>
+                                        {isPending ? (
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => handleUpdateStatus(order.id, 'cancelled')}
+                                                    className="px-3 py-1.5 text-xs font-semibold text-red-650 hover:bg-red-50 border border-red-200 rounded-xl active:scale-95 transition cursor-pointer"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    onClick={() => handleUpdateStatus(order.id, 'confirmed')}
+                                                    className="px-4 py-1.5 text-xs font-semibold bg-gray-900 hover:bg-gray-800 text-white rounded-xl active:scale-95 transition cursor-pointer"
+                                                >
+                                                    Confirm
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <span className={`text-[10px] font-bold px-2.5 py-1 rounded capitalize ${
+                                                order.status === 'confirmed' ? 'bg-blue-50 text-blue-700' :
+                                                order.status === 'preparing' ? 'bg-orange-50 text-orange-700 animate-pulse' :
+                                                'bg-green-50 text-green-700'
+                                            }`}>
+                                                {order.status === 'ready' ? 'Ready' : order.status}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </div>
+                </div>
+            )}
+
             {/* Active Pipeline — read-only overview for cashier */}
             {activePipeline.length > 0 && (
                 <div>
                     <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                         <ChefHat size={14} className="text-orange-400" />
-                        In Pipeline
-                        <span className="ml-1 bg-orange-100 text-orange-600 text-[10px] font-bold px-2 py-0.5 rounded-full">{active.length}</span>
+                        In Pipeline (Dine-In)
+                        <span className="ml-1 bg-orange-100 text-orange-600 text-[10px] font-bold px-2 py-0.5 rounded-full">{activeDineIn.length}</span>
                     </h2>
                     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                         <div className="divide-y divide-gray-50">
@@ -262,11 +368,11 @@ export default function CashierClient({ restaurantId, userId, initialUnpaid, ini
                 </div>
             )}
 
-            {unpaid.length === 0 && activePipeline.length === 0 && pendingClaims === 0 && (
+            {unpaid.length === 0 && activePipeline.length === 0 && activeTakeoutDelivery.length === 0 && pendingClaims === 0 && (
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
                     <CreditCard size={36} className="mx-auto text-gray-200 mb-3" />
                     <p className="text-base font-semibold text-gray-400">All quiet at the counter</p>
-                    <p className="text-sm text-gray-300 mt-1">No active orders or pending payments</p>
+                    <p className="text-sm text-gray-305 mt-1">No active orders or pending payments</p>
                 </div>
             )}
         </div>

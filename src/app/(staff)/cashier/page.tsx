@@ -33,8 +33,9 @@ export default async function CashierPage() {
         adminSupabase
             .from('orders')
             .select(`
-                id, status, total_amount, placed_at, session_id,
-                sessions ( id, tables ( label ) )
+                id, status, total_amount, placed_at, session_id, order_type, customer_name, customer_phone, delivery_address,
+                sessions ( id, tables ( label ) ),
+                order_items ( id, quantity, status, menu_items ( name ) )
             `)
             .eq('restaurant_id', restaurantId)
             .in('status', ['pending', 'confirmed', 'preparing', 'ready'])

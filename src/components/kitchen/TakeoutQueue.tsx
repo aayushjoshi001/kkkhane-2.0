@@ -117,10 +117,6 @@ export default function TakeoutQueue({ restaurantId, initialOrders }: TakeoutQue
                                         <User size={14} className="text-dark-muted" />
                                         <span>{order.customer_name}</span>
                                     </div>
-                                    <div className="flex items-center gap-1.5 text-dark-muted">
-                                        <Phone size={14} />
-                                        <span>{order.customer_phone}</span>
-                                    </div>
                                 </div>
 
                                 {/* Items */}
