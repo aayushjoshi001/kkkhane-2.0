@@ -21,6 +21,7 @@ interface ItemDetailViewProps {
     initialCookingRequest?: string
     initialModifiers?: CartItemModifier[]
     onSaveEdit?: (modifiers: CartItemModifier[], quantity: number, request: string) => void
+    isTakeout?: boolean
 }
 
 export default function ItemDetailView({
@@ -35,6 +36,7 @@ export default function ItemDetailView({
     initialCookingRequest,
     initialModifiers,
     onSaveEdit,
+    isTakeout = false,
 }: ItemDetailViewProps) {
     const { t } = useTranslation()
     const money = useCurrency()
@@ -181,8 +183,10 @@ export default function ItemDetailView({
     }
 
     const handleAction = () => {
-        if (!sessionId) return
-        setSession(sessionId, restaurantSlug, restaurantId)
+        if (!isTakeout && !sessionId) return
+        if (sessionId) {
+            setSession(sessionId, restaurantSlug, restaurantId)
+        }
 
         // Check if required modifier selections are satisfied
         for (const group of item.modifier_groups || []) {
@@ -264,8 +268,8 @@ export default function ItemDetailView({
 
     // Determine if the add button should be disabled
     const isAddDisabled = hasVariations
-        ? (!item.is_available || !sessionId || variationItemCount === 0)
-        : (!item.is_available || !sessionId)
+        ? (!item.is_available || (!isTakeout && !sessionId) || variationItemCount === 0)
+        : (!item.is_available || (!isTakeout && !sessionId))
 
     return (
         <div 

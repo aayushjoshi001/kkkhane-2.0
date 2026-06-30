@@ -1,16 +1,36 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createTakeoutOrder, createDeliveryOrder } from '@/app/api/takeout/actions'
-import { useCartStore } from '@/lib/stores/cart'
+import { useCartStore, getCartItemKey } from '@/lib/stores/cart'
 import { useActiveOrders } from '@/lib/stores/activeOrders'
 import { useHydratedStore } from '@/lib/stores/useHydratedStore'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import PromoCodeInput from '@/components/customer/PromoCodeInput'
 import type { PromoCode } from '@/types/database'
-import { ArrowLeft, Clock, Loader2, ShoppingBag } from 'lucide-react'
+import { ArrowLeft, Clock, Loader2, ShoppingBag, MapPin } from 'lucide-react'
 import { toast } from 'react-hot-toast'
+import dynamic from 'next/dynamic'
+import 'leaflet/dist/leaflet.css'
+
+// Dynamically import Map to prevent SSR issues
+const MapContainer = dynamic(() => import('react-leaflet').then(mod => mod.MapContainer), { ssr: false })
+const TileLayer = dynamic(() => import('react-leaflet').then(mod => mod.TileLayer), { ssr: false })
+const Marker = dynamic(() => import('react-leaflet').then(mod => mod.Marker), { ssr: false })
+const MapController = dynamic(() => import('@/components/shared/MapController'), { ssr: false })
+
+// Fix for default marker icons in leaflet
+const iconFix = () => {
+    import('leaflet').then(L => {
+        delete (L.Icon.Default.prototype as any)._getIconUrl;
+        L.Icon.Default.mergeOptions({
+            iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+            iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+        })
+    })
+}
 
 interface TakeoutFormProps {
     restaurantId: string
@@ -24,17 +44,81 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
     const totalAmount = useCartStore((s) => s.totalAmount)
     const clearCart = useCartStore((s) => s.clearCart)
 
-    const [orderMode, setOrderMode] = useState<'takeaway' | 'delivery'>('takeaway')
     const [customerName, setCustomerName] = useState('')
     const [customerPhone, setCustomerPhone] = useState('')
     const [customerEmail, setCustomerEmail] = useState('')
+    const [orderType, setOrderType] = useState<'takeout' | 'delivery'>('takeout')
     const [deliveryAddress, setDeliveryAddress] = useState('')
+    const [extraDetails, setExtraDetails] = useState('')
     const [pickupTime, setPickupTime] = useState('')
     const [note, setNote] = useState('')
     const [promo, setPromo] = useState<PromoCode | null>(null)
     const [promoDiscount, setPromoDiscount] = useState(0)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const router = useRouter()
+
+    const [latitude, setLatitude] = useState<number | null>(null)
+    const [longitude, setLongitude] = useState<number | null>(null)
+    const [geoStatus, setGeoStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+    const [mounted, setMounted] = useState(false)
+
+    useEffect(() => {
+        setMounted(true)
+        iconFix()
+    }, [])
+
+    const handleGeolocate = () => {
+        if (!navigator.geolocation) {
+            setGeoStatus('error')
+            toast.error('Geolocation is not supported by your browser')
+            return
+        }
+        setGeoStatus('loading')
+        navigator.geolocation.getCurrentPosition(
+            async (pos) => {
+                const { latitude: lat, longitude: lng } = pos.coords
+                setLatitude(lat)
+                setLongitude(lng)
+                // Reverse geocode via OpenStreetMap Nominatim
+                try {
+                    const res = await fetch(
+                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+                        { headers: { 'Accept-Language': 'en' } }
+                    )
+                    const json = await res.json()
+                    const display = json.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+                    setDeliveryAddress(display)
+                } catch {
+                    setDeliveryAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`)
+                }
+                setGeoStatus('done')
+            },
+            () => {
+                setGeoStatus('error')
+                toast.error('Failed to get your location. Please check location permissions.')
+            },
+            { timeout: 10000, maximumAge: 60000 }
+        )
+    }
+
+    const handleLocationSelect = async (lat: number, lng: number) => {
+        setLatitude(lat)
+        setLongitude(lng)
+        setGeoStatus('loading')
+        try {
+            const res = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+                { headers: { 'Accept-Language': 'en' } }
+            )
+            const json = await res.json()
+            const display = json.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+            setDeliveryAddress(display)
+            setGeoStatus('done')
+        } catch {
+            setDeliveryAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`)
+            setGeoStatus('error')
+        }
+    }
 
     // Generate time slots (every 15 min for next 4 hours)
     const timeSlots: string[] = []
@@ -54,16 +138,12 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
-        if (!customerName.trim() || !customerPhone.trim()) {
+        if (!customerName.trim() || !customerPhone.trim() || !pickupTime) {
             toast.error('Please fill in all required fields.')
             return
         }
-        if (orderMode === 'takeaway' && !pickupTime) {
-            toast.error('Please choose a pickup time.')
-            return
-        }
-        if (orderMode === 'delivery' && !deliveryAddress.trim()) {
-            toast.error('Please enter your delivery address.')
+        if (orderType === 'delivery' && !deliveryAddress.trim()) {
+            toast.error('Please enter a delivery address.')
             return
         }
         if (!items || items.length === 0) {
@@ -73,35 +153,39 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
 
         setIsSubmitting(true)
 
-        const result = orderMode === 'delivery'
-            ? await createDeliveryOrder({
-                restaurantId,
-                customerName: customerName.trim(),
-                customerPhone: customerPhone.trim(),
-                deliveryAddress: deliveryAddress.trim(),
-                customerEmail: customerEmail.trim() || undefined,
-                items,
-                customerNote: note || undefined,
-                promoCode: promo?.code || undefined,
+        let result
+        const commonInput = {
+            restaurantId,
+            customerName: customerName.trim(),
+            customerPhone: customerPhone.trim(),
+            customerEmail: customerEmail.trim() || undefined,
+            items,
+            customerNote: note || undefined,
+            promoCode: promo?.code || undefined,
+        }
+
+        if (orderType === 'delivery') {
+            result = await createDeliveryOrder({
+                ...commonInput,
+                deliveryAddress: extraDetails.trim()
+                    ? `${deliveryAddress.trim()} (${extraDetails.trim()})`
+                    : deliveryAddress.trim(),
             })
-            : await createTakeoutOrder({
-                restaurantId,
-                customerName: customerName.trim(),
-                customerPhone: customerPhone.trim(),
-                customerEmail: customerEmail.trim() || undefined,
+        } else {
+            result = await createTakeoutOrder({
+                ...commonInput,
                 pickupTime,
-                items,
-                customerNote: note || undefined,
-                promoCode: promo?.code || undefined,
             })
+        }
 
         if (result.error) {
             toast.error(result.error)
             setIsSubmitting(false)
         } else if (result.orderId) {
-            toast.success(orderMode === 'delivery' ? 'Delivery order placed!' : 'Takeout order placed successfully!')
+            toast.success(orderType === 'delivery' ? 'Delivery order placed!' : 'Takeout order placed!')
             useActiveOrders.getState().addActiveOrder({ id: result.orderId, type: 'takeout', slug: restaurantSlug })
             clearCart()
+            // Redirect to order tracking page
             router.push(`/takeout/${restaurantSlug}/order/${result.orderId}`)
         }
     }
@@ -125,26 +209,41 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                     <ArrowLeft size={20} />
                 </button>
                 <div>
-                    <h1 className="text-xl font-semibold text-gray-900">{orderMode === 'delivery' ? 'Delivery Order' : 'Takeout Order'}</h1>
+                    <h1 className="text-xl font-semibold text-gray-900">
+                        {orderType === 'delivery' ? 'Delivery Order' : 'Takeaway Order'}
+                    </h1>
                     <p className="text-xs text-gray-500">{restaurantName}</p>
                 </div>
             </header>
 
             <form onSubmit={handleSubmit} className="max-w-xl mx-auto px-4 mt-6 space-y-6">
-                {/* Order type toggle */}
-                <div className="grid grid-cols-2 gap-2 bg-white rounded-xl shadow-sm border border-gray-100 p-1.5">
-                    {([['takeaway', 'Takeaway'], ['delivery', 'Delivery']] as const).map(([mode, label]) => (
+                {/* Order Type Selector */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                    <h2 className="font-semibold text-gray-700 mb-3 text-sm">Select Service Type</h2>
+                    <div className="flex gap-2">
                         <button
-                            key={mode}
                             type="button"
-                            onClick={() => setOrderMode(mode)}
-                            className={`py-2.5 rounded-lg text-sm font-semibold transition-colors ${
-                                orderMode === mode ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'
+                            onClick={() => setOrderType('takeout')}
+                            className={`flex-1 py-3 rounded-lg font-bold text-sm border flex items-center justify-center gap-2 transition cursor-pointer ${
+                                orderType === 'takeout'
+                                    ? 'bg-gray-900 text-white border-gray-900'
+                                    : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
                             }`}
                         >
-                            {label}
+                            Takeaway
                         </button>
-                    ))}
+                        <button
+                            type="button"
+                            onClick={() => setOrderType('delivery')}
+                            className={`flex-1 py-3 rounded-lg font-bold text-sm border flex items-center justify-center gap-2 transition cursor-pointer ${
+                                orderType === 'delivery'
+                                    ? 'bg-gray-900 text-white border-gray-900'
+                                    : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
+                            }`}
+                        >
+                            Online Delivery
+                        </button>
+                    </div>
                 </div>
 
                 {/* Order items summary */}
@@ -153,16 +252,34 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                         Your Items ({items.reduce((t, i) => t + i.quantity, 0)})
                     </h2>
                     <ul className="divide-y divide-gray-100">
-                        {items.map((item) => (
-                            <li key={item.menuItemId} className="py-2 flex justify-between text-sm">
-                                <span className="text-gray-700">
-                                    {item.quantity}× {item.name}
-                                </span>
-                                <span className="font-medium">
-                                    {money(item.price * item.quantity)}
-                                </span>
-                            </li>
-                        ))}
+                        {items.map((item) => {
+                            const cartKey = getCartItemKey(item)
+                            const modifierTotal = (item.modifiers || []).reduce((sum, mod) => sum + mod.priceAdjustment, 0)
+                            const unitPrice = item.price + modifierTotal
+                            const lineTotal = unitPrice * item.quantity
+                            const modifierNames = (item.modifiers || []).map(m => m.name).join(', ')
+                            return (
+                                <li key={cartKey} className="py-3 flex justify-between text-sm">
+                                    <div className="flex-1 min-w-0 pr-4">
+                                        <span className="text-gray-900 font-medium">
+                                            {item.quantity}× {item.name}
+                                            {item.variationName && (
+                                                <span className="text-gray-600 font-normal"> ({item.variationName})</span>
+                                            )}
+                                        </span>
+                                        {modifierNames && (
+                                            <p className="text-xs text-gray-500 mt-0.5 ml-4">{modifierNames}</p>
+                                        )}
+                                        {item.specialRequest && (
+                                            <p className="text-xs text-gray-400 italic mt-0.5 ml-4">Note: {item.specialRequest}</p>
+                                        )}
+                                    </div>
+                                    <span className="font-semibold text-gray-900 shrink-0">
+                                        {money(lineTotal)}
+                                    </span>
+                                </li>
+                            )
+                        })}
                     </ul>
                 </div>
 
@@ -189,6 +306,80 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                     </div>
+                    {orderType === 'delivery' && (
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-600 mb-1">Delivery Address *</label>
+                                <input
+                                    type="text"
+                                    value={deliveryAddress}
+                                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                                    required={orderType === 'delivery'}
+                                    placeholder="Apartment / street / location..."
+                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-600 mb-1">Extra Address Details (Apt, Landmark, etc.)</label>
+                                <input
+                                    type="text"
+                                    value={extraDetails}
+                                    onChange={(e) => setExtraDetails(e.target.value)}
+                                    placeholder="e.g., Apt 302, 3rd Floor, near Blue Landmark"
+                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                            </div>
+
+                            {/* Premium Interactive Map Card */}
+                            <div className="border border-gray-200 rounded-xl overflow-hidden bg-gray-50 shadow-sm transition-all duration-300 hover:shadow-md">
+                                <div className="p-3 bg-white border-b border-gray-200 flex items-center justify-between">
+                                    <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                                        <MapPin size={14} className="text-red-500 animate-bounce" /> Pin Delivery Location
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={handleGeolocate}
+                                        className="text-xs bg-gray-900 text-white px-3 py-2 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                                    >
+                                        {geoStatus === 'loading' ? (
+                                            <Loader2 size={12} className="animate-spin" />
+                                        ) : (
+                                            <MapPin size={12} />
+                                        )}
+                                        Locate Me
+                                    </button>
+                                </div>
+                                <div className="h-56 w-full relative">
+                                    {mounted && (
+                                        <MapContainer
+                                            center={(latitude && longitude) ? [latitude, longitude] : [28.2096, 83.9856]}
+                                            zoom={14}
+                                            style={{ height: '100%', width: '100%', zIndex: 1 }}
+                                            zoomControl={true}
+                                        >
+                                            <TileLayer
+                                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                            />
+                                            {(latitude && longitude) && <Marker position={[latitude, longitude]} />}
+                                            <MapController
+                                                onLocationSelect={handleLocationSelect}
+                                                center={(latitude && longitude) ? [latitude, longitude] : null}
+                                            />
+                                        </MapContainer>
+                                    )}
+                                </div>
+                                <div className="p-3 bg-gray-100/70 text-[11px] text-gray-500 flex items-center justify-between border-t border-gray-200">
+                                    <span>Click on the map to pin exact delivery spot.</span>
+                                    {latitude && longitude && (
+                                        <span className="font-mono text-gray-600 bg-white px-1.5 py-0.5 rounded border border-gray-200">
+                                            {latitude.toFixed(5)}, {longitude.toFixed(5)}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     <div>
                         <label className="block text-sm font-medium text-gray-600 mb-1">Email (optional)</label>
                         <input
@@ -200,46 +391,29 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                     </div>
                 </div>
 
-                {/* Delivery address (delivery mode) */}
-                {orderMode === 'delivery' && (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                        <label className="block text-sm font-medium text-gray-600 mb-1">Delivery Address *</label>
-                        <textarea
-                            rows={2}
-                            value={deliveryAddress}
-                            onChange={(e) => setDeliveryAddress(e.target.value)}
-                            required
-                            placeholder="House no, street, area, landmark…"
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                        />
+                {/* Pickup/Delivery Time */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                    <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                        <Clock size={18} className="text-gray-500" />
+                        {orderType === 'delivery' ? 'Delivery Time Window *' : 'Pickup Time *'}
+                    </h2>
+                    <div className="grid grid-cols-4 gap-2">
+                        {timeSlots.map((slot) => (
+                            <button
+                                key={slot}
+                                type="button"
+                                onClick={() => setPickupTime(slot)}
+                                className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
+                                    pickupTime === slot
+                                        ? 'bg-gray-900 text-white border-gray-900'
+                                        : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
+                                }`}
+                            >
+                                {formatTime(slot)}
+                            </button>
+                        ))}
                     </div>
-                )}
-
-                {/* Pickup Time (takeaway mode) */}
-                {orderMode === 'takeaway' && (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                        <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                            <Clock size={18} className="text-gray-500" />
-                            Pickup Time *
-                        </h2>
-                        <div className="grid grid-cols-4 gap-2">
-                            {timeSlots.map((slot) => (
-                                <button
-                                    key={slot}
-                                    type="button"
-                                    onClick={() => setPickupTime(slot)}
-                                    className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                                        pickupTime === slot
-                                            ? 'bg-gray-900 text-white border-gray-900'
-                                            : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
-                                    }`}
-                                >
-                                    {formatTime(slot)}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
+                </div>
 
                 {/* Promo Code */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
@@ -287,12 +461,12 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                     <button
                         onClick={handleSubmit as unknown as () => void}
                         disabled={isSubmitting}
-                        className="w-full bg-gray-900 text-white font-medium rounded-xl py-4 flex items-center justify-center gap-2 disabled:opacity-70 shadow-lg"
+                        className="w-full bg-gray-900 text-white font-medium rounded-xl py-4 flex items-center justify-center gap-2 disabled:opacity-70 shadow-lg cursor-pointer hover:bg-gray-800"
                     >
                         {isSubmitting ? (
                             <><Loader2 className="animate-spin" size={20} /> Placing Order...</>
                         ) : (
-                            orderMode === 'delivery' ? 'Place Delivery Order' : 'Place Takeout Order'
+                            orderType === 'delivery' ? 'Place Delivery Order' : 'Place Takeaway Order'
                         )}
                     </button>
                 </div>
@@ -300,3 +474,4 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
         </div>
     )
 }
+

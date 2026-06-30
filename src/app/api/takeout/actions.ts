@@ -145,7 +145,7 @@ export async function createTakeoutOrder(
 }
 
 // Active (kitchen-relevant) takeout statuses.
-const ACTIVE_TAKEOUT_ORDER_STATUSES = ['pending', 'confirmed', 'preparing', 'ready']
+const ACTIVE_TAKEOUT_ORDER_STATUSES = ['confirmed', 'preparing', 'ready']
 
 export async function getTakeoutOrders(
     restaurantId: string,
