@@ -81,6 +81,39 @@ export async function clockOut(
     return { shift: shift as StaffShift }
 }
 
+/**
+ * Per-shift performance stats, derived from the ownership columns added across the
+ * operational-flow build:
+ *  • mealsCooked   — dishes this chef started (order_items.claimed_by/claimed_at)
+ *  • ordersHandled — orders this waiter claimed to serve (orders.claimed_by)
+ *  • deliveries    — orders this person delivered (orders.delivery_staff_id)
+ * all within the shift window.
+ */
+export async function getShiftStats(
+    userId: string,
+    clockIn: string,
+    clockOut?: string | null
+): Promise<{ mealsCooked: number; ordersHandled: number; deliveries: number }> {
+    const supabase = await createAdminClient()
+    const end = clockOut || new Date().toISOString()
+
+    const [meals, orders, deliveries] = await Promise.all([
+        supabase.from('order_items').select('id', { count: 'exact', head: true })
+            .eq('claimed_by', userId).gte('claimed_at', clockIn).lte('claimed_at', end),
+        supabase.from('orders').select('id', { count: 'exact', head: true })
+            .eq('claimed_by', userId).gte('claimed_at', clockIn).lte('claimed_at', end),
+        supabase.from('orders').select('id', { count: 'exact', head: true })
+            .eq('delivery_staff_id', userId).eq('status', 'delivered')
+            .gte('delivered_at', clockIn).lte('delivered_at', end),
+    ])
+
+    return {
+        mealsCooked: meals.count || 0,
+        ordersHandled: orders.count || 0,
+        deliveries: deliveries.count || 0,
+    }
+}
+
 export async function getActiveShift(
     userId: string
 ): Promise<StaffShift | null> {

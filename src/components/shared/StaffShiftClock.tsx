@@ -1,10 +1,17 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { clockIn, clockOut, getActiveShift, getShiftHistory } from '@/app/api/staff/actions'
+import { clockIn, clockOut, getActiveShift, getShiftHistory, getShiftStats } from '@/app/api/staff/actions'
 import type { StaffShift } from '@/types/database'
-import { Clock, LogIn, LogOut, History } from 'lucide-react'
+import { Clock, LogIn, LogOut, History, ChefHat, Package, Bike, PartyPopper, X } from 'lucide-react'
 import { toast } from 'react-hot-toast'
+
+type ShiftSummary = {
+    hours: string
+    mealsCooked: number
+    ordersHandled: number
+    deliveries: number
+}
 
 interface StaffShiftClockProps {
     userId: string
@@ -36,6 +43,7 @@ export default function StaffShiftClock({ userId, restaurantId, initialShift, in
     const [history, setHistory] = useState<StaffShift[]>(initialHistory)
     const [loading, setLoading] = useState(false)
     const [showHistory, setShowHistory] = useState(false)
+    const [summary, setSummary] = useState<ShiftSummary | null>(null)
     const [elapsedTime, setElapsedTime] = useState(
         initialShift ? formatDuration(initialShift.clock_in) : ''
     )
@@ -77,6 +85,14 @@ export default function StaffShiftClock({ userId, restaurantId, initialShift, in
             toast.error(result.error)
         } else {
             toast.success("Clocked out successfully!")
+            // Build the end-of-shift summary before clearing the active shift.
+            if (result.shift) {
+                const stats = await getShiftStats(userId, result.shift.clock_in, result.shift.clock_out)
+                setSummary({
+                    hours: formatDuration(result.shift.clock_in, result.shift.clock_out),
+                    ...stats,
+                })
+            }
             setActiveShift(null)
             await refreshData()
         }
@@ -176,6 +192,41 @@ export default function StaffShiftClock({ userId, restaurantId, initialShift, in
                     </div>
                 )}
             </div>
+
+            {/* End-of-shift congrats summary */}
+            {summary && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setSummary(null)}>
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden text-center" onClick={(e) => e.stopPropagation()}>
+                        <div className="bg-gradient-to-b from-[#FB6303] to-[#e25600] text-white px-6 pt-7 pb-6 relative">
+                            <button onClick={() => setSummary(null)} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center" aria-label="Close">
+                                <X size={16} />
+                            </button>
+                            <PartyPopper size={40} className="mx-auto mb-2" />
+                            <h3 className="text-xl font-black">Shift complete!</h3>
+                            <p className="text-white/85 text-sm mt-1">Congratulations — you successfully completed today&apos;s shift.</p>
+                            <p className="text-white/90 font-mono font-bold mt-3 text-lg">{summary.hours}</p>
+                        </div>
+                        <div className="p-5 grid grid-cols-3 gap-3">
+                            {[
+                                { icon: ChefHat, label: 'Meals cooked', value: summary.mealsCooked },
+                                { icon: Package, label: 'Orders served', value: summary.ordersHandled },
+                                { icon: Bike, label: 'Deliveries', value: summary.deliveries },
+                            ].map(({ icon: Icon, label, value }) => (
+                                <div key={label} className="rounded-2xl border border-gray-100 bg-gray-50 py-3">
+                                    <Icon size={18} className="mx-auto text-[#FB6303] mb-1" />
+                                    <p className="text-2xl font-black text-gray-900 leading-none">{value}</p>
+                                    <p className="text-[10px] text-gray-500 mt-1">{label}</p>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="px-5 pb-5">
+                            <button onClick={() => setSummary(null)} className="w-full bg-gray-900 text-white font-bold rounded-xl py-3 text-sm hover:bg-gray-800">
+                                Done
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
