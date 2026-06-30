@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { updateTakeoutStatusAction } from './actions'
-import { Clock, Phone, User, CheckCircle, XCircle, Search } from 'lucide-react'
+import { Clock, Phone, User, CheckCircle, XCircle, Search, QrCode, Download, ExternalLink } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import type { TakeoutOrder } from '@/types/database'
@@ -23,14 +24,34 @@ const NEXT_STATUS: Record<string, string> = {
     ready_for_pickup: 'picked_up',
 }
 
-export default function TakeoutDashboard({ initialOrders }: {
+export default function TakeoutDashboard({ initialOrders, restaurantSlug, restaurantName }: {
     initialOrders: TakeoutOrder[]
     restaurantId: string
+    restaurantSlug: string
+    restaurantName: string
 }) {
     const [orders, setOrders] = useState(initialOrders)
     const money = useCurrency()
     const [searchQuery, setSearchQuery] = useState('')
     const [statusFilter, setStatusFilter] = useState('all')
+    const [showQr, setShowQr] = useState(false)
+
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+    const takeoutUrl = restaurantSlug ? `${baseUrl}/takeout/${restaurantSlug}` : ''
+
+    const downloadSvg = () => {
+        const svgElement = document.getElementById('takeout-qr-code')
+        if (!svgElement) return
+        const svgString = new XMLSerializer().serializeToString(svgElement)
+        const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' })
+        const svgUrl = URL.createObjectURL(svgBlob)
+        const downloadLink = document.createElement('a')
+        downloadLink.href = svgUrl
+        downloadLink.download = `${restaurantSlug || 'restaurant'}-takeout-qr.svg`
+        document.body.appendChild(downloadLink)
+        downloadLink.click()
+        document.body.removeChild(downloadLink)
+    }
 
     const filteredOrders = orders.filter(o => {
         const matchesSearch = o.customer_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -59,9 +80,67 @@ export default function TakeoutDashboard({ initialOrders }: {
     }
 
     return (
-        <div className="space-y-3">
+        <div className="space-y-6">
+            {/* Takeout & Delivery QR Section */}
+            {restaurantSlug && (
+                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div className="space-y-1">
+                            <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                                <QrCode size={18} className="text-gray-900" />
+                                Takeout & Delivery Ordering QR Code
+                            </h2>
+                            <p className="text-sm text-gray-500">
+                                Share this link or print the QR code for customers to place pickup and delivery orders.
+                            </p>
+                            {takeoutUrl && (
+                                <div className="pt-1">
+                                    <a 
+                                        href={takeoutUrl} 
+                                        target="_blank" 
+                                        rel="noreferrer" 
+                                        className="text-xs text-blue-600 hover:text-blue-800 font-medium inline-flex items-center gap-1 bg-blue-50 px-2.5 py-1 rounded-md"
+                                    >
+                                        {takeoutUrl}
+                                        <ExternalLink size={12} />
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => setShowQr(!showQr)}
+                            className="sm:self-center bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                        >
+                            <QrCode size={16} />
+                            {showQr ? 'Hide QR Code' : 'Show QR Code'}
+                        </button>
+                    </div>
+
+                    {showQr && (
+                        <div className="mt-5 pt-5 border-t border-gray-100 flex flex-col items-center justify-center">
+                            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-center">
+                                <QRCodeSVG
+                                    id="takeout-qr-code"
+                                    value={takeoutUrl}
+                                    size={200}
+                                    level="H"
+                                    includeMargin={true}
+                                />
+                            </div>
+                            <button
+                                onClick={downloadSvg}
+                                className="mt-4 flex items-center gap-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 px-3.5 py-2 rounded-lg transition-colors cursor-pointer"
+                            >
+                                <Download size={14} />
+                                Download QR Vector (SVG)
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Filters */}
-            <div className="flex flex-col sm:flex-row gap-3 bg-white p-3 rounded-xl border border-gray-200">
+            <div className="flex flex-col sm:flex-row gap-3 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
                 <div className="relative flex-1">
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input
@@ -84,11 +163,12 @@ export default function TakeoutDashboard({ initialOrders }: {
                 </select>
             </div>
 
-            {filteredOrders.length === 0 && (
-                <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">
-                    No active takeout orders.
-                </div>
-            )}
+            <div className="space-y-3">
+                {filteredOrders.length === 0 && (
+                    <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">
+                        No active takeout orders.
+                    </div>
+                )}
             {filteredOrders.map(order => (
                 <div key={order.id} className="bg-white rounded-xl border border-gray-200 p-5">
                     <div className="flex items-start justify-between gap-4 mb-3">
@@ -143,6 +223,7 @@ export default function TakeoutDashboard({ initialOrders }: {
                     </div>
                 </div>
             ))}
+            </div>
         </div>
     )
 }

@@ -9,6 +9,12 @@ export default async function AdminTakeoutPage() {
     const { restaurantId: rid } = await getCurrentUser()
     const adminSupabase = await createAdminClient()
 
+    const { data: restaurant } = await adminSupabase
+        .from('restaurants')
+        .select('slug, name')
+        .eq('id', rid)
+        .single()
+
     const { data: orderRows } = await adminSupabase
         .from('orders')
         .select(TAKEOUT_ORDER_SELECT)
@@ -22,11 +28,18 @@ export default async function AdminTakeoutPage() {
 
     return (
         <div className="space-y-6">
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                <h1 className="text-2xl font-bold text-gray-900">Takeout Orders</h1>
-                <p className="text-gray-500 mt-1">Manage pending and active takeout orders.</p>
+            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-900">Takeout Orders</h1>
+                    <p className="text-gray-500 mt-1">Manage pending and active takeout orders.</p>
+                </div>
             </div>
-            <TakeoutDashboard initialOrders={orders} restaurantId={rid} />
+            <TakeoutDashboard 
+                initialOrders={orders} 
+                restaurantId={rid} 
+                restaurantSlug={restaurant?.slug || ''}
+                restaurantName={restaurant?.name || ''}
+            />
         </div>
     )
 }
