@@ -31,6 +31,7 @@ interface TablePageClientProps {
     sessionUUID: string | undefined
     isValidSession: boolean
     serviceRequestsEnabled: boolean
+    quickServeItems?: string[]
     // When true, a waiter must open the table session before guests can order.
     // When false (default), the session is auto-opened server-side on QR scan.
     waiterSessionEnabled?: boolean
@@ -51,6 +52,7 @@ export default function TablePageClient({
     sessionToken,
     sessionUUID,
     serviceRequestsEnabled,
+    quickServeItems = [],
     waiterSessionEnabled = false,
     selfOrderRequestEnabled = true,
     menuLayout = 'grid',
@@ -323,6 +325,7 @@ export default function TablePageClient({
                 <ServiceRequestPanel
                     sessionId={liveSessionUUID}
                     restaurantId={tableData.restaurant_id}
+                    quickItems={quickServeItems}
                 />
             )}
 

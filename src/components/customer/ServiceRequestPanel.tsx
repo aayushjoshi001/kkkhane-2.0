@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Bell, Droplets, Receipt, Sparkles, UtensilsCrossed, X, Loader2, Check } from 'lucide-react'
+import { Bell, Droplets, Receipt, Sparkles, UtensilsCrossed, X, Loader2, Check, GlassWater } from 'lucide-react'
 import { createServiceRequest } from '@/app/api/service-requests/actions'
 import { useCartStore } from '@/lib/stores/cart'
 import { useHydratedStore } from '@/lib/stores/useHydratedStore'
@@ -18,21 +18,41 @@ type RequestOption = {
     message?: string      // fixed message for presets that use 'other' type
 }
 
-const REQUEST_OPTIONS: RequestOption[] = [
+// Always-available core requests.
+const CORE_OPTIONS: RequestOption[] = [
         { id: 'call_waiter', type: 'call_waiter', label: 'Call Waiter', icon: Bell, color: 'bg-blue-500' },
         { id: 'request_bill', type: 'request_bill', label: 'Request Bill', icon: Receipt, color: 'bg-green-500' },
+        { id: 'clean_table', type: 'clean_table', label: 'Clean Table', icon: Sparkles, color: 'bg-amber-500' },
+    ]
+
+// Shown when the manager hasn't configured any quick-serve items.
+const DEFAULT_QUICK_OPTIONS: RequestOption[] = [
         { id: 'need_water', type: 'need_water', label: 'Need Water', icon: Droplets, color: 'bg-cyan-500' },
         { id: 'need_silverware', type: 'other', label: 'Need Silverware', icon: UtensilsCrossed, color: 'bg-orange-500', message: 'Need Silverware' },
-        { id: 'clean_table', type: 'clean_table', label: 'Clean Table', icon: Sparkles, color: 'bg-amber-500' },
     ]
 
 export default function ServiceRequestPanel({
     sessionId,
     restaurantId,
+    quickItems = [],
 }: {
     sessionId: string
     restaurantId: string
+    quickItems?: string[]
 }) {
+    // Manager-configured quick-serve items (water, cold drinks, tissue…) become
+    // one-tap requests. Fall back to sensible defaults if none are configured.
+    const quickOptions: RequestOption[] = quickItems.length > 0
+        ? quickItems.map((name, i) => ({
+            id: `qi-${i}`,
+            type: 'other' as ServiceRequestType,
+            label: name,
+            icon: GlassWater,
+            color: 'bg-purple-500',
+            message: name,
+        }))
+        : DEFAULT_QUICK_OPTIONS
+    const REQUEST_OPTIONS = [...CORE_OPTIONS, ...quickOptions]
     const [isOpen, setIsOpen] = useState(false)
     const [loading, setLoading] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)

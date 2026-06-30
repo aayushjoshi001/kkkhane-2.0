@@ -96,14 +96,23 @@ export default function ServiceRequestFeed({
     })
 
     const handleAcknowledge = async (id: string) => {
+        const snapshot = requests
         setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, status: 'acknowledged' as const, acknowledged_by: userId } : r)))
         const res = await acknowledgeServiceRequest(id, userId)
-        if (!res.success) toast.error('Someone else already took this request')
+        if (!res.success) {
+            setRequests(snapshot)
+            toast.error('Someone else already took this request')
+        }
     }
 
     const handleComplete = async (id: string) => {
+        const snapshot = requests
         setRequests((prev) => prev.filter((r) => r.id !== id))
-        await completeServiceRequest(id)
+        const res = await completeServiceRequest(id, userId)
+        if (!res.success) {
+            setRequests(snapshot)
+            toast.error(res.conflict ? 'Only the waiter who took this can mark it served' : 'Could not complete')
+        }
     }
 
     const handleOpenSession = async (req: ServiceRequestWithTable) => {
@@ -194,6 +203,9 @@ export default function ServiceRequestFeed({
                                 <Button variant="secondary" size="sm" loading={openingSession === req.id} onClick={() => handleOpenSession(req)}>
                                     Open
                                 </Button>
+                            ) : (req.acknowledged_by && req.acknowledged_by !== userId) ? (
+                                // Claimed by a colleague — view only.
+                                null
                             ) : (
                                 <Button variant="secondary" size="sm" onClick={() => handleComplete(req.id)}>Done</Button>
                             )

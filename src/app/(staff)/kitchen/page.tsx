@@ -22,7 +22,6 @@ export default async function KitchenPage() {
         { data: shiftHistory },
     ] = await Promise.all([
         getRestaurantFeatures(restaurantId),
-        // Include 'ready' so kitchen can see the pass column
         adminSupabase
             .from('orders')
             .select(`
@@ -38,6 +37,7 @@ export default async function KitchenPage() {
                     id,
                     menu_item_id,
                     quantity,
+                    unit_price,
                     special_request,
                     status,
                     claimed_by,
@@ -87,6 +87,10 @@ export default async function KitchenPage() {
         }
     })
 
+    const queuedOrders = filteredActiveOrders.filter(o => o.status === 'pending' || o.status === 'confirmed').length
+    const preparingOrders = filteredActiveOrders.filter(o => o.status === 'preparing').length
+    const readyOrders = filteredActiveOrders.filter(o => o.status === 'ready').length
+
     // Names for per-dish chef ownership labels ("👤 Ram") on the cooking column.
     const { data: staff } = await adminSupabase
         .from('users')
@@ -109,11 +113,6 @@ export default async function KitchenPage() {
     } catch (err) {
         console.warn('Could not fetch combo_items in KitchenPage:', err)
     }
-
-    // Kitchen stats for the top bar
-    const queuedOrders = (activeOrders || []).filter(o => o.status === 'pending' || o.status === 'confirmed').length
-    const preparingOrders = (activeOrders || []).filter(o => o.status === 'preparing').length
-    const readyOrders = (activeOrders || []).filter(o => o.status === 'ready').length
 
     return (
         <div className="h-full flex flex-col overflow-hidden">
