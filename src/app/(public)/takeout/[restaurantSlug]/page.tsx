@@ -67,7 +67,7 @@ export default async function TakeoutPage({ params }: { params: Promise<{ restau
     const translations = (rawTranslations || []) as { language_code: string; entity_type: string; entity_id: string; translated_text: string }[]
     const supportedLanguages = (rawLangs || []).map(l => ({ code: l.language_code, name: l.language_name }))
     const langs = supportedLanguages.length > 0
-        ? [{ code: 'en', name: 'EN' }, ...supportedLanguages]
+        ? [{ code: 'en', name: 'EN' }, ...supportedLanguages.filter(l => l.code !== 'en')]
         : []
 
     return (
