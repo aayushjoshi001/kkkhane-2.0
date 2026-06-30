@@ -28,13 +28,14 @@ const ALLERGEN_ICONS: Record<string, string> = {
     soy: '🫘', fish: '🐟', shellfish: '🦐', sesame: '🫙',
 }
 
-export default function MenuItemCard({ item, comboItems = [], menuItems = [], sessionId, restaurantSlug, restaurantId }: {
+export default function MenuItemCard({ item, comboItems = [], menuItems = [], sessionId, restaurantSlug, restaurantId, isTakeout = false }: {
     item: MenuItem
     comboItems?: any[]
     menuItems?: MenuItem[]
     sessionId?: string
     restaurantSlug: string
     restaurantId?: string
+    isTakeout?: boolean
 }) {
     const { t } = useTranslation()
     const money = useCurrency()
@@ -79,8 +80,10 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
     }
 
     const handleAdd = () => {
-        if (!sessionId) return
-        setSession(sessionId, restaurantSlug, restaurantId)
+        if (!isTakeout && !sessionId) return
+        if (sessionId) {
+            setSession(sessionId, restaurantSlug, restaurantId)
+        }
         // Variation items always open the detail view for selection
         if (hasVariations) { setShowDetailView(true); return }
         // Modifier items always go through the sheet so each tap can pick its own
@@ -238,7 +241,7 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
 
                 {/* Cart controls */}
                 <div className="mt-auto pt-2">
-                    {!sessionId ? (
+                    {(!isTakeout && !sessionId) ? (
                         <div className="h-12" />
                     ) : (quantity === 0 || hasModifiers || hasVariations) ? (
                         <button
@@ -361,9 +364,12 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
         {showDetailView && (
             <ItemDetailView
                 item={item}
+                comboItems={comboItems}
+                menuItems={menuItems}
                 sessionId={sessionId}
                 restaurantSlug={restaurantSlug}
                 restaurantId={restaurantId}
+                isTakeout={isTakeout}
                 onClose={() => setShowDetailView(false)}
             />
         )}
