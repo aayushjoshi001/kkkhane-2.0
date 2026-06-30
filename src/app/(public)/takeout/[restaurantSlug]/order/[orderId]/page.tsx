@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import TakeoutOrderTracker from '@/components/customer/TakeoutOrderTracker'
 import { TAKEOUT_ORDER_SELECT, mapOrderRowToTakeout, type TakeoutOrderRow } from '@/lib/takeout'
 
+export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 export default async function TakeoutOrderPage({
@@ -13,12 +14,31 @@ export default async function TakeoutOrderPage({
     const { restaurantSlug, orderId } = await params
     const supabase = await createAdminClient()
 
-    const { data: orderRow } = await supabase
-        .from('orders')
-        .select(TAKEOUT_ORDER_SELECT)
-        .eq('id', orderId)
-        .in('order_type', ['takeout', 'delivery'])
-        .single()
+    let orderRow = null
+    let fetchError = null
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        const { data, error } = await supabase
+            .from('orders')
+            .select(TAKEOUT_ORDER_SELECT)
+            .eq('id', orderId)
+            .in('order_type', ['takeout', 'delivery'])
+            .single()
+
+        if (data) {
+            orderRow = data
+            break
+        } else {
+            fetchError = error
+            if (attempt < 3) {
+                await new Promise((resolve) => setTimeout(resolve, 300))
+            }
+        }
+    }
+
+    if (fetchError && !orderRow) {
+        console.error('Takeout order fetch error:', fetchError)
+    }
 
     if (!orderRow) return notFound()
     const order = mapOrderRowToTakeout(orderRow as unknown as TakeoutOrderRow)
