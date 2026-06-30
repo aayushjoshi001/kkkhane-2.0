@@ -100,9 +100,32 @@ export async function setOrderItemsStatus(
     if (nextStatus === 'preparing') {
         query = query.eq('status', 'pending').is('claimed_by', null)
     } else if (nextStatus === 'ready') {
-        query = query.eq('status', 'preparing')
-        // Owner-only: the claiming chef, or a dish that was never claimed (legacy).
-        if (actorUserId) query = query.or(`claimed_by.eq.${actorUserId},claimed_by.is.null`)
+        // Workaround for PostgREST / Supabase JS bug: .or() fails with "column does not exist" on .update()
+        // We verify ownership atomically with a .select() first.
+        let validItemIds = itemIds
+        if (actorUserId) {
+            const { data: validItems } = await adminSupabase
+                .from('order_items')
+                .select('id')
+                .in('id', itemIds)
+                .eq('status', 'preparing')
+                .or(`claimed_by.eq.${actorUserId},claimed_by.is.null`)
+                
+            validItemIds = (validItems || []).map(i => i.id)
+            if (validItemIds.length === 0) {
+                return {
+                    conflict: true,
+                    error: 'Only the chef who started a dish can mark it ready'
+                }
+            }
+        }
+        
+        query = adminSupabase
+            .from('order_items')
+            .update(updateData)
+            .eq('order_id', orderId)
+            .in('id', validItemIds)
+            .eq('status', 'preparing')
     } else {
         const priorStates = ALLOWED_ITEM_PRIOR[nextStatus]
         if (priorStates) query = query.in('status', priorStates)
