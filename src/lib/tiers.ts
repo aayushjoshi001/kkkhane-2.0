@@ -93,5 +93,7 @@ export function buildFeaturesV2(tier: Tier) {
         geofenceRadiusMeters: 100,
         // Phase 3: customers may request a waiter open their table session.
         selfOrderRequestEnabled: true,
+        // Manager-configurable one-tap service items (editable in Settings).
+        quickServeItems: ['Water', 'Tissue'] as string[],
     }
 }

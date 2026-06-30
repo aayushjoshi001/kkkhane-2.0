@@ -291,6 +291,9 @@ export interface Settings {
         // confirm before the kitchen sees them; stock is deducted on confirm. When
         // false (Mode 1 / premium), orders go straight to the kitchen at placement.
         waiterOrderConfirmation?: boolean
+        // Manager-configured one-tap "quick serve" items a customer can request
+        // (water, cold drink, tissue…). Each request goes to the waiter feed.
+        quickServeItems?: string[]
         defaultTaxRate: number
         currency: string
         currencySymbol: string

@@ -146,6 +146,7 @@ export default async function CustomerMenuPage(props: {
             sessionUUID={sessionUUID}
             isValidSession={isValidSession}
             serviceRequestsEnabled={features?.serviceRequestsEnabled !== false}
+            quickServeItems={(features as { quickServeItems?: string[] } | null)?.quickServeItems ?? []}
             waiterSessionEnabled={waiterSessionEnabled}
             selfOrderRequestEnabled={(features as { selfOrderRequestEnabled?: boolean } | null)?.selfOrderRequestEnabled !== false}
             multiLanguageEnabled={features?.multiLanguageEnabled === true}

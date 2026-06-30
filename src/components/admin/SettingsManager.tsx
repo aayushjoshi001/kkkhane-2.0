@@ -227,6 +227,32 @@ export default function SettingsManager({
         setIsSavingFeatures(false)
     }
 
+    // Manager-configurable quick-serve items (water, cold drinks, tissue…).
+    const [newQuickItem, setNewQuickItem] = useState('')
+    const quickServeItems: string[] = (features as { quickServeItems?: string[] }).quickServeItems ?? []
+
+    const saveQuickItems = async (items: string[]) => {
+        if (!canEdit) return
+        const prev = features
+        const updated = { ...features, quickServeItems: items }
+        setFeatures(updated)
+        setIsSavingFeatures(true)
+        const res = await updateFeaturesAction(formData.id, { quickServeItems: items } as Partial<Features>)
+        if (res.error) {
+            toast.error('Failed to save quick items')
+            setFeatures(prev)
+        }
+        setIsSavingFeatures(false)
+    }
+
+    const addQuickItem = () => {
+        const name = newQuickItem.trim()
+        if (!name) return
+        if (quickServeItems.some(i => i.toLowerCase() === name.toLowerCase())) { setNewQuickItem(''); return }
+        saveQuickItems([...quickServeItems, name])
+        setNewQuickItem('')
+    }
+
     return (
         <>
         <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
@@ -717,6 +743,59 @@ export default function SettingsManager({
                             )}
                         </button>
                     ))}
+                </div>
+            </div>
+        </div>
+
+        {/* Quick-Serve Items — manager-configurable one-tap customer requests */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6 max-w-4xl">
+            <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
+                <div className="p-2 bg-purple-100 text-purple-600 rounded-lg">
+                    <Bell size={20} />
+                </div>
+                <div>
+                    <h3 className="text-lg font-semibold text-gray-800">Quick-Serve Items</h3>
+                    <p className="text-sm text-gray-500">One-tap items customers can request (water, cold drinks, tissue…). Each goes to the waiter feed.</p>
+                </div>
+            </div>
+            <div className="p-6">
+                <div className="flex flex-wrap gap-2 mb-4">
+                    {quickServeItems.length === 0 && (
+                        <span className="text-sm text-gray-400">No quick items yet — add one below.</span>
+                    )}
+                    {quickServeItems.map((item) => (
+                        <span key={item} className="inline-flex items-center gap-1.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-full pl-3 pr-1.5 py-1 text-sm font-medium">
+                            {item}
+                            <button
+                                type="button"
+                                disabled={!canEdit || isSavingFeatures}
+                                onClick={() => saveQuickItems(quickServeItems.filter(i => i !== item))}
+                                className="w-5 h-5 rounded-full hover:bg-purple-200 flex items-center justify-center disabled:opacity-40"
+                                aria-label={`Remove ${item}`}
+                            >
+                                ×
+                            </button>
+                        </span>
+                    ))}
+                </div>
+                <div className="flex gap-2 max-w-sm">
+                    <input
+                        type="text"
+                        value={newQuickItem}
+                        onChange={(e) => setNewQuickItem(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addQuickItem() } }}
+                        disabled={!canEdit}
+                        placeholder="e.g. Cold Drink"
+                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
+                    />
+                    <button
+                        type="button"
+                        onClick={addQuickItem}
+                        disabled={!canEdit || isSavingFeatures || !newQuickItem.trim()}
+                        className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:opacity-90 disabled:opacity-40"
+                    >
+                        Add
+                    </button>
                 </div>
             </div>
         </div>

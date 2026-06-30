@@ -101,10 +101,11 @@ export async function requestSessionOpen(
 export async function acknowledgeServiceRequest(
     requestId: string,
     userId: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; conflict?: boolean }> {
     const supabase = await createAdminClient()
 
-    const { error } = await supabase
+    // "I am going" — claim atomically: only a still-pending, unclaimed request flips.
+    const { data, error } = await supabase
         .from('service_requests')
         .update({
             status: 'acknowledged',
@@ -112,28 +113,43 @@ export async function acknowledgeServiceRequest(
         })
         .eq('id', requestId)
         .eq('status', 'pending')
+        .is('acknowledged_by', null)
+        .select('id')
 
     if (error) {
         return { success: false, error: 'Failed to acknowledge request.' }
+    }
+    if (!data || data.length === 0) {
+        return { success: false, conflict: true, error: 'Another waiter already took this' }
     }
     return { success: true }
 }
 
 export async function completeServiceRequest(
-    requestId: string
-): Promise<{ success: boolean; error?: string }> {
+    requestId: string,
+    userId?: string
+): Promise<{ success: boolean; error?: string; conflict?: boolean }> {
     const supabase = await createAdminClient()
 
-    const { error } = await supabase
+    // Only the waiter who took it (or an unclaimed request) may mark it served.
+    let query = supabase
         .from('service_requests')
         .update({
             status: 'completed',
             completed_at: new Date().toISOString(),
         })
         .eq('id', requestId)
+        .neq('status', 'completed')
+
+    if (userId) query = query.or(`acknowledged_by.eq.${userId},acknowledged_by.is.null`)
+
+    const { data, error } = await query.select('id')
 
     if (error) {
         return { success: false, error: 'Failed to complete request.' }
+    }
+    if (!data || data.length === 0) {
+        return { success: false, conflict: true, error: 'Only the waiter who took this can mark it served' }
     }
     return { success: true }
 }
