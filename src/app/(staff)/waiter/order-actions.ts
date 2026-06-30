@@ -188,6 +188,14 @@ export async function markCashPaid(
     // 4. Close session if all orders in session are now paid
     let tableClosed = false
     if (order.session_id) {
+        // The customer's "send a waiter to collect cash" request is now fulfilled.
+        await supabase
+            .from('service_requests')
+            .update({ status: 'completed', completed_at: new Date().toISOString() })
+            .eq('session_id', order.session_id)
+            .eq('request_type', 'request_bill')
+            .in('status', ['pending', 'acknowledged'])
+
         const { count: unpaidCount } = await supabase
             .from('orders')
             .select('id', { count: 'exact', head: true })
@@ -285,6 +293,14 @@ export async function markDeliveredAndCashPaid(
 
     let tableClosed = false
     if (order.session_id) {
+        // The customer's "send a waiter to collect cash" request is now fulfilled.
+        await supabase
+            .from('service_requests')
+            .update({ status: 'completed', completed_at: now })
+            .eq('session_id', order.session_id)
+            .eq('request_type', 'request_bill')
+            .in('status', ['pending', 'acknowledged'])
+
         const { count: unpaidCount } = await supabase
             .from('orders')
             .select('id', { count: 'exact', head: true })

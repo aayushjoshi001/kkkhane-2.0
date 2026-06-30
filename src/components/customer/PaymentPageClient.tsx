@@ -7,6 +7,7 @@ import { useCurrency } from '@/lib/contexts/FeatureContext'
 import PromoCodeInput from './PromoCodeInput'
 import LoyaltyPanel from './LoyaltyPanel'
 import OrderPaymentSection from './OrderPaymentSection'
+import CashPaymentChoice from './CashPaymentChoice'
 import OrderSplitBillSection from './OrderSplitBillSection'
 import SplitBillModal from './SplitBillModal'
 import { updateOrderPaymentDetails } from '@/app/(public)/t/[tableSlug]/order/[orderId]/payment/actions'
@@ -213,6 +214,15 @@ export default function PaymentPageClient({
                             paymentQrUrl={restaurantInfo?.payment_qr_url || null}
                             paymentQrLabel={restaurantInfo?.payment_qr_label || null}
                         />
+
+                        {/* Cash: pay at counter, or send a waiter to collect (dine-in only) */}
+                        {order.session_id && (
+                            <CashPaymentChoice
+                                sessionId={order.session_id}
+                                restaurantId={restaurantId}
+                                totalAmount={total}
+                            />
+                        )}
 
                         {order.session_id && features?.splitBillingEnabled && (
                             <div className="flex gap-2">
