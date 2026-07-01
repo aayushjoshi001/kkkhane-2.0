@@ -1,6 +1,6 @@
-﻿'use client'
+'use client'
 
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { playNewOrder } from '@/lib/audio'
@@ -9,7 +9,7 @@ import { timeAgo } from '@/lib/utils'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { Bell, Hourglass, Flame, ChefHat, ChevronDown, CheckSquare, Square, Check, Clock } from 'lucide-react'
 import type { OrderStatus, OrderItemStatus, Order, OrderItem, OrderItemModifier, MenuItem, Session, Table } from '@/types/database'
-import { setOrderItemsStatus } from '@/app/(staff)/kitchen/actions'
+import { setOrderItemsStatus, getKitchenOrders } from '@/app/(staff)/kitchen/actions'
 import { rollUpOrderStatus } from '@/lib/orderRollup'
 import { EmptyState } from '@/components/ui'
 
@@ -70,6 +70,18 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     const money = useCurrency()
     const supabaseRef = useRef(createClient())
 
+    // Resync: fetch fresh orders from DB on mount and whenever the realtime
+    // channel reconnects. This recovers any orders missed during a disconnect
+    // (e.g. logout → login, network blip, token refresh).
+    const resync = useCallback(async () => {
+        const fresh = await getKitchenOrders(restaurantId)
+        setOrders(fresh as unknown as KitchenOrder[])
+    }, [restaurantId])
+
+    useEffect(() => {
+        resync() // always refresh on mount
+    }, [resync])
+
     useEffect(() => {
         const i = setInterval(() => setNow(Date.now()), 10_000)
         return () => clearInterval(i)
@@ -81,7 +93,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
         const needsConfirmation = (payload.new as { needs_confirmation?: boolean } | null)?.needs_confirmation === true
         
         if (payload.eventType === 'INSERT') {
-            // Ignore unconfirmed takeout/delivery orders (they start in pending status)
+            // Skip unconfirmed or takeout/delivery pending orders.
             if (needsConfirmation || (isTakeoutDelivery && payload.new.status === 'pending')) return
             const { data } = await supabaseRef.current.from('orders').select(ORDER_SELECT).eq('id', payload.new.id).single()
             if (!data) return
@@ -93,20 +105,28 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
                 return [...prev, order]
             })
             if (!isNew) return
-            playNewOrder().catch(() => {})
-            const tbl = order.sessions?.tables?.label
-            const isTakeout = order.order_type === 'takeout'
-            const isDelivery = order.order_type === 'delivery'
-            const sourceLabel = isTakeout ? 'Takeaway' : isDelivery ? 'Delivery' : (tbl ? `Table ${tbl}` : 'Order')
-            toast.custom((t) => (
-                <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-white shadow-xl rounded-2xl px-4 py-3 flex items-start gap-3 border-2 border-amber-300`}>
-                    <span className="text-xl mt-0.5">ðŸ””</span>
-                    <div>
-                        <p className="font-bold text-sm text-amber-700">New Order!</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{sourceLabel} Â· {money(order.total_amount)}</p>
-                    </div>
-                </div>
-            ), { duration: 6000, position: 'top-right' })
+            // Delay sound + toast 400ms to avoid false alarms: if needs_confirmation=true
+            // arrives on a follow-up UPDATE the order will be removed before the 400ms fires.
+            setTimeout(() => {
+                setOrders(cur => {
+                    if (!cur.some(o => o.id === order.id)) return cur // already removed — was a false alarm
+                    playNewOrder().catch(() => {})
+                    const tbl = order.sessions?.tables?.label
+                    const isTakeout = order.order_type === 'takeout'
+                    const isDelivery = order.order_type === 'delivery'
+                    const sourceLabel = isTakeout ? 'Takeaway' : isDelivery ? 'Delivery' : (tbl ? `Table ${tbl}` : 'Order')
+                    toast.custom((t) => (
+                        <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-white shadow-xl rounded-2xl px-4 py-3 flex items-start gap-3 border-2 border-amber-300`}>
+                            <span className="text-xl mt-0.5">🔔</span>
+                            <div>
+                                <p className="font-bold text-sm text-amber-700">New Order!</p>
+                                <p className="text-xs text-gray-500 mt-0.5">{sourceLabel} · {money(order.total_amount)}</p>
+                            </div>
+                        </div>
+                    ), { duration: 6000, position: 'top-right' })
+                    return cur
+                })
+            }, 400)
         } else if (payload.eventType === 'UPDATE') {
             const newStatus = payload.new.status as string
             const isTakeoutDeliveryPending = isTakeoutDelivery && newStatus === 'pending'
@@ -141,7 +161,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
                 ), { duration: 6000, position: 'top-right' })
             }
         }
-    })
+    }, resync)
 
     const applyItemStatus = async (orderId: string, itemIds: string[], nextStatus: OrderItemStatus) => {
         if (itemIds.length === 0) return
@@ -173,12 +193,17 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
         for (const o of sorted) {
             const its = o.order_items || []
             const pending = its.filter(i => i.status === 'pending')
-            const preparing = its.filter(i => i.status === 'preparing')
+            // Only show THIS chef's preparing items in the Cooking column.
+            // Other chefs' claimed dishes must be invisible to this staff member —
+            // they appear in those chefs' own Cooking tabs.
+            const myPreparing = its.filter(
+                i => i.status === 'preparing' && (!i.claimed_by || i.claimed_by === userId)
+            )
             if (pending.length) {
                 const aged = now - new Date(o.placed_at).getTime() >= QUEUE_AFTER_MS
                 ;(aged ? queueO : newO).push({ order: o, items: pending })
             }
-            if (preparing.length) cookO.push({ order: o, items: preparing })
+            if (myPreparing.length) cookO.push({ order: o, items: myPreparing })
         }
         return { newO, queueO, cookO }
     }, [orders, now])

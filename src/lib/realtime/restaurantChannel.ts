@@ -25,6 +25,8 @@ export type RealtimeCallback = (payload: ChangePayload) => void
 interface RestaurantEntry {
     channel: RealtimeChannel | null
     tables: Map<string, Set<RealtimeCallback>>
+    /** Callbacks fired whenever the channel (re)connects — used for catch-up fetches. */
+    reconnectCallbacks: Set<() => void>
     refCount: number
     rebuildTimeout: NodeJS.Timeout | null
 }
@@ -49,7 +51,17 @@ function buildChannel(restaurantId: string, entry: RestaurantEntry): RealtimeCha
         )
     }
 
-    channel.subscribe()
+    channel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+            // Channel connected or reconnected — fire all catch-up callbacks so
+            // components can refetch from the DB and recover any missed events.
+            const e = registry.get(restaurantId)
+            if (!e) return
+            for (const cb of Array.from(e.reconnectCallbacks)) {
+                try { cb() } catch { /* one bad callback must not block the rest */ }
+            }
+        }
+    })
     return channel
 }
 
@@ -57,15 +69,19 @@ function buildChannel(restaurantId: string, entry: RestaurantEntry): RealtimeCha
  * Register a callback for INSERT/UPDATE/DELETE on `table`, scoped to the restaurant.
  * Returns an unsubscribe function. Bindings are keyed by table; the standard
  * `restaurant_id=eq.<id>` filter is applied automatically.
+ *
+ * Pass `onReconnect` to be called whenever the realtime channel (re)connects — use
+ * this to do a fresh DB fetch and catch up on events missed during a disconnect.
  */
 export function subscribeRestaurantTable(
     restaurantId: string,
     table: string,
     callback: RealtimeCallback,
+    onReconnect?: () => void,
 ): () => void {
     let entry = registry.get(restaurantId)
     if (!entry) {
-        entry = { channel: null, tables: new Map(), refCount: 0, rebuildTimeout: null }
+        entry = { channel: null, tables: new Map(), reconnectCallbacks: new Set(), refCount: 0, rebuildTimeout: null }
         registry.set(restaurantId, entry)
     }
 
@@ -73,6 +89,8 @@ export function subscribeRestaurantTable(
     if (isNewTable) entry.tables.set(table, new Set())
     entry.tables.get(table)!.add(callback)
     entry.refCount++
+
+    if (onReconnect) entry.reconnectCallbacks.add(onReconnect)
 
     if (isNewTable || !entry.channel) {
         if (entry.rebuildTimeout) clearTimeout(entry.rebuildTimeout)
@@ -138,6 +156,7 @@ export function subscribeRestaurantTable(
                 }, 50)
             }
         }
+        if (onReconnect) e.reconnectCallbacks.delete(onReconnect)
         e.refCount = Math.max(0, e.refCount - 1)
         if (e.refCount === 0) {
             if (e.rebuildTimeout) {

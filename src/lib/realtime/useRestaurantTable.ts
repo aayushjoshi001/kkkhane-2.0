@@ -10,24 +10,34 @@ import { subscribeRestaurantTable, type RealtimeCallback } from './restaurantCha
  *
  * The handler may close over fresh state each render without re-subscribing — only
  * `restaurantId`/`table` drive the subscription lifecycle.
+ *
+ * Pass `onReconnect` to trigger a catch-up DB fetch whenever the realtime channel
+ * (re)connects — essential for recovering orders missed during a disconnect.
  */
 export function useRestaurantTable(
     restaurantId: string | undefined | null,
     table: string,
     handler: RealtimeCallback,
+    onReconnect?: () => void,
 ): void {
     const handlerRef = useRef(handler)
+    const reconnectRef = useRef(onReconnect)
     // Keep the latest handler in a ref (updated after render) so the subscription
     // doesn't need to re-subscribe when the handler identity changes each render.
     useEffect(() => {
         handlerRef.current = handler
+        reconnectRef.current = onReconnect
     })
 
     useEffect(() => {
         if (!restaurantId) return
-        const unsubscribe = subscribeRestaurantTable(restaurantId, table, (payload) => {
-            handlerRef.current(payload)
-        })
+        const unsubscribe = subscribeRestaurantTable(
+            restaurantId,
+            table,
+            (payload) => { handlerRef.current(payload) },
+            reconnectRef.current ? () => reconnectRef.current?.() : undefined,
+        )
         return unsubscribe
     }, [restaurantId, table])
 }
+
