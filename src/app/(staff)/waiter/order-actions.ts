@@ -495,3 +495,83 @@ export async function rejectOrder(
     revalidatePath('/kitchen')
     return { success: true }
 }
+
+/**
+ * Claim a selected subset of ready items for serving.
+ * Sets the claimed_by column on the order_items table to the current waiter.
+ */
+export async function claimOrderItems(
+    orderId: string,
+    itemIds: string[]
+): Promise<{ success?: boolean; error?: string; conflict?: boolean }> {
+    if (itemIds.length === 0) return { error: 'No items selected' }
+    const currentUser = await requireRole('cashier', 'waiter', 'manager', 'super_admin')
+    const supabase = await createAdminClient()
+
+    const { data: updated, error } = await supabase
+        .from('order_items')
+        .update({
+            claimed_by: currentUser.id,
+            claimed_at: new Date().toISOString()
+        })
+        .eq('order_id', orderId)
+        .in('id', itemIds)
+        .eq('status', 'ready')
+        .is('claimed_by', null)
+        .select('id')
+
+    if (error) {
+        console.error('Failed to claim order items:', error)
+        return { error: error.message }
+    }
+
+    if (!updated || updated.length === 0) {
+        return { conflict: true, error: 'Those items were already claimed by another waiter' }
+    }
+
+    // Touch parent order to trigger realtime event
+    await supabase
+        .from('orders')
+        .update({ ready_at: new Date().toISOString() })
+        .eq('id', orderId)
+
+    revalidatePath('/waiter')
+    return { success: true }
+}
+
+/**
+ * Release a waiter claim on a selected subset of items.
+ */
+export async function releaseOrderItems(
+    orderId: string,
+    itemIds: string[]
+): Promise<{ success?: boolean; error?: string }> {
+    if (itemIds.length === 0) return { error: 'No items selected' }
+    const currentUser = await requireRole('cashier', 'waiter', 'manager', 'super_admin')
+    const supabase = await createAdminClient()
+
+    const { error } = await supabase
+        .from('order_items')
+        .update({
+            claimed_by: null,
+            claimed_at: null
+        })
+        .eq('order_id', orderId)
+        .in('id', itemIds)
+        .eq('status', 'ready')
+        .eq('claimed_by', currentUser.id)
+
+    if (error) {
+        console.error('Failed to release order items:', error)
+        return { error: error.message }
+    }
+
+    // Touch parent order to trigger realtime event
+    await supabase
+        .from('orders')
+        .update({ ready_at: new Date().toISOString() })
+        .eq('id', orderId)
+
+    revalidatePath('/waiter')
+    return { success: true }
+}

@@ -9,8 +9,8 @@ import WaiterTakeoutFeed from '@/components/waiter/WaiterTakeoutFeed'
 import WaiterDeliveryFeed from '@/components/waiter/WaiterDeliveryFeed'
 import { getReadyDeliveries } from '@/app/api/takeout/actions'
 import CashPaymentFeed, { type UnpaidOrder } from '@/components/waiter/CashPaymentFeed'
-import ActiveSessionsList from '@/components/waiter/ActiveSessionsList'
 import WaiterTabs from '@/components/waiter/WaiterTabs'
+import WaiterOrdersTabs from '@/components/waiter/WaiterOrdersTabs'
 import { getRestaurantFeatures } from '@/lib/features'
 import { TAKEOUT_ORDER_SELECT, mapOrderRowToTakeout, type TakeoutOrderRow } from '@/lib/takeout'
 import type { TakeoutOrder } from '@/types/database'
@@ -139,25 +139,7 @@ export default async function WaiterPage() {
 
     // Floor stats calculations removed because we removed the Stats bar.
 
-    // Active sessions list data
-    const tablesMap: Record<string, string> = Object.fromEntries(mappedTables.map(t => [t.id, t.label]))
-    const activeSessionEntries = mappedTables
-        .filter(t => t.activeSession)
-        .map(t => {
-            const session = t.activeSession!
-            const sessionOrders = (activeOrders || []).filter(
-                o => o.session_id === session.id && !['delivered', 'cancelled'].includes(o.status)
-            )
-            return {
-                tableId: t.id,
-                tableLabel: t.label,
-                sessionId: session.id,
-                openedAt: session.opened_at ?? now,
-                orderCount: sessionOrders.length,
-                totalAmount: sessionOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0),
-            }
-        })
-        .sort((a, b) => a.tableLabel.localeCompare(b.tableLabel, undefined, { numeric: true }))
+    // Unused active session list data removed.
 
     // Counts for tabs
     const spaceCount = 0 // Not typically badgered
@@ -166,12 +148,7 @@ export default async function WaiterPage() {
     const billingCount = (unpaidDelivered?.length || 0) + (paymentClaims?.length || 0)
 
     const spaceContent = (
-        <div className="space-y-6 pt-4">
-            <ActiveSessionsList
-                initialEntries={activeSessionEntries}
-                tablesMap={tablesMap}
-                restaurantId={restaurantId}
-            />
+        <div className="space-y-6 pt-1">
             <TableManager
                 initialTables={mappedTables as unknown as TableWithSession[]}
                 restaurantId={restaurantId}
@@ -183,41 +160,56 @@ export default async function WaiterPage() {
         </div>
     )
 
+    const dineInCount = (activeOrders || []).filter(o => o.status === 'ready').length + (ordersToConfirm?.length || 0)
+    const takeawayCount = (readyTakeouts || []).length + readyDeliveries.length
+
     const ordersContent = (
-        <div className="space-y-6 pt-4">
-            {false && (
-                <OrderConfirmFeed
-                    initialOrders={(ordersToConfirm || []) as unknown as ConfirmOrder[]}
-                    restaurantId={restaurantId}
-                    userId={userId}
-                    staffNames={staffNames}
-                />
-            )}
-            <WaiterOrderFeed
-                initialOrders={(activeOrders || []) as unknown as WaiterOrder[]}
-                restaurantId={restaurantId}
-                userId={userId}
-                staffNames={staffNames}
+        <div className="space-y-6 pt-1">
+            <WaiterOrdersTabs
+                dineInCount={dineInCount}
+                takeawayCount={takeawayCount}
+                dineInFeed={
+                    <>
+                        {false && (
+                            <OrderConfirmFeed
+                                initialOrders={(ordersToConfirm || []) as unknown as ConfirmOrder[]}
+                                restaurantId={restaurantId}
+                                userId={userId}
+                                staffNames={staffNames}
+                            />
+                        )}
+                        <WaiterOrderFeed
+                            initialOrders={(activeOrders || []) as unknown as WaiterOrder[]}
+                            restaurantId={restaurantId}
+                            userId={userId}
+                            staffNames={staffNames}
+                        />
+                    </>
+                }
+                takeoutFeed={
+                    features?.takeoutEnabled && (
+                        <WaiterTakeoutFeed
+                            initialOrders={((readyTakeouts || []) as unknown as TakeoutOrderRow[]).map(mapOrderRowToTakeout)}
+                            restaurantId={restaurantId}
+                        />
+                    )
+                }
+                deliveryFeed={
+                    features?.takeoutEnabled && (
+                        <WaiterDeliveryFeed
+                            initialOrders={readyDeliveries}
+                            restaurantId={restaurantId}
+                            userId={userId}
+                            staffNames={staffNames}
+                        />
+                    )
+                }
             />
-            {features?.takeoutEnabled && (
-                <WaiterTakeoutFeed
-                    initialOrders={((readyTakeouts || []) as unknown as TakeoutOrderRow[]).map(mapOrderRowToTakeout)}
-                    restaurantId={restaurantId}
-                />
-            )}
-            {features?.takeoutEnabled && (
-                <WaiterDeliveryFeed
-                    initialOrders={readyDeliveries}
-                    restaurantId={restaurantId}
-                    userId={userId}
-                    staffNames={staffNames}
-                />
-            )}
         </div>
     )
 
     const customerContent = (
-        <div className="space-y-6 pt-4">
+        <div className="space-y-6 pt-1">
             {features?.serviceRequestsEnabled !== false && (
                 <ServiceRequestFeed
                     initialRequests={(serviceRequests || []) as unknown as ServiceRequestWithTable[]}
@@ -230,7 +222,7 @@ export default async function WaiterPage() {
     )
 
     const billingContent = (
-        <div className="space-y-6 pt-4">
+        <div className="space-y-6 pt-1">
             {unpaidDelivered && unpaidDelivered.length > 0 && (
                 <CashPaymentFeed
                     initialOrders={unpaidDelivered as unknown as UnpaidOrder[]}

@@ -87,6 +87,9 @@ export async function setOrderItemsStatus(
     if (nextStatus === 'preparing') {
         updateData.claimed_by = actorUserId ?? null
         updateData.claimed_at = new Date().toISOString()
+    } else if (nextStatus === 'ready') {
+        updateData.claimed_by = null
+        updateData.claimed_at = null
     }
 
     let query = adminSupabase
