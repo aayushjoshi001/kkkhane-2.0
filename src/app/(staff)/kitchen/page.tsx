@@ -1,11 +1,9 @@
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import OrderQueue, { type KitchenOrder, type ComboItemRow } from '@/components/kitchen/OrderQueue'
-import KitchenStats from '@/components/kitchen/KitchenStats'
-import StaffShiftClock from '@/components/shared/StaffShiftClock'
 import { getRestaurantFeatures } from '@/lib/features'
 import TakeoutQueue from '@/components/kitchen/TakeoutQueue'
-import { TAKEOUT_ORDER_SELECT, mapOrderRowToTakeout, type TakeoutOrderRow } from '@/lib/takeout'
+import { TAKEOUT_ORDER_SELECT, mapOrderRowToTakeout } from '@/lib/takeout'
 
 export const revalidate = 0
 
@@ -13,16 +11,10 @@ export default async function KitchenPage() {
     const { id: userId, restaurantId } = await getCurrentUser()
     const adminSupabase = await createAdminClient()
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
     const [
         features,
         { data: activeOrders },
-        { count: completedToday },
         { data: takeoutOrders },
-        { data: activeShift },
-        { data: shiftHistory },
     ] = await Promise.all([
         getRestaurantFeatures(restaurantId),
         adminSupabase
@@ -53,13 +45,6 @@ export default async function KitchenPage() {
             .in('order_type', ['dine_in', 'takeout', 'delivery'])
             .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
             .order('placed_at', { ascending: true }),
-        // Orders completed (delivered) today
-        adminSupabase
-            .from('orders')
-            .select('id', { count: 'exact', head: true })
-            .eq('restaurant_id', restaurantId)
-            .eq('status', 'delivered')
-            .gte('placed_at', today.toISOString()),
         // Takeout Orders
         adminSupabase
             .from('orders')
@@ -68,23 +53,6 @@ export default async function KitchenPage() {
             .in('order_type', ['takeout', 'delivery'])
             .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
             .order('pickup_time', { ascending: true }),
-        // Active shift for clock widget
-        adminSupabase
-            .from('staff_shifts')
-            .select('*')
-            .eq('user_id', userId)
-            .is('clock_out', null)
-            .order('clock_in', { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-        // Recent shift history
-        adminSupabase
-            .from('staff_shifts')
-            .select('*')
-            .eq('user_id', userId)
-            .not('clock_out', 'is', null)
-            .order('clock_in', { ascending: false })
-            .limit(5),
     ])
 
     // Filter active orders for the main kitchen queue:
@@ -97,10 +65,6 @@ export default async function KitchenPage() {
             return o.status !== 'pending'
         }
     })
-
-    const queuedOrders = filteredActiveOrders.filter(o => o.status === 'pending' || o.status === 'confirmed').length
-    const preparingOrders = filteredActiveOrders.filter(o => o.status === 'preparing').length
-    const readyOrders = filteredActiveOrders.filter(o => o.status === 'ready').length
 
     // Names for per-dish chef ownership labels ("👤 Ram") on the cooking column.
     const { data: staff } = await adminSupabase
@@ -126,33 +90,9 @@ export default async function KitchenPage() {
     }
 
     return (
-        <div className="h-full flex flex-col overflow-hidden bg-dark-surface">
-            {/* Kitchen Stats — always-visible at-a-glance bar */}
-            <div className="shrink-0 border-b border-dark-border px-3 md:px-6 py-3 md:py-4 print:hidden">
-                <KitchenStats
-                    queuedOrders={queuedOrders}
-                    preparingOrders={preparingOrders}
-                    readyOrders={readyOrders}
-                    completedToday={completedToday || 0}
-                    restaurantId={restaurantId}
-                />
-            </div>
-
-            {/* Shift clock — only shown when staffShiftsEnabled */}
-            {features?.staffShiftsEnabled && (
-                <div className="px-4 pt-4 shrink-0 print:hidden w-full max-w-xs">
-                    <StaffShiftClock
-                        userId={userId}
-                        restaurantId={restaurantId}
-                        initialShift={activeShift || null}
-                        initialHistory={shiftHistory || []}
-                        dark
-                    />
-                </div>
-            )}
-
+        <div className="h-full flex flex-col overflow-hidden bg-[#FBF7F3]">
             {/* Order Queue and Takeout */}
-            <div className="flex-1 overflow-hidden flex flex-col gap-4 mt-4">
+            <div className="flex-1 overflow-hidden flex flex-col gap-4">
                 <div className="flex-1 overflow-hidden">
                     <OrderQueue
                         initialOrders={filteredActiveOrders as unknown as KitchenOrder[]}
@@ -164,7 +104,7 @@ export default async function KitchenPage() {
                 </div>
                 
                 {/* Takeout Queue at the bottom */}
-                <div className="h-1/3 shrink-0 border-t border-dark-border">
+                <div className="h-1/3 shrink-0 border-t border-gray-100 bg-white px-4 py-3">
                     <TakeoutQueue restaurantId={restaurantId} initialOrders={(takeoutOrders || []).map(mapOrderRowToTakeout)} />
                 </div>
             </div>
