@@ -407,12 +407,16 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
             {!collapsed && (
                 <div className="px-4 pb-4">
                     {/* Select-all + action (New/Queue) */}
-                    {!isCooking && items.length > 1 && (
+                    {!isCooking && items.length > 0 && (
                         <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-100">
-                            <button onClick={toggleAll} className="flex items-center gap-2 text-xs font-bold text-gray-500">
-                                {allSel ? <CheckSquare size={16} style={{ color: meta.accent }} /> : <Square size={16} className="text-gray-300" />}
-                                Select All Dishes
-                            </button>
+                            {items.length > 1 ? (
+                                <button onClick={toggleAll} className="flex items-center gap-2 text-xs font-bold text-gray-500">
+                                    {allSel ? <CheckSquare size={16} style={{ color: meta.accent }} /> : <Square size={16} className="text-gray-300" />}
+                                    Select All Dishes
+                                </button>
+                            ) : (
+                                <div />
+                            )}
                             <CookButton accent={meta.accent} count={selIds.length} busy={busy} disabled={selIds.length === 0} onClick={() => run('preparing')} />
                         </div>
                     )}

@@ -314,8 +314,7 @@ export async function placeOrder(
         //   • Mode 1 (direct): deduct stock now; the kitchen sees the order immediately.
         //   • Mode 2 (waiter confirmation): flag the order as needs_confirmation so the
         //     kitchen hides it, and defer stock deduction until a waiter confirms.
-        const requireConfirmation =
-            (features as { waiterOrderConfirmation?: boolean } | null)?.waiterOrderConfirmation === true
+        const requireConfirmation = false
 
         const pricingResult = await supabase.rpc('apply_pricing_rules_to_order', { p_order_id: result.order_id })
         if (pricingResult.error) {

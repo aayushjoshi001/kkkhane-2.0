@@ -209,7 +209,7 @@ export default async function WaiterPage() {
 
     const ordersContent = (
         <div className="space-y-6 pt-4">
-            {features?.waiterOrderConfirmation && (
+            {false && (
                 <OrderConfirmFeed
                     initialOrders={(ordersToConfirm || []) as unknown as ConfirmOrder[]}
                     restaurantId={restaurantId}
