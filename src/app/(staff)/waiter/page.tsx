@@ -2,14 +2,12 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import TableManager, { type TableWithSession } from '@/components/waiter/TableManager'
 import ServiceRequestFeed, { type ServiceRequestWithTable } from '@/components/waiter/ServiceRequestFeed'
-import StaffShiftClock from '@/components/shared/StaffShiftClock'
 import PaymentVerificationFeed, { type PaymentClaim } from '@/components/waiter/PaymentVerificationFeed'
 import WaiterOrderFeed, { type WaiterOrder } from '@/components/waiter/WaiterOrderFeed'
 import OrderConfirmFeed, { type ConfirmOrder } from '@/components/waiter/OrderConfirmFeed'
 import WaiterTakeoutFeed from '@/components/waiter/WaiterTakeoutFeed'
 import WaiterDeliveryFeed from '@/components/waiter/WaiterDeliveryFeed'
 import { getReadyDeliveries } from '@/app/api/takeout/actions'
-import FloorStats from '@/components/waiter/FloorStats'
 import CashPaymentFeed, { type UnpaidOrder } from '@/components/waiter/CashPaymentFeed'
 import ActiveSessionsList from '@/components/waiter/ActiveSessionsList'
 import WaiterTabs from '@/components/waiter/WaiterTabs'
@@ -56,8 +54,6 @@ export default async function WaiterPage() {
     const [
         features,
         { data: serviceRequests },
-        { data: activeShift },
-        { data: shiftHistory },
         { data: paymentClaims },
         { data: activeOrders },
         { data: readyTakeouts },
@@ -71,21 +67,6 @@ export default async function WaiterPage() {
             .in('status', ['pending', 'acknowledged'])
             .order('created_at', { ascending: false })
             .limit(20),
-        adminSupabase
-            .from('staff_shifts')
-            .select('*')
-            .eq('user_id', userId)
-            .is('clock_out', null)
-            .order('clock_in', { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-        adminSupabase
-            .from('staff_shifts')
-            .select('*')
-            .eq('user_id', userId)
-            .not('clock_out', 'is', null)
-            .order('clock_in', { ascending: false })
-            .limit(5),
         adminSupabase
             .from('payment_verifications')
             .select('*')
@@ -156,12 +137,7 @@ export default async function WaiterPage() {
         (staffRows || []).map(u => [u.id, u.full_name])
     )
 
-    // Floor stats for the top bar
-    const occupiedTables = mappedTables.filter(t => t.activeSession).length
-    const totalTables = mappedTables.length
-    const readyOrders = (activeOrders || []).filter(o => o.status === 'ready').length
-    const kitchenOrders = (activeOrders || []).filter(o => o.status === 'preparing' || o.status === 'confirmed' || o.status === 'pending').length
-    const pendingRequests = (serviceRequests || []).filter(r => r.status === 'pending').length
+    // Floor stats calculations removed because we removed the Stats bar.
 
     // Active sessions list data
     const tablesMap: Record<string, string> = Object.fromEntries(mappedTables.map(t => [t.id, t.label]))
@@ -185,8 +161,8 @@ export default async function WaiterPage() {
 
     // Counts for tabs
     const spaceCount = 0 // Not typically badgered
-    const ordersCount = readyOrders + (ordersToConfirm?.length || 0) + (readyTakeouts?.length || 0) + readyDeliveries.length
-    const customerCount = pendingRequests
+    const ordersCount = (activeOrders || []).filter(o => o.status === 'ready').length + (ordersToConfirm?.length || 0) + (readyTakeouts?.length || 0) + readyDeliveries.length
+    const customerCount = (serviceRequests || []).filter(r => r.status === 'pending').length
     const billingCount = (unpaidDelivered?.length || 0) + (paymentClaims?.length || 0)
 
     const spaceContent = (
@@ -273,18 +249,6 @@ export default async function WaiterPage() {
 
     return (
         <div className="flex flex-col min-h-[calc(100vh-4rem)] md:min-h-[calc(100vh-5rem)]">
-            {/* Shift Clock placed at the top for easy access */}
-            {features?.staffShiftsEnabled && (
-                <div className="pb-4">
-                    <StaffShiftClock
-                        userId={userId}
-                        restaurantId={restaurantId}
-                        initialShift={activeShift || null}
-                        initialHistory={shiftHistory || []}
-                    />
-                </div>
-            )}
-
             <div className="flex-1 px-3 md:px-6 pb-3 md:pb-6">
                 <WaiterTabs
                     spaceContent={spaceContent}
@@ -297,16 +261,6 @@ export default async function WaiterPage() {
                         customer: customerCount,
                         billing: billingCount
                     }}
-                    floorStatsElement={
-                        <FloorStats
-                            occupiedTables={occupiedTables}
-                            totalTables={totalTables}
-                            readyOrders={readyOrders}
-                            kitchenOrders={kitchenOrders}
-                            pendingRequests={pendingRequests}
-                            restaurantId={restaurantId}
-                        />
-                    }
                 />
             </div>
         </div>
