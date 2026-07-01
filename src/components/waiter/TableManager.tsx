@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { openSession, closeSession, setTableStatus, claimTableCleaning, releaseTableCleaning, markTableClean } from '@/app/(staff)/waiter/actions'
-import { Users, QrCode, PowerOff, Power, Sparkles, CalendarClock, UtensilsCrossed, Footprints, Check, X } from 'lucide-react'
+import { Users, QrCode, PowerOff, Power, Sparkles, CalendarClock, UtensilsCrossed, Footprints, Check, X, Flame } from 'lucide-react'
 import type { Table, Session } from '@/types/database'
 import { QRCodeSVG } from 'qrcode.react'
 import { toast } from 'react-hot-toast'
@@ -23,6 +24,14 @@ const STATUS_CONFIG = {
 function getEffectiveStatus(table: TableWithSession): string {
     if (table.activeSession) return 'active'
     return table.table_status || 'available'
+}
+
+function getFontSizeClass(label: string): string {
+    const len = label.length
+    if (len <= 3) return 'text-xl sm:text-2xl md:text-3xl'
+    if (len <= 6) return 'text-lg sm:text-xl md:text-2xl'
+    if (len <= 10) return 'text-sm sm:text-base md:text-lg'
+    return 'text-xs sm:text-sm md:text-base'
 }
 
 export default function TableManager({ initialTables, restaurantId, appUrl, initialOrders = [], userId, staffNames = {} }: {
@@ -48,6 +57,36 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
     // Use actual browser origin so QR codes encode the live URL, not localhost
     const [baseUrl, setBaseUrl] = useState(appUrl)
     useEffect(() => { setBaseUrl(window.location.origin) }, [])
+
+    const [mounted, setMounted] = useState(false)
+    useEffect(() => { setMounted(true) }, [])
+
+    const [filter, setFilter] = useState<'all' | 'available' | 'reserved' | 'occupied' | 'dirty'>('all')
+
+    const counts = useMemo(() => {
+        let all = tables.length
+        let available = 0
+        let reserved = 0
+        let occupied = 0
+        let dirty = 0
+        for (const t of tables) {
+            const status = getEffectiveStatus(t)
+            if (status === 'active') occupied++
+            else if (status === 'dirty') dirty++
+            else if (status === 'reserved') reserved++
+            else available++
+        }
+        return { all, available, reserved, occupied, dirty }
+    }, [tables])
+
+    const filteredTables = useMemo(() => {
+        if (filter === 'all') return tables
+        return tables.filter(t => {
+            const status = getEffectiveStatus(t)
+            if (filter === 'occupied') return status === 'active'
+            return status === filter
+        })
+    }, [tables, filter])
 
     useRestaurantTable(restaurantId, 'orders', (payload) => {
         if (payload.eventType === 'INSERT') {
@@ -177,106 +216,158 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
     }
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-            {/* Table Grid */}
-            <div className="lg:col-span-2 overflow-hidden rounded-[24px] border border-hairline bg-surface shadow-[0_8px_30px_rgb(0,0,0,0.03)]">
-                <div className="px-5 py-4 border-b border-hairline flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <UtensilsCrossed size={15} className="text-ink-subtle" />
-                        <h2 className="text-h3 text-ink">Floor Plan</h2>
-                    </div>
-                    <div className="flex items-center gap-3 text-caption text-ink-subtle">
-                        {Object.entries(STATUS_CONFIG).filter(([k]) => k !== 'available').map(([key, cfg]) => (
-                            <span key={key} className="flex items-center gap-1">
-                                <span className={`w-2 h-2 rounded-full ${cfg.dot.replace(' animate-pulse', '')}`} />
-                                {cfg.label}
-                            </span>
-                        ))}
-                        <span className="flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-ink-subtle" />Available
-                        </span>
-                    </div>
-                </div>
-
-                <div className="p-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                    {tables.map(table => {
-                        const status = getEffectiveStatus(table)
-                        const cfg = STATUS_CONFIG[status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.available
-                        const isSelected = selectedTable?.id === table.id
-
-                        // Traffic light: order pipeline status for this table's session
-                        const sessionId = table.activeSession?.id ?? null
-                        const sessionOrders = sessionId
-                            ? Object.values(orderStatuses).filter(o => o.session_id === sessionId && !['delivered', 'cancelled'].includes(o.status))
-                            : []
-                        const orderLight = sessionOrders.some(o => o.status === 'ready')
-                            ? 'ready'
-                            : sessionOrders.some(o => o.status === 'preparing' || o.status === 'confirmed')
-                                ? 'preparing'
-                                : sessionOrders.length > 0 ? 'pending' : null
-
-                        const trafficLight = {
-                            ready:    { dot: 'bg-success animate-pulse', label: '● Ready',   cls: 'text-success-fg' },
-                            preparing:{ dot: 'bg-info animate-pulse',    label: '● Cooking', cls: 'text-info-fg' },
-                            pending:  { dot: 'bg-warning',               label: '● Waiting', cls: 'text-warning-fg' },
+        <div className="flex flex-col gap-4 w-full">
+            {/* Sticky Sub-tabs / Filters */}
+            <div className="sticky top-28 z-20 bg-canvas -mx-3 px-3 md:mx-0 md:px-0 py-2 border-b border-hairline flex items-center w-full justify-center">
+                <div className="grid grid-cols-5 gap-1.5 sm:gap-2.5 w-full">
+                    {(['all', 'available', 'reserved', 'dirty', 'occupied'] as const).map((key) => {
+                        const isActive = filter === key
+                        const label = key === 'all' ? 'ALL' : key.charAt(0).toUpperCase() + key.slice(1)
+                        const count = counts[key]
+                        
+                        // Color scheme for active states
+                        const activeColors = {
+                            all: 'bg-[var(--color-primary)] text-white',
+                            available: 'bg-emerald-500 text-white',
+                            reserved: 'bg-blue-500 text-white',
+                            occupied: 'bg-orange-500 text-white',
+                            dirty: 'bg-amber-500 text-white',
                         }
-                        const tl = orderLight ? trafficLight[orderLight] : null
-
-                        return (
+                        
+                         return (
                             <button
-                                key={table.id}
-                                onClick={() => setSelectedTable(isSelected ? null : table)}
-                                className={`relative aspect-square rounded-[20px] border flex flex-col items-center justify-center transition-all duration-300 ${cfg.card} ${
-                                    isSelected ? 'ring-2 ring-offset-2 ring-brand-500 scale-[1.02] z-10 shadow-[0_8px_20px_rgb(251,99,3,0.15)] bg-white' : 'hover:-translate-y-1 hover:shadow-md hover:bg-white active:scale-95'
+                                key={key}
+                                onClick={() => setFilter(key)}
+                                className={`relative flex items-center justify-center py-2 px-1 sm:py-2.5 sm:px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 w-full whitespace-nowrap ${
+                                    isActive 
+                                        ? activeColors[key] 
+                                        : 'bg-white border border-hairline text-gray-500 hover:bg-gray-50 hover:text-gray-700 shadow-sm'
                                 }`}
                             >
-                                <span className="text-[28px] font-black tracking-tight text-ink">{table.label}</span>
-                                {table.capacity && (
-                                    <span className="flex items-center gap-0.5 text-caption text-ink-subtle mt-0.5">
-                                        <Users size={9} />{table.capacity}
-                                    </span>
+                                <span>{label}</span>
+                                {count > 0 && (
+                                    <div className="absolute -top-2.5 -right-2.5 w-6 h-6 flex items-center justify-center pointer-events-none">
+                                        <Flame 
+                                            size={22} 
+                                            className="transition-all fill-[#EA580C] text-[#EA580C]" 
+                                        />
+                                        <span className="absolute text-[8.5px] font-black tracking-tighter pt-1.5 text-white">
+                                            {count}
+                                        </span>
+                                    </div>
                                 )}
-                                {tl ? (
-                                    <span className={`text-[9px] font-bold mt-0.5 ${tl.cls}`}>{tl.label}</span>
-                                ) : cfg.label ? (
-                                    <span className={`text-[9px] font-bold uppercase tracking-wide mt-0.5 ${cfg.labelCls}`}>{cfg.label}</span>
-                                ) : null}
-                                {/* Session status dot (top-right) */}
-                                <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${cfg.dot}`} />
-                                {/* Order traffic light dot (top-left) */}
-                                {tl && <span className={`absolute top-1.5 left-1.5 w-2 h-2 rounded-full ${tl.dot}`} />}
                             </button>
                         )
                     })}
                 </div>
             </div>
 
-            {/* Action Panel */}
-            <div className="overflow-hidden sticky top-20 h-fit rounded-[24px] border border-hairline bg-surface shadow-[0_8px_30px_rgb(0,0,0,0.06)]">
-                {selectedTable ? (
-                    <div>
-                        <div className="px-5 py-4 border-b border-hairline">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <h3 className="text-h3 text-ink">Table {selectedTable.label}</h3>
-                                    <p className="text-caption text-ink-subtle mt-0.5">
-                                        {selectedTable.activeSession
-                                            ? 'Occupied'
-                                            : selectedTable.table_status === 'dirty'
-                                                ? 'Needs cleaning'
-                                                : selectedTable.table_status === 'reserved'
-                                                    ? 'Reserved'
-                                                    : 'Available'}
-                                    </p>
-                                </div>
-                                <div className={`w-3 h-3 rounded-full ${(STATUS_CONFIG[getEffectiveStatus(selectedTable) as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.available).dot}`} />
+            {/* Table Grid (Full Width) */}
+            <div className="overflow-hidden rounded-[24px] border border-hairline bg-surface shadow-[0_8px_30px_rgb(0,0,0,0.03)] w-full">
+
+
+                <div className="p-5 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-4">
+                    {filteredTables.length === 0 ? (
+                        <div className="col-span-full py-12">
+                            <EmptyState
+                                title="No tables found"
+                                description={`There are no tables currently marked as ${filter}.`}
+                                icon={UtensilsCrossed}
+                            />
+                        </div>
+                    ) : (
+                        filteredTables.map(table => {
+                            const status = getEffectiveStatus(table)
+                            const cfg = STATUS_CONFIG[status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.available
+                            const isSelected = selectedTable?.id === table.id
+
+                            // Traffic light: order pipeline status for this table's session
+                            const sessionId = table.activeSession?.id ?? null
+                            const sessionOrders = sessionId
+                                ? Object.values(orderStatuses).filter(o => o.session_id === sessionId && !['delivered', 'cancelled'].includes(o.status))
+                                : []
+                            const orderLight = sessionOrders.some(o => o.status === 'ready')
+                                ? 'ready'
+                                : sessionOrders.some(o => o.status === 'preparing' || o.status === 'confirmed')
+                                    ? 'preparing'
+                                    : sessionOrders.length > 0 ? 'pending' : null
+
+                            const trafficLight = {
+                                ready:    { dot: 'bg-success animate-pulse', label: '● Ready',   cls: 'text-success-fg' },
+                                preparing:{ dot: 'bg-info animate-pulse',    label: '● Cooking', cls: 'text-info-fg' },
+                                pending:  { dot: 'bg-warning',               label: '● Waiting', cls: 'text-warning-fg' },
+                            }
+                            const tl = orderLight ? trafficLight[orderLight] : null
+
+                            return (
+                                <button
+                                    key={table.id}
+                                    onClick={() => setSelectedTable(isSelected ? null : table)}
+                                    className={`relative aspect-square rounded-[20px] border flex flex-col items-center justify-center transition-all duration-300 ${cfg.card} ${
+                                        isSelected ? 'ring-2 ring-offset-2 ring-brand-500 scale-[1.02] z-10 shadow-[0_8px_20px_rgb(251,99,3,0.15)] bg-white' : 'hover:-translate-y-1 hover:shadow-md hover:bg-white active:scale-95'
+                                    }`}
+                                >
+                                    <span className={`${getFontSizeClass(table.label || '')} font-extrabold tracking-tight text-ink leading-tight text-center break-words max-w-full px-1.5`}>
+                                        {table.label}
+                                    </span>
+                                    {table.capacity && (
+                                        <span className="flex items-center gap-0.5 text-caption text-ink-subtle mt-0.5">
+                                            <Users size={9} />{table.capacity}
+                                        </span>
+                                    )}
+                                    {tl ? (
+                                        <span className={`text-[9px] font-bold mt-0.5 ${tl.cls}`}>{tl.label}</span>
+                                    ) : cfg.label ? (
+                                        <span className={`text-[9px] font-bold uppercase tracking-wide mt-0.5 ${cfg.labelCls}`}>{cfg.label}</span>
+                                    ) : null}
+                                    {/* Session status dot (top-right) */}
+                                    <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${cfg.dot}`} />
+                                    {/* Order traffic light dot (top-left) */}
+                                    {tl && <span className={`absolute top-1.5 left-1.5 w-2 h-2 rounded-full ${tl.dot}`} />}
+                                </button>
+                            )
+                        })
+                    )}
+                </div>
+            </div>
+
+            {/* Modal Overlay for Table Management */}
+            {mounted && selectedTable && createPortal(
+                <div 
+                    className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-all duration-300"
+                    onClick={() => setSelectedTable(null)}
+                >
+                    <div 
+                        className="bg-white rounded-[24px] border border-hairline shadow-2xl w-full max-w-md overflow-hidden transform transition-all"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-gray-50/50">
+                            <div>
+                                <h3 className="text-h3 font-black text-gray-900">Table {selectedTable.label}</h3>
+                                <p className="text-caption text-ink-subtle mt-0.5">
+                                    {selectedTable.activeSession
+                                        ? 'Occupied'
+                                        : selectedTable.table_status === 'dirty'
+                                            ? 'Needs cleaning'
+                                            : selectedTable.table_status === 'reserved'
+                                                ? 'Reserved'
+                                                : 'Available'}
+                                </p>
                             </div>
+                            <button 
+                                onClick={() => setSelectedTable(null)}
+                                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition text-gray-400 hover:text-gray-700"
+                            >
+                                <X size={18} />
+                            </button>
                         </div>
 
-                        <div className="p-5">
+                        {/* Content */}
+                        <div className="p-6">
                             {selectedTable.activeSession ? (
                                 <div className="space-y-4">
-                                    <div className="flex justify-center p-4 bg-surface-muted rounded-[var(--r-md)] border border-hairline">
+                                    <div className="flex justify-center p-4 bg-gray-50 rounded-[var(--r-md)] border border-hairline">
                                         <QRCodeSVG
                                             value={`${baseUrl}/t/${selectedTable.qr_token}?s=${selectedTable.activeSession.session_token}`}
                                             size={180}
@@ -290,15 +381,16 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                         block
                                         icon={PowerOff}
                                         loading={isProcessing}
-                                        onClick={() => handleCloseSession(selectedTable.activeSession!.id)}
+                                        onClick={async () => {
+                                            await handleCloseSession(selectedTable.activeSession!.id)
+                                            setSelectedTable(null)
+                                        }}
                                         className="text-danger-fg border-danger/30 hover:bg-danger-bg"
                                     >
                                         Close Session &amp; Checkout
                                     </Button>
                                 </div>
                             ) : selectedTable.table_status === 'dirty' ? (
-                                // Dirty table — cleaning ownership flow. "I am going" claims it;
-                                // only the claiming waiter may then Mark Clean.
                                 (() => {
                                     const claimedBy = selectedTable.cleaning_claimed_by
                                     const mine = claimedBy === userId
@@ -316,78 +408,91 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                             </div>
 
                                             {!claimedBy && (
-                                                <Button block variant="primary" icon={Footprints} loading={isProcessing} onClick={() => handleClaimCleaning(selectedTable.id)}>
+                                                <Button block variant="primary" icon={Footprints} loading={isProcessing} onClick={async () => {
+                                                    await handleClaimCleaning(selectedTable.id)
+                                                    setSelectedTable(null)
+                                                }}>
                                                     I'm Going to Clean
                                                 </Button>
                                             )}
 
                                             {mine && (
-                                                <div className="space-y-2">
-                                                    <Button block icon={Check} loading={isProcessing} onClick={() => handleMarkClean(selectedTable.id)}>
-                                                        Mark Clean
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <Button block variant="secondary" icon={X} loading={isProcessing} onClick={async () => {
+                                                        await handleReleaseCleaning(selectedTable.id)
+                                                        setSelectedTable(null)
+                                                    }}>
+                                                        Cancel
                                                     </Button>
-                                                    <button
-                                                        onClick={() => handleReleaseCleaning(selectedTable.id)}
-                                                        className="text-caption text-ink-muted hover:text-ink flex items-center gap-1 mx-auto"
-                                                    >
-                                                        <X size={12} /> Release
-                                                    </button>
+                                                    <Button block variant="primary" icon={Check} loading={isProcessing} onClick={async () => {
+                                                        await handleMarkClean(selectedTable.id)
+                                                        setSelectedTable(null)
+                                                    }}>
+                                                        Mark Cleaned
+                                                    </Button>
                                                 </div>
                                             )}
 
                                             {byOther && (
-                                                <p className="text-center text-caption text-ink-muted">Only {staffNames[claimedBy!] || 'the assigned waiter'} can mark this clean.</p>
+                                                <Button block variant="secondary" icon={X} loading={isProcessing} onClick={async () => {
+                                                    await handleReleaseCleaning(selectedTable.id)
+                                                    setSelectedTable(null)
+                                                }}>
+                                                    Force Release Cleaning
+                                                </Button>
                                             )}
                                         </div>
                                     )
                                 })()
                             ) : (
                                 <div className="space-y-4">
-                                    <div className="flex flex-col items-center py-4 text-ink-subtle/40">
-                                        <QrCode size={64} strokeWidth={1} />
-                                        <p className="text-center text-caption text-ink-subtle mt-3">Seat customers and open a session to generate an ordering QR code.</p>
+                                    <div className="flex flex-col items-center py-4 text-[var(--color-primary)]">
+                                        <UtensilsCrossed size={48} strokeWidth={1.5} />
+                                        <p className="text-center text-body font-semibold text-ink mt-3">Open a new guest session for this table</p>
                                     </div>
-                                    <Button
-                                        block
-                                        icon={Power}
-                                        loading={isProcessing}
-                                        onClick={() => handleOpenSession(selectedTable.id)}
-                                    >
+                                    
+                                    <Button block variant="primary" icon={Power} loading={isProcessing} onClick={async () => {
+                                        await handleOpenSession(selectedTable.id)
+                                        setSelectedTable(null)
+                                    }}>
                                         Open Session
                                     </Button>
 
                                     <div className="pt-3 border-t border-hairline">
                                         <p className="text-label text-ink-subtle mb-2">Table Status</p>
-                                        <div className="grid grid-cols-3 gap-2">
-                                            {[
-                                                { status: 'available' as const, icon: <span className="w-2.5 h-2.5 rounded-full bg-ink-subtle block" />, label: 'Clear',   cls: 'border-hairline text-ink-muted hover:bg-surface-muted' },
-                                                { status: 'dirty' as const,     icon: <Sparkles size={12} />,      label: 'Dirty',   cls: 'border-warning/25 text-warning-fg hover:bg-warning-bg' },
-                                                { status: 'reserved' as const,  icon: <CalendarClock size={12} />, label: 'Reserve', cls: 'border-info/25 text-info-fg hover:bg-info-bg' },
-                                            ].map(({ status, icon, label, cls }) => (
-                                                <button
-                                                    key={status}
-                                                    onClick={() => handleSetStatus(selectedTable.id, status)}
-                                                    disabled={isProcessing || (!selectedTable.table_status || selectedTable.table_status === status) && status === 'available'}
-                                                    className={`flex flex-col items-center gap-1 py-2.5 px-1 rounded-[var(--r-md)] border text-caption font-semibold disabled:opacity-40 transition-colors ${cls}`}
-                                                >
-                                                    {icon}{label}
-                                                </button>
-                                            ))}
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {selectedTable.table_status === 'reserved' ? (
+                                                <Button block variant="secondary" icon={X} loading={isProcessing} onClick={async () => {
+                                                    await handleSetStatus(selectedTable.id, 'available')
+                                                    setSelectedTable(null)
+                                                }} className="col-span-2">
+                                                    Release Reservation
+                                                </Button>
+                                            ) : (
+                                                <>
+                                                    <Button block variant="secondary" icon={Sparkles} loading={isProcessing} onClick={async () => {
+                                                        await handleSetStatus(selectedTable.id, 'dirty')
+                                                        setSelectedTable(null)
+                                                    }}>
+                                                        Mark Dirty
+                                                    </Button>
+                                                    <Button block variant="secondary" icon={CalendarClock} loading={isProcessing} onClick={async () => {
+                                                        await handleSetStatus(selectedTable.id, 'reserved')
+                                                        setSelectedTable(null)
+                                                    }}>
+                                                        Mark Reserved
+                                                    </Button>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
                             )}
                         </div>
                     </div>
-                ) : (
-                    <EmptyState
-                        icon={UtensilsCrossed}
-                        title="Select a table"
-                        description="Tap any table to manage it"
-                        className="h-64"
-                    />
-                )}
-            </div>
+                </div>,
+                document.body
+            )}
         </div>
     )
 }

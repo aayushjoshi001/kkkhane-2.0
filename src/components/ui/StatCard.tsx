@@ -48,7 +48,7 @@ export default function StatCard({
     const up = (delta ?? 0) >= 0
     const isSm = size === 'sm'
     return (
-        <Card padding={isSm ? 12 : 20} className={cn(isSm ? 'gap-2' : 'gap-3', 'flex flex-col', className)}>
+        <Card padding={isSm ? false : 20} className={cn(isSm ? 'gap-2 p-3' : 'gap-3', 'flex flex-col', className)}>
             <div className="flex items-start justify-between gap-3">
                 {Icon && (
                     <span className={cn('grid place-items-center rounded-[var(--r-md)]', CHIP[tone], isSm ? 'size-7' : 'size-9')}>

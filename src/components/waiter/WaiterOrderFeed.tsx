@@ -1,10 +1,9 @@
-
 'use client'
 
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
-import { markDeliveredAndCashPaid, markOrderItemsServed, claimOrder, releaseOrder } from '@/app/(staff)/waiter/order-actions'
+import { markDeliveredAndCashPaid, markOrderItemsServed, claimOrder, releaseOrder, claimOrderItems, releaseOrderItems } from '@/app/(staff)/waiter/order-actions'
 import { playOrderReady, playNewOrder } from '@/lib/audio'
 import { playVoice } from '@/lib/voice'
 import { toast } from 'react-hot-toast'
@@ -25,15 +24,15 @@ const ORDER_SELECT = `
   id, status, total_amount, placed_at, ready_at, customer_note, payment_status, session_id,
   claimed_by, claimed_at,
   sessions ( id, tables ( label ) ),
-  order_items ( id, quantity, status, menu_items ( name ) )
+  order_items ( id, quantity, status, claimed_by, menu_items ( name ) )
 ` as const
 
 function tableLabel(order: WaiterOrder) {
     return order.sessions?.tables?.label || '?'
 }
 
-function readyCount(order: WaiterOrder) {
-    return (order.order_items || []).filter(i => i.status === 'ready').length
+function readyCountForUser(order: WaiterOrder, userId: string) {
+    return (order.order_items || []).filter(i => i.status === 'ready' && (!i.claimed_by || i.claimed_by === userId)).length
 }
 
 const STATUS_ORDER: Record<string, number> = { ready: 3, preparing: 2, confirmed: 1, pending: 1 }
@@ -63,8 +62,6 @@ export default function WaiterOrderFeed({ initialOrders, restaurantId, userId, s
             const { data } = await supabase.from('orders').select(ORDER_SELECT).eq('id', payload.new.id).single()
             if (data) {
                 const order = data as unknown as WaiterOrder
-                // Skip replayed/duplicate INSERTs (reconnect, multiple tabs, or a
-                // row already present in initialOrders).
                 if (ordersRef.current.some(o => o.id === order.id)) return
                 setOrders(prev => prev.some(o => o.id === order.id) ? prev : [order, ...prev])
                 playNewOrder().catch(() => {})
@@ -76,7 +73,7 @@ export default function WaiterOrderFeed({ initialOrders, restaurantId, userId, s
                         <span className="text-xl mt-0.5">🛎️</span>
                         <div>
                             <p className="font-bold text-sm text-amber-700">New Order</p>
-                            <p className="text-xs text-ink-subtle mt-0.5">{tbl ? `Table ${tbl}` : 'Takeout'} · {money(order.total_amount)}</p>
+                            <p className="text-xs text-ink-subtle mt-0.5">{tbl ? `Table ${tbl}` : 'Takeout'}</p>
                         </div>
                     </div>
                 ), { duration: 5000, position: 'top-right' })
@@ -91,15 +88,12 @@ export default function WaiterOrderFeed({ initialOrders, restaurantId, userId, s
                 return
             }
 
-            // Refetch the full row — item statuses change without the order leaving
-            // its bucket (e.g. 1 of 3 items just turned ready). Comparing the ready
-            // count before/after tells us whether to alert the floor.
             const { data } = await supabase.from('orders').select(ORDER_SELECT).eq('id', payload.new.id).single()
             if (!data) return
             const fresh = data as unknown as WaiterOrder
             const prev = ordersRef.current.find(o => o.id === fresh.id)
-            const prevReady = prev ? readyCount(prev) : 0
-            const newReady = readyCount(fresh)
+            const prevReady = prev ? readyCountForUser(prev, userId) : 0
+            const newReady = readyCountForUser(fresh, userId)
 
             // Name the specific dishes that just crossed into 'ready' so the waiter
             // knows exactly what to pick up — not just a count.
@@ -133,7 +127,6 @@ export default function WaiterOrderFeed({ initialOrders, restaurantId, userId, s
 
     const handleClaim = async (orderId: string) => {
         setClaimingId(orderId)
-        // Optimistically show it as mine; realtime + server reconcile the truth.
         setOrders(prev => prev.map(o => o.id === orderId ? { ...o, claimed_by: userId, claimed_at: new Date().toISOString() } : o))
         const res = await claimOrder(orderId)
         if (res?.error) {
@@ -151,11 +144,50 @@ export default function WaiterOrderFeed({ initialOrders, restaurantId, userId, s
         if (res?.error) toast.error('Could not release order')
     }
 
+    const handleClaimItems = async (orderId: string, itemIds: string[]) => {
+        if (itemIds.length === 0) return
+        setClaimingId(orderId)
+        const snapshot = ordersRef.current
+        setOrders(prev => prev.map(o => {
+            if (o.id !== orderId) return o
+            const items = (o.order_items || []).map(it =>
+                itemIds.includes(it.id) ? { ...it, claimed_by: userId } : it)
+            return { ...o, order_items: items }
+        }))
+        const res = await claimOrderItems(orderId, itemIds)
+        if (res?.error) {
+            setOrders(snapshot)
+            toast.error(res.error)
+        } else {
+            toast.success('Dishes claimed!')
+        }
+        setClaimingId(null)
+    }
+
+    const handleReleaseItems = async (orderId: string, itemIds: string[]) => {
+        if (itemIds.length === 0) return
+        setClaimingId(orderId)
+        const snapshot = ordersRef.current
+        setOrders(prev => prev.map(o => {
+            if (o.id !== orderId) return o
+            const items = (o.order_items || []).map(it =>
+                itemIds.includes(it.id) ? { ...it, claimed_by: null } : it)
+            return { ...o, order_items: items }
+        }))
+        const res = await releaseOrderItems(orderId, itemIds)
+        if (res?.error) {
+            setOrders(snapshot)
+            toast.error(res.error)
+        } else {
+            toast.success('Claims released!')
+        }
+        setClaimingId(null)
+    }
+
     const handleServeItems = async (orderId: string, itemIds: string[]) => {
         if (itemIds.length === 0) return
         setServingId(orderId)
         const snapshot = ordersRef.current
-        // Optimistically mark the items served and re-bucket the order.
         setOrders(prev => prev
             .map(o => {
                 if (o.id !== orderId) return o
@@ -163,7 +195,6 @@ export default function WaiterOrderFeed({ initialOrders, restaurantId, userId, s
                     itemIds.includes(it.id) ? { ...it, status: 'served' as OrderItemStatus } : it)
                 return { ...o, order_items: items }
             })
-            // If everything is served the order is delivered — drop it from the feed.
             .filter(o => o.id !== orderId || (o.order_items || []).some(it => it.status !== 'served' && it.status !== 'cancelled'))
         )
         const res = await markOrderItemsServed(orderId, itemIds)
@@ -187,35 +218,39 @@ export default function WaiterOrderFeed({ initialOrders, restaurantId, userId, s
         setCashProcessingId(null)
     }
 
-    // Sort: most ready items first, then by status weight, then newest.
+    // Filter live orders list to ONLY show orders containing ready items for this user
+    const visibleOrders = useMemo(() => {
+        return orders.filter(o => readyCountForUser(o, userId) > 0)
+    }, [orders, userId])
+
     const sortedOrders = useMemo(() => {
-        return [...orders].sort((a, b) => {
-            const readyA = readyCount(a), readyB = readyCount(b)
+        return [...visibleOrders].sort((a, b) => {
+            const readyA = readyCountForUser(a, userId), readyB = readyCountForUser(b, userId)
             if (readyA !== readyB) return readyB - readyA
             const scoreA = STATUS_ORDER[a.status] ?? 0
             const scoreB = STATUS_ORDER[b.status] ?? 0
             if (scoreA !== scoreB) return scoreB - scoreA
             return new Date(b.placed_at).getTime() - new Date(a.placed_at).getTime()
         })
-    }, [orders])
+    }, [visibleOrders, userId])
 
-    if (orders.length === 0) {
+    if (visibleOrders.length === 0) {
         return (
             <FeedSection icon={Package} title="Live Orders">
                 <Card padding={24}>
-                    <EmptyState icon={ChefHat} title="No active orders" description="Incoming orders will appear here in real time." />
+                    <EmptyState icon={ChefHat} title="No active orders" description="Incoming ready orders will appear here in real time." />
                 </Card>
             </FeedSection>
         )
     }
 
-    const totalReadyItems = orders.reduce((sum, o) => sum + readyCount(o), 0)
+    const totalReadyItems = visibleOrders.reduce((sum, o) => sum + readyCountForUser(o, userId), 0)
 
     return (
         <FeedSection
             icon={Package}
             title="Live Orders"
-            count={orders.length}
+            count={visibleOrders.length}
             tone="neutral"
             action={totalReadyItems > 0 ? <Badge tone="success" dot>{totalReadyItems} item{totalReadyItems > 1 ? 's' : ''} ready</Badge> : undefined}
         >
@@ -234,6 +269,8 @@ export default function WaiterOrderFeed({ initialOrders, restaurantId, userId, s
                         busy={!!servingId || !!cashProcessingId}
                         onClaim={handleClaim}
                         onRelease={handleRelease}
+                        onClaimItems={handleClaimItems}
+                        onReleaseItems={handleReleaseItems}
                         onServeItems={handleServeItems}
                         onCashAndDeliver={handleCashAndDeliver}
                     />
@@ -243,9 +280,13 @@ export default function WaiterOrderFeed({ initialOrders, restaurantId, userId, s
     )
 }
 
-function itemServeMeta(status: OrderItemStatus) {
+function itemServeMeta(status: OrderItemStatus, isClaimedByMe: boolean) {
+    if (status === 'ready') {
+        return isClaimedByMe 
+            ? { label: 'Serving', color: 'var(--color-primary)' }
+            : { label: 'Ready', color: 'var(--success)' }
+    }
     switch (status) {
-        case 'ready':     return { label: 'Ready', color: 'var(--success)' }
         case 'served':    return { label: 'Served', color: 'var(--ink-muted)' }
         case 'preparing': return { label: 'Cooking', color: 'var(--info)' }
         case 'cancelled': return { label: 'Cancelled', color: 'var(--danger)' }
@@ -256,7 +297,7 @@ function itemServeMeta(status: OrderItemStatus) {
 function WaiterOrderCard({
     order, userId, staffNames, money, now,
     claiming, serving, cashProcessing, busy,
-    onClaim, onRelease, onServeItems, onCashAndDeliver,
+    onClaim, onRelease, onClaimItems, onReleaseItems, onServeItems, onCashAndDeliver,
 }: {
     order: WaiterOrder
     userId: string
@@ -269,14 +310,23 @@ function WaiterOrderCard({
     busy: boolean
     onClaim: (orderId: string) => void
     onRelease: (orderId: string) => void
+    onClaimItems: (orderId: string, itemIds: string[]) => void
+    onReleaseItems: (orderId: string, itemIds: string[]) => void
     onServeItems: (orderId: string, itemIds: string[]) => void
     onCashAndDeliver: (orderId: string) => void
 }) {
     const label = tableLabel(order)
-    const items = useMemo(() => order.order_items || [], [order.order_items])
+    
+    // Only show items that are ready AND (unclaimed or claimed by current user)
+    const items = useMemo(() => {
+        return (order.order_items || []).filter(item => {
+            return item.status === 'ready' && (!item.claimed_by || item.claimed_by === userId)
+        })
+    }, [order.order_items, userId])
+
     const readyItems = useMemo(() => items.filter(i => i.status === 'ready'), [items])
     const hasReady = readyItems.length > 0
-    const allReady = order.status === 'ready' // every item ready (rolled up)
+    const allReady = order.status === 'ready'
 
     const claimedBy = order.claimed_by
     const mineClaim = claimedBy === userId
@@ -286,7 +336,7 @@ function WaiterOrderCard({
     const ts = order.ready_at || order.placed_at
     const isStale = now - new Date(ts).getTime() > STALE_MS
 
-    // Selection over the ready items, defaulting to all (Select All convenience).
+    // Selection over the ready items, defaulting to all.
     const [selected, setSelected] = useState<Set<string>>(() => new Set(readyItems.map(i => i.id)))
     const readyKey = readyItems.map(i => i.id).join(',')
     const prevReadyIdsRef = useRef<string[]>(readyItems.map(i => i.id))
@@ -302,7 +352,6 @@ function WaiterOrderCard({
             return next
         })
         prevReadyIdsRef.current = currentIds
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [readyKey])
 
     const toggle = (id: string) => setSelected(prev => {
@@ -310,9 +359,13 @@ function WaiterOrderCard({
         if (next.has(id)) next.delete(id); else next.add(id)
         return next
     })
+    
     const allSelected = readyItems.length > 0 && readyItems.every(i => selected.has(i.id))
     const toggleAll = () => setSelected(allSelected ? new Set() : new Set(readyItems.map(i => i.id)))
+    
     const selectedReady = readyItems.filter(i => selected.has(i.id)).map(i => i.id)
+    const selectedUnclaimed = readyItems.filter(i => selected.has(i.id) && !i.claimed_by).map(i => i.id)
+    const selectedClaimedByMe = readyItems.filter(i => selected.has(i.id) && i.claimed_by === userId).map(i => i.id)
 
     return (
         <Card padding={false} className={`${hasReady ? 'border-success/30' : ''} ${claimedByOther ? 'opacity-60' : ''}`.trim() || undefined}>
@@ -330,14 +383,13 @@ function WaiterOrderCard({
                         </div>
                     </div>
                     <div className="text-right">
-                        <span className="text-display block text-ink">{money(order.total_amount)}</span>
-                        <span className="text-caption text-ink-muted">{order.payment_status}</span>
+                        <span className="text-caption font-bold text-ink-subtle block uppercase tracking-wider">{order.payment_status}</span>
                     </div>
                 </div>
 
-                {/* Items — ready ones are selectable once the order is claimed by me */}
+                {/* Items list */}
                 <div className="bg-surface-muted rounded-[var(--r-md)] p-3 mb-4">
-                    {mineClaim && readyItems.length > 1 && (
+                    {readyItems.length > 1 && (
                         <button
                             onClick={toggleAll}
                             className="w-full flex items-center gap-2 text-xs font-bold text-ink-subtle pb-2 mb-2 border-b border-ink/10"
@@ -349,8 +401,9 @@ function WaiterOrderCard({
                     )}
                     <ul className="space-y-1.5 text-body">
                         {items.map(item => {
-                            const meta = itemServeMeta(item.status)
-                            const selectable = mineClaim && item.status === 'ready'
+                            const isClaimedByMe = item.claimed_by === userId
+                            const meta = itemServeMeta(item.status, isClaimedByMe)
+                            const selectable = item.status === 'ready' && (!item.claimed_by || isClaimedByMe)
                             const isSel = selected.has(item.id)
                             return (
                                 <li
@@ -382,70 +435,69 @@ function WaiterOrderCard({
                     </div>
                 )}
 
-                {/* Claimed by a colleague */}
-                {claimedByOther && (
-                    <div className="flex items-center justify-between gap-2 pt-2">
-                        <span className="text-small text-ink-subtle flex items-center gap-1.5">
-                            <Footprints size={14} /> {claimerName || 'A colleague'} is on the way
-                        </span>
-                        {hasReady && (
-                            <Button variant="secondary" size="sm" onClick={() => onClaim(order.id)} loading={claiming}>
-                                Take over
-                            </Button>
-                        )}
-                    </div>
-                )}
-
-                {/* Unclaimed but has ready items — first to tap owns the trip */}
-                {!claimedBy && hasReady && (
-                    <div className="pt-2">
-                        <Button variant="primary" size="lg" block onClick={() => onClaim(order.id)} loading={claiming} icon={Footprints}>
-                            I'm Going to Serve
+                {/* Actions */}
+                <div className="pt-2 space-y-2">
+                    {/* 1. Unclaimed items serving action */}
+                    {selectedUnclaimed.length > 0 && (
+                        <Button
+                            variant="primary"
+                            size="lg"
+                            block
+                            onClick={() => onClaimItems(order.id, selectedUnclaimed)}
+                            disabled={claiming || busy}
+                            loading={claiming}
+                            icon={Footprints}
+                        >
+                            I'm serving selected ({selectedUnclaimed.length})
                         </Button>
-                    </div>
-                )}
+                    )}
 
-                {/* Mine — serve selected ready items, or wait on the kitchen */}
-                {mineClaim && (
-                    <div className="pt-2 space-y-2">
-                        {hasReady ? (
+                    {/* 2. Claimed items serving action */}
+                    {selectedClaimedByMe.length > 0 && (
+                        <>
                             <Button
                                 variant="primary"
                                 size="lg"
                                 block
-                                onClick={() => onServeItems(order.id, selectedReady)}
-                                disabled={selectedReady.length === 0 || busy}
+                                onClick={() => onServeItems(order.id, selectedClaimedByMe)}
+                                disabled={serving || busy}
                                 loading={serving}
                                 icon={Utensils}
                             >
-                                Mark Served{selectedReady.length ? ` (${selectedReady.length})` : ''}
+                                Mark Served ({selectedClaimedByMe.length})
                             </Button>
-                        ) : (
-                            <p className="text-small text-ink-subtle flex items-center gap-1.5 justify-center py-1">
-                                <ChefHat size={14} /> Waiting on the kitchen…
-                            </p>
-                        )}
-                        {allReady && (
-                            <Button
-                                variant="secondary"
-                                size="lg"
-                                block
-                                onClick={() => onCashAndDeliver(order.id)}
-                                disabled={busy}
-                                loading={cashProcessing}
-                                icon={Banknote}
+                            <button
+                                onClick={() => onReleaseItems(order.id, selectedClaimedByMe)}
+                                disabled={claiming || busy}
+                                className="text-caption text-ink-muted hover:text-ink flex items-center gap-1 mx-auto"
                             >
-                                Serve all + Take Cash
-                            </Button>
-                        )}
-                        <button
-                            onClick={() => onRelease(order.id)}
-                            className="text-caption text-ink-muted hover:text-ink flex items-center gap-1 mx-auto"
+                                <X size={12} /> Release claim for selected ({selectedClaimedByMe.length})
+                            </button>
+                        </>
+                    )}
+
+                    {/* Wait state */}
+                    {readyItems.length === 0 && (
+                        <p className="text-small text-ink-subtle flex items-center gap-1.5 justify-center py-1">
+                            <ChefHat size={14} /> Waiting on the kitchen…
+                        </p>
+                    )}
+
+                    {/* Deliver / Cash action */}
+                    {allReady && (
+                        <Button
+                            variant="secondary"
+                            size="lg"
+                            block
+                            onClick={() => onCashAndDeliver(order.id)}
+                            disabled={busy}
+                            loading={cashProcessing}
+                            icon={Banknote}
                         >
-                            <X size={12} /> Release claim
-                        </button>
-                    </div>
-                )}
+                            Serve all + Take Cash
+                        </Button>
+                    )}
+                </div>
             </div>
         </Card>
     )

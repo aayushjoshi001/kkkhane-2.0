@@ -2,17 +2,15 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import TableManager, { type TableWithSession } from '@/components/waiter/TableManager'
 import ServiceRequestFeed, { type ServiceRequestWithTable } from '@/components/waiter/ServiceRequestFeed'
-import StaffShiftClock from '@/components/shared/StaffShiftClock'
 import PaymentVerificationFeed, { type PaymentClaim } from '@/components/waiter/PaymentVerificationFeed'
 import WaiterOrderFeed, { type WaiterOrder } from '@/components/waiter/WaiterOrderFeed'
 import OrderConfirmFeed, { type ConfirmOrder } from '@/components/waiter/OrderConfirmFeed'
 import WaiterTakeoutFeed from '@/components/waiter/WaiterTakeoutFeed'
 import WaiterDeliveryFeed from '@/components/waiter/WaiterDeliveryFeed'
 import { getReadyDeliveries } from '@/app/api/takeout/actions'
-import FloorStats from '@/components/waiter/FloorStats'
 import CashPaymentFeed, { type UnpaidOrder } from '@/components/waiter/CashPaymentFeed'
-import ActiveSessionsList from '@/components/waiter/ActiveSessionsList'
 import WaiterTabs from '@/components/waiter/WaiterTabs'
+import WaiterOrdersTabs from '@/components/waiter/WaiterOrdersTabs'
 import { getRestaurantFeatures } from '@/lib/features'
 import { TAKEOUT_ORDER_SELECT, mapOrderRowToTakeout, type TakeoutOrderRow } from '@/lib/takeout'
 import type { TakeoutOrder } from '@/types/database'
@@ -56,8 +54,6 @@ export default async function WaiterPage() {
     const [
         features,
         { data: serviceRequests },
-        { data: activeShift },
-        { data: shiftHistory },
         { data: paymentClaims },
         { data: activeOrders },
         { data: readyTakeouts },
@@ -71,21 +67,6 @@ export default async function WaiterPage() {
             .in('status', ['pending', 'acknowledged'])
             .order('created_at', { ascending: false })
             .limit(20),
-        adminSupabase
-            .from('staff_shifts')
-            .select('*')
-            .eq('user_id', userId)
-            .is('clock_out', null)
-            .order('clock_in', { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-        adminSupabase
-            .from('staff_shifts')
-            .select('*')
-            .eq('user_id', userId)
-            .not('clock_out', 'is', null)
-            .order('clock_in', { ascending: false })
-            .limit(5),
         adminSupabase
             .from('payment_verifications')
             .select('*')
@@ -156,46 +137,18 @@ export default async function WaiterPage() {
         (staffRows || []).map(u => [u.id, u.full_name])
     )
 
-    // Floor stats for the top bar
-    const occupiedTables = mappedTables.filter(t => t.activeSession).length
-    const totalTables = mappedTables.length
-    const readyOrders = (activeOrders || []).filter(o => o.status === 'ready').length
-    const kitchenOrders = (activeOrders || []).filter(o => o.status === 'preparing' || o.status === 'confirmed' || o.status === 'pending').length
-    const pendingRequests = (serviceRequests || []).filter(r => r.status === 'pending').length
+    // Floor stats calculations removed because we removed the Stats bar.
 
-    // Active sessions list data
-    const tablesMap: Record<string, string> = Object.fromEntries(mappedTables.map(t => [t.id, t.label]))
-    const activeSessionEntries = mappedTables
-        .filter(t => t.activeSession)
-        .map(t => {
-            const session = t.activeSession!
-            const sessionOrders = (activeOrders || []).filter(
-                o => o.session_id === session.id && !['delivered', 'cancelled'].includes(o.status)
-            )
-            return {
-                tableId: t.id,
-                tableLabel: t.label,
-                sessionId: session.id,
-                openedAt: session.opened_at ?? now,
-                orderCount: sessionOrders.length,
-                totalAmount: sessionOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0),
-            }
-        })
-        .sort((a, b) => a.tableLabel.localeCompare(b.tableLabel, undefined, { numeric: true }))
+    // Unused active session list data removed.
 
     // Counts for tabs
     const spaceCount = 0 // Not typically badgered
-    const ordersCount = readyOrders + (ordersToConfirm?.length || 0) + (readyTakeouts?.length || 0) + readyDeliveries.length
-    const customerCount = pendingRequests
+    const ordersCount = (activeOrders || []).filter(o => o.status === 'ready').length + (ordersToConfirm?.length || 0) + (readyTakeouts?.length || 0) + readyDeliveries.length
+    const customerCount = (serviceRequests || []).filter(r => r.status === 'pending').length
     const billingCount = (unpaidDelivered?.length || 0) + (paymentClaims?.length || 0)
 
     const spaceContent = (
-        <div className="space-y-6 pt-4">
-            <ActiveSessionsList
-                initialEntries={activeSessionEntries}
-                tablesMap={tablesMap}
-                restaurantId={restaurantId}
-            />
+        <div className="space-y-6 pt-1">
             <TableManager
                 initialTables={mappedTables as unknown as TableWithSession[]}
                 restaurantId={restaurantId}
@@ -207,41 +160,56 @@ export default async function WaiterPage() {
         </div>
     )
 
+    const dineInCount = (activeOrders || []).filter(o => o.status === 'ready').length + (ordersToConfirm?.length || 0)
+    const takeawayCount = (readyTakeouts || []).length + readyDeliveries.length
+
     const ordersContent = (
-        <div className="space-y-6 pt-4">
-            {features?.waiterOrderConfirmation && (
-                <OrderConfirmFeed
-                    initialOrders={(ordersToConfirm || []) as unknown as ConfirmOrder[]}
-                    restaurantId={restaurantId}
-                    userId={userId}
-                    staffNames={staffNames}
-                />
-            )}
-            <WaiterOrderFeed
-                initialOrders={(activeOrders || []) as unknown as WaiterOrder[]}
-                restaurantId={restaurantId}
-                userId={userId}
-                staffNames={staffNames}
+        <div className="space-y-6 pt-1">
+            <WaiterOrdersTabs
+                dineInCount={dineInCount}
+                takeawayCount={takeawayCount}
+                dineInFeed={
+                    <>
+                        {false && (
+                            <OrderConfirmFeed
+                                initialOrders={(ordersToConfirm || []) as unknown as ConfirmOrder[]}
+                                restaurantId={restaurantId}
+                                userId={userId}
+                                staffNames={staffNames}
+                            />
+                        )}
+                        <WaiterOrderFeed
+                            initialOrders={(activeOrders || []) as unknown as WaiterOrder[]}
+                            restaurantId={restaurantId}
+                            userId={userId}
+                            staffNames={staffNames}
+                        />
+                    </>
+                }
+                takeoutFeed={
+                    features?.takeoutEnabled && (
+                        <WaiterTakeoutFeed
+                            initialOrders={((readyTakeouts || []) as unknown as TakeoutOrderRow[]).map(mapOrderRowToTakeout)}
+                            restaurantId={restaurantId}
+                        />
+                    )
+                }
+                deliveryFeed={
+                    features?.takeoutEnabled && (
+                        <WaiterDeliveryFeed
+                            initialOrders={readyDeliveries}
+                            restaurantId={restaurantId}
+                            userId={userId}
+                            staffNames={staffNames}
+                        />
+                    )
+                }
             />
-            {features?.takeoutEnabled && (
-                <WaiterTakeoutFeed
-                    initialOrders={((readyTakeouts || []) as unknown as TakeoutOrderRow[]).map(mapOrderRowToTakeout)}
-                    restaurantId={restaurantId}
-                />
-            )}
-            {features?.takeoutEnabled && (
-                <WaiterDeliveryFeed
-                    initialOrders={readyDeliveries}
-                    restaurantId={restaurantId}
-                    userId={userId}
-                    staffNames={staffNames}
-                />
-            )}
         </div>
     )
 
     const customerContent = (
-        <div className="space-y-6 pt-4">
+        <div className="space-y-6 pt-1">
             {features?.serviceRequestsEnabled !== false && (
                 <ServiceRequestFeed
                     initialRequests={(serviceRequests || []) as unknown as ServiceRequestWithTable[]}
@@ -254,7 +222,7 @@ export default async function WaiterPage() {
     )
 
     const billingContent = (
-        <div className="space-y-6 pt-4">
+        <div className="space-y-6 pt-1">
             {unpaidDelivered && unpaidDelivered.length > 0 && (
                 <CashPaymentFeed
                     initialOrders={unpaidDelivered as unknown as UnpaidOrder[]}
@@ -273,18 +241,6 @@ export default async function WaiterPage() {
 
     return (
         <div className="flex flex-col min-h-[calc(100vh-4rem)] md:min-h-[calc(100vh-5rem)]">
-            {/* Shift Clock placed at the top for easy access */}
-            {features?.staffShiftsEnabled && (
-                <div className="pb-4">
-                    <StaffShiftClock
-                        userId={userId}
-                        restaurantId={restaurantId}
-                        initialShift={activeShift || null}
-                        initialHistory={shiftHistory || []}
-                    />
-                </div>
-            )}
-
             <div className="flex-1 px-3 md:px-6 pb-3 md:pb-6">
                 <WaiterTabs
                     spaceContent={spaceContent}
@@ -297,16 +253,6 @@ export default async function WaiterPage() {
                         customer: customerCount,
                         billing: billingCount
                     }}
-                    floorStatsElement={
-                        <FloorStats
-                            occupiedTables={occupiedTables}
-                            totalTables={totalTables}
-                            readyOrders={readyOrders}
-                            kitchenOrders={kitchenOrders}
-                            pendingRequests={pendingRequests}
-                            restaurantId={restaurantId}
-                        />
-                    }
                 />
             </div>
         </div>

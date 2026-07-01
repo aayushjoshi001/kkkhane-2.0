@@ -5,6 +5,45 @@ import { revalidatePath } from 'next/cache'
 import type { OrderStatus, OrderItemStatus } from '@/types/database'
 import { rollUpOrderStatus } from '@/lib/orderRollup'
 
+// Shared SELECT shape for kitchen orders — mirrors what OrderQueue.tsx expects.
+const KITCHEN_ORDER_SELECT = `
+  id, status, order_type, needs_confirmation, total_amount, placed_at, customer_note,
+  sessions ( tables ( label ) ),
+  order_items (
+    id, menu_item_id, quantity, unit_price, special_request, status, claimed_by, claimed_at,
+    menu_items ( id, name, is_combo ),
+    order_item_modifiers ( modifier_name, price_adjustment )
+  )
+` as const
+
+/**
+ * Fetch the current active kitchen orders for a restaurant, applying the same
+ * server-side filter that page.tsx uses. Called by the kitchen client on mount
+ * and whenever the realtime channel reconnects, to catch up on missed events.
+ */
+export async function getKitchenOrders(restaurantId: string) {
+    const adminSupabase = await createAdminClient()
+    const { data, error } = await adminSupabase
+        .from('orders')
+        .select(KITCHEN_ORDER_SELECT)
+        .eq('restaurant_id', restaurantId)
+        .in('order_type', ['dine_in', 'takeout', 'delivery'])
+        .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
+        .order('placed_at', { ascending: true })
+
+    if (error) {
+        console.error('[getKitchenOrders] fetch error:', error)
+        return []
+    }
+
+    // Apply same filter as page.tsx:
+    //   dine_in  → exclude orders still awaiting waiter confirmation
+    //   takeout/delivery → exclude pending (not yet confirmed by cashier)
+    return (data || []).filter(o => {
+        if (o.order_type === 'dine_in') return !o.needs_confirmation
+        return o.status !== 'pending'
+    })
+}
 
 
 // Item-level transitions are guarded the same way as whole-order ones: each
@@ -48,6 +87,9 @@ export async function setOrderItemsStatus(
     if (nextStatus === 'preparing') {
         updateData.claimed_by = actorUserId ?? null
         updateData.claimed_at = new Date().toISOString()
+    } else if (nextStatus === 'ready') {
+        updateData.claimed_by = null
+        updateData.claimed_at = null
     }
 
     let query = adminSupabase
