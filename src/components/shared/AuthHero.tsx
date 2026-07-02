@@ -1,4 +1,6 @@
 import Image from 'next/image'
+import Link from 'next/link'
+import { ArrowLeft } from 'lucide-react'
 
 /**
  * Decorative hero band used behind the /login and /signup cards — a brand-orange
@@ -9,6 +11,15 @@ import Image from 'next/image'
 export default function AuthHero({ heightClassName = 'h-64 sm:h-72' }: { heightClassName?: string }) {
     return (
         <div className={`relative w-full ${heightClassName} shrink-0 overflow-hidden bg-gradient-to-br from-brand-400 via-[var(--color-primary)] to-brand-700`}>
+            {/* Back to Home Button */}
+            <Link 
+                href="/" 
+                className="absolute top-4 left-4 sm:top-6 sm:left-6 z-20 flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-white/10 hover:bg-white/20 border border-white/20 backdrop-blur-md rounded-full text-white text-xs sm:text-sm font-semibold transition-all hover:-translate-x-1"
+            >
+                <ArrowLeft size={16} />
+                <span className="hidden sm:inline">Back to Home</span>
+                <span className="sm:hidden">Home</span>
+            </Link>
             {/* Ambient blurred circles */}
             <div className="absolute -top-12 -right-10 w-56 h-56 rounded-full bg-white/10 blur-2xl" />
             <div className="absolute -bottom-16 -left-12 w-52 h-52 rounded-full bg-white/10 blur-2xl" />

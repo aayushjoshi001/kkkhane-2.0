@@ -27,12 +27,20 @@ export default function GlobalError({
                     <p style={{ color: '#6b7280', maxWidth: '28rem', marginBottom: '2rem' }}>
                         An unexpected error occurred. Please try again.
                     </p>
-                    <button
-                        onClick={() => reset()}
-                        style={{ padding: '0.75rem 1.5rem', background: '#111827', color: 'white', border: 'none', borderRadius: '0.75rem', fontWeight: 500, cursor: 'pointer' }}
-                    >
-                        Try again
-                    </button>
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                        <button
+                            onClick={() => reset()}
+                            style={{ padding: '0.75rem 1.5rem', background: '#111827', color: 'white', border: 'none', borderRadius: '0.75rem', fontWeight: 500, cursor: 'pointer' }}
+                        >
+                            Try again
+                        </button>
+                        <a 
+                            href="/"
+                            style={{ padding: '0.75rem 1.5rem', background: 'transparent', color: '#374151', border: '1px solid #d1d5db', borderRadius: '0.75rem', fontWeight: 500, textDecoration: 'none' }}
+                        >
+                            Back to Home
+                        </a>
+                    </div>
                 </div>
             </body>
         </html>
