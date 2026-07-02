@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, MapPin } from 'lucide-react'
 import { createOnboardingRestaurant } from './actions'
+import { createClient } from '@/lib/supabase/client'
 import dynamic from 'next/dynamic'
 import 'leaflet/dist/leaflet.css'
 
@@ -31,7 +32,9 @@ const TYPES = ['FastFood', 'Resort', 'Hotel', 'Bakery', 'Cloud Kitchen', 'Bar', 
 
 export default function OnboardingCreateClient() {
     const router = useRouter()
+    const supabase = createClient()
     const [isLoading, setIsLoading] = useState(false)
+    const [isContinuing, setIsContinuing] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [selectedType, setSelectedType] = useState('Restaurant')
     const [address, setAddress] = useState('')
@@ -80,6 +83,18 @@ export default function OnboardingCreateClient() {
         } finally {
             setIsLoading(false)
         }
+    }
+
+    const handleContinue = async () => {
+        setIsContinuing(true)
+        // The session's JWT was minted before this restaurant existed, so it
+        // still carries the "unauthenticated" claim sentinel. Re-mint it now
+        // so proxy.ts's role check (and any RLS-gated client query) sees the
+        // restaurant/role that provisioning just committed — otherwise the
+        // soft nav below bounces through a stale-claims redirect loop.
+        await supabase.auth.refreshSession()
+        router.refresh()
+        router.push('/admin/dashboard')
     }
 
     return (
@@ -141,8 +156,8 @@ export default function OnboardingCreateClient() {
                                     type="button"
                                     onClick={() => setSelectedType(type)}
                                     className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-                                        selectedType === type 
-                                        ? 'bg-gray-100 text-gray-900' 
+                                        selectedType === type
+                                        ? 'bg-gray-100 text-gray-900'
                                         : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
                                     }`}
                                 >
@@ -284,10 +299,11 @@ export default function OnboardingCreateClient() {
                             </p>
 
                             <button
-                                onClick={() => router.push('/admin/dashboard')}
-                                className="bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90 text-white font-bold py-3.5 px-8 rounded-full shadow-lg shadow-[var(--color-primary)]/20 transition-all hover:scale-105"
+                                onClick={handleContinue}
+                                disabled={isContinuing}
+                                className="bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90 text-white font-bold py-3.5 px-8 rounded-full shadow-lg shadow-[var(--color-primary)]/20 transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
                             >
-                                Let&apos;s Continue
+                                {isContinuing ? 'Loading...' : "Let's Continue"}
                             </button>
                         </div>
                     </div>

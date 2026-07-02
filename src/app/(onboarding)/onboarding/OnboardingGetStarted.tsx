@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Store, UserPlus, MoreHorizontal, Settings, Moon, Bell, Share2, LogOut, MessageSquareText, ChevronLeft } from 'lucide-react'
-import { createBrowserClient } from '@supabase/ssr'
+import { Store, MoreHorizontal, Settings, Moon, Bell, Share2, LogOut, MessageSquareText, ChevronLeft } from 'lucide-react'
+import { signOutAndRedirect } from '@/lib/auth/signOut'
 
 export default function OnboardingGetStarted({
     userEmail = 'user@example.com',
@@ -15,25 +15,13 @@ export default function OnboardingGetStarted({
     userId?: string
 }) {
     const router = useRouter()
-    const [selectedOption, setSelectedOption] = useState<'create' | 'join'>('create')
     const [isMenuOpen, setIsMenuOpen] = useState(false)
 
     const handleContinue = () => {
-        if (selectedOption === 'create') {
-            router.push('/onboarding/create')
-        } else {
-            router.push('/onboarding/join')
-        }
+        router.push('/onboarding/create')
     }
 
-    const handleLogout = async () => {
-        const supabase = createBrowserClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        )
-        await supabase.auth.signOut()
-        router.push('/login')
-    }
+    const handleLogout = () => signOutAndRedirect(router)
 
     const initials = userName.substring(0, 2).toUpperCase()
 
@@ -119,53 +107,13 @@ export default function OnboardingGetStarted({
                 </div>
             </div>
 
-            {/* Options */}
+            {/* What's next */}
             <div className="mb-8">
-                <h3 className="text-sm font-bold text-gray-900 mb-3">I want to <span className="text-red-500">*</span></h3>
-                <div className="space-y-3">
-                    {/* Create New Option */}
-                    <button 
-                        onClick={() => setSelectedOption('create')}
-                        className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-colors ${
-                            selectedOption === 'create' 
-                            ? 'border-[var(--color-primary)] bg-brand-50' 
-                            : 'border-gray-100 bg-white hover:border-gray-200'
-                        }`}
-                    >
-                        <div className="flex items-center gap-3">
-                            <Store size={20} className={selectedOption === 'create' ? 'text-[var(--color-primary)]' : 'text-gray-500'} />
-                            <span className={`font-bold text-sm ${selectedOption === 'create' ? 'text-gray-900' : 'text-gray-600'}`}>
-                                Create New Restaurant
-                            </span>
-                        </div>
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                            selectedOption === 'create' ? 'border-[var(--color-primary)]' : 'border-gray-300'
-                        }`}>
-                            {selectedOption === 'create' && <div className="w-2.5 h-2.5 rounded-full bg-[var(--color-primary)]" />}
-                        </div>
-                    </button>
-
-                    {/* Join Existing Option */}
-                    <button 
-                        onClick={() => setSelectedOption('join')}
-                        className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-colors ${
-                            selectedOption === 'join' 
-                            ? 'border-[var(--color-primary)] bg-brand-50' 
-                            : 'border-gray-100 bg-white hover:border-gray-200'
-                        }`}
-                    >
-                        <div className="flex items-center gap-3">
-                            <UserPlus size={20} className={selectedOption === 'join' ? 'text-[var(--color-primary)]' : 'text-gray-500'} />
-                            <span className={`font-bold text-sm ${selectedOption === 'join' ? 'text-gray-900' : 'text-gray-600'}`}>
-                                Join Existing Restaurant
-                            </span>
-                        </div>
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                            selectedOption === 'join' ? 'border-[var(--color-primary)]' : 'border-gray-300'
-                        }`}>
-                            {selectedOption === 'join' && <div className="w-2.5 h-2.5 rounded-full bg-[var(--color-primary)]" />}
-                        </div>
-                    </button>
+                <div className="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-[var(--color-primary)] bg-brand-50">
+                    <Store size={20} className="text-[var(--color-primary)]" />
+                    <span className="font-bold text-sm text-gray-900">
+                        Next, you&apos;ll set up your restaurant
+                    </span>
                 </div>
             </div>
 

@@ -9,12 +9,11 @@ import {
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import Logo from '@/components/shared/Logo'
-import { createClient } from '@/lib/supabase/client'
+import { signOutAndRedirect } from '@/lib/auth/signOut'
 
 export default function AdminSidebar({ userRole, restaurantName }: { userRole?: string; restaurantName?: string }) {
     const pathname = usePathname()
     const router = useRouter()
-    const supabase = createClient()
     const [isOpen, setIsOpen] = useState(false)
     const prevPathRef = useRef(pathname)
 
@@ -25,11 +24,7 @@ export default function AdminSidebar({ userRole, restaurantName }: { userRole?: 
         }
     }, [pathname])
 
-    const handleSignOut = async () => {
-        await supabase.auth.signOut()
-        router.push('/login')
-        router.refresh()
-    }
+    const handleSignOut = () => signOutAndRedirect(router)
 
     const roleLabel = (userRole || 'admin').replace(/_/g, ' ')
 

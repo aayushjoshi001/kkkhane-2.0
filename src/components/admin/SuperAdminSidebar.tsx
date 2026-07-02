@@ -9,14 +9,13 @@ import {
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import Logo from '@/components/shared/Logo'
-import { createClient } from '@/lib/supabase/client'
+import { signOutAndRedirect } from '@/lib/auth/signOut'
 
 const BASE = '/admin/super-admin'
 
 export default function SuperAdminSidebar() {
     const pathname = usePathname()
     const router = useRouter()
-    const supabase = createClient()
     const [isOpen, setIsOpen] = useState(false)
     const prevPathRef = useRef(pathname)
 
@@ -27,11 +26,7 @@ export default function SuperAdminSidebar() {
         }
     }, [pathname])
 
-    const handleSignOut = async () => {
-        await supabase.auth.signOut()
-        router.push('/login')
-        router.refresh()
-    }
+    const handleSignOut = () => signOutAndRedirect(router)
 
     const content = (
         <div className="flex flex-col h-full">

@@ -3,6 +3,7 @@ import AdminSidebar from '@/components/admin/AdminSidebar'
 import SuperAdminSidebar from '@/components/admin/SuperAdminSidebar'
 import AdminOrderNotifier from '@/components/admin/AdminOrderNotifier'
 import SoundEnableButton from '@/components/shared/SoundEnableButton'
+import SessionSync from '@/components/shared/SessionSync'
 import { CommandHint } from '@/components/ui/CommandHint'
 import CommandPaletteMount from '@/components/ui/CommandPaletteMount'
 import { requireRole } from '@/lib/auth'
@@ -44,6 +45,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     return (
         <FeatureProvider features={features}>
         <div className="min-h-screen bg-canvas flex">
+            <SessionSync userId={currentUser.id} />
             {isSuperAdmin ? <SuperAdminSidebar /> : <AdminSidebar userRole={roleNameRaw} restaurantName={restaurantName} />}
             {!isSuperAdmin && currentUser.restaurantId && (
                 <AdminOrderNotifier restaurantId={currentUser.restaurantId} />

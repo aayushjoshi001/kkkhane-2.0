@@ -5,85 +5,8 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { validateInput, CreateTenantSchema } from '@/lib/validation'
 import { ORDER_STATUS_TO_TAKEOUT, type OrderStatus } from '@/lib/takeout'
-
-const TIER_LIMITS: Record<'free' | 'basic' | 'pro' | 'enterprise', { max_staff: number; max_menu_items: number; max_tables: number }> = {
-    free: { max_staff: 3, max_menu_items: 20, max_tables: 10 },
-    basic: { max_staff: 10, max_menu_items: 100, max_tables: 30 },
-    pro: { max_staff: 50, max_menu_items: 500, max_tables: 100 },
-    enterprise: { max_staff: 999, max_menu_items: 9999, max_tables: 999 },
-}
-
-const TIER_FEATURES: Record<'free' | 'basic' | 'pro' | 'enterprise', {
-    loyaltyEnabled: boolean
-    promosEnabled: boolean
-    takeoutEnabled: boolean
-    multiLanguageEnabled: boolean
-    serviceRequestsEnabled: boolean
-    splitBillingEnabled: boolean
-    dynamicPricingEnabled: boolean
-    ingredientTrackingEnabled: boolean
-    staffShiftsEnabled: boolean
-}> = {
-    free: {
-        loyaltyEnabled: false,
-        promosEnabled: true,
-        takeoutEnabled: false,
-        multiLanguageEnabled: false,
-        serviceRequestsEnabled: true,
-        splitBillingEnabled: true,
-        dynamicPricingEnabled: false,
-        ingredientTrackingEnabled: false,
-        staffShiftsEnabled: false,
-    },
-    basic: {
-        loyaltyEnabled: false,
-        promosEnabled: true,
-        takeoutEnabled: true,
-        multiLanguageEnabled: false,
-        serviceRequestsEnabled: true,
-        splitBillingEnabled: true,
-        dynamicPricingEnabled: false,
-        ingredientTrackingEnabled: false,
-        staffShiftsEnabled: false,
-    },
-    pro: {
-        loyaltyEnabled: true,
-        promosEnabled: true,
-        takeoutEnabled: true,
-        multiLanguageEnabled: false,
-        serviceRequestsEnabled: true,
-        splitBillingEnabled: true,
-        dynamicPricingEnabled: true,
-        ingredientTrackingEnabled: true,
-        staffShiftsEnabled: true,
-    },
-    enterprise: {
-        loyaltyEnabled: true,
-        promosEnabled: true,
-        takeoutEnabled: true,
-        multiLanguageEnabled: true,
-        serviceRequestsEnabled: true,
-        splitBillingEnabled: true,
-        dynamicPricingEnabled: true,
-        ingredientTrackingEnabled: true,
-        staffShiftsEnabled: true,
-    },
-}
-
-const DEFAULT_THEME = {
-    primaryColor: '#FB6303',
-    secondaryColor: '#1B263B',
-    fontFamily: 'Inter',
-    borderRadius: '12px',
-    menuLayout: 'grid',
-}
-
-const DEFAULT_FEATURES = {
-    tipsEnabled: true,
-    feedbackEnabled: true,
-    geofenceEnabled: false,
-    geofenceRadiusMeters: 100,
-}
+import { TIER_LIMITS, type Tier } from '@/lib/tiers'
+import { provisionRestaurant } from '@/lib/provisioning'
 
 export interface CreateTenantInput {
     restaurantName: string
@@ -93,7 +16,7 @@ export interface CreateTenantInput {
     ownerPassword: string
     contactPhone?: string
     address?: string
-    subscriptionTier: 'free' | 'basic' | 'pro' | 'enterprise'
+    subscriptionTier: Tier
 }
 
 function normalizeSlug(value: string) {
@@ -102,20 +25,6 @@ function normalizeSlug(value: string) {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')
-}
-
-function buildDefaultFeaturesV2(tier: 'free' | 'basic' | 'pro' | 'enterprise') {
-    return {
-        ...TIER_FEATURES[tier],
-        feedbackEnabled: true,
-        defaultTaxRate: 13,
-        currency: 'NPR',
-        currencySymbol: 'Rs.',
-        nepalPayEnabled: true,
-        vatEnabled: false,
-        phoneOtpEnabled: false,
-        bsDateEnabled: false,
-    }
 }
 
 export async function getAllRestaurants() {
@@ -219,12 +128,9 @@ export async function createTenantWithOwner(input: CreateTenantInput) {
     const restaurantSlug = normalizeSlug(validatedInput.restaurantSlug || validatedInput.restaurantName)
     const contactPhone = validatedInput.contactPhone?.trim() || null
     const address = validatedInput.address?.trim() || null
-    const subscriptionTier: 'free' | 'basic' | 'pro' | 'enterprise' = validatedInput.subscriptionTier || 'free'
+    const subscriptionTier: Tier = validatedInput.subscriptionTier || 'free'
 
     const supabase = await createAdminClient()
-    const limits = TIER_LIMITS[subscriptionTier]
-    let authUserId: string | null = null
-    let restaurantId: string | null = null
 
     const { data: existingRestaurant } = await supabase
         .from('restaurants').select('id').eq('slug', restaurantSlug).maybeSingle()
@@ -233,106 +139,70 @@ export async function createTenantWithOwner(input: CreateTenantInput) {
         return { error: 'That restaurant slug is already in use.' }
     }
 
-    try {
-        const { data: createdAuthUser, error: createAuthError } = await supabase.auth.admin.createUser({
+    const { data: createdAuthUser, error: createAuthError } = await supabase.auth.admin.createUser({
+        email: ownerEmail,
+        password: ownerPassword,
+        email_confirm: true,
+        user_metadata: {
+            full_name: ownerFullName,
+        },
+    })
+
+    if (createAuthError || !createdAuthUser.user) {
+        if (createAuthError?.message?.toLowerCase().includes('already registered') ||
+            createAuthError?.message?.toLowerCase().includes('already been registered')) {
+            return { error: 'That owner email already has an account.' }
+        }
+        return { error: createAuthError?.message || 'Failed to create owner auth account.' }
+    }
+
+    const authUserId = createdAuthUser.user.id
+
+    // Shared canonical path: restaurant + owner users row (with email) + settings
+    // + starter menu/tables/QR tokens + rollback on failure. This is what the
+    // public signup and onboarding/create flows use too — previously this action
+    // reimplemented all of it by hand (and never seeded tables/menu, so
+    // /t/[qr_token] never worked for tenants created here).
+    const result = await provisionRestaurant({
+        ownerId: authUserId,
+        ownerEmail,
+        ownerName: ownerFullName,
+        name: restaurantName,
+        slug: restaurantSlug,
+        contactPhone,
+        address,
+        tier: subscriptionTier,
+        seedSample: true,
+    })
+
+    if (result.error || !result.restaurantId) {
+        await supabase.auth.admin.deleteUser(authUserId)
+        return { error: result.error || 'Failed to create tenant.' }
+    }
+
+    const { data: restaurant, error: fetchError } = await supabase
+        .from('restaurants')
+        .select('id, name, slug, is_active, is_suspended, subscription_tier, subscription_status, subscription_expires_at, max_staff, max_menu_items, created_at')
+        .eq('id', result.restaurantId)
+        .single()
+
+    if (fetchError || !restaurant) {
+        return { error: fetchError?.message || 'Restaurant created but failed to load its details.' }
+    }
+
+    revalidatePath('/admin/super-admin')
+
+    return {
+        success: true,
+        restaurant: {
+            ...restaurant,
+            users: { email: ownerEmail },
+        },
+        owner: {
+            id: authUserId,
             email: ownerEmail,
-            password: ownerPassword,
-            email_confirm: true,
-            user_metadata: {
-                full_name: ownerFullName,
-            },
-        })
-
-        if (createAuthError || !createdAuthUser.user) {
-            if (createAuthError?.message?.toLowerCase().includes('already registered') ||
-                createAuthError?.message?.toLowerCase().includes('already been registered')) {
-                return { error: 'That owner email already has an account.' }
-            }
-            return { error: createAuthError?.message || 'Failed to create owner auth account.' }
-        }
-
-        authUserId = createdAuthUser.user.id
-
-        const { data: restaurant, error: restaurantError } = await supabase
-            .from('restaurants')
-            .insert({
-                owner_id: authUserId,
-                name: restaurantName,
-                slug: restaurantSlug,
-                contact_email: ownerEmail,
-                contact_phone: contactPhone,
-                address,
-                subscription_tier: subscriptionTier,
-                subscription_status: 'active',
-                max_staff: limits.max_staff,
-                max_menu_items: limits.max_menu_items,
-            })
-            .select('id, name, slug, is_active, is_suspended, subscription_tier, subscription_status, subscription_expires_at, max_staff, max_menu_items, created_at')
-            .single()
-
-        if (restaurantError || !restaurant) {
-            throw new Error(restaurantError?.message || 'Failed to create restaurant row.')
-        }
-
-        restaurantId = restaurant.id
-
-        // Wait a moment for auth trigger to create user record
-        await new Promise(resolve => setTimeout(resolve, 500))
-
-        const { error: userRowError } = await supabase
-            .from('users')
-            .upsert({
-                id: authUserId,
-                restaurant_id: restaurantId,
-                full_name: ownerFullName,
-                role_id: 2,
-                is_active: true,
-            }, { onConflict: 'id' })
-
-        if (userRowError) {
-            throw new Error(userRowError.message)
-        }
-
-        const { error: settingsError } = await supabase
-            .from('settings')
-            .insert({
-                restaurant_id: restaurantId,
-                theme: DEFAULT_THEME,
-                features: DEFAULT_FEATURES,
-                features_v2: buildDefaultFeaturesV2(subscriptionTier),
-                business_hours: null,
-            })
-
-        if (settingsError) {
-            throw new Error(settingsError.message)
-        }
-
-        revalidatePath('/admin/super-admin')
-
-        return {
-            success: true,
-            restaurant: {
-                ...restaurant,
-                users: { email: ownerEmail },
-            },
-            owner: {
-                id: authUserId,
-                email: ownerEmail,
-                full_name: ownerFullName,
-            },
-        }
-    } catch (error) {
-        if (restaurantId) {
-            await supabase.from('restaurants').delete().eq('id', restaurantId)
-        }
-
-        if (authUserId) {
-            await supabase.auth.admin.deleteUser(authUserId)
-        }
-
-        return {
-            error: error instanceof Error ? error.message : 'Failed to create tenant.',
-        }
+            full_name: ownerFullName,
+        },
     }
 }
 

@@ -1,20 +1,14 @@
 import { redirect } from 'next/navigation'
 import { getOptionalUser } from '@/lib/auth'
 import { LoginForm } from './LoginForm'
-
-// Role → landing page map
-const ROLE_LANDING: Record<string, string> = {
-    super_admin: '/admin/dashboard',
-    manager: '/admin/dashboard',
-    kitchen: '/kitchen',
-    waiter: '/waiter',
-    cashier: '/cashier',
-    onboarding: '/onboarding',
-}
+import { ROLE_LANDING } from '@/lib/roleLanding'
 
 export default async function LoginPage(props: { searchParams: Promise<{ redirect?: string }> }) {
     const searchParams = await props.searchParams
-    const redirectTo = searchParams.redirect || '/admin/dashboard'
+    // Empty (not defaulted to /admin/dashboard) so loginAction can tell "user was
+    // bounced from a specific protected route" apart from "no redirect requested"
+    // and fall back to the role-based landing page in the latter case.
+    const redirectTo = searchParams.redirect || ''
 
     // If already logged in, redirect to appropriate dashboard
     const currentUser = await getOptionalUser()

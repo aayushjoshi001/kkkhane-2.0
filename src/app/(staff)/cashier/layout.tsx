@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import WaiterLayoutClient from '@/components/waiter/WaiterLayoutClient'
 import { getRestaurantFeatures } from '@/lib/features'
 import { FeatureProvider } from '@/lib/contexts/FeatureContext'
+import SessionSync from '@/components/shared/SessionSync'
 
 export default async function CashierLayout({ children }: { children: ReactNode }) {
     const { id: userId, restaurantId, role } = await requireRole('cashier', 'waiter', 'manager', 'super_admin')
@@ -27,6 +28,7 @@ export default async function CashierLayout({ children }: { children: ReactNode 
 
     return (
         <FeatureProvider features={features}>
+            <SessionSync userId={userId} />
             <WaiterLayoutClient
                 restaurantName={restaurant?.name || undefined}
                 staffName={user?.full_name || undefined}

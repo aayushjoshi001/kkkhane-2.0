@@ -35,6 +35,8 @@ export interface ProvisionInput {
     slug: string
     contactPhone?: string | null
     address?: string | null
+    /** Restaurant category selected during onboarding (FastFood/Hotel/Cafe/etc). */
+    businessType?: string | null
     tier?: Tier
     // Optional signup-only business fields
     contactEmail?: string | null
@@ -109,6 +111,7 @@ export async function provisionRestaurant(input: ProvisionInput): Promise<Provis
                 contact_email: input.contactEmail || input.ownerEmail,
                 contact_phone: input.contactPhone || null,
                 address: input.address || null,
+                business_type: input.businessType || null,
                 slogan: input.slogan || null,
                 telephone: input.telephone || null,
                 pan_number: input.panNumber || null,
@@ -120,6 +123,7 @@ export async function provisionRestaurant(input: ProvisionInput): Promise<Provis
                 subscription_status: 'active',
                 max_staff: limits.max_staff,
                 max_menu_items: limits.max_menu_items,
+                max_tables: limits.max_tables,
             })
             .select('id')
             .single()

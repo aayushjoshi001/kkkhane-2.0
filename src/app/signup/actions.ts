@@ -72,9 +72,9 @@ export async function signupRestaurant(input: unknown): Promise<SignupResult> {
         }
         authUserId = createdUser.user.id
 
-        // 2. Provision the restaurant (restaurant + user row + settings + starter menu + tables)
-        // Brief wait so the auth → public.users trigger (if any) settles before our upsert.
-        await new Promise(r => setTimeout(r, 400))
+        // 2. Provision the restaurant (restaurant + user row + settings + starter menu + tables).
+        // No wait needed: the auth trigger creates the public.users row synchronously
+        // in the same transaction as auth.users, and provisionRestaurant upserts by id.
         const result = await provisionRestaurant({
             ownerId: authUserId,
             ownerEmail,

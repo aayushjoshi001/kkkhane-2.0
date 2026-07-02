@@ -1,5 +1,6 @@
 import { ReactNode } from 'react'
 import WaiterLayoutClient from '@/components/waiter/WaiterLayoutClient'
+import SessionSync from '@/components/shared/SessionSync'
 import { getCurrentUser } from '@/lib/auth'
 import { getRestaurantFeatures } from '@/lib/features'
 import { FeatureProvider } from '@/lib/contexts/FeatureContext'
@@ -33,6 +34,7 @@ export default async function WaiterLayout({ children }: { children: ReactNode }
 
     return (
         <FeatureProvider features={features}>
+            <SessionSync userId={userId} />
             <WaiterLayoutClient
                 restaurantName={restaurant?.name || undefined}
                 staffName={user?.full_name || undefined}

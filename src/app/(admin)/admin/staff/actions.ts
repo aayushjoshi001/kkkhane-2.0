@@ -114,38 +114,3 @@ export async function deleteStaffAction(userId: string) {
     return { success: true }
 }
 
-export async function assignScannedUserAction(scannedUserId: string, targetRoleId: number) {
-    const currentUser = await getCurrentUser()
-    const supabase = await createAdminClient()
-
-    const { data: scannedUser } = await supabase
-        .from('users')
-        .select('restaurant_id, full_name')
-        .eq('id', scannedUserId)
-        .single()
-
-    if (!scannedUser) {
-        return { error: 'User not found in system' }
-    }
-
-    if (scannedUser.restaurant_id) {
-        return { error: 'User is already assigned to a restaurant' }
-    }
-
-    const { error: assignError } = await supabase
-        .from('users')
-        .update({
-            restaurant_id: currentUser.restaurantId,
-            role_id: targetRoleId,
-            is_active: true
-        })
-        .eq('id', scannedUserId)
-
-    if (assignError) {
-        return { error: assignError.message }
-    }
-
-    revalidatePath('/admin/staff')
-    return { success: true, user: scannedUser }
-}
-

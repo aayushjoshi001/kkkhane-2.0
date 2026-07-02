@@ -4,7 +4,7 @@ import { ReactNode, useState, useEffect } from 'react'
 import { LogOut, LogIn, Loader2 } from 'lucide-react'
 import Logo from '@/components/shared/Logo'
 import SoundEnableButton from '@/components/shared/SoundEnableButton'
-import { createClient } from '@/lib/supabase/client'
+import { signOutAndRedirect } from '@/lib/auth/signOut'
 import { setCustomNotificationSound } from '@/lib/audio'
 import { useRouter } from 'next/navigation'
 import { CommandHint } from '@/components/ui/CommandHint'
@@ -39,7 +39,6 @@ export default function WaiterLayoutClient({
     commandRole = 'waiter'
 }: Props) {
     const router = useRouter()
-    const supabase = createClient()
     const [time, setTime] = useState('')
     const [shift, setShift] = useState(onShift)
     const [busy, setBusy] = useState(false)
@@ -55,11 +54,7 @@ export default function WaiterLayoutClient({
         return () => clearInterval(id)
     }, [])
 
-    const handleSignOut = async () => {
-        await supabase.auth.signOut()
-        router.push('/login')
-        router.refresh()
-    }
+    const handleSignOut = () => signOutAndRedirect(router)
 
     const handleClockIn = async () => {
         if (!userId || !restaurantId) return

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { signupRestaurant } from './actions'
@@ -34,6 +34,13 @@ const iconFix = () => {
 }
 
 type Step = 1 | 2 | 3 | 4
+
+const STEPS: { label: string; icon: React.ReactNode }[] = [
+    { label: 'Plan', icon: <Zap size={16} /> },
+    { label: 'Restaurant', icon: <Building2 size={16} /> },
+    { label: 'Account', icon: <User size={16} /> },
+    { label: 'Review', icon: <FileText size={16} /> },
+]
 
 const PLANS = [
     {
@@ -296,24 +303,51 @@ export default function SignupForm() {
                 </div>
 
                 {mounted && (
-                    <div className="flex items-center justify-center mb-14 mt-4 w-full max-w-lg mx-auto relative px-4">
-                        {/* Background Track */}
-                        <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-200 -translate-y-1/2 z-0 rounded-full"></div>
-                        {/* Active Track */}
-                        <div className="absolute top-1/2 left-0 h-1 bg-[var(--color-primary)] -translate-y-1/2 z-0 rounded-full transition-all duration-500 ease-in-out" style={{ width: `${((step - 1) / 3) * 100}%` }}></div>
-                        
-                        <div className="relative z-10 flex justify-between w-full">
-                            {(['Plan', 'Restaurant', 'Account', 'Review'] as const).map((label, i) => {
+                    <div className="mb-10 mt-4 w-full max-w-lg mx-auto px-4">
+                        {/* Segmented progress track + counter */}
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="flex-1 flex gap-1.5">
+                                {STEPS.map((s, i) => (
+                                    <div key={s.label} className={`h-1.5 flex-1 rounded-full transition-colors duration-500 ${i + 1 <= step ? 'bg-[var(--color-primary)]' : 'bg-gray-200'}`} />
+                                ))}
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0 bg-white border border-gray-100 rounded-full pl-2 pr-3 py-1 shadow-sm">
+                                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)]" />
+                                <span className="text-xs font-bold text-gray-600">{step} of {STEPS.length}</span>
+                            </div>
+                        </div>
+
+                        {/* Step nodes with connecting lines */}
+                        <div className="flex items-center w-full">
+                            {STEPS.map((s, i) => {
                                 const num = i + 1
                                 const done = num < step
                                 const active = num === step
                                 return (
-                                    <div key={label} className="flex flex-col items-center relative">
-                                        <div className={`flex items-center justify-center w-10 h-10 rounded-full text-sm font-bold transition-all duration-500 shadow-sm ${done ? 'bg-[var(--color-primary)] text-white scale-100 ring-4 ring-slate-50' : active ? 'bg-gray-900 text-white scale-110 ring-4 ring-slate-50 shadow-gray-900/30' : 'bg-white border-2 border-gray-200 text-gray-400'}`}>
-                                            {done ? <Check size={18} strokeWidth={3} /> : num}
-                                        </div>
-                                        <span className={`text-xs font-bold absolute -bottom-7 whitespace-nowrap transition-colors duration-300 ${active ? 'text-gray-900' : 'text-gray-400'}`}>{label}</span>
-                                    </div>
+                                    <Fragment key={s.label}>
+                                        {active ? (
+                                            <div className="flex items-center gap-2 pl-1.5 pr-4 h-12 rounded-2xl bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/25 shrink-0 transition-all duration-300">
+                                                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                                                    {s.icon}
+                                                </div>
+                                                <div className="leading-tight whitespace-nowrap">
+                                                    <div className="text-[10px] font-medium text-white/80">Step {num}</div>
+                                                    <div className="text-xs font-bold">{s.label}</div>
+                                                </div>
+                                            </div>
+                                        ) : done ? (
+                                            <div className="w-10 h-10 rounded-xl bg-[var(--color-primary)] text-white flex items-center justify-center shrink-0 shadow-sm transition-all duration-300">
+                                                <Check size={16} strokeWidth={3} />
+                                            </div>
+                                        ) : (
+                                            <div className="w-10 h-10 rounded-xl border-2 border-gray-200 bg-white text-gray-300 flex items-center justify-center shrink-0 transition-all duration-300">
+                                                {s.icon}
+                                            </div>
+                                        )}
+                                        {i < STEPS.length - 1 && (
+                                            <div className={`flex-1 h-0.5 min-w-4 mx-1.5 rounded-full transition-colors duration-500 ${num < step ? 'bg-[var(--color-primary)]' : 'bg-gray-200'}`} />
+                                        )}
+                                    </Fragment>
                                 )
                             })}
                         </div>

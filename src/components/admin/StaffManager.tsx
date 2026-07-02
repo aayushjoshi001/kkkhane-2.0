@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Image from 'next/image'
-import { Shield, ChefHat, Users, User, Check, AlertTriangle, Loader2, Pencil, Trash2, Eye, EyeOff, QrCode, Banknote, Search } from 'lucide-react'
-import { updateStaffRoleAction, toggleStaffStatusAction, updateStaffNameAction, resetStaffPasswordAction, deleteStaffAction, assignScannedUserAction } from '@/app/(admin)/admin/staff/actions'
+import { Shield, ChefHat, Users, User, Check, AlertTriangle, Loader2, Pencil, Trash2, Eye, EyeOff, Banknote, Search } from 'lucide-react'
+import { updateStaffRoleAction, toggleStaffStatusAction, updateStaffNameAction, resetStaffPasswordAction, deleteStaffAction } from '@/app/(admin)/admin/staff/actions'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
 
@@ -66,16 +66,6 @@ export default function StaffManager({
         phone: '',
         roleId: 4, // Default to waiter
         isCreating: false
-    })
-
-    const [qrScanModal, setQrScanModal] = useState<{
-        isOpen: boolean
-        scanning: boolean
-        roleId: number
-    }>({
-        isOpen: false,
-        scanning: false,
-        roleId: 4
     })
 
     const [editModal, setEditModal] = useState<{
@@ -265,54 +255,6 @@ export default function StaffManager({
     // Business Logic: Only super_admin can assign super_admin
     const availableRoles = roles.filter(r => r.name !== 'customer' && (currentUserRole === 'super_admin' || r.name !== 'super_admin'))
 
-    // Initialize QR Scanner when modal opens
-    useEffect(() => {
-        let scanner: any = null
-        if (qrScanModal.isOpen && qrScanModal.scanning) {
-            import('html5-qrcode').then(({ Html5QrcodeScanner }) => {
-                scanner = new Html5QrcodeScanner(
-                    'reader',
-                    { fps: 10, qrbox: { width: 250, height: 250 } },
-                    /* verbose= */ false
-                )
-                scanner.render(
-                    async (decodedText: string) => {
-                        scanner.pause(true)
-                        try {
-                            const data = JSON.parse(decodedText)
-                            if (data.type === 'kkkhane_invite' && data.userId) {
-                                const res = await assignScannedUserAction(data.userId, qrScanModal.roleId)
-                                if (res.success) {
-                                    toast.success(`${res.user?.full_name} assigned successfully!`)
-                                    setQrScanModal(prev => ({ ...prev, isOpen: false, scanning: false }))
-                                    setTimeout(() => window.location.reload(), 1000)
-                                } else {
-                                    toast.error(res.error || 'Failed to assign user')
-                                    setTimeout(() => scanner.resume(), 2000)
-                                }
-                            } else {
-                                toast.error('Invalid QR Code format')
-                                setTimeout(() => scanner.resume(), 2000)
-                            }
-                        } catch (e) {
-                            toast.error('Could not read QR code')
-                            setTimeout(() => scanner.resume(), 2000)
-                        }
-                    },
-                    (errorMessage: string) => {
-                        // ignore scan errors
-                    }
-                )
-            })
-        }
-
-        return () => {
-            if (scanner) {
-                scanner.clear().catch(console.error)
-            }
-        }
-    }, [qrScanModal.isOpen, qrScanModal.scanning, qrScanModal.roleId])
-
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="p-4 md:p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 bg-gray-50/50">
@@ -321,13 +263,6 @@ export default function StaffManager({
                     <p className="text-sm text-gray-500 mt-1">Create staff accounts and manage roles</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => setQrScanModal({ isOpen: true, scanning: true, roleId: 4 })}
-                        className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2 shrink-0 shadow-sm"
-                    >
-                        <QrCode size={16} />
-                        Scan QR Join Code
-                    </button>
                     <button
                         onClick={() => setCreateModal(prev => ({ ...prev, isOpen: true }))}
                         className="px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2 shrink-0"
@@ -743,39 +678,6 @@ export default function StaffManager({
                 </div>
             )}
 
-            {/* QR Scan Modal */}
-            {qrScanModal.isOpen && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        <div className="p-6">
-                            <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-lg font-extrabold text-gray-900">Scan Join QR Code</h3>
-                                <button onClick={() => setQrScanModal({ isOpen: false, scanning: false, roleId: 4 })} className="text-gray-400 hover:text-gray-600">×</button>
-                            </div>
-                            <p className="text-sm text-gray-500 mb-6">Point your camera at a user's Join QR Code to invite them to this restaurant.</p>
-
-                            <div className="mb-4">
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Assign Role</label>
-                                <select
-                                    value={qrScanModal.roleId}
-                                    onChange={(e) => setQrScanModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                                >
-                                    {availableRoles.map(role => (
-                                        <option key={role.id} value={role.id}>
-                                            {formatRoleName(role.name)}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div className="rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
-                                <div id="reader" className="w-full min-h-[300px]"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     )
 }
