@@ -1,6 +1,8 @@
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import StaffManager from '@/components/admin/StaffManager'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { Users } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,14 +47,12 @@ export default async function StaffManagementPage() {
 
     return (
         <div className="space-y-6">
-            <header>
-                <div className="flex justify-between items-center">
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900">Staff Accounts</h1>
-                        <p className="text-gray-500 mt-1">Manage employee access and roles</p>
-                    </div>
-                </div>
-            </header>
+            <PremiumPageHeader 
+                title="Staff Accounts" 
+                description="Manage employee access and roles" 
+                icon={<Users size={18} />}
+                color="purple"
+            />
 
             <StaffManager
                 initialStaff={staffMembers || []}

@@ -1,7 +1,8 @@
 import { requireRole } from '@/lib/auth'
 import { getSaasMetricsFull } from '../actions'
-import { Building2, CheckCircle, Ban, DollarSign, ShoppingBag, Crown, AlertTriangle, TrendingUp, ArrowRight } from 'lucide-react'
+import { Building2, CheckCircle, Ban, DollarSign, ShoppingBag, Crown, AlertTriangle, TrendingUp, ArrowRight, Settings, Users, FileText, CreditCard, Activity } from 'lucide-react'
 import Link from 'next/link'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,7 +14,10 @@ const TIER_BADGE: Record<string, string> = {
 }
 
 const TIER_BAR: Record<string, string> = {
-    free: 'bg-gray-400', basic: 'bg-blue-500', pro: 'bg-purple-500', enterprise: 'bg-amber-500',
+    free: 'from-gray-400 to-gray-500', 
+    basic: 'from-blue-400 to-blue-500', 
+    pro: 'from-purple-400 to-purple-500', 
+    enterprise: 'from-amber-400 to-amber-500',
 }
 
 export default async function SuperAdminDashboardPage() {
@@ -22,165 +26,220 @@ export default async function SuperAdminDashboardPage() {
     const proPlus = (metrics.tierBreakdown.pro || 0) + (metrics.tierBreakdown.enterprise || 0)
 
     return (
-        <div className="space-y-5 md:space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-xl font-extrabold text-gray-900 flex items-center gap-2">
-                        <Crown size={18} className="text-indigo-500" />
-                        Platform Dashboard
-                    </h1>
-                    <p className="text-sm text-gray-400 mt-0.5">Real-time SaaS health across all tenants</p>
-                </div>
-                <Link href="/admin/super-admin/restaurants"
-                      className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 px-3 py-2 rounded-xl hover:bg-indigo-100 transition">
-                    Manage Tenants <ArrowRight size={12} />
-                </Link>
-            </div>
+        <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
+            <PremiumPageHeader 
+                title="Platform Dashboard" 
+                description="Real-time SaaS health and tenant metrics across the entire platform" 
+                icon={<Crown size={18} />}
+                color="blue"
+                actions={
+                    <Link href="/admin/super-admin/restaurants"
+                          className="bg-blue-600 hover:bg-blue-500 text-white px-7 py-3.5 rounded-[16px] font-semibold transition-all duration-300 hover:scale-105 shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_30px_rgba(59,130,246,0.5)] flex items-center gap-2">
+                        Manage Tenants <ArrowRight size={18} />
+                    </Link>
+                }
+            />
 
             {/* Expiring alert */}
             {metrics.expiringSoon.length > 0 && (
-                <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-                    <AlertTriangle size={15} className="text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                        <p className="text-sm font-semibold text-amber-800">
-                            {metrics.expiringSoon.length} subscription{metrics.expiringSoon.length > 1 ? 's' : ''} expiring within 7 days
-                        </p>
-                        <ul className="mt-1 space-y-0.5">
+                <div className="bg-white rounded-[24px] border border-amber-200 shadow-[0_8px_30px_rgb(245,158,11,0.06)] overflow-hidden relative group animate-fade-up">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-amber-500" />
+                    <div className="p-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2 text-amber-600">
+                                <AlertTriangle size={20} className="animate-pulse" />
+                                <h3 className="font-bold text-[15px]">Subscription Renewals Upcoming</h3>
+                            </div>
+                            <span className="bg-amber-100 text-amber-700 text-[12px] font-bold px-3 py-1 rounded-full border border-amber-200">
+                                {metrics.expiringSoon.length} tenant{metrics.expiringSoon.length > 1 ? 's' : ''}
+                            </span>
+                        </div>
+                        <div className="space-y-3">
                             {metrics.expiringSoon.map(r => (
-                                <li key={r.id} className="text-xs text-amber-700">
-                                    <strong>{r.name}</strong> — expires {new Date(r.subscription_expires_at).toLocaleDateString('en-IN')}
-                                </li>
+                                <div key={r.id} className="flex items-center justify-between">
+                                    <span className="text-[14px] font-medium text-gray-700 flex items-center gap-2">
+                                        <Building2 size={14} className="text-gray-400" /> {r.name}
+                                    </span>
+                                    <span className="text-[13px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md">
+                                        Expires {new Date(r.subscription_expires_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    </span>
+                                </div>
                             ))}
-                        </ul>
+                        </div>
                     </div>
                 </div>
             )}
 
-            {/* KPI cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                <KpiCard icon={Building2}   bg="bg-indigo-50"  ic="text-indigo-600"  label="Total Tenants"   value={metrics.totalRestaurants} />
-                <KpiCard icon={CheckCircle} bg="bg-emerald-50" ic="text-emerald-600" label="Active Tenants"  value={metrics.activeRestaurants} />
-                <KpiCard icon={Ban}         bg="bg-red-50"     ic="text-red-500"     label="Suspended"       value={metrics.suspendedRestaurants} />
-                <KpiCard icon={DollarSign}  bg="bg-green-50"   ic="text-green-600"   label="MRR (Rs.)"       value={`Rs. ${metrics.mrr.toLocaleString()}`} isText />
-                <KpiCard icon={ShoppingBag} bg="bg-blue-50"    ic="text-blue-600"    label="Total Orders"    value={metrics.totalOrders} />
-                <KpiCard icon={Crown}        bg="bg-purple-50"  ic="text-purple-600" label="Pro+ Accounts"   value={proPlus} />
+            {/* Premium KPI Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-5 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                <KpiCard title="Total Tenants" value={metrics.totalRestaurants} icon={Building2} color="indigo" />
+                <KpiCard title="Active Tenants" value={metrics.activeRestaurants} icon={CheckCircle} color="emerald" />
+                <KpiCard title="Suspended" value={metrics.suspendedRestaurants} icon={Ban} color="red" />
+                <KpiCard title="Total MRR" value={`Rs. ${metrics.mrr.toLocaleString()}`} icon={DollarSign} color="green" />
+                <KpiCard title="Platform Orders" value={metrics.totalOrders} icon={ShoppingBag} color="blue" />
+                <KpiCard title="Pro+ Accounts" value={proPlus} icon={Crown} color="amber" />
             </div>
 
-            {/* Tier distribution */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                <h2 className="font-semibold text-gray-900 text-sm mb-4">Subscription Distribution</h2>
-                <div className="flex flex-wrap gap-2 mb-4">
-                    {Object.entries(metrics.tierBreakdown).map(([tier, count]) => (
-                        <div key={tier} className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${TIER_BADGE[tier] || TIER_BADGE.free}`}>
-                            {tier.charAt(0).toUpperCase() + tier.slice(1)}: {count}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 space-y-6">
+                    {/* Top restaurants */}
+                    <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                        <div className="px-6 py-5 border-b border-gray-50 flex items-center justify-between bg-gray-50/50">
+                            <h2 className="text-[1.15rem] font-bold text-gray-900 flex items-center gap-2">
+                                <TrendingUp size={20} className="text-indigo-500" /> Top Performers (30 Days)
+                            </h2>
+                            <Link href="/admin/super-admin/analytics" className="text-[13px] font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
+                                View full report
+                            </Link>
                         </div>
-                    ))}
-                </div>
-                <div className="grid grid-cols-4 gap-2">
-                    {Object.entries(metrics.tierBreakdown).map(([tier, count]) => {
-                        const total = metrics.totalRestaurants || 1
-                        const pct = Math.round((count / total) * 100)
-                        return (
-                            <div key={tier}>
-                                <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                                    <div className={`h-full rounded-full transition-all ${TIER_BAR[tier] || 'bg-gray-400'}`}
-                                         style={{ width: `${pct}%` }} />
+                        <div className="divide-y divide-gray-50 p-2">
+                            {metrics.top5ByOrders.length === 0 ? (
+                                <div className="p-10 text-center text-gray-400">
+                                    <Activity size={32} className="mx-auto mb-3 opacity-20" />
+                                    <p className="text-[14px] font-medium">No order data yet</p>
                                 </div>
-                                <p className="text-[10px] text-gray-400 mt-1 text-center tabular-nums">{pct}%</p>
-                            </div>
-                        )
-                    })}
-                </div>
-            </div>
+                            ) : metrics.top5ByOrders.map((r, i) => (
+                                <div key={r.id} className="flex items-center gap-4 p-3 hover:bg-gray-50 rounded-xl transition-colors group">
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[15px] font-bold shadow-sm ${i === 0 ? 'bg-gradient-to-br from-amber-200 to-amber-400 text-amber-900' : i === 1 ? 'bg-gradient-to-br from-gray-200 to-gray-300 text-gray-700' : i === 2 ? 'bg-gradient-to-br from-orange-200 to-orange-300 text-orange-900' : 'bg-indigo-50 text-indigo-700'}`}>
+                                        #{i + 1}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[15px] font-bold text-gray-900 group-hover:text-indigo-600 transition-colors truncate">{r.name}</p>
+                                        <p className="text-[13px] text-gray-500">{r.count.toLocaleString()} orders generated</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="text-[15px] font-bold text-gray-900 tabular-nums">Rs. {r.revenue.toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5">
-                {/* Top restaurants */}
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                    <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-                        <h2 className="font-semibold text-gray-900 text-sm">Top Restaurants (30 days)</h2>
-                        <TrendingUp size={14} className="text-gray-300" />
-                    </div>
-                    <div className="divide-y divide-gray-50">
-                        {metrics.top5ByOrders.length === 0 ? (
-                            <p className="px-5 py-8 text-sm text-gray-400 text-center">No order data yet</p>
-                        ) : metrics.top5ByOrders.map((r, i) => (
-                            <div key={r.id} className="flex items-center gap-3 px-5 py-3">
-                                <span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold flex items-center justify-center shrink-0">
-                                    {i + 1}
-                                </span>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-gray-900 truncate">{r.name}</p>
-                                    <p className="text-xs text-gray-400">{r.count} orders · Rs. {r.revenue.toLocaleString()}</p>
+                    {/* Tier distribution */}
+                    <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.3s' }}>
+                        <h2 className="text-[1.15rem] font-bold text-gray-900 mb-6 flex items-center gap-2">
+                            <Activity size={20} className="text-purple-500" /> Subscription Distribution
+                        </h2>
+                        
+                        <div className="flex flex-wrap gap-3 mb-6">
+                            {Object.entries(metrics.tierBreakdown).map(([tier, count]) => (
+                                <div key={tier} className={`px-4 py-2 rounded-xl text-[13px] font-bold border shadow-sm flex items-center gap-2 ${TIER_BADGE[tier] || TIER_BADGE.free}`}>
+                                    <span className="capitalize">{tier}</span>
+                                    <span className="bg-white/50 px-1.5 py-0.5 rounded-md tabular-nums">{count}</span>
                                 </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
+                        
+                        <div className="flex w-full h-4 rounded-full overflow-hidden shadow-inner gap-0.5 bg-gray-100">
+                            {Object.entries(metrics.tierBreakdown).map(([tier, count]) => {
+                                const total = metrics.totalRestaurants || 1
+                                const pct = (count / total) * 100
+                                return pct > 0 ? (
+                                    <div key={tier} 
+                                         className={`h-full bg-gradient-to-r ${TIER_BAR[tier] || 'from-gray-400 to-gray-500'} transition-all hover:brightness-110 cursor-help`}
+                                         style={{ width: `${pct}%` }}
+                                         title={`${tier}: ${count} (${Math.round(pct)}%)`}
+                                    />
+                                ) : null
+                            })}
+                        </div>
                     </div>
                 </div>
 
-                {/* Recent signups */}
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                    <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-                        <h2 className="font-semibold text-gray-900 text-sm">Recent Tenant Signups</h2>
-                        <Link href="/admin/super-admin/restaurants" className="text-xs text-indigo-600 hover:underline">View all →</Link>
-                    </div>
-                    <div className="divide-y divide-gray-50">
-                        {metrics.recentTenants.length === 0 ? (
-                            <p className="px-5 py-8 text-sm text-gray-400 text-center">No tenants yet</p>
-                        ) : metrics.recentTenants.map(r => (
-                            <div key={r.id} className="flex items-center gap-3 px-5 py-3">
-                                <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0">
-                                    <Building2 size={14} className="text-indigo-500" />
+                <div className="space-y-6">
+                    {/* Recent signups */}
+                    <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                        <div className="px-6 py-5 border-b border-gray-50 flex items-center justify-between">
+                            <h2 className="text-[1.15rem] font-bold text-gray-900 flex items-center gap-2">
+                                <Users size={18} className="text-emerald-500" /> Recent Signups
+                            </h2>
+                            <Link href="/admin/super-admin/restaurants" className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                                <ArrowRight size={18} />
+                            </Link>
+                        </div>
+                        <div className="divide-y divide-gray-50 p-2">
+                            {metrics.recentTenants.length === 0 ? (
+                                <div className="p-8 text-center text-gray-400">
+                                    <Building2 size={32} className="mx-auto mb-3 opacity-20" />
+                                    <p className="text-[14px] font-medium">No tenants yet</p>
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-gray-900 truncate">{r.name}</p>
-                                    <p className="text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString('en-IN')}</p>
+                            ) : metrics.recentTenants.map(r => (
+                                <div key={r.id} className="flex items-center gap-3 p-3 hover:bg-gray-50 rounded-xl transition-colors">
+                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-100 flex items-center justify-center shrink-0">
+                                        <Building2 size={18} className="text-indigo-600" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[14px] font-bold text-gray-900 truncate">{r.name}</p>
+                                        <p className="text-[12px] text-gray-500 font-medium">Joined {new Date(r.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}</p>
+                                    </div>
+                                    <span className={`text-[10px] font-bold px-2 py-1 rounded-md border uppercase tracking-wider ${TIER_BADGE[r.subscription_tier] || TIER_BADGE.free}`}>
+                                        {r.subscription_tier}
+                                    </span>
                                 </div>
-                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${TIER_BADGE[r.subscription_tier] || TIER_BADGE.free}`}>
-                                    {r.subscription_tier}
-                                </span>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
-                </div>
-            </div>
 
-            {/* Quick actions */}
-            <div className="bg-surface border border-hairline rounded-card p-5 shadow-sm">
-                <h2 className="text-h3 text-ink mb-3">Quick Actions</h2>
-                <div className="flex flex-wrap gap-2">
-                    {[
-                        { href: '/admin/super-admin/restaurants', label: 'Manage Tenants' },
-                        { href: '/admin/super-admin/analytics',   label: 'Analytics' },
-                        { href: '/admin/super-admin/payments',    label: 'Subscription Payments' },
-                        { href: '/admin/super-admin/reports',     label: 'EOD Reports' },
-                        { href: '/admin/super-admin/config',      label: 'Platform Config' },
-                    ].map(({ href, label }) => (
-                        <Link key={href} href={href}
-                              className="px-3.5 py-1.5 rounded-full bg-surface border border-hairline-strong text-xs font-semibold text-ink-muted transition-colors hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700">
-                            {label}
+                    {/* Quick Actions Grid */}
+                    <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.3s' }}>
+                        <h3 className="text-[1.15rem] font-bold text-gray-900 mb-5 flex items-center gap-2">
+                            <Settings size={18} className="text-gray-500" /> Quick Tools
+                        </h3>
+                        <div className="grid grid-cols-2 gap-3">
+                            <QuickAction href="/admin/super-admin/restaurants" icon={Building2} label="Tenants" />
+                            <QuickAction href="/admin/super-admin/analytics" icon={Activity} label="Analytics" />
+                            <QuickAction href="/admin/super-admin/payments" icon={CreditCard} label="Payments" />
+                            <QuickAction href="/admin/super-admin/reports" icon={FileText} label="Reports" />
+                        </div>
+                        <Link href="/admin/super-admin/config" className="mt-3 group relative flex items-center justify-center gap-2 w-full p-4 rounded-[16px] bg-gray-50 hover:bg-gray-100 border border-transparent hover:border-gray-200 transition-all duration-300">
+                            <Settings size={18} className="text-gray-500 group-hover:text-gray-900 transition-colors" />
+                            <span className="text-[13px] font-bold text-gray-700 group-hover:text-gray-900">Platform Configuration</span>
                         </Link>
-                    ))}
+                    </div>
                 </div>
             </div>
         </div>
     )
 }
 
-function KpiCard({ icon: Icon, bg, ic, label, value, isText }: {
-    icon: React.ElementType; bg: string; ic: string; label: string; value: number | string; isText?: boolean
-}) {
+function KpiCard({ title, value, icon: Icon, color }: { title: string, value: number | string, icon: any, color: 'indigo' | 'emerald' | 'red' | 'blue' | 'amber' | 'green' | 'purple' }) {
+    const colors = {
+        indigo: 'from-indigo-500 to-violet-500 text-indigo-500 bg-indigo-50',
+        emerald: 'from-emerald-500 to-teal-500 text-emerald-500 bg-emerald-50',
+        red: 'from-red-500 to-rose-500 text-red-500 bg-red-50',
+        blue: 'from-blue-500 to-cyan-500 text-blue-500 bg-blue-50',
+        amber: 'from-amber-400 to-orange-500 text-amber-500 bg-amber-50',
+        green: 'from-green-500 to-emerald-500 text-green-500 bg-green-50',
+        purple: 'from-purple-500 to-fuchsia-500 text-purple-500 bg-purple-50'
+    }
+    const c = colors[color] || colors.indigo
+
     return (
-        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${bg}`}>
-                <Icon size={18} className={ic} />
-            </div>
-            <div className="min-w-0">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider truncate">{label}</p>
-                <p className={`font-bold text-gray-900 leading-tight tabular-nums ${isText ? 'text-lg' : 'text-xl'}`}>
-                    {typeof value === 'number' ? value.toLocaleString() : value}
-                </p>
+        <div className="group relative bg-white rounded-[24px] p-6 border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1 overflow-hidden">
+            <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${c.split(' ')[0]} ${c.split(' ')[1]} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
+            
+            <div className="flex flex-col h-full justify-between">
+                <div className={`w-12 h-12 rounded-[16px] flex items-center justify-center ${c.split(' ')[2]} ${c.split(' ')[3]} group-hover:scale-110 transition-transform duration-300 mb-4`}>
+                    <Icon size={24} />
+                </div>
+                <div>
+                    <h3 className="text-gray-500 text-[13px] font-semibold uppercase tracking-wider mb-1">{title}</h3>
+                    <p className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight tabular-nums truncate">
+                        {typeof value === 'number' ? value.toLocaleString() : value}
+                    </p>
+                </div>
             </div>
         </div>
+    )
+}
+
+function QuickAction({ href, icon: Icon, label }: { href: string, icon: any, label: string }) {
+    return (
+        <Link href={href} className="group relative flex flex-col items-center justify-center gap-3 p-4 rounded-[16px] bg-gray-50 hover:bg-indigo-50/50 border border-transparent hover:border-indigo-100 transition-all duration-300 hover:scale-[1.02]">
+            <div className="text-gray-400 group-hover:text-indigo-600 transition-colors">
+                <Icon size={24} />
+            </div>
+            <span className="text-[13px] font-bold text-gray-700 group-hover:text-indigo-900">{label}</span>
+        </Link>
     )
 }

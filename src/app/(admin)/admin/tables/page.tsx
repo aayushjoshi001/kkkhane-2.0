@@ -1,6 +1,8 @@
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import TableManager from '@/components/admin/TableManager'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { QrCode } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,14 +29,12 @@ export default async function TablesManagementPage() {
 
     return (
         <div className="space-y-6">
-            <header>
-                <div className="flex justify-between items-center">
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900">Table Management</h1>
-                        <p className="text-gray-500 mt-1">Configure restaurant tables and generate QR ordering codes</p>
-                    </div>
-                </div>
-            </header>
+            <PremiumPageHeader 
+                title="Table Management" 
+                description="Configure restaurant tables and generate QR ordering codes" 
+                icon={<QrCode size={18} />}
+                color="green"
+            />
 
             <TableManager
                 initialTables={tables || []}

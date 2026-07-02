@@ -2,6 +2,8 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/auth'
 import MenuManager from '@/components/admin/MenuManager'
 import EnableNepaliButton from '@/components/admin/EnableNepaliButton'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { UtensilsCrossed } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,13 +39,13 @@ export default async function MenuManagementPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-start">
-                <header>
-                    <h1 className="text-2xl font-bold text-gray-900">Menu Management</h1>
-                    <p className="text-gray-500 mt-1">Organize your categories and menu items</p>
-                </header>
-                {!hasNepali && <EnableNepaliButton />}
-            </div>
+            <PremiumPageHeader 
+                title="Menu Management" 
+                description="Organize your categories and menu items" 
+                icon={<UtensilsCrossed size={18} />}
+                color="orange"
+                actions={!hasNepali && <EnableNepaliButton />}
+            />
 
             <MenuManager
                 initialCategories={categories || []}
