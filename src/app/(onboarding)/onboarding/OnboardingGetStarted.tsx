@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Store, MoreHorizontal, Settings, Moon, Bell, Share2, LogOut, MessageSquareText, ChevronLeft } from 'lucide-react'
 import { signOutAndRedirect } from '@/lib/auth/signOut'
+import { toast } from 'react-hot-toast'
 
 export default function OnboardingGetStarted({
     userEmail = 'user@example.com',
@@ -16,6 +17,12 @@ export default function OnboardingGetStarted({
 }) {
     const router = useRouter()
     const [isMenuOpen, setIsMenuOpen] = useState(false)
+    const [isDarkTheme, setIsDarkTheme] = useState(false)
+
+    const handleComingSoon = (feature: string) => {
+        toast.success(`${feature} will be available in your dashboard!`)
+        setIsMenuOpen(false)
+    }
 
     const handleContinue = () => {
         router.push('/onboarding/create')
@@ -33,7 +40,7 @@ export default function OnboardingGetStarted({
             </button>
 
             <h1 className="text-3xl font-extrabold text-gray-900 mb-2">Get Started</h1>
-            <p className="text-gray-500 font-medium mb-8">Tell us your name and how you'll be using kkkhane</p>
+            <p className="text-gray-500 font-medium mb-8">Tell us your name and how you'll be using KKKhane</p>
 
             {/* Profile Block */}
             <div className="mb-8">
@@ -72,24 +79,24 @@ export default function OnboardingGetStarted({
                             </div>
                             
                             <div className="space-y-1">
-                                <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
+                                <button onClick={() => handleComingSoon('Profile Settings')} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
                                     <Settings size={16} className="text-gray-400" /> Profile Setting
                                 </button>
-                                <button className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
+                                <button onClick={() => setIsDarkTheme(!isDarkTheme)} className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
                                     <div className="flex items-center gap-3">
                                         <Moon size={16} className="text-gray-400" /> Dark Theme
                                     </div>
-                                    <div className="w-8 h-4 bg-gray-200 rounded-full relative">
-                                        <div className="w-4 h-4 bg-white rounded-full shadow absolute left-0 top-0"></div>
+                                    <div className={`w-8 h-4 rounded-full relative transition-colors ${isDarkTheme ? 'bg-blue-500' : 'bg-gray-200'}`}>
+                                        <div className={`w-4 h-4 bg-white rounded-full shadow absolute top-0 transition-all ${isDarkTheme ? 'left-4' : 'left-0'}`}></div>
                                     </div>
                                 </button>
-                                <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
+                                <button onClick={() => handleComingSoon('Invitations')} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
                                     <MessageSquareText size={16} className="text-gray-400" /> Invitation
                                 </button>
-                                <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
+                                <button onClick={() => handleComingSoon('Profile Sharing')} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
                                     <Share2 size={16} className="text-gray-400" /> Share Profile
                                 </button>
-                                <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
+                                <button onClick={() => handleComingSoon('Notification Preferences')} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
                                     <Bell size={16} className="text-gray-400" /> User Notification Preferences
                                 </button>
                             </div>

@@ -15,6 +15,7 @@ const Marker = dynamic(() => import('react-leaflet').then(mod => mod.Marker), { 
 // useMapEvents is a hook — it can't be dynamic()-wrapped. The component that
 // uses it is dynamically imported (ssr: false) from its own client module.
 const MapClickHandler = dynamic(() => import('@/components/shared/MapClickHandler'), { ssr: false })
+const MapUpdater = dynamic(() => import('@/components/shared/MapUpdater'), { ssr: false })
 
 // Fix for default marker icons in leaflet
 const iconFix = () => {
@@ -50,10 +51,39 @@ export default function OnboardingCreateClient() {
         iconFix()
     }, [])
 
+    const updatePositionAndAddress = async (lat: number, lng: number) => {
+        setPosition({ lat, lng })
+        try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+            const data = await res.json()
+            if (data && data.display_name) {
+                setAddress(data.display_name)
+            }
+        } catch (error) {
+            console.error("Failed to reverse geocode", error)
+        }
+    }
+
+    const handleSearchLocation = async () => {
+        if (!address) return
+        try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`)
+            const data = await res.json()
+            if (data && data.length > 0) {
+                const lat = parseFloat(data[0].lat)
+                const lng = parseFloat(data[0].lon)
+                setPosition({ lat, lng })
+                setAddress(data[0].display_name)
+            }
+        } catch (error) {
+            console.error("Failed to geocode", error)
+        }
+    }
+
     const handleCurrentLocation = () => {
         if ('geolocation' in navigator) {
             navigator.geolocation.getCurrentPosition(
-                (pos) => setPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                (pos) => updatePositionAndAddress(pos.coords.latitude, pos.coords.longitude),
                 (err) => console.error(err)
             )
         }
@@ -69,6 +99,12 @@ export default function OnboardingCreateClient() {
         if (position) {
             formData.append('latitude', position.lat.toString())
             formData.append('longitude', position.lng.toString())
+        }
+
+        const countryCode = formData.get('countryCode') as string
+        const contactPhone = formData.get('contactPhone') as string
+        if (countryCode && contactPhone) {
+            formData.set('contactPhone', `${countryCode} ${contactPhone}`)
         }
 
         try {
@@ -131,12 +167,17 @@ export default function OnboardingCreateClient() {
                     <div>
                         <label className="block text-sm font-semibold text-gray-900 mb-2">Restaurant Number <span className="text-red-500">*</span></label>
                         <div className="flex h-[52px] w-full rounded-xl border border-gray-200 overflow-hidden bg-white focus-within:border-gray-400 transition-all">
-                            <div className="flex items-center gap-2 px-4 bg-white border-r border-gray-200 cursor-pointer">
-                                <span className="text-lg leading-none">🇳🇵</span>
-                                <span className="text-gray-400 text-xs">▼</span>
-                            </div>
-                            <div className="flex items-center px-4 text-gray-900 text-sm">
-                                +977
+                            <div className="flex items-center bg-white border-r border-gray-200">
+                                <select 
+                                    name="countryCode"
+                                    className="h-full px-4 outline-none bg-transparent text-sm text-gray-900 cursor-pointer appearance-none"
+                                >
+                                    <option value="+977">🇳🇵 +977</option>
+                                    <option value="+1">🇺🇸 +1</option>
+                                    <option value="+44">🇬🇧 +44</option>
+                                    <option value="+61">🇦🇺 +61</option>
+                                    <option value="+91">🇮🇳 +91</option>
+                                </select>
                             </div>
                             <input
                                 name="contactPhone"
@@ -226,7 +267,14 @@ export default function OnboardingCreateClient() {
                                     className="w-full py-3.5 outline-none text-sm text-gray-700"
                                     value={address}
                                     onChange={(e) => setAddress(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault()
+                                            handleSearchLocation()
+                                        }
+                                    }}
                                 />
+                                <button type="button" onClick={handleSearchLocation} className="text-blue-600 font-semibold text-sm px-2 hover:text-blue-700">Search</button>
                             </div>
                             <button 
                                 onClick={() => setIsMapModalOpen(false)}
@@ -274,7 +322,8 @@ export default function OnboardingCreateClient() {
                                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                                     />
                                     {position && <Marker position={position} />}
-                                    <MapClickHandler onLocationSelect={(lat, lng) => setPosition({lat, lng})} />
+                                    <MapClickHandler onLocationSelect={(lat, lng) => updatePositionAndAddress(lat, lng)} />
+                                    <MapUpdater center={position} />
                                 </MapContainer>
                             )}
                         </div>
@@ -293,7 +342,7 @@ export default function OnboardingCreateClient() {
 
                         <div className="relative z-10">
                             <h3 className="text-sm font-bold text-gray-900 mb-2">Hello, Welcome!</h3>
-                            <h2 className="text-3xl font-extrabold text-gray-900 mb-4 tracking-tight">Welcome to RestroX</h2>
+                            <h2 className="text-3xl font-extrabold text-gray-900 mb-4 tracking-tight">Welcome to KKKhane</h2>
                             <p className="text-sm text-gray-500 font-medium leading-relaxed mb-8 max-w-sm mx-auto">
                                 Your restaurant has been successfully created. Take a quick tour to see how easy it is to manage your menu, tables, and team.
                             </p>
