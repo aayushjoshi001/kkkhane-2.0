@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import { Shield, ChefHat, Users, User, Check, AlertTriangle, Loader2, Pencil, Trash2, Eye, EyeOff, Banknote, Search } from 'lucide-react'
-import { updateStaffRoleAction, toggleStaffStatusAction, updateStaffNameAction, resetStaffPasswordAction, deleteStaffAction } from '@/app/(admin)/admin/staff/actions'
+import { Shield, ChefHat, Users, User, Check, AlertTriangle, Loader2, Pencil, Trash2, Eye, EyeOff, Banknote, Search, KeyRound, Copy, Link2 } from 'lucide-react'
+import { updateStaffRoleAction, toggleStaffStatusAction, updateStaffNameAction, resetStaffPasswordAction, deleteStaffAction, createStaffPinAction } from '@/app/(admin)/admin/staff/actions'
+import { PIN_ELIGIBLE_ROLE_IDS, isPinEligibleRole } from '@/lib/staffPin'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
 
@@ -30,13 +31,15 @@ export default function StaffManager({
     roles,
     currentUserRole,
     currentUserId,
-    restaurantId
+    restaurantId,
+    restaurantSlug,
 }: {
     initialStaff: StaffMember[]
     roles: Role[]
     currentUserRole: string
     currentUserId: string
     restaurantId: string
+    restaurantSlug: string
 }) {
     const [staff, setStaff] = useState<StaffMember[]>(initialStaff)
     const [submittingId, setSubmittingId] = useState<string | null>(null)
@@ -60,6 +63,7 @@ export default function StaffManager({
 
     const [createModal, setCreateModal] = useState({
         isOpen: false,
+        mode: 'pin' as 'pin' | 'email',
         fullName: '',
         email: '',
         password: '',
@@ -67,6 +71,8 @@ export default function StaffManager({
         roleId: 4, // Default to waiter
         isCreating: false
     })
+    // Set once a PIN account is created — shown in place of the form until "Done".
+    const [pinResult, setPinResult] = useState<{ pin: string; fullName: string } | null>(null)
 
     const [editModal, setEditModal] = useState<{
         isOpen: boolean
@@ -170,6 +176,7 @@ export default function StaffManager({
             toast.success(data.message || 'Staff member created successfully')
             setCreateModal({
                 isOpen: false,
+                mode: 'pin',
                 fullName: '',
                 email: '',
                 password: '',
@@ -183,6 +190,42 @@ export default function StaffManager({
         } finally {
             setCreateModal(prev => ({ ...prev, isCreating: false }))
         }
+    }
+
+    const handleCreateStaffPin = async () => {
+        if (!createModal.fullName.trim()) {
+            toast.error('Please enter a name')
+            return
+        }
+
+        setCreateModal(prev => ({ ...prev, isCreating: true }))
+        const res = await createStaffPinAction({ fullName: createModal.fullName, roleId: createModal.roleId })
+        setCreateModal(prev => ({ ...prev, isCreating: false }))
+
+        if (!res.success || !res.pin) {
+            toast.error(res.error || 'Failed to create staff member')
+            return
+        }
+
+        if (res.staff) setStaff(prev => [res.staff as StaffMember, ...prev])
+        setPinResult({ pin: res.pin, fullName: createModal.fullName.trim() })
+    }
+
+    const closeCreateModal = () => {
+        setCreateModal({ isOpen: false, mode: 'pin', fullName: '', email: '', password: '', phone: '', roleId: 4, isCreating: false })
+        setPinResult(null)
+    }
+
+    // Computed post-mount (needs window.location.origin) — avoids an SSR/client mismatch.
+    const [terminalLink, setTerminalLink] = useState('')
+    useEffect(() => {
+        if (restaurantSlug) setTerminalLink(`${window.location.origin}/login?r=${restaurantSlug}`)
+    }, [restaurantSlug])
+
+    const handleCopyTerminalLink = () => {
+        if (!terminalLink) return
+        navigator.clipboard.writeText(terminalLink)
+        toast.success('Staff terminal link copied')
     }
 
     const openEditModal = (user: StaffMember) => {
@@ -254,6 +297,8 @@ export default function StaffManager({
 
     // Business Logic: Only super_admin can assign super_admin
     const availableRoles = roles.filter(r => r.name !== 'customer' && (currentUserRole === 'super_admin' || r.name !== 'super_admin'))
+    // PIN login only makes sense for POS roles (waiter/kitchen/cashier) — never managers/super admins.
+    const pinEligibleRoles = availableRoles.filter(r => (PIN_ELIGIBLE_ROLE_IDS as readonly number[]).includes(r.id))
 
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
@@ -262,7 +307,17 @@ export default function StaffManager({
                     <h3 className="text-lg font-semibold text-gray-800">Team Roster ({staff.length})</h3>
                     <p className="text-sm text-gray-500 mt-1">Create staff accounts and manage roles</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                    {restaurantSlug && (
+                        <button
+                            onClick={handleCopyTerminalLink}
+                            title="Copy the link staff use to sign in with their name + PIN on a shared device"
+                            className="px-3.5 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2 shrink-0"
+                        >
+                            <Link2 size={16} className="text-gray-400" />
+                            <span className="hidden sm:inline">Staff Terminal Link</span>
+                        </button>
+                    )}
                     <button
                         onClick={() => setCreateModal(prev => ({ ...prev, isOpen: true }))}
                         className="px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2 shrink-0"
@@ -585,95 +640,173 @@ export default function StaffManager({
             {/* Create Staff Modal */}
             {createModal.isOpen && (
                 <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        <div className="p-6">
-                            <h3 className="text-lg font-extrabold text-gray-900 mb-2">Create Staff Account</h3>
-                            <p className="text-sm text-gray-500 mb-6">Add a new staff member to your restaurant.</p>
-
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Full Name *</label>
-                                    <input
-                                        type="text"
-                                        value={createModal.fullName}
-                                        onChange={(e) => setCreateModal(prev => ({ ...prev, fullName: e.target.value }))}
-                                        placeholder="John Doe"
-                                        disabled={createModal.isCreating}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-50"
-                                    />
+                    <div className="bg-white rounded-3xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        {pinResult ? (
+                            // ── PIN success panel ──
+                            <div className="p-8 text-center">
+                                <div className="mx-auto w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mb-5 animate-in zoom-in-50 duration-300">
+                                    <Check size={30} className="text-emerald-500" strokeWidth={3} />
                                 </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Email Address *</label>
-                                    <input
-                                        type="email"
-                                        value={createModal.email}
-                                        onChange={(e) => setCreateModal(prev => ({ ...prev, email: e.target.value }))}
-                                        placeholder="john@example.com"
-                                        disabled={createModal.isCreating}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-50"
-                                    />
+                                <h3 className="text-lg font-extrabold text-gray-900">{pinResult.fullName} is all set!</h3>
+                                <p className="text-sm text-gray-500 mt-1.5 mb-6 leading-relaxed">
+                                    Share this PIN with them — they&apos;ll tap their name on the staff terminal and enter it to sign in.
+                                </p>
+                                <div className="flex justify-center gap-2.5 mb-6">
+                                    {pinResult.pin.split('').map((digit, i) => (
+                                        <div key={i} className="w-14 h-16 rounded-2xl bg-gray-50 border-2 border-gray-100 flex items-center justify-center text-3xl font-black text-gray-900 tabular-nums">
+                                            {digit}
+                                        </div>
+                                    ))}
                                 </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Password *</label>
-                                    <input
-                                        type="password"
-                                        value={createModal.password}
-                                        onChange={(e) => setCreateModal(prev => ({ ...prev, password: e.target.value }))}
-                                        placeholder="At least 8 characters"
-                                        disabled={createModal.isCreating}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-50"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone Number</label>
-                                    <input
-                                        type="tel"
-                                        value={createModal.phone}
-                                        onChange={(e) => setCreateModal(prev => ({ ...prev, phone: e.target.value }))}
-                                        placeholder="123-456-7890"
-                                        disabled={createModal.isCreating}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-50"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Initial Role</label>
-                                    <select
-                                        value={createModal.roleId}
-                                        onChange={(e) => setCreateModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
-                                        disabled={createModal.isCreating}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-50"
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => { navigator.clipboard.writeText(pinResult.pin); toast.success('PIN copied') }}
+                                        className="flex-1 py-2.5 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
                                     >
-                                        {availableRoles.map(role => (
-                                            <option key={role.id} value={role.id}>
-                                                {formatRoleName(role.name)}
-                                            </option>
-                                        ))}
-                                    </select>
+                                        <Copy size={14} /> Copy PIN
+                                    </button>
+                                    <button
+                                        onClick={closeCreateModal}
+                                        className="flex-1 py-2.5 text-sm font-semibold text-white bg-primary rounded-xl hover:opacity-90 transition-opacity"
+                                    >
+                                        Done
+                                    </button>
                                 </div>
                             </div>
-                        </div>
+                        ) : (
+                            <>
+                                <div className="p-6 pb-0">
+                                    <h3 className="text-lg font-extrabold text-gray-900 mb-2">Create Staff Account</h3>
+                                    <p className="text-sm text-gray-500 mb-5">Add a new staff member to your restaurant.</p>
 
-                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
-                            <button
-                                onClick={() => setCreateModal(prev => ({ ...prev, isOpen: false }))}
-                                disabled={createModal.isCreating}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 disabled:opacity-50"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleCreateStaff}
-                                disabled={createModal.isCreating}
-                                className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg shadow-sm hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
-                            >
-                                {createModal.isCreating ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                                Create Staff
-                            </button>
-                        </div>
+                                    {/* Login method toggle */}
+                                    <div className="grid grid-cols-2 gap-1 p-1 bg-gray-100 rounded-xl mb-5">
+                                        <button
+                                            type="button"
+                                            onClick={() => setCreateModal(prev => ({ ...prev, mode: 'pin', roleId: isPinEligibleRole(prev.roleId) ? prev.roleId : 4 }))}
+                                            className={`py-2 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${createModal.mode === 'pin' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                        >
+                                            <KeyRound size={14} /> Quick PIN
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCreateModal(prev => ({ ...prev, mode: 'email' }))}
+                                            className={`py-2 rounded-lg text-sm font-semibold transition-all ${createModal.mode === 'email' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                        >
+                                            Email &amp; Password
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="px-6 pb-6 space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Full Name *</label>
+                                        <input
+                                            type="text"
+                                            value={createModal.fullName}
+                                            onChange={(e) => setCreateModal(prev => ({ ...prev, fullName: e.target.value }))}
+                                            placeholder="John Doe"
+                                            disabled={createModal.isCreating}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-50"
+                                        />
+                                    </div>
+
+                                    {createModal.mode === 'pin' ? (
+                                        <>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Role</label>
+                                                <select
+                                                    value={createModal.roleId}
+                                                    onChange={(e) => setCreateModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
+                                                    disabled={createModal.isCreating}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-50"
+                                                >
+                                                    {pinEligibleRoles.map(role => (
+                                                        <option key={role.id} value={role.id}>{formatRoleName(role.name)}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 flex items-start gap-2 leading-relaxed">
+                                                <KeyRound size={14} className="shrink-0 mt-0.5" />
+                                                A random 4-digit PIN will be generated after you create the account. Staff sign in by tapping their name on the shared terminal and entering it — no email or password needed.
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Email Address *</label>
+                                                <input
+                                                    type="email"
+                                                    value={createModal.email}
+                                                    onChange={(e) => setCreateModal(prev => ({ ...prev, email: e.target.value }))}
+                                                    placeholder="john@example.com"
+                                                    disabled={createModal.isCreating}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-50"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Password *</label>
+                                                <input
+                                                    type="password"
+                                                    value={createModal.password}
+                                                    onChange={(e) => setCreateModal(prev => ({ ...prev, password: e.target.value }))}
+                                                    placeholder="At least 8 characters"
+                                                    disabled={createModal.isCreating}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-50"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone Number</label>
+                                                <input
+                                                    type="tel"
+                                                    value={createModal.phone}
+                                                    onChange={(e) => setCreateModal(prev => ({ ...prev, phone: e.target.value }))}
+                                                    placeholder="123-456-7890"
+                                                    disabled={createModal.isCreating}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-50"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Initial Role</label>
+                                                <select
+                                                    value={createModal.roleId}
+                                                    onChange={(e) => setCreateModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
+                                                    disabled={createModal.isCreating}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-50"
+                                                >
+                                                    {availableRoles.map(role => (
+                                                        <option key={role.id} value={role.id}>{formatRoleName(role.name)}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+
+                                <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                                    <button
+                                        onClick={closeCreateModal}
+                                        disabled={createModal.isCreating}
+                                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={createModal.mode === 'pin' ? handleCreateStaffPin : handleCreateStaff}
+                                        disabled={createModal.isCreating}
+                                        className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg shadow-sm hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        {createModal.isCreating
+                                            ? <Loader2 size={16} className="animate-spin" />
+                                            : createModal.mode === 'pin' ? <KeyRound size={16} /> : <Check size={16} />}
+                                        {createModal.mode === 'pin' ? 'Generate PIN & Create' : 'Create Staff'}
+                                    </button>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             )}

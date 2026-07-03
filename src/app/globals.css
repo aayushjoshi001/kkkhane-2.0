@@ -71,6 +71,11 @@
     --font-sans: "Inter", "Geist Sans", ui-sans-serif, system-ui, sans-serif;
 
     /* Brand utilities */
+    /* Registers bg-primary/text-primary/border-primary/ring-primary etc. —
+       without this token, those classes silently don't exist as Tailwind
+       utilities (no error, just no styling), which is why several buttons
+       across the admin UI render with no background at all. */
+    --color-primary: var(--color-primary, #FB6303);
     --color-brand-50:  var(--brand-50);
     --color-brand-100: var(--brand-100);
     --color-brand-200: var(--brand-200);
@@ -133,6 +138,7 @@ input[type='number'] { -moz-appearance: textfield; }
 @keyframes float-slow   { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
 @keyframes marquee      { 0% { transform: translateX(0%); } 100% { transform: translateX(-100%); } }
 @keyframes marquee2     { 0% { transform: translateX(100%); } 100% { transform: translateX(0%); } }
+@keyframes shake        { 10%, 90% { transform: translateX(-1px); } 20%, 80% { transform: translateX(2px); } 30%, 50%, 70% { transform: translateX(-4px); } 40%, 60% { transform: translateX(4px); } }
 
 /* ─── Utility layer ─────────────────────────────────────── */
 @layer utilities {
@@ -145,6 +151,7 @@ input[type='number'] { -moz-appearance: textfield; }
     .animate-float       { animation: float 4s ease-in-out infinite; }
     .animate-float-slow  { animation: float-slow 6s ease-in-out infinite; }
     .animate-float-delayed { animation: float 4s ease-in-out infinite; animation-delay: 2s; }
+    .animate-shake       { animation: shake .4s var(--ease-out) both; }
     .animate-marquee     { animation: marquee 35s linear infinite; }
     .animate-marquee2    { animation: marquee2 35s linear infinite; }
 
