@@ -1,6 +1,8 @@
 import { requireRole } from '@/lib/auth'
 import { getAllOrdersAcrossRestaurants, getAllRestaurants } from '../actions'
 import OrdersClient, { type Order } from './OrdersClient'
+import { Settings } from 'lucide-react'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 
 export const dynamic = 'force-dynamic'
 
