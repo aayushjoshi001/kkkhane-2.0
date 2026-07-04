@@ -275,7 +275,12 @@ export async function placeOrder(
                 }
             }
 
-            // Recalculate order totals in TypeScript to match database consistency
+            const { data: settings } = await supabase
+                .from('settings')
+                .select('features_v2')
+                .eq('restaurant_id', sessionData.restaurant_id)
+                .single()
+            
             const featuresV2 = settings?.features_v2 as any
             const taxRate = Number(featuresV2?.defaultTaxRate ?? 0)
             const scEnabled = featuresV2?.serviceChargeEnabled === true
