@@ -45,18 +45,18 @@ export default function WaiterTabs({
         <div className="w-full">
             {topStats && <div className="mb-4">{topStats}</div>}
             {/* Tab Navigation */}
-            <div className="flex border-b border-hairline overflow-x-auto no-scrollbar mb-4 bg-surface sticky top-14 z-20 -mx-3 px-3 md:mx-0 md:px-0">
+            <div className="grid grid-cols-3 border-b border-hairline mb-4 bg-surface sticky top-14 z-20 -mx-3 px-3 md:mx-0 md:px-0">
                 {tabs.map((tab) => {
                     const isActive = activeTab === tab.id
                     return (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`flex items-center gap-2 px-5 py-4 text-sm font-bold whitespace-nowrap transition-colors relative focus:outline-none ${
+                            className={`flex items-center justify-center gap-2 py-4 text-sm font-bold whitespace-nowrap transition-colors relative focus:outline-none w-full ${
                                 isActive ? 'text-[var(--brand-500)]' : 'text-ink-muted hover:text-ink'
                             }`}
                         >
-                            {tab.label}
+                            <span>{tab.label}</span>
                             {tab.count > 0 && (
                                 <span className={`flex items-center justify-center min-w-[20px] h-[20px] rounded-full text-[11px] font-bold px-1.5 ${
                                     isActive ? 'bg-[var(--brand-500)] text-white' : 'bg-ink-subtle text-white'

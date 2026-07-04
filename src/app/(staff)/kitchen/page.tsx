@@ -2,8 +2,6 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import OrderQueue, { type KitchenOrder, type ComboItemRow } from '@/components/kitchen/OrderQueue'
 import { getRestaurantFeatures } from '@/lib/features'
-import TakeoutQueue from '@/components/kitchen/TakeoutQueue'
-import { TAKEOUT_ORDER_SELECT, mapOrderRowToTakeout } from '@/lib/takeout'
 
 export const revalidate = 0
 
@@ -14,7 +12,6 @@ export default async function KitchenPage() {
     const [
         features,
         { data: activeOrders },
-        { data: takeoutOrders },
     ] = await Promise.all([
         getRestaurantFeatures(restaurantId),
         adminSupabase
@@ -35,8 +32,7 @@ export default async function KitchenPage() {
                     unit_price,
                     special_request,
                     status,
-                    claimed_by,
-                    claimed_at,
+                    claimed_by, claimed_at,
                     menu_items ( name, is_combo ),
                     order_item_modifiers ( modifier_name, price_adjustment )
                 )
@@ -45,14 +41,6 @@ export default async function KitchenPage() {
             .in('order_type', ['dine_in', 'takeout', 'delivery'])
             .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
             .order('placed_at', { ascending: true }),
-        // Takeout Orders
-        adminSupabase
-            .from('orders')
-            .select(TAKEOUT_ORDER_SELECT)
-            .eq('restaurant_id', restaurantId)
-            .in('order_type', ['takeout', 'delivery'])
-            .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
-            .order('pickup_time', { ascending: true }),
     ])
 
     // Filter active orders for the main kitchen queue:
@@ -91,22 +79,15 @@ export default async function KitchenPage() {
 
     return (
         <div className="h-full flex flex-col overflow-hidden bg-[#FBF7F3]">
-            {/* Order Queue and Takeout */}
-            <div className="flex-1 overflow-hidden flex flex-col gap-4">
-                <div className="flex-1 overflow-hidden">
-                    <OrderQueue
-                        initialOrders={filteredActiveOrders as unknown as KitchenOrder[]}
-                        restaurantId={restaurantId}
-                        comboItems={comboItems}
-                        userId={userId}
-                        staffNames={staffNames}
-                    />
-                </div>
-                
-                {/* Takeout Queue at the bottom */}
-                <div className="h-1/3 shrink-0 border-t border-gray-100 bg-white px-4 py-3">
-                    <TakeoutQueue restaurantId={restaurantId} initialOrders={(takeoutOrders || []).map(mapOrderRowToTakeout)} />
-                </div>
+            {/* Order Queue */}
+            <div className="flex-1 overflow-hidden">
+                <OrderQueue
+                    initialOrders={filteredActiveOrders as unknown as KitchenOrder[]}
+                    restaurantId={restaurantId}
+                    comboItems={comboItems}
+                    userId={userId}
+                    staffNames={staffNames}
+                />
             </div>
         </div>
     )

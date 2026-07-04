@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { markCashPaid } from '@/app/(staff)/waiter/order-actions'
 import { Banknote, CheckCircle } from 'lucide-react'
@@ -20,13 +20,19 @@ export interface UnpaidOrder {
 export default function CashPaymentFeed({
     initialOrders,
     restaurantId,
+    onPendingCountChange,
 }: {
     initialOrders: UnpaidOrder[]
     restaurantId: string
+    onPendingCountChange?: (count: number) => void
 }) {
     const [orders, setOrders] = useState<UnpaidOrder[]>(initialOrders)
     const money = useCurrency()
     const [processingId, setProcessingId] = useState<string | null>(null)
+
+    useEffect(() => {
+        onPendingCountChange?.(orders.length)
+    }, [orders.length, onPendingCountChange])
 
     // Remove from local list when an order gets paid via any path (realtime)
     useRestaurantTable(restaurantId, 'orders', (payload) => {

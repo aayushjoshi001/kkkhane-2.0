@@ -131,25 +131,34 @@ export async function completeServiceRequest(
 ): Promise<{ success: boolean; error?: string; conflict?: boolean }> {
     const supabase = await createAdminClient()
 
-    // Only the waiter who took it (or an unclaimed request) may mark it served.
-    let query = supabase
+    const { data: req, error: fetchError } = await supabase
+        .from('service_requests')
+        .select('acknowledged_by, status')
+        .eq('id', requestId)
+        .maybeSingle()
+
+    if (fetchError || !req) {
+        return { success: false, error: 'Request not found.' }
+    }
+
+    if (req.status === 'completed') {
+        return { success: true }
+    }
+
+    if (userId && req.acknowledged_by && req.acknowledged_by !== userId) {
+        return { success: false, conflict: true, error: 'Only the waiter who took this can mark it served' }
+    }
+
+    const { error } = await supabase
         .from('service_requests')
         .update({
             status: 'completed',
             completed_at: new Date().toISOString(),
         })
         .eq('id', requestId)
-        .neq('status', 'completed')
-
-    if (userId) query = query.or(`acknowledged_by.eq.${userId},acknowledged_by.is.null`)
-
-    const { data, error } = await query.select('id')
 
     if (error) {
         return { success: false, error: 'Failed to complete request.' }
-    }
-    if (!data || data.length === 0) {
-        return { success: false, conflict: true, error: 'Only the waiter who took this can mark it served' }
     }
     return { success: true }
 }
