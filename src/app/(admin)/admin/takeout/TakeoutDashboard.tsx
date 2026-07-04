@@ -9,12 +9,12 @@ import { useCurrency } from '@/lib/contexts/FeatureContext'
 import type { TakeoutOrder } from '@/types/database'
 
 const STATUS_COLORS: Record<string, string> = {
-    placed: 'bg-yellow-100 text-yellow-800',
-    confirmed: 'bg-blue-100 text-blue-800',
-    preparing: 'bg-purple-100 text-purple-800',
-    ready_for_pickup: 'bg-green-100 text-green-800',
-    picked_up: 'bg-gray-100 text-gray-600',
-    cancelled: 'bg-red-100 text-red-800',
+    placed: 'bg-amber-50 text-amber-700 border-amber-200',
+    confirmed: 'bg-brand-50 text-brand-700 border-brand-200',
+    preparing: 'bg-purple-50 text-purple-700 border-purple-200',
+    ready_for_pickup: 'bg-success-bg/30 text-success-fg border-success-bg',
+    picked_up: 'bg-surface-muted text-ink-subtle border-hairline',
+    cancelled: 'bg-danger-bg/30 text-danger-fg border-danger-bg',
 }
 
 const NEXT_STATUS: Record<string, string> = {
@@ -40,8 +40,12 @@ export default function TakeoutDashboard({ initialOrders, restaurantSlug, restau
     const takeoutUrl = restaurantSlug ? `${baseUrl}/takeout/${restaurantSlug}` : ''
 
     const downloadSvg = () => {
+        // Find the QR code SVG inside the card
         const svgElement = document.getElementById('takeout-qr-code')
         if (!svgElement) return
+        
+        // We only download the QR code itself as SVG, since rendering the full HTML card to SVG is complex.
+        // We could also do a high-res PNG canvas export like in TableManager if needed.
         const svgString = new XMLSerializer().serializeToString(svgElement)
         const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' })
         const svgUrl = URL.createObjectURL(svgBlob)
@@ -51,6 +55,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantSlug, restau
         document.body.appendChild(downloadLink)
         downloadLink.click()
         document.body.removeChild(downloadLink)
+        setTimeout(() => URL.revokeObjectURL(svgUrl), 100)
     }
 
     const filteredOrders = orders.filter(o => {
@@ -83,23 +88,23 @@ export default function TakeoutDashboard({ initialOrders, restaurantSlug, restau
         <div className="space-y-6">
             {/* Takeout & Delivery QR Section */}
             {restaurantSlug && (
-                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                <div className="bg-surface rounded-card border border-hairline p-6 shadow-sm">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                        <div className="space-y-1">
-                            <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                                <QrCode size={18} className="text-gray-900" />
+                        <div className="space-y-1.5">
+                            <h2 className="text-h3 font-bold text-ink flex items-center gap-2">
+                                <QrCode size={20} className="text-ink-subtle" />
                                 Takeout & Delivery Ordering QR Code
                             </h2>
-                            <p className="text-sm text-gray-500">
+                            <p className="text-sm font-medium text-ink-subtle/80">
                                 Share this link or print the QR code for customers to place pickup and delivery orders.
                             </p>
                             {takeoutUrl && (
-                                <div className="pt-1">
+                                <div className="pt-2">
                                     <a 
                                         href={takeoutUrl} 
                                         target="_blank" 
                                         rel="noreferrer" 
-                                        className="text-xs text-blue-600 hover:text-blue-800 font-medium inline-flex items-center gap-1 bg-blue-50 px-2.5 py-1 rounded-md"
+                                        className="text-[11px] font-bold text-brand-600 hover:text-brand-700 tracking-wide inline-flex items-center gap-1.5 bg-brand-50 border border-brand-100 px-3 py-1.5 rounded-full transition-colors"
                                     >
                                         {takeoutUrl}
                                         <ExternalLink size={12} />
@@ -109,7 +114,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantSlug, restau
                         </div>
                         <button
                             onClick={() => setShowQr(!showQr)}
-                            className="sm:self-center bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                            className="sm:self-center bg-surface border border-hairline hover:bg-surface-muted text-ink text-sm font-bold px-5 py-2.5 rounded-[var(--r-md)] flex items-center justify-center gap-2 transition-all shadow-sm focus-ring"
                         >
                             <QrCode size={16} />
                             {showQr ? 'Hide QR Code' : 'Show QR Code'}
@@ -117,19 +122,62 @@ export default function TakeoutDashboard({ initialOrders, restaurantSlug, restau
                     </div>
 
                     {showQr && (
-                        <div className="mt-5 pt-5 border-t border-gray-100 flex flex-col items-center justify-center">
-                            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-center">
-                                <QRCodeSVG
-                                    id="takeout-qr-code"
-                                    value={takeoutUrl}
-                                    size={200}
-                                    level="H"
-                                    includeMargin={true}
-                                />
+                        <div className="mt-6 pt-6 border-t border-hairline flex flex-col items-center justify-center animate-in fade-in slide-in-from-top-2 duration-300">
+                            {/* The Card Preview Container */}
+                            <div id="takeout-qr-card-preview" className="w-[280px] h-[340px] bg-white rounded-xl border border-gray-200 shadow-[0_8px_30px_rgba(0,0,0,0.12)] flex flex-col items-center p-4 pb-12 relative overflow-hidden select-none">
+                                
+                                {/* Top Banner */}
+                                <div className="w-full flex items-center justify-center relative my-2 shrink-0">
+                                    <div className="absolute left-0 right-0 h-[3px] bg-[#ff7a00]" />
+                                    <div className="bg-[#ff7a00] text-white text-[12px] font-black px-5 py-2 rounded-sm uppercase tracking-wider relative z-10 text-center shadow-sm">
+                                        TAKEOUT & DELIVERY
+                                    </div>
+                                </div>
+
+                                {/* QR Code */}
+                                <div className="my-2 shrink-0 bg-white">
+                                    <QRCodeSVG
+                                        id="takeout-qr-code"
+                                        value={takeoutUrl}
+                                        size={140}
+                                        level="H"
+                                        includeMargin={false}
+                                        fgColor="#000000"
+                                        bgColor="#ffffff"
+                                        imageSettings={{
+                                            src: '/icons/kkkhane.png?v=2',
+                                            height: 32,
+                                            width: 32,
+                                            excavate: true,
+                                        }}
+                                    />
+                                </div>
+
+                                {/* Hotel / Restaurant Name */}
+                                <div className="text-center flex-1 flex flex-col justify-center pb-1 min-h-[50px] px-2 overflow-hidden shrink-0 mt-1">
+                                    <p className="font-extrabold text-[15px] text-gray-950 truncate max-w-[240px] leading-tight" title={restaurantName}>
+                                        {restaurantName}
+                                    </p>
+                                </div>
+
+                                {/* Bottom Banner */}
+                                <div className="absolute bottom-0 left-0 right-0 h-10 bg-[#ff7a00] flex items-center justify-center gap-2 shrink-0 shadow-[0_-2px_10px_rgba(255,122,0,0.3)]">
+                                    <span 
+                                        className="text-white text-[11px] font-extrabold tracking-widest uppercase" 
+                                        style={{ fontFamily: '"Outfit", "Inter", system-ui, sans-serif' }}
+                                    >
+                                        Powered by KKKHANEY
+                                    </span>
+                                    <img
+                                        src="/icons/kkkhane.png?v=2"
+                                        alt="Logo"
+                                        className="w-5 h-5 rounded-full bg-white object-cover border-[1.5px] border-white shrink-0 shadow-sm"
+                                    />
+                                </div>
                             </div>
                             <button
                                 onClick={downloadSvg}
-                                className="mt-4 flex items-center gap-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 px-3.5 py-2 rounded-lg transition-colors cursor-pointer"
+                                className="mt-5 flex items-center gap-2 text-xs font-bold text-ink-subtle bg-surface border border-hairline hover:text-ink hover:bg-surface-muted px-4 py-2 rounded-full transition-all focus-ring shadow-sm"
                             >
                                 <Download size={14} />
                                 Download QR Vector (SVG)
@@ -140,21 +188,21 @@ export default function TakeoutDashboard({ initialOrders, restaurantSlug, restau
             )}
 
             {/* Filters */}
-            <div className="flex flex-col sm:flex-row gap-3 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+            <div className="flex flex-col sm:flex-row gap-3 bg-surface p-4 rounded-card border border-hairline shadow-sm">
                 <div className="relative flex-1">
-                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-subtle" />
                     <input
                         type="text"
                         placeholder="Search by name, phone or ID..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                        className="w-full pl-10 pr-4 py-2.5 rounded-[var(--r-md)] border border-hairline text-sm bg-surface text-ink outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
                     />
                 </div>
                 <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 w-full sm:w-48 capitalize"
+                    className="rounded-[var(--r-md)] border border-hairline bg-surface px-4 py-2.5 text-sm font-bold text-ink outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 w-full sm:w-48 capitalize shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
                 >
                     <option value="all">All Statuses</option>
                     {Object.keys(STATUS_COLORS).map(s => (
@@ -163,61 +211,68 @@ export default function TakeoutDashboard({ initialOrders, restaurantSlug, restau
                 </select>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
                 {filteredOrders.length === 0 && (
-                    <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">
+                    <div className="bg-surface rounded-card border border-hairline p-10 text-center text-ink-subtle font-bold shadow-sm">
                         No active takeout orders.
                     </div>
                 )}
             {filteredOrders.map(order => (
-                <div key={order.id} className="bg-white rounded-xl border border-gray-200 p-5">
-                    <div className="flex items-start justify-between gap-4 mb-3">
+                <div key={order.id} className="bg-surface rounded-card border border-hairline p-5 shadow-sm transition-all hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)]">
+                    <div className="flex items-start justify-between gap-4 mb-4">
                         <div>
-                            <div className="flex items-center gap-2 mb-1">
-                                <User size={14} className="text-gray-400" />
-                                <span className="font-semibold text-gray-900">{order.customer_name}</span>
-                                <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${STATUS_COLORS[order.status] || ''}`}>
+                            <div className="flex items-center gap-3 mb-1.5">
+                                <div className="flex items-center gap-1.5">
+                                    <User size={16} className="text-ink-subtle" />
+                                    <span className="font-extrabold text-ink text-base">{order.customer_name}</span>
+                                </div>
+                                <span className={`text-[10px] font-bold tracking-wide uppercase px-2.5 py-1 rounded-full border ${STATUS_COLORS[order.status] || ''}`}>
                                     {order.status.replace('_', ' ')}
                                 </span>
                             </div>
-                            <div className="flex items-center gap-4 text-sm text-gray-500">
-                                <span className="flex items-center gap-1"><Phone size={12} />{order.customer_phone}</span>
-                                <span className="flex items-center gap-1"><Clock size={12} />Pickup: {new Date(order.pickup_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] font-medium text-ink-subtle">
+                                <span className="flex items-center gap-1.5"><Phone size={14} className="opacity-70" />{order.customer_phone}</span>
+                                <span className="flex items-center gap-1.5"><Clock size={14} className="opacity-70" />Pickup: <span className="tabular-nums font-bold text-ink">{new Date(order.pickup_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></span>
                             </div>
                         </div>
-                        <div className="text-right">
-                            <p className="font-semibold text-gray-900">{money(order.total_amount)}</p>
-                            <p className="text-xs text-gray-400">#{order.id.slice(0, 8)}</p>
+                        <div className="text-right shrink-0">
+                            <p className="text-h3 font-extrabold text-ink tabular-nums leading-tight">{money(order.total_amount)}</p>
+                            <p className="text-[11px] font-medium font-mono text-ink-subtle mt-0.5">#{order.id.slice(0, 8).toUpperCase()}</p>
                         </div>
                     </div>
 
                     {/* Items */}
-                    <div className="bg-gray-50 rounded-lg p-3 mb-3">
-                        <ul className="space-y-1 text-sm text-gray-700">
+                    <div className="bg-surface-muted/30 border border-hairline rounded-[var(--r-md)] p-4 mb-4 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
+                        <ul className="space-y-2 text-sm text-ink font-medium">
                             {order.items.map((item, i) => (
-                                <li key={i} className="flex justify-between">
-                                    <span>{item.quantity}× {item.name}</span>
-                                    <span className="text-gray-500">{money(item.price * item.quantity)}</span>
+                                <li key={i} className="flex justify-between items-center group">
+                                    <span className="flex items-center gap-2">
+                                        <span className="font-bold text-ink-subtle tabular-nums bg-surface border border-hairline w-6 h-6 rounded-full flex items-center justify-center text-[10px] shadow-sm">{item.quantity}</span> 
+                                        <span>{item.name}</span>
+                                    </span>
+                                    <span className="text-ink-subtle tabular-nums group-hover:text-ink transition-colors">{money(item.price * item.quantity)}</span>
                                 </li>
                             ))}
                         </ul>
                         {order.customer_note && (
-                            <p className="mt-2 text-xs text-gray-500 italic">Note: {order.customer_note}</p>
+                            <p className="mt-4 pt-3 border-t border-hairline text-[13px] text-ink-subtle font-medium italic flex items-start gap-2">
+                                <span className="text-brand-500 font-bold not-italic">Note:</span> {order.customer_note}
+                            </p>
                         )}
                     </div>
 
                     {/* Actions */}
-                    <div className="flex gap-2 justify-end">
+                    <div className="flex gap-3 justify-end border-t border-hairline pt-4">
                         {order.status !== 'cancelled' && order.status !== 'picked_up' && (
                             <button onClick={() => cancel(order)}
-                                className="flex items-center gap-1 text-red-600 hover:text-red-800 text-sm px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-50">
-                                <XCircle size={14} /> Cancel
+                                className="flex items-center gap-1.5 text-danger-fg text-sm font-bold px-4 py-2 rounded-[var(--r-md)] border border-danger-bg hover:bg-danger-bg/20 transition-all focus-ring">
+                                <XCircle size={16} /> Cancel
                             </button>
                         )}
                         {NEXT_STATUS[order.status] && (
                             <button onClick={() => advance(order)}
-                                className="flex items-center gap-1 bg-gray-900 text-white text-sm px-4 py-1.5 rounded-lg font-medium">
-                                <CheckCircle size={14} /> Mark {NEXT_STATUS[order.status].replace('_', ' ')}
+                                className="flex items-center gap-1.5 bg-brand-500 text-white text-sm font-bold px-5 py-2 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all focus-ring">
+                                <CheckCircle size={16} /> Mark {NEXT_STATUS[order.status].replace('_', ' ')}
                             </button>
                         )}
                     </div>

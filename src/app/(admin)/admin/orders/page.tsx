@@ -1,6 +1,8 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/auth'
 import OrdersClient, { type AdminOrder } from './OrdersClient'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { ShoppingBag } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,10 +25,12 @@ export default async function AdminOrdersPage() {
 
     return (
         <div className="space-y-4 md:space-y-6">
-            <header>
-                <h1 className="text-xl md:text-2xl font-bold text-gray-900">Order History</h1>
-                <p className="text-gray-500 mt-1 text-sm md:text-base">View and manage all orders. Managers can void or refund orders.</p>
-            </header>
+            <PremiumPageHeader 
+                title="Order History" 
+                description="View and manage all orders. Managers can void or refund orders." 
+                icon={<ShoppingBag size={18} />}
+                color="blue"
+            />
 
             <OrdersClient orders={orders || []} canRefund={canRefund} />
         </div>

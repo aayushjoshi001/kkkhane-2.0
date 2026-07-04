@@ -121,6 +121,50 @@ export default function ContactPage() {
                 </div>
             </section>
 
+            {/* Google Map Section */}
+            <section className="bg-white pt-10 pb-24">
+                <div className="mx-auto max-w-6xl px-4 sm:px-6">
+                    <div className="text-center mb-10">
+                        <h2 className="text-3xl font-extrabold tracking-tight text-gray-900">Find Us Here</h2>
+                        <p className="text-gray-500 font-medium mt-3">Visit our headquarters in the heart of Kathmandu.</p>
+                    </div>
+                    <div className="w-full h-[450px] rounded-[2.5rem] overflow-hidden shadow-2xl border-8 border-gray-50 relative group">
+                        <iframe 
+                            src="https://maps.google.com/maps?q=Kathmandu,+Nepal&t=&z=13&ie=UTF8&iwloc=&output=embed" 
+                            width="100%" 
+                            height="100%" 
+                            style={{ border: 0 }} 
+                            allowFullScreen 
+                            loading="lazy" 
+                            referrerPolicy="no-referrer-when-downgrade"
+                            className="filter grayscale contrast-[1.1] hover:grayscale-0 transition-all duration-1000 ease-in-out z-0"
+                        />
+                        
+                        {/* Premium Glassmorphic Overlay */}
+                        <div className="absolute top-6 left-6 md:top-8 md:left-8 bg-white/80 backdrop-blur-xl p-5 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-white/50 z-10 transform transition-transform group-hover:-translate-y-1">
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className="w-10 h-10 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center text-[var(--color-primary)]">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                                </div>
+                                <div>
+                                    <h3 className="font-extrabold text-gray-900 text-base">Global HQ</h3>
+                                    <p className="text-gray-500 font-bold text-xs uppercase tracking-wider">Kathmandu, Nepal</p>
+                                </div>
+                            </div>
+                            <a href="https://maps.google.com" target="_blank" rel="noreferrer" className="block text-center w-full py-2 mt-3 bg-gray-900 text-white rounded-xl text-xs font-bold hover:bg-black transition-colors">
+                                Get Directions
+                            </a>
+                        </div>
+
+                        {/* Animated pulsing dot on map center (CSS trick for premium feel) */}
+                        <div className="absolute top-[48%] left-[50%] -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10">
+                            <div className="w-6 h-6 bg-[var(--color-primary)] rounded-full animate-ping opacity-60" />
+                            <div className="w-3 h-3 bg-[var(--color-primary)] rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 shadow-lg shadow-[var(--color-primary)]" />
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <MarketingFooter />
         </div>
     )

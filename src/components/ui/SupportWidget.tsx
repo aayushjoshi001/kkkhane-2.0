@@ -29,7 +29,7 @@ export function SupportWidget() {
                     <X size={20} />
                 </button>
                 <div className="flex items-center gap-2 text-blue-100 text-xs font-bold tracking-wider mb-2">
-                    <HeadphonesIcon size={14} /> RESTROX SUPPORT
+                    <HeadphonesIcon size={14} /> KKKHANE SUPPORT
                 </div>
                 <h3 className="text-xl font-bold">We're here to help you 👋</h3>
             </div>

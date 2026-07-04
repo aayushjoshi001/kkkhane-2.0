@@ -275,13 +275,16 @@ export async function placeOrder(
                 }
             }
 
-            // Recalculate order totals in TypeScript to match database consistency
             const { data: settings } = await supabase
                 .from('settings')
                 .select('features_v2')
                 .eq('restaurant_id', sessionData.restaurant_id)
                 .single()
-            const taxRate = Number(settings?.features_v2?.defaultTaxRate ?? 0)
+            
+            const featuresV2 = settings?.features_v2 as any
+            const taxRate = Number(featuresV2?.defaultTaxRate ?? 0)
+            const scEnabled = featuresV2?.serviceChargeEnabled === true
+            const scRate = Number(featuresV2?.serviceChargeRate ?? 10)
 
             const { data: orderData } = await supabase
                 .from('orders')
@@ -290,14 +293,20 @@ export async function placeOrder(
                 .single()
 
             const discountAmount = Number(orderData?.discount_amount ?? 0)
-            const finalTax = Math.round(calculatedSubtotal * (taxRate / 100) * 100) / 100
-            const finalOrderTotal = Math.max(0, calculatedSubtotal - discountAmount + finalTax)
+            
+            const finalServiceCharge = scEnabled 
+                ? Math.round((calculatedSubtotal - discountAmount) * (scRate / 100) * 100) / 100 
+                : 0
+
+            const finalTax = Math.round((calculatedSubtotal - discountAmount + finalServiceCharge) * (taxRate / 100) * 100) / 100
+            const finalOrderTotal = Math.max(0, calculatedSubtotal - discountAmount + finalServiceCharge + finalTax)
 
             // Update the order totals in the database
             await supabase
                 .from('orders')
                 .update({
                     subtotal_amount: calculatedSubtotal,
+                    service_charge_amount: finalServiceCharge,
                     tax_amount: finalTax,
                     total_amount: finalOrderTotal
                 })
@@ -581,16 +590,24 @@ async function placeOrderFallback(
         .select('features_v2')
         .eq('restaurant_id', restaurantId)
         .single()
-    const taxRate = Number(settings?.features_v2?.defaultTaxRate ?? 0)
+    const featuresV2 = settings?.features_v2 as any
+    const taxRate = Number(featuresV2?.defaultTaxRate ?? 0)
+    const scEnabled = featuresV2?.serviceChargeEnabled === true
+    const scRate = Number(featuresV2?.serviceChargeRate ?? 10)
 
-    const tax = Math.round(subtotal * (taxRate / 100) * 100) / 100
-    const total = Math.max(0, subtotal - discount + tax)
+    const serviceCharge = scEnabled 
+        ? Math.round((subtotal - discount) * (scRate / 100) * 100) / 100 
+        : 0
+
+    const tax = Math.round((subtotal - discount + serviceCharge) * (taxRate / 100) * 100) / 100
+    const total = Math.max(0, subtotal - discount + serviceCharge + tax)
 
     const { error: totalsUpdateError } = await supabase
         .from('orders')
         .update({
             subtotal_amount: subtotal,
             discount_amount: discount,
+            service_charge_amount: serviceCharge,
             tax_amount: tax,
             total_amount: total,
             promo_code_id: promoCodeId,

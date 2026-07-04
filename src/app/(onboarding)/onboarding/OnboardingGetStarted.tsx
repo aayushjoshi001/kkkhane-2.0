@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Store, UserPlus, MoreHorizontal, Settings, Moon, Bell, Share2, LogOut, MessageSquareText, ChevronLeft } from 'lucide-react'
-import { createBrowserClient } from '@supabase/ssr'
+import { Store, MoreHorizontal, Settings, Moon, Bell, Share2, LogOut, MessageSquareText, ChevronLeft } from 'lucide-react'
+import { signOutAndRedirect } from '@/lib/auth/signOut'
+import { toast } from 'react-hot-toast'
 
 export default function OnboardingGetStarted({
     userEmail = 'user@example.com',
@@ -15,25 +16,19 @@ export default function OnboardingGetStarted({
     userId?: string
 }) {
     const router = useRouter()
-    const [selectedOption, setSelectedOption] = useState<'create' | 'join'>('create')
     const [isMenuOpen, setIsMenuOpen] = useState(false)
+    const [isDarkTheme, setIsDarkTheme] = useState(false)
+
+    const handleComingSoon = (feature: string) => {
+        toast.success(`${feature} will be available in your dashboard!`)
+        setIsMenuOpen(false)
+    }
 
     const handleContinue = () => {
-        if (selectedOption === 'create') {
-            router.push('/onboarding/create')
-        } else {
-            router.push('/onboarding/join')
-        }
+        router.push('/onboarding/create')
     }
 
-    const handleLogout = async () => {
-        const supabase = createBrowserClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        )
-        await supabase.auth.signOut()
-        router.push('/login')
-    }
+    const handleLogout = () => signOutAndRedirect(router)
 
     const initials = userName.substring(0, 2).toUpperCase()
 
@@ -45,7 +40,7 @@ export default function OnboardingGetStarted({
             </button>
 
             <h1 className="text-3xl font-extrabold text-gray-900 mb-2">Get Started</h1>
-            <p className="text-gray-500 font-medium mb-8">Tell us your name and how you'll be using kkkhane</p>
+            <p className="text-gray-500 font-medium mb-8">Tell us your name and how you'll be using KKKhane</p>
 
             {/* Profile Block */}
             <div className="mb-8">
@@ -84,24 +79,24 @@ export default function OnboardingGetStarted({
                             </div>
                             
                             <div className="space-y-1">
-                                <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
+                                <button onClick={() => handleComingSoon('Profile Settings')} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
                                     <Settings size={16} className="text-gray-400" /> Profile Setting
                                 </button>
-                                <button className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
+                                <button onClick={() => setIsDarkTheme(!isDarkTheme)} className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
                                     <div className="flex items-center gap-3">
                                         <Moon size={16} className="text-gray-400" /> Dark Theme
                                     </div>
-                                    <div className="w-8 h-4 bg-gray-200 rounded-full relative">
-                                        <div className="w-4 h-4 bg-white rounded-full shadow absolute left-0 top-0"></div>
+                                    <div className={`w-8 h-4 rounded-full relative transition-colors ${isDarkTheme ? 'bg-blue-500' : 'bg-gray-200'}`}>
+                                        <div className={`w-4 h-4 bg-white rounded-full shadow absolute top-0 transition-all ${isDarkTheme ? 'left-4' : 'left-0'}`}></div>
                                     </div>
                                 </button>
-                                <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
+                                <button onClick={() => handleComingSoon('Invitations')} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
                                     <MessageSquareText size={16} className="text-gray-400" /> Invitation
                                 </button>
-                                <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
+                                <button onClick={() => handleComingSoon('Profile Sharing')} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
                                     <Share2 size={16} className="text-gray-400" /> Share Profile
                                 </button>
-                                <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
+                                <button onClick={() => handleComingSoon('Notification Preferences')} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
                                     <Bell size={16} className="text-gray-400" /> User Notification Preferences
                                 </button>
                             </div>
@@ -119,53 +114,13 @@ export default function OnboardingGetStarted({
                 </div>
             </div>
 
-            {/* Options */}
+            {/* What's next */}
             <div className="mb-8">
-                <h3 className="text-sm font-bold text-gray-900 mb-3">I want to <span className="text-red-500">*</span></h3>
-                <div className="space-y-3">
-                    {/* Create New Option */}
-                    <button 
-                        onClick={() => setSelectedOption('create')}
-                        className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-colors ${
-                            selectedOption === 'create' 
-                            ? 'border-[var(--color-primary)] bg-brand-50' 
-                            : 'border-gray-100 bg-white hover:border-gray-200'
-                        }`}
-                    >
-                        <div className="flex items-center gap-3">
-                            <Store size={20} className={selectedOption === 'create' ? 'text-[var(--color-primary)]' : 'text-gray-500'} />
-                            <span className={`font-bold text-sm ${selectedOption === 'create' ? 'text-gray-900' : 'text-gray-600'}`}>
-                                Create New Restaurant
-                            </span>
-                        </div>
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                            selectedOption === 'create' ? 'border-[var(--color-primary)]' : 'border-gray-300'
-                        }`}>
-                            {selectedOption === 'create' && <div className="w-2.5 h-2.5 rounded-full bg-[var(--color-primary)]" />}
-                        </div>
-                    </button>
-
-                    {/* Join Existing Option */}
-                    <button 
-                        onClick={() => setSelectedOption('join')}
-                        className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-colors ${
-                            selectedOption === 'join' 
-                            ? 'border-[var(--color-primary)] bg-brand-50' 
-                            : 'border-gray-100 bg-white hover:border-gray-200'
-                        }`}
-                    >
-                        <div className="flex items-center gap-3">
-                            <UserPlus size={20} className={selectedOption === 'join' ? 'text-[var(--color-primary)]' : 'text-gray-500'} />
-                            <span className={`font-bold text-sm ${selectedOption === 'join' ? 'text-gray-900' : 'text-gray-600'}`}>
-                                Join Existing Restaurant
-                            </span>
-                        </div>
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                            selectedOption === 'join' ? 'border-[var(--color-primary)]' : 'border-gray-300'
-                        }`}>
-                            {selectedOption === 'join' && <div className="w-2.5 h-2.5 rounded-full bg-[var(--color-primary)]" />}
-                        </div>
-                    </button>
+                <div className="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-[var(--color-primary)] bg-brand-50">
+                    <Store size={20} className="text-[var(--color-primary)]" />
+                    <span className="font-bold text-sm text-gray-900">
+                        Next, you&apos;ll set up your restaurant
+                    </span>
                 </div>
             </div>
 

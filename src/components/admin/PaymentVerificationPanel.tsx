@@ -111,21 +111,21 @@ export default function PaymentVerificationPanel({
     const pendingCount = claims.filter((c) => claimStatus(c) === 'pending').length
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-6">
             {/* Filter tabs */}
             <div className="flex gap-2 flex-wrap">
                 {(['pending', 'verified', 'rejected', 'all'] as const).map((f) => (
                     <button
                         key={f}
                         onClick={() => setFilter(f)}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${
+                        className={`px-4 py-2 rounded-full text-sm font-bold tracking-wide capitalize transition-all focus-ring ${
                             filter === f
-                                ? 'bg-gray-900 text-white'
-                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                ? 'bg-ink text-surface shadow-md'
+                                : 'bg-surface text-ink-subtle border border-hairline hover:bg-surface-muted hover:text-ink'
                         }`}
                     >
                         {f} {f === 'pending' && pendingCount > 0 && (
-                            <span className="ml-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{pendingCount}</span>
+                            <span className="ml-1.5 bg-danger-fg text-white text-[10px] rounded-full px-2 py-0.5 shadow-sm">{pendingCount}</span>
                         )}
                     </button>
                 ))}
@@ -133,55 +133,58 @@ export default function PaymentVerificationPanel({
 
             {/* Search Bar */}
             <div className="relative">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-subtle" />
                 <input
                     type="text"
                     placeholder="Search by amount or reference..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-card border border-hairline text-sm bg-surface outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
                 />
             </div>
 
             {filtered.length === 0 && (
-                <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
-                    <Clock size={32} className="mx-auto text-gray-300 mb-2" />
-                    <p className="text-gray-500 text-sm">No {filter === 'all' ? '' : filter} payment claims</p>
+                <div className="bg-surface rounded-card border border-hairline p-10 text-center shadow-sm">
+                    <Clock size={36} className="mx-auto text-ink-subtle/40 mb-3" />
+                    <p className="text-ink-subtle font-bold">No {filter === 'all' ? '' : filter} payment claims</p>
                 </div>
             )}
 
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filtered.map((claim) => {
                 const status = claimStatus(claim)
                 const method = methodLabel(claim.payment_method)
                 const isLoading = loading === claim.id
 
                 return (
-                    <div key={claim.id} className={`bg-white rounded-2xl border p-4 space-y-3 ${
-                        status === 'pending' ? 'border-amber-200 shadow-sm' : 'border-gray-200'
+                    <div key={claim.id} className={`bg-surface rounded-card border shadow-sm p-5 space-y-4 transition-all ${
+                        status === 'pending' ? 'border-amber-200 shadow-[0_4px_12px_rgba(0,0,0,0.05)]' : 'border-hairline opacity-70 hover:opacity-100'
                     }`}>
                         <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${method.bg}`}>
+                            <div className="flex flex-col gap-1.5">
+                                <span className={`inline-flex items-center w-max gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border border-transparent ${method.bg} shadow-sm`}>
                                     {method.icon} {method.label}
                                 </span>
-                                <span className="text-lg font-extrabold text-gray-900">{money(claim.amount)}</span>
+                                <div className="flex items-baseline gap-2">
+                                    <span className="text-h3 font-extrabold text-ink tabular-nums">{money(claim.amount)}</span>
+                                </div>
                                 {claim.reference_code && (
-                                    <span className="text-xs text-gray-500">· {claim.reference_code}</span>
+                                    <span className="text-[11px] font-medium text-ink-subtle font-mono mt-0.5">Ref: {claim.reference_code}</span>
                                 )}
                             </div>
                             <div className="shrink-0">
                                 {status === 'pending' && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold">
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold uppercase tracking-wide">
                                         <Clock size={11} /> Pending
                                     </span>
                                 )}
                                 {status === 'verified' && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold">
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-success-bg/30 text-success-fg border border-success-bg text-[10px] font-bold uppercase tracking-wide">
                                         <CheckCircle size={11} /> Verified
                                     </span>
                                 )}
                                 {status === 'rejected' && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-100 text-red-700 text-xs font-semibold">
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-danger-bg/30 text-danger-fg border border-danger-bg text-[10px] font-bold uppercase tracking-wide">
                                         <XCircle size={11} /> Rejected
                                     </span>
                                 )}
@@ -190,65 +193,68 @@ export default function PaymentVerificationPanel({
 
                         {/* Screenshot thumbnail — routed through auth-gated proxy */}
                         {claim.screenshot_url && (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-3 bg-surface-muted/30 p-2.5 rounded-[var(--r-md)] border border-hairline">
                                 <Image
                                     src={`/api/payment-proof?claim=${claim.id}`}
                                     alt="Payment proof"
                                     width={64}
                                     height={64}
                                     unoptimized
-                                    className="w-16 h-16 rounded-lg object-cover border border-gray-200 cursor-pointer"
+                                    className="w-16 h-16 rounded-lg object-cover border border-hairline shadow-sm cursor-zoom-in hover:opacity-90 transition-opacity"
                                     onClick={() => window.open(`/api/payment-proof?claim=${claim.id}`, '_blank')}
                                 />
                                 <a
                                     href={`/api/payment-proof?claim=${claim.id}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-xs text-blue-600 flex items-center gap-1 hover:underline"
+                                    className="text-xs font-bold text-brand-600 flex items-center gap-1 hover:text-brand-700 transition-colors"
                                 >
                                     View full image <ExternalLink size={12} />
                                 </a>
                             </div>
                         )}
 
-                        <div className="text-xs text-gray-400">
-                            {claim.order_id && <span>Order: {claim.order_id.substring(0, 8)}... · </span>}
-                            {new Date(claim.created_at).toLocaleTimeString('en-NP', { hour: '2-digit', minute: '2-digit' })}
+                        <div className="text-[11px] text-ink-subtle font-medium border-t border-hairline pt-3 mt-1 flex justify-between">
+                            {claim.order_id ? <span className="font-mono">Order: #{claim.order_id.substring(0, 8).toUpperCase()}</span> : <span></span>}
+                            <span className="tabular-nums">{new Date(claim.created_at).toLocaleTimeString('en-NP', { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
 
                         {status === 'pending' && (
-                            <div className="flex gap-2">
+                            <div className="flex flex-col gap-2 pt-1">
                                 {claim.order_id && (
                                     <button
                                         onClick={() => handleVerifyAndClose(claim.id)}
                                         disabled={isLoading}
-                                        className="flex-1 bg-green-600 text-white text-sm font-medium rounded-xl py-2.5 flex items-center justify-center gap-1.5 disabled:opacity-60 active:scale-[0.98] transition"
+                                        className="w-full bg-brand-500 text-white text-sm font-bold rounded-[var(--r-md)] py-3 flex items-center justify-center gap-2 shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:pointer-events-none focus-ring"
                                     >
-                                        {isLoading ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle size={15} />}
+                                        {isLoading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
                                         Approve & Close Table
                                     </button>
                                 )}
-                                <button
-                                    onClick={() => handleVerify(claim.id, 'verified')}
-                                    disabled={isLoading}
-                                    className={`${claim.order_id ? '' : 'flex-1'} bg-green-100 text-green-700 text-sm font-medium rounded-xl px-3 py-2.5 flex items-center justify-center gap-1.5 disabled:opacity-60 active:scale-[0.98] transition hover:bg-green-200`}
-                                >
-                                    {isLoading ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle size={15} />}
-                                    {claim.order_id ? 'Approve Only' : 'Approve'}
-                                </button>
-                                <button
-                                    onClick={() => handleVerify(claim.id, 'rejected')}
-                                    disabled={isLoading}
-                                    className="bg-red-100 text-red-700 text-sm font-medium rounded-xl px-3 py-2.5 flex items-center justify-center gap-1.5 disabled:opacity-60 active:scale-[0.98] transition hover:bg-red-200"
-                                >
-                                    <XCircle size={15} />
-                                    Reject
-                                </button>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => handleVerify(claim.id, 'verified')}
+                                        disabled={isLoading}
+                                        className={`${claim.order_id ? 'flex-1' : 'w-full'} bg-surface border-2 border-brand-500 text-brand-600 text-sm font-bold rounded-[var(--r-md)] px-3 py-2.5 flex items-center justify-center gap-1.5 disabled:opacity-50 hover:bg-brand-50 transition-colors focus-ring`}
+                                    >
+                                        {isLoading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                                        {claim.order_id ? 'Approve Only' : 'Approve'}
+                                    </button>
+                                    <button
+                                        onClick={() => handleVerify(claim.id, 'rejected')}
+                                        disabled={isLoading}
+                                        className="flex-1 bg-surface border border-danger-bg text-danger-fg text-sm font-bold rounded-[var(--r-md)] px-3 py-2.5 flex items-center justify-center gap-1.5 disabled:opacity-50 hover:bg-danger-bg/20 transition-colors focus-ring"
+                                    >
+                                        <XCircle size={15} />
+                                        Reject
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>
                 )
             })}
+            </div>
         </div>
     )
 }

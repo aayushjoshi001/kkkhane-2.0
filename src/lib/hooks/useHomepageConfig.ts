@@ -19,6 +19,12 @@ export function useHomepageConfig(restaurantId: string) {
                 })
 
                 if (!response.ok) {
+                    if (response.status === 404) {
+                        const data = await response.json()
+                        setConfig(data)
+                        setError(null)
+                        return
+                    }
                     throw new Error('Failed to fetch homepage config')
                 }
 

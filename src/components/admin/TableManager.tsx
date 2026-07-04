@@ -310,12 +310,12 @@ export default function TableManager({
     }, [qrToDownload, baseUrl, restaurantName])
 
     return (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                <h3 className="text-lg font-semibold text-gray-800">Restaurant Layout ({tables.length})</h3>
+        <div className="bg-surface rounded-card shadow-sm border border-hairline overflow-hidden">
+            <div className="p-6 border-b border-hairline flex justify-between items-center bg-surface-muted/30">
+                <h3 className="text-h3 font-extrabold text-ink">Restaurant Layout ({tables.length})</h3>
                 <button
                     onClick={() => openModal()}
-                    className="flex items-center gap-2 bg-[var(--color-primary)] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-opacity-90 transition-colors shadow-sm"
+                    className="flex items-center gap-2 bg-brand-500 text-white px-5 py-2.5 rounded-[var(--r-md)] text-sm font-bold hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] focus-ring"
                 >
                     <Plus size={16} /> Add Table
                 </button>
@@ -327,30 +327,30 @@ export default function TableManager({
                         const menuUrl = `${baseUrl}/t/${table.qr_token}`
 
                         return (
-                            <div key={table.id} className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow group flex flex-col bg-white">
-                                <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/30">
+                            <div key={table.id} className="border border-hairline rounded-card overflow-hidden hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-all group flex flex-col bg-surface shadow-sm">
+                                <div className="p-5 border-b border-hairline flex justify-between items-center bg-surface-muted/30">
                                     <div>
-                                        <h4 className="font-bold text-gray-900">{table.label}</h4>
-                                        <p className="text-xs text-gray-500 mt-0.5">Seats: {table.capacity || 'N/A'}</p>
+                                        <h4 className="font-extrabold text-ink text-base">{table.label}</h4>
+                                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-1">Seats: {table.capacity || 'N/A'}</p>
                                     </div>
-                                    <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => openModal(table)} className="p-1.5 text-gray-400 hover:text-blue-500 rounded hover:bg-blue-50">
-                                            <Edit2 size={14} />
+                                    <div className="flex items-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => openModal(table)} className="p-2 text-ink-subtle hover:text-brand-600 rounded-full hover:bg-brand-50 transition-colors focus-ring">
+                                            <Edit2 size={16} />
                                         </button>
-                                        <button onClick={() => deleteTable(table.id, table.label)} className="p-1.5 text-gray-400 hover:text-red-500 rounded hover:bg-red-50">
-                                            <Trash2 size={14} />
+                                        <button onClick={() => deleteTable(table.id, table.label)} className="p-2 text-ink-subtle hover:text-danger-fg rounded-full hover:bg-danger-bg/20 transition-colors focus-ring">
+                                            <Trash2 size={16} />
                                         </button>
                                     </div>
                                 </div>
 
-                                <div className="p-6 flex flex-col items-center justify-center flex-1 bg-gray-50/30">
+                                <div className="p-6 flex flex-col items-center justify-center flex-1 bg-surface-muted/30">
                                     {/* The Card Preview Container */}
-                                    <div className="w-[220px] h-[260px] bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col items-center p-3 pb-9 relative overflow-hidden mb-4 select-none">
+                                    <div className="w-[220px] h-[260px] bg-white rounded-xl border border-gray-200 shadow-[0_8px_30px_rgba(0,0,0,0.12)] flex flex-col items-center p-3 pb-9 relative overflow-hidden mb-5 select-none">
                                         
                                         {/* Top Banner */}
                                         <div className="w-full flex items-center justify-center relative my-1.5 shrink-0">
-                                            <div className="absolute left-0 right-0 h-[2px] bg-[#ff7a00]" />
-                                            <div className="bg-[#ff7a00] text-white text-[10px] font-black px-4 py-1.5 rounded-sm uppercase tracking-wider relative z-10 min-w-[100px] text-center">
+                                            <div className="absolute left-0 right-0 h-[3px] bg-[#ff7a00]" />
+                                            <div className="bg-[#ff7a00] text-white text-[10px] font-black px-4 py-1.5 rounded-sm uppercase tracking-wider relative z-10 min-w-[100px] text-center shadow-sm">
                                                 {table.label}
                                             </div>
                                         </div>
@@ -358,7 +358,7 @@ export default function TableManager({
                                         {/* QR Code */}
                                         <div
                                             ref={el => { if (el) qrCanvasRefs.current.set(table.id, el) }}
-                                            className="my-1 shrink-0"
+                                            className="my-1 shrink-0 bg-white"
                                         >
                                             <QRCodeCanvas
                                                 value={menuUrl}
@@ -384,7 +384,7 @@ export default function TableManager({
                                         </div>
 
                                         {/* Bottom Banner */}
-                                        <div className="absolute bottom-0 left-0 right-0 h-8 bg-[#ff7a00] flex items-center justify-center gap-1.5 shrink-0">
+                                        <div className="absolute bottom-0 left-0 right-0 h-8 bg-[#ff7a00] flex items-center justify-center gap-1.5 shrink-0 shadow-[0_-2px_10px_rgba(255,122,0,0.3)]">
                                             <span 
                                                 className="text-white text-[9px] font-extrabold tracking-wider uppercase" 
                                                 style={{ fontFamily: '"Outfit", "Inter", system-ui, sans-serif' }}
@@ -394,25 +394,25 @@ export default function TableManager({
                                             <img
                                                 src={QR_LOGO_SRC}
                                                 alt="Logo"
-                                                className="w-4 h-4 rounded-full bg-white object-cover border border-white shrink-0"
+                                                className="w-4 h-4 rounded-full bg-white object-cover border-[1.5px] border-white shrink-0 shadow-sm"
                                             />
                                         </div>
 
                                     </div>
 
-                                    <div className="flex gap-2 w-full">
+                                    <div className="flex gap-3 w-full">
                                         <button
                                             onMouseEnter={() => setPreloadedTokens(prev => new Set(prev).add(table.qr_token))}
                                             onClick={() => openPreview(table)}
-                                            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-gray-600 bg-white rounded-lg border border-gray-200 hover:bg-gray-50 active:scale-95 transition cursor-pointer"
+                                            className="flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold text-ink bg-surface rounded-[var(--r-md)] border border-hairline hover:bg-surface-muted active:scale-95 transition-all shadow-sm focus-ring"
                                         >
-                                            <Smartphone size={14} /> Preview
+                                            <Smartphone size={16} className="text-ink-subtle" /> Preview
                                         </button>
                                         <button
                                             onClick={() => downloadQR(table)}
-                                            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-white bg-[var(--color-primary)] rounded-lg hover:opacity-90 active:scale-95 transition cursor-pointer"
+                                            className="flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold text-white bg-brand-500 rounded-[var(--r-md)] hover:opacity-90 active:scale-95 transition-all shadow-[0_4px_12px_rgba(251,99,3,0.25)] focus-ring"
                                         >
-                                            <Download size={14} /> Download
+                                            <Download size={16} /> Download
                                         </button>
                                     </div>
                                 </div>
@@ -422,17 +422,17 @@ export default function TableManager({
                 </div>
 
                 {tables.length === 0 && (
-                    <div className="text-center py-12">
-                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 text-gray-400 mb-4">
-                            <QrCode size={32} />
+                    <div className="text-center py-16">
+                        <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-surface-muted border border-hairline text-ink-subtle mb-6 shadow-sm">
+                            <QrCode size={40} />
                         </div>
-                        <h3 className="text-lg font-medium text-gray-900 mb-1">No tables yet</h3>
-                        <p className="text-gray-500 mb-6">Add tables to generate QR codes for ordering.</p>
+                        <h3 className="text-h2 font-extrabold text-ink mb-2">No tables yet</h3>
+                        <p className="text-ink-subtle font-medium mb-8">Add tables to generate QR codes for ordering.</p>
                         <button
                             onClick={() => openModal()}
-                            className="inline-flex items-center gap-2 bg-[var(--color-primary)] text-white px-5 py-2.5 rounded-lg font-medium hover:opacity-90 transition-opacity"
+                            className="inline-flex items-center gap-2 bg-brand-500 text-white px-6 py-3 rounded-[var(--r-md)] font-bold hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] focus-ring"
                         >
-                            <Plus size={18} /> Create First Table
+                            <Plus size={20} /> Create First Table
                         </button>
                     </div>
                 )}
@@ -441,42 +441,42 @@ export default function TableManager({
             {/* Table Modal */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-                            <h3 className="font-semibold text-gray-900">{editingTable ? 'Edit Table' : 'Add Table'}</h3>
-                            <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="px-6 py-5 border-b border-hairline flex justify-between items-center bg-surface-muted/30">
+                            <h3 className="text-h3 font-extrabold text-ink">{editingTable ? 'Edit Table' : 'Add Table'}</h3>
+                            <button onClick={() => setIsModalOpen(false)} className="text-ink-subtle hover:text-ink transition-colors p-1 rounded-full hover:bg-surface-muted focus-ring">
                                 <X size={20} />
                             </button>
                         </div>
-                        <div className="p-6 space-y-4">
+                        <div className="p-6 space-y-5">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Table Label / Number *</label>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wide mb-1.5">Table Label / Number *</label>
                                 <input
                                     type="text"
                                     value={formData.label}
                                     onChange={e => setFormData({ ...formData, label: e.target.value })}
-                                    className="w-full border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] sm:text-sm p-2.5 border"
+                                    className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-ink px-4 py-2.5 text-sm font-bold shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 outline-none transition-all"
                                     placeholder="e.g. Table 1, Patio A"
                                     autoFocus
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Seat Capacity (Optional)</label>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wide mb-1.5">Seat Capacity (Optional)</label>
                                 <input
                                     type="text"
                                     inputMode="numeric"
                                     value={formData.capacity}
                                     onChange={e => { const v = e.target.value; if (/^\d*$/.test(v)) setFormData({ ...formData, capacity: v }) }}
-                                    className="w-full border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] sm:text-sm p-2.5 border"
+                                    className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-ink px-4 py-2.5 text-sm font-bold shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 outline-none transition-all tabular-nums"
                                     placeholder="e.g. 4"
                                 />
                             </div>
                         </div>
-                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
-                            <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50">
+                        <div className="px-6 py-5 bg-surface-muted/30 border-t border-hairline flex justify-end gap-3">
+                            <button onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors focus-ring">
                                 Cancel
                             </button>
-                            <button disabled={!formData.label || isSubmitting} onClick={saveTable} className="px-4 py-2 text-sm font-medium text-white bg-[var(--color-primary)] rounded-lg shadow-sm hover:opacity-90 disabled:opacity-50 flex items-center gap-2">
+                            <button disabled={!formData.label || isSubmitting} onClick={saveTable} className="px-6 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 flex items-center gap-2 transition-all shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] focus-ring">
                                 {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} Save
                             </button>
                         </div>

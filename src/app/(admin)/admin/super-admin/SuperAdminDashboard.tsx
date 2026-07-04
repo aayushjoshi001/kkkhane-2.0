@@ -272,32 +272,23 @@ export default function SuperAdminDashboard({
 
     return (
         <div className="space-y-5 md:space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-xl font-extrabold text-gray-900 flex items-center gap-2">
-                        <Crown size={18} className="text-indigo-500" />
-                        Tenant Management
-                    </h1>
-                    <p className="text-sm text-gray-400 mt-0.5">Manage subscriptions, tiers and restaurant accounts</p>
-                </div>
-            </div>
 
             {/* Metrics Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <MetricCard icon={Building2}   bg="bg-indigo-50"  ic="text-indigo-600"  label="Total Tenants"  value={metrics.totalRestaurants} />
-                <MetricCard icon={CheckCircle} bg="bg-emerald-50" ic="text-emerald-600" label="Active"         value={metrics.activeRestaurants} />
-                <MetricCard icon={ShoppingBag} bg="bg-blue-50"    ic="text-blue-600"    label="Total Orders"   value={metrics.totalOrders} />
-                <MetricCard icon={Crown}       bg="bg-purple-50"  ic="text-purple-600"  label="Pro+ Accounts"  value={(metrics.tierBreakdown.pro || 0) + (metrics.tierBreakdown.enterprise || 0)} />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-5 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                <MetricCard icon={Building2}   color="indigo"  label="Total Tenants"  value={metrics.totalRestaurants} />
+                <MetricCard icon={CheckCircle} color="emerald" label="Active"         value={metrics.activeRestaurants} />
+                <MetricCard icon={ShoppingBag} color="blue"    label="Total Orders"   value={metrics.totalOrders} />
+                <MetricCard icon={Crown}       color="purple"  label="Pro+ Accounts"  value={(metrics.tierBreakdown.pro || 0) + (metrics.tierBreakdown.enterprise || 0)} />
             </div>
 
             {/* Tier Breakdown */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-                <h3 className="font-semibold text-gray-900 text-sm mb-3">Subscription Distribution</h3>
-                <div className="flex gap-2 flex-wrap">
+            <div className="bg-white rounded-[24px] shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-gray-100 p-6 animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                <h3 className="font-bold text-gray-900 text-[1.15rem] mb-4">Subscription Distribution</h3>
+                <div className="flex gap-3 flex-wrap">
                     {Object.entries(metrics.tierBreakdown).map(([tier, count]) => (
-                        <div key={tier} className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${TIER_COLORS[tier] || 'bg-gray-100 text-gray-700'}`}>
-                            {tier.charAt(0).toUpperCase() + tier.slice(1)}: {count}
+                        <div key={tier} className={`px-4 py-2 rounded-xl text-[13px] font-bold border shadow-sm flex items-center gap-2 ${TIER_COLORS[tier] || 'bg-gray-100 text-gray-700'}`}>
+                            <span className="capitalize">{tier}</span>
+                            <span className="bg-white/50 px-1.5 py-0.5 rounded-md tabular-nums">{count}</span>
                         </div>
                     ))}
                 </div>
@@ -305,31 +296,39 @@ export default function SuperAdminDashboard({
 
             {/* Expiring Soon Banner */}
             {expiringSoon.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-                    <AlertTriangle size={20} className="text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                        <p className="font-semibold text-amber-800">Subscriptions expiring soon</p>
-                        <ul className="mt-1 text-sm text-amber-700 space-y-0.5">
-                            {expiringSoon.map(r => (
-                                <li key={r.id}>
-                                    <strong>{r.name}</strong> — expires {r.subscription_expires_at ? new Date(r.subscription_expires_at).toLocaleDateString('en-IN') : 'unknown'}
-                                </li>
-                            ))}
-                        </ul>
+                <div className="bg-white rounded-[24px] border border-amber-200 shadow-[0_8px_30px_rgb(245,158,11,0.06)] overflow-hidden relative group animate-fade-up" style={{ animationDelay: '0.15s' }}>
+                    <div className="absolute top-0 left-0 w-1 h-full bg-amber-500" />
+                    <div className="p-6 flex items-start gap-3">
+                        <AlertTriangle size={24} className="text-amber-500 shrink-0 mt-0.5 animate-pulse" />
+                        <div className="flex-1">
+                            <p className="font-bold text-amber-800 text-[15px]">Subscriptions renewing soon</p>
+                            <ul className="mt-2 space-y-2">
+                                {expiringSoon.map(r => (
+                                    <li key={r.id} className="flex items-center justify-between text-sm">
+                                        <span className="font-medium text-gray-700">
+                                            <strong>{r.name}</strong>
+                                        </span>
+                                        <span className="text-[13px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md border border-amber-100">
+                                            expires {r.subscription_expires_at ? new Date(r.subscription_expires_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) : 'unknown'}
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
                     </div>
                 </div>
             )}
 
             {/* Restaurant List */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/30 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="bg-white rounded-[24px] shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-gray-100 overflow-hidden animate-fade-up" style={{ animationDelay: '0.3s' }}>
+                <div className="px-6 py-5 border-b border-gray-50 bg-gray-50/50 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div>
-                        <h3 className="text-lg font-semibold text-gray-800">All Restaurants</h3>
-                        <p className="text-sm text-gray-500 mt-1">Manage tenants, tiers, and suspension</p>
+                        <h2 className="text-[1.15rem] font-bold text-gray-900">All Restaurants</h2>
+                        <p className="text-[13px] text-gray-500 mt-0.5">Manage tenants, tiers, and suspension</p>
                     </div>
                     <button
                         onClick={() => setIsCreateModalOpen(true)}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-[14px] font-semibold text-white shadow-[0_0_15px_rgba(79,70,229,0.2)] transition-all hover:bg-indigo-500 hover:-translate-y-0.5 hover:shadow-[0_0_20px_rgba(79,70,229,0.3)]"
                     >
                         <Plus size={16} />
                         Add Client
@@ -376,8 +375,8 @@ export default function SuperAdminDashboard({
                     {filteredItems.map((restaurant) => (
                         <div
                             key={restaurant.id}
-                            className={`p-4 md:p-6 flex flex-col md:flex-row md:items-center gap-4 ${
-                                restaurant.is_suspended ? 'bg-red-50/50' : ''
+                            className={`group p-4 md:p-6 flex flex-col md:flex-row md:items-center gap-4 transition-colors hover:bg-gray-50/50 ${
+                                restaurant.is_suspended ? 'bg-red-50/30 hover:bg-red-50/50' : ''
                             }`}
                         >
                             <div className="flex-1 min-w-0">
@@ -841,23 +840,37 @@ function MetricCard({
     icon: Icon,
     label,
     value,
-    bg,
-    ic,
+    color,
 }: {
     icon: React.ElementType
     label: string
-    value: number
-    bg: string
-    ic: string
+    value: number | string
+    color: 'indigo' | 'emerald' | 'blue' | 'purple' | 'amber' | 'red'
 }) {
+    const colors = {
+        indigo: 'from-indigo-500 to-violet-500 text-indigo-500 bg-indigo-50',
+        emerald: 'from-emerald-500 to-teal-500 text-emerald-500 bg-emerald-50',
+        blue: 'from-blue-500 to-cyan-500 text-blue-500 bg-blue-50',
+        purple: 'from-purple-500 to-fuchsia-500 text-purple-500 bg-purple-50',
+        amber: 'from-amber-400 to-orange-500 text-amber-500 bg-amber-50',
+        red: 'from-red-500 to-rose-500 text-red-500 bg-red-50',
+    }
+    const c = colors[color] || colors.indigo
+
     return (
-        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${bg}`}>
-                <Icon size={18} className={ic} />
-            </div>
-            <div className="min-w-0">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider truncate">{label}</p>
-                <p className="text-xl font-extrabold text-gray-900 leading-tight tabular-nums">{value.toLocaleString()}</p>
+        <div className="group relative bg-white rounded-[24px] p-6 border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1 overflow-hidden">
+            <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${c.split(' ')[0]} ${c.split(' ')[1]} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
+            
+            <div className="flex flex-col h-full justify-between">
+                <div className={`w-12 h-12 rounded-[16px] flex items-center justify-center ${c.split(' ')[2]} ${c.split(' ')[3]} group-hover:scale-110 transition-transform duration-300 mb-4`}>
+                    <Icon size={24} />
+                </div>
+                <div>
+                    <h3 className="text-gray-500 text-[13px] font-semibold uppercase tracking-wider mb-1">{label}</h3>
+                    <p className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight tabular-nums truncate">
+                        {typeof value === 'number' ? value.toLocaleString() : value}
+                    </p>
+                </div>
             </div>
         </div>
     )

@@ -4,12 +4,13 @@ import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { openSession, closeSession, setTableStatus, claimTableCleaning, releaseTableCleaning, markTableClean } from '@/app/(staff)/waiter/actions'
-import { Users, QrCode, PowerOff, Power, Sparkles, CalendarClock, UtensilsCrossed, Footprints, Check, X, Flame } from 'lucide-react'
+import { Users, QrCode, PowerOff, Power, Sparkles, CalendarClock, UtensilsCrossed, Footprints, Check, X, Flame, ShoppingCart } from 'lucide-react'
 import type { Table, Session } from '@/types/database'
 import { QRCodeSVG } from 'qrcode.react'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import { Card, Button, EmptyState } from '@/components/ui'
+import { useRouter } from 'next/navigation'
 
 export type TableWithSession = Table & { activeSession?: Session | null }
 
@@ -46,6 +47,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
     const [selectedTable, setSelectedTable] = useState<TableWithSession | null>(null)
     const [isProcessing, setIsProcessing] = useState(false)
     const { confirm } = useConfirmStore()
+    const router = useRouter()
 
     // Track order statuses per order ID → { session_id, status }
     const [orderStatuses, setOrderStatuses] = useState<Record<string, { session_id: string | null; status: string }>>(() => {
@@ -376,19 +378,32 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                         />
                                     </div>
                                     <p className="text-caption text-center text-ink-subtle">Scan to order · Session valid for 4 hours</p>
-                                    <Button
-                                        variant="secondary"
-                                        block
-                                        icon={PowerOff}
-                                        loading={isProcessing}
-                                        onClick={async () => {
-                                            await handleCloseSession(selectedTable.activeSession!.id)
-                                            setSelectedTable(null)
-                                        }}
-                                        className="text-danger-fg border-danger/30 hover:bg-danger-bg"
-                                    >
-                                        Close Session &amp; Checkout
-                                    </Button>
+                                    <div className="flex flex-col gap-3">
+                                        <Button
+                                            variant="primary"
+                                            block
+                                            icon={ShoppingCart}
+                                            onClick={() => {
+                                                router.push(`/t/${selectedTable.qr_token}?s=${selectedTable.activeSession!.session_token}&w=1`)
+                                                setSelectedTable(null)
+                                            }}
+                                        >
+                                            Order for Table
+                                        </Button>
+                                        <Button
+                                            variant="secondary"
+                                            block
+                                            icon={PowerOff}
+                                            loading={isProcessing}
+                                            onClick={async () => {
+                                                await handleCloseSession(selectedTable.activeSession!.id)
+                                                setSelectedTable(null)
+                                            }}
+                                            className="text-danger-fg border-danger/30 hover:bg-danger-bg"
+                                        >
+                                            Close Session &amp; Checkout
+                                        </Button>
+                                    </div>
                                 </div>
                             ) : selectedTable.table_status === 'dirty' ? (
                                 (() => {

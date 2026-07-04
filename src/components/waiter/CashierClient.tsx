@@ -9,6 +9,7 @@ import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
 import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag } from 'lucide-react'
 import PaymentVerificationFeed, { type PaymentClaim } from './PaymentVerificationFeed'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 
 type OrderItem = { quantity: number; menu_items: { name: string } | null }
 type TableRef = { label?: string } | null
@@ -150,19 +151,20 @@ export default function CashierClient({ restaurantId, userId, initialUnpaid, ini
 
     return (
         <div className="space-y-5">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-xl font-extrabold text-gray-900">Counter</h1>
-                    <p className="text-sm text-gray-400 mt-0.5">Collect payments & close bills</p>
-                </div>
-                {unpaid.length > 0 && (
-                    <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2 text-right">
-                        <p className="text-xs text-red-500 font-semibold">{unpaid.length} unpaid bill{unpaid.length !== 1 ? 's' : ''}</p>
-                        <p className="text-lg font-extrabold text-red-700 tabular-nums">{money(totalUnpaid)}</p>
-                    </div>
-                )}
-            </div>
+            <PremiumPageHeader
+                title="Cashier Counter"
+                description="Collect payments & close bills across all tables and orders."
+                icon={<Banknote size={18} />}
+                color="green"
+                actions={
+                    unpaid.length > 0 && (
+                        <div className="bg-red-500/20 backdrop-blur-md border border-red-500/30 rounded-2xl px-6 py-3 text-right shadow-[0_0_15px_rgba(239,68,68,0.2)]">
+                            <p className="text-xs text-red-200 font-bold uppercase tracking-wider">{unpaid.length} unpaid bill{unpaid.length !== 1 ? 's' : ''}</p>
+                            <p className="text-2xl font-extrabold text-white tabular-nums">{money(totalUnpaid)}</p>
+                        </div>
+                    )
+                }
+            />
 
             {/* Online payment claims (UPI/card) awaiting verification */}
             <PaymentVerificationFeed

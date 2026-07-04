@@ -3,7 +3,7 @@
 import { useActionState } from 'react'
 import Link from 'next/link'
 import { forgotPasswordAction } from './actions'
-import Logo from '@/components/shared/Logo'
+import AuthHero from '@/components/shared/AuthHero'
 import { Mail, ArrowLeft, CheckCircle2, ArrowRight } from 'lucide-react'
 
 const initialState = { error: null as string | null, success: false }
@@ -11,86 +11,88 @@ const initialState = { error: null as string | null, success: false }
 export default function ForgotPasswordPage() {
     const [state, formAction, isPending] = useActionState(forgotPasswordAction, initialState)
 
-    if (state.success) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-[#FAFAF8] p-6">
-                <div className="w-full max-w-sm text-center animate-scale-in">
-                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-green-50 border border-green-100 mb-5">
-                        <CheckCircle2 size={32} className="text-green-500" />
-                    </div>
-                    <h1 className="text-xl font-bold text-[var(--color-secondary)] mb-2">Check your inbox</h1>
-                    <p className="text-sm text-gray-500 mb-8 leading-relaxed">
-                        If an account exists for that email, we sent a password reset link. It expires in 1 hour.
-                    </p>
-                    <Link href="/login"
-                          className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition">
-                        <ArrowLeft size={14} /> Back to login
-                    </Link>
-                </div>
-            </div>
-        )
-    }
+    const inputClasses = "h-[52px] w-full rounded-[14px] border border-gray-200 bg-white pl-12 pr-4 text-[15px] outline-none text-gray-900 placeholder:text-gray-400 focus:border-[#ff5a00] focus:ring-1 focus:ring-[#ff5a00] transition-all"
+    const labelClasses = "text-[13px] font-semibold text-gray-900 flex gap-1 mb-1.5"
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-[#FAFAF8] p-6">
-            <div className="w-full max-w-sm animate-fade-up">
-                <div className="flex justify-center mb-8">
-                    <Logo className="h-8" />
-                </div>
+        <div className="h-[100dvh] w-full flex flex-col md:flex-row bg-[#ff6b00] overflow-hidden">
+            <div className="w-full md:w-[45%] lg:w-[40%] h-[35vh] md:h-full flex-shrink-0">
+                <AuthHero heightClassName="h-full" />
+            </div>
+            <div className="flex-1 w-full flex flex-col justify-start md:justify-center items-center px-0 md:px-8 -mt-6 md:mt-0 relative z-10 bg-transparent md:bg-white rounded-t-[2rem] md:rounded-none overflow-hidden">
+                <div className="w-full h-full bg-white md:bg-transparent px-6 sm:px-10 pt-8 pb-12 flex flex-col items-center justify-start md:justify-center overflow-y-auto no-scrollbar relative">
+                    <div className="w-full max-w-[420px] mx-auto pb-10">
+                        {/* Mobile Sheet Handle */}
+                        <div className="w-12 h-1.5 rounded-full bg-[#ff6b00] mb-8 md:hidden shrink-0 mx-auto" />
 
-                <div className="mb-7">
-                    <h1 className="text-2xl font-bold text-[var(--color-secondary)]">Reset your password</h1>
-                    <p className="text-sm text-gray-500 mt-1">Enter your email and we&apos;ll send a reset link.</p>
-                </div>
-
-                <form action={formAction} className="space-y-4">
-                    {state.error && (
-                        <div className="bg-red-50 text-red-700 px-4 py-3 rounded-xl text-sm border border-red-100">
-                            {state.error}
-                        </div>
-                    )}
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="email">
-                            Email address
-                        </label>
-                        <div className="relative">
-                            <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                            <input
-                                id="email"
-                                name="email"
-                                type="email"
-                                required
-                                autoFocus
-                                className="input-base pl-10"
-                                placeholder="you@restaurant.com"
-                            />
-                        </div>
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={isPending}
-                        className="w-full btn-primary py-3 text-sm rounded-xl justify-center mt-1"
-                    >
-                        {isPending ? (
-                            <span className="flex items-center gap-2 justify-center">
-                                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                Sending…
-                            </span>
+                        {state.success ? (
+                            <div className="w-full text-center animate-in fade-in slide-in-from-bottom-4 duration-500 flex flex-col items-center">
+                                <div className="inline-flex items-center justify-center w-20 h-20 rounded-[20px] bg-green-50 border border-green-100 mb-6 text-green-500 shadow-sm">
+                                    <CheckCircle2 size={40} />
+                                </div>
+                                <h1 className="text-[1.75rem] font-bold text-gray-900 mb-2">Check your inbox</h1>
+                                <p className="text-[15px] text-gray-500 mb-10 leading-relaxed max-w-sm">
+                                    If an account exists for that email, we sent a password reset link. It expires in 1 hour.
+                                </p>
+                                <Link href="/login"
+                                      className="inline-flex items-center justify-center gap-2 w-full bg-gray-900 hover:bg-gray-800 text-white h-[52px] rounded-[14px] text-[16px] font-semibold shadow-lg shadow-gray-900/25 transition-all">
+                                    <ArrowLeft size={18} /> Back to Log In
+                                </Link>
+                            </div>
                         ) : (
-                            <span className="flex items-center gap-2 justify-center">
-                                Send reset link <ArrowRight size={15} />
-                            </span>
-                        )}
-                    </button>
-                </form>
+                            <>
+                                <div className="w-full text-left mb-8">
+                                    <h1 className="text-[1.75rem] font-bold text-gray-900 mb-2">Reset Password</h1>
+                                    <p className="text-[15px] text-gray-500 font-normal">Enter your email and we'll send a reset link.</p>
+                                </div>
 
-                <div className="mt-7 text-center">
-                    <Link href="/login"
-                          className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition">
-                        <ArrowLeft size={14} /> Back to login
-                    </Link>
+                                <form action={formAction} className="w-full flex flex-col gap-5">
+                                    {state.error && (
+                                        <div className="bg-red-50 text-red-700 px-4 py-3 rounded-[14px] text-sm border border-red-100 font-medium text-center">
+                                            {state.error}
+                                        </div>
+                                    )}
+
+                                    <div className="flex flex-col gap-2">
+                                        <label htmlFor="email" className={labelClasses}>
+                                            Email Address <span className="text-red-500">*</span>
+                                        </label>
+                                        <div className="relative">
+                                            <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#ff5a00]" />
+                                            <input
+                                                id="email"
+                                                name="email"
+                                                type="email"
+                                                required
+                                                autoFocus
+                                                className={inputClasses}
+                                                placeholder="owner@restaurant.com"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={isPending}
+                                        className="w-full bg-[#ff5a00] hover:bg-[#ff4500] text-white h-[52px] rounded-[14px] text-[16px] font-semibold shadow-lg shadow-[#ff5a00]/25 transition-all hover:scale-[1.01] flex items-center justify-center gap-2 mt-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                                    >
+                                        {isPending ? (
+                                            <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        ) : (
+                                            <>Send Reset Link <ArrowRight size={20} className="ml-1" /></>
+                                        )}
+                                    </button>
+                                </form>
+
+                                <div className="mt-8 text-center">
+                                    <Link href="/login"
+                                          className="inline-flex items-center gap-2 text-[15px] font-semibold text-gray-500 hover:text-gray-900 transition">
+                                        <ArrowLeft size={16} /> Back to Log In
+                                    </Link>
+                                </div>
+                            </>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

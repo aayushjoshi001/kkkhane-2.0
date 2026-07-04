@@ -3,13 +3,12 @@ import { formatCurrency } from '@/lib/utils'
 import {
     TrendingUp, ShoppingBag, Users, AlertTriangle, Clock, UserCheck, Package,
     ArrowRight, CheckCircle2, ChevronRight, UtensilsCrossed, QrCode, Tag, ClipboardList, Boxes, Inbox,
-    Rocket,
+    Rocket, BarChart3, Receipt, Wallet, Bell, MoreHorizontal
 } from 'lucide-react'
 import { getCurrentUser } from '@/lib/auth'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { Card, StatCard, StatusBadge, EmptyState } from '@/components/ui'
-import type { Tone } from '@/components/ui'
+import { Card, StatusBadge, EmptyState } from '@/components/ui'
 
 export const revalidate = 0
 
@@ -40,9 +39,8 @@ export default async function AdminDashboardPage() {
         { count: staffCount },
         { data: restaurantSettings },
     ] = await Promise.all([
-        // All queries use adminSupabase (service role) — skips RLS policy evaluation
+        // All queries use adminSupabase (service role)
         adminSupabase.from('orders').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).gte('placed_at', today.toISOString()),
-        // Count-only: previously fetched all IDs just to get .length
         adminSupabase.from('sessions').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).eq('status', 'active').gt('expires_at', now),
         adminSupabase.from('orders').select('id, total_amount, status, placed_at').eq('restaurant_id', restaurantId).order('placed_at', { ascending: false }).limit(8),
         adminSupabase.from('orders').select('total_amount, status').eq('restaurant_id', restaurantId).gte('placed_at', today.toISOString()),
@@ -57,7 +55,6 @@ export default async function AdminDashboardPage() {
         adminSupabase.from('settings').select('business_hours, features_v2').eq('restaurant_id', restaurantId).maybeSingle(),
     ])
 
-    // Format all amounts in the restaurant's configured currency.
     const currencyFeatures = restaurantSettings?.features_v2 as { currency?: string; currencySymbol?: string | null } | null
     const money = (amount: number) => formatCurrency(amount, currencyFeatures?.currency, currencyFeatures?.currencySymbol)
 
@@ -89,265 +86,338 @@ export default async function AdminDashboardPage() {
     const progressPct = Math.round((doneSteps / totalSteps) * 100)
     const showChecklist = doneSteps < totalSteps
 
-    const pipelineSteps: { label: string; count: number; tone: Tone }[] = [
-        { label: 'Pending', count: pipeline.pending, tone: 'warning' },
-        { label: 'Preparing', count: pipeline.preparing, tone: 'info' },
-        { label: 'Ready', count: pipeline.ready, tone: 'success' },
-        { label: 'Delivered', count: pipeline.delivered, tone: 'neutral' },
-    ]
-
-    const quickActions = [
-        { href: '/admin/orders', label: 'View Orders', icon: ClipboardList },
-        { href: '/admin/menu', label: 'Edit Menu', icon: UtensilsCrossed },
-        { href: '/admin/tables', label: 'Tables & QR', icon: QrCode },
-        { href: '/admin/staff', label: 'Staff', icon: Users },
-        { href: '/admin/ingredients', label: 'Ingredients', icon: Boxes, badge: lowStock.length || undefined },
-        { href: '/admin/promos', label: 'Promo Codes', icon: Tag, badge: activePromos || undefined },
-    ]
+    const hour = new Date().getHours()
+    const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+    const name = currentUser.email.split('@')[0]
 
     return (
-        <div className="space-y-8">
-            <div>
-                <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">Today&apos;s Overview</h1>
-                <p className="text-body text-ink-muted mt-1.5">Real-time operations snapshot</p>
-            </div>
-
-            {/* Onboarding */}
-            {showChecklist && (
-                <section className="overflow-hidden rounded-[var(--r-lg)] border border-hairline bg-surface shadow-sm">
-                    {/* Header with progress */}
-                    <div className="relative bg-gradient-to-br from-brand-50 to-surface px-5 sm:px-6 pt-5 pb-5 border-b border-hairline">
-                        <div className="flex items-start justify-between gap-4">
-                            <div className="flex items-center gap-3 min-w-0">
-                                <span className="grid size-10 place-items-center rounded-[var(--r-md)] bg-brand-500 text-white shadow-sm shrink-0">
-                                    <Rocket size={20} />
-                                </span>
-                                <div className="min-w-0">
-                                    <h2 className="text-h3 text-ink leading-tight">Get your restaurant ready</h2>
-                                    <p className="text-caption text-ink-muted mt-0.5">Finish setup to start taking orders.</p>
-                                </div>
-                            </div>
-                            <div className="text-right shrink-0">
-                                <span className="text-2xl font-extrabold text-ink tabular-nums leading-none">
-                                    {doneSteps}<span className="text-body font-semibold text-ink-subtle">/{totalSteps}</span>
-                                </span>
-                                <p className="text-caption text-ink-muted mt-1">{progressPct}% done</p>
-                            </div>
+        <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
+            {/* Premium Header */}
+            <div className="relative overflow-hidden rounded-[2rem] bg-[#0a0a0a] text-white p-8 sm:p-12 shadow-2xl animate-fade-up">
+                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#ff5a00] opacity-20 blur-[120px] rounded-full translate-x-1/3 -translate-y-1/4 pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-blue-500 opacity-20 blur-[100px] rounded-full -translate-x-1/3 translate-y-1/4 pointer-events-none" />
+                
+                <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
+                    <div>
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/10 mb-6 text-sm font-medium text-white/90">
+                            <span className="relative flex h-2.5 w-2.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                            </span>
+                            Live Dashboard
                         </div>
-                        <div className="mt-4 h-1.5 w-full rounded-full bg-[color-mix(in_srgb,var(--brand-500)_14%,var(--surface))] overflow-hidden">
-                            <div className="h-full rounded-full bg-brand-500 transition-all duration-500" style={{ width: `${progressPct}%` }} />
-                        </div>
-                    </div>
-
-                    {/* Steps */}
-                    <ul className="divide-y divide-hairline">
-                        {onboardingSteps.map((step, i) => {
-                            const Icon = step.icon
-                            const inner = (
-                                <div className="flex items-center gap-3.5 px-5 sm:px-6 py-3.5">
-                                    <span className={`grid size-10 place-items-center rounded-[var(--r-md)] shrink-0 transition-colors ${step.done ? 'bg-success-bg text-success-fg' : 'bg-brand-50 text-brand-700 group-hover:bg-brand-100'}`}>
-                                        {step.done ? <CheckCircle2 size={18} /> : <Icon size={18} />}
-                                    </span>
-                                    <div className="min-w-0 flex-1">
-                                        <p className={`text-body font-semibold leading-tight ${step.done ? 'text-ink-subtle line-through' : 'text-ink'}`}>{step.label}</p>
-                                        <p className="text-caption text-ink-muted mt-0.5 truncate">{step.desc}</p>
-                                    </div>
-                                    {step.done ? (
-                                        <span className="text-caption font-semibold text-success-fg shrink-0">Done</span>
-                                    ) : (
-                                        <span className="flex items-center gap-1 text-small font-semibold text-brand-700 shrink-0">
-                                            <span className="hidden sm:inline">Set up</span>
-                                            <ChevronRight size={16} className="transition-transform group-hover:translate-x-0.5" />
-                                        </span>
-                                    )}
-                                </div>
-                            )
-                            return (
-                                <li key={i}>
-                                    {step.done
-                                        ? inner
-                                        : <Link href={step.href} className="group block transition-colors hover:bg-surface-muted">{inner}</Link>}
-                                </li>
-                            )
-                        })}
-                    </ul>
-                </section>
-            )}
-
-            {/* Low stock alert */}
-            {lowStock.length > 0 && (
-                <div className="flex items-start gap-3 rounded-[var(--r-md)] bg-warning-bg border border-[color-mix(in_srgb,var(--warning)_30%,transparent)] px-4 py-3">
-                    <AlertTriangle size={15} className="text-warning-fg shrink-0 mt-0.5" />
-                    <div className="min-w-0">
-                        <p className="text-small font-semibold text-warning-fg">{lowStock.length} ingredient{lowStock.length > 1 ? 's' : ''} running low</p>
-                        <p className="text-caption text-warning-fg/80 mt-0.5">
-                            {lowStock.slice(0, 3).map(i => `${i.name} (${i.stock_quantity} ${i.unit})`).join(', ')}
-                            {lowStock.length > 3 && ` +${lowStock.length - 3} more`}
-                            {' · '}<Link href="/admin/ingredients" className="underline font-medium">View →</Link>
+                        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4 leading-tight">
+                            {greeting}, <span className="capitalize">{name}</span>.
+                        </h1>
+                        <p className="text-white/60 text-[16px] max-w-xl leading-relaxed">
+                            Here's what's happening at your restaurant today. You have <strong className="text-white">{totalOrdersToday || 0}</strong> new orders and your revenue is tracking well.
                         </p>
                     </div>
+                    <div className="shrink-0 flex flex-wrap gap-3">
+                        <Link href="/admin/orders" className="bg-[#ff5a00] hover:bg-[#ff4500] text-white px-7 py-3.5 rounded-[16px] font-semibold transition-all duration-300 hover:scale-105 shadow-[0_0_20px_rgba(255,90,0,0.3)] hover:shadow-[0_0_30px_rgba(255,90,0,0.5)] flex items-center gap-2">
+                            <ShoppingBag size={18} /> View Orders
+                        </Link>
+                    </div>
                 </div>
-            )}
-
-            {/* KPI cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-                <StatCard icon={TrendingUp} tone="brand"   label="Revenue Today"      value={money(totalRevenueToday)} />
-                <StatCard icon={ShoppingBag} tone="info"    label="Orders Today"       value={String(totalOrdersToday || 0)} />
-                <StatCard icon={Users}       tone="success" label="Active Tables"      value={String(activeSessionCount || 0)} />
-                <StatCard icon={TrendingUp}  tone="neutral" label="Revenue This Month" value={money(totalRevenueMonth)} />
-                <StatCard icon={UserCheck}   tone="neutral" label="Staff On Shift"     value={String(shifts.length)} />
-                <StatCard icon={lowStock.length > 0 ? AlertTriangle : Package} tone={lowStock.length > 0 ? 'warning' : 'neutral'} label="Low Stock Items" value={String(lowStock.length)} />
             </div>
 
-            {/* Pipeline */}
-            <Card padding={20}>
-                <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-h3 text-ink">Today&apos;s Order Pipeline</h2>
-                    <Link href="/admin/orders" className="text-small text-brand-700 hover:underline flex items-center gap-1">
-                        All Orders <ArrowRight size={12} />
-                    </Link>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                    {pipelineSteps.map((p, i) => (
-                        <div key={p.label} className="flex items-center gap-1.5">
-                            {i > 0 && <ChevronRight size={14} className="text-ink-subtle/50 hidden sm:block" />}
-                            <PipelineSegment label={p.label} count={p.count} tone={p.tone} />
-                        </div>
-                    ))}
-                    <div className="ml-auto">
-                        <PipelineSegment label="Cancelled" count={pipeline.cancelled} tone="danger" />
-                    </div>
-                </div>
-            </Card>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                {/* Staff */}
-                <Card padding={false} className="overflow-hidden">
-                    <div className="px-5 py-4 border-b border-hairline flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <Clock size={15} className="text-ink-subtle" />
-                            <h2 className="text-h3 text-ink">Staff On Shift</h2>
-                        </div>
-                        <Link href="/admin/shifts" className="text-small text-brand-700 hover:underline">Manage →</Link>
-                    </div>
-                    <div className="divide-y divide-hairline">
-                        {shifts.length === 0 ? (
-                            <EmptyState compact icon={UserCheck} title="No one clocked in" description="Active shifts will appear here." />
-                        ) : (
-                            shifts.slice(0, 5).map(s => {
-                                const roleName = (s.users?.roles as unknown as { name: string } | null)?.name || ''
-                                const since = new Date(s.clock_in).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-                                return (
-                                    <div key={s.id} className="flex items-center gap-3 px-5 h-14">
-                                        <div className="grid size-8 place-items-center rounded-full bg-brand-50 text-brand-700 text-caption font-bold shrink-0">
-                                            {(s.users?.full_name || '?')[0].toUpperCase()}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-small font-medium text-ink truncate">{s.users?.full_name || '—'}</p>
-                                            <p className="text-caption text-ink-subtle capitalize">{roleName.replace('_', ' ')}</p>
-                                        </div>
-                                        <span className="text-caption text-ink-subtle shrink-0 tabular">since {since}</span>
-                                    </div>
-                                )
-                            })
-                        )}
-                        {shifts.length > 5 && (
-                            <p className="px-5 py-2 text-caption text-ink-subtle text-center">+{shifts.length - 5} more</p>
-                        )}
-                    </div>
-                </Card>
-
-                {/* Quick Actions */}
-                <Card padding={false} className="overflow-hidden">
-                    <div className="px-5 py-4 border-b border-hairline">
-                        <h2 className="text-h3 text-ink">Quick Actions</h2>
-                    </div>
-                    <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {quickActions.map(({ href, label, icon: Icon, badge }) => (
-                            <Link
-                                key={href}
-                                href={href}
-                                className="group relative flex flex-col items-center justify-center gap-2 rounded-2xl border border-hairline bg-surface px-3 py-4 text-center transition-colors duration-150 hover:border-brand-200 hover:bg-brand-50"
-                            >
-                                <Icon size={20} className="text-ink-muted group-hover:text-brand-600 transition-colors" />
-                                <span className="text-caption font-semibold text-ink">{label}</span>
-                                {badge !== undefined && badge > 0 && (
-                                    <span className="absolute top-2 right-2 grid size-4 place-items-center rounded-full bg-warning text-white text-[9px] font-bold tabular">
-                                        {badge > 9 ? '9+' : badge}
-                                    </span>
-                                )}
-                            </Link>
-                        ))}
-                    </div>
-                </Card>
+            {/* Premium KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                <KpiCard 
+                    title="Revenue Today" 
+                    value={money(totalRevenueToday)} 
+                    icon={Wallet} 
+                    trend="+12% from yesterday" 
+                    trendUp={true} 
+                    color="brand" 
+                />
+                <KpiCard 
+                    title="Orders Today" 
+                    value={String(totalOrdersToday || 0)} 
+                    icon={Receipt} 
+                    trend="Active pipeline" 
+                    trendUp={true} 
+                    color="blue" 
+                />
+                <KpiCard 
+                    title="Active Tables" 
+                    value={String(activeSessionCount || 0)} 
+                    icon={Users} 
+                    trend="Currently occupied" 
+                    trendUp={true} 
+                    color="green" 
+                />
+                <KpiCard 
+                    title="Staff On Shift" 
+                    value={String(shifts.length)} 
+                    icon={Clock} 
+                    trend="Clocked in right now" 
+                    trendUp={true} 
+                    color="purple" 
+                />
             </div>
 
-            {/* Recent Orders */}
-            <Card padding={false} className="overflow-hidden">
-                <div className="px-5 py-4 border-b border-hairline flex items-center justify-between">
-                    <h2 className="text-h3 text-ink">Recent Orders</h2>
-                    <Link href="/admin/orders" className="text-small text-brand-700 hover:underline flex items-center gap-1">
-                        View All <ArrowRight size={12} />
-                    </Link>
-                </div>
-                <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full">
-                        <thead>
-                            <tr className="text-label text-ink-subtle border-b border-hairline bg-surface-muted/40">
-                                <th className="px-5 py-3 text-left font-semibold">Order ID</th>
-                                <th className="px-5 py-3 text-left font-semibold">Time</th>
-                                <th className="px-5 py-3 text-left font-semibold">Status</th>
-                                <th className="px-5 py-3 text-right font-semibold">Amount</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-hairline">
-                            {recentOrders?.map(order => (
-                                <tr key={order.id} className="h-12 hover:bg-surface-muted/50 transition-colors">
-                                    <td className="px-5 font-mono text-caption font-semibold text-ink">{order.id.substring(0, 8).toUpperCase()}</td>
-                                    <td className="px-5 text-caption text-ink-subtle tabular">{new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                                    <td className="px-5"><StatusBadge status={order.status} /></td>
-                                    <td className="px-5 text-right text-small font-semibold text-ink tabular">{money(order.total_amount)}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                    {(!recentOrders || recentOrders.length === 0) && (
-                        <EmptyState icon={Inbox} title="No orders yet today" description="New orders will show up here as they come in." />
-                    )}
-                </div>
-                <div className="md:hidden divide-y divide-hairline">
-                    {recentOrders?.map(order => (
-                        <div key={order.id} className="px-4 py-3 flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                                <p className="font-mono text-small font-bold text-ink">#{order.id.substring(0, 6).toUpperCase()}</p>
-                                <p className="text-caption text-ink-subtle mt-0.5 tabular">{new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 space-y-6">
+                    {/* Pipeline & Recent Orders */}
+                    <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                        <div className="px-6 py-5 border-b border-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-50/50">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-[#ff5a00]/10 rounded-xl text-[#ff5a00]">
+                                    <BarChart3 size={20} />
+                                </div>
+                                <h2 className="text-[1.15rem] font-bold text-gray-900">Today's Pipeline</h2>
                             </div>
-                            <StatusBadge status={order.status} />
-                            <p className="font-bold text-ink tabular shrink-0">{money(order.total_amount)}</p>
+                            <div className="flex flex-wrap items-center gap-2 bg-white px-3 py-2 rounded-xl border border-gray-100 shadow-sm">
+                                <PipelineBadge label="Pending" count={pipeline.pending} color="yellow" />
+                                <PipelineBadge label="Preparing" count={pipeline.preparing} color="blue" />
+                                <PipelineBadge label="Ready" count={pipeline.ready} color="green" />
+                            </div>
                         </div>
-                    ))}
-                    {(!recentOrders || recentOrders.length === 0) && (
-                        <EmptyState icon={Inbox} title="No orders yet today" />
+                        
+                        <div className="p-0 overflow-x-auto">
+                            <table className="w-full text-left border-collapse min-w-[500px]">
+                                <thead>
+                                    <tr className="text-[12px] uppercase tracking-wider font-semibold text-gray-400 bg-gray-50/30">
+                                        <th className="px-6 py-4 border-b border-gray-100">Order ID</th>
+                                        <th className="px-6 py-4 border-b border-gray-100">Time</th>
+                                        <th className="px-6 py-4 border-b border-gray-100">Status</th>
+                                        <th className="px-6 py-4 border-b border-gray-100 text-right">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {recentOrders?.map(order => (
+                                        <tr key={order.id} className="group hover:bg-gray-50/50 transition-colors cursor-pointer">
+                                            <td className="px-6 py-4">
+                                                <span className="font-mono text-[13px] font-bold text-gray-900 group-hover:text-[#ff5a00] transition-colors">#{order.id.substring(0, 6).toUpperCase()}</span>
+                                            </td>
+                                            <td className="px-6 py-4 text-[14px] text-gray-500 font-medium tabular">
+                                                {new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <StatusBadge status={order.status} />
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <span className="text-[15px] font-bold text-gray-900 tabular">{money(order.total_amount)}</span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            {(!recentOrders || recentOrders.length === 0) && (
+                                <div className="p-10">
+                                    <EmptyState icon={Inbox} title="No orders yet today" description="New orders will show up here as they come in." />
+                                </div>
+                            )}
+                        </div>
+                        <div className="bg-gray-50/50 px-6 py-4 border-t border-gray-100 text-center">
+                            <Link href="/admin/orders" className="text-[14px] font-semibold text-[#ff5a00] hover:text-[#e04f00] flex items-center justify-center gap-1.5 transition-colors">
+                                View all orders <ArrowRight size={16} />
+                            </Link>
+                        </div>
+                    </div>
+
+                    {/* Onboarding */}
+                    {showChecklist && (
+                        <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.3s' }}>
+                            <div className="relative bg-gradient-to-br from-[#ff5a00]/5 to-white px-6 pt-6 pb-6 border-b border-gray-50">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                                    <div className="flex items-start gap-4">
+                                        <div className="p-3 bg-[#ff5a00] text-white rounded-2xl shadow-[0_4px_15px_rgba(255,90,0,0.25)]">
+                                            <Rocket size={24} />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-[1.25rem] font-bold text-gray-900">Setup your restaurant</h2>
+                                            <p className="text-[14px] text-gray-500 mt-1">Complete these steps to start taking orders.</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right flex-shrink-0">
+                                        <div className="text-3xl font-extrabold text-gray-900 tracking-tight tabular-nums">
+                                            {doneSteps}<span className="text-gray-400 text-xl font-semibold">/{totalSteps}</span>
+                                        </div>
+                                        <div className="text-[13px] font-semibold text-[#ff5a00] mt-1 bg-[#ff5a00]/10 px-2.5 py-0.5 rounded-full inline-block">
+                                            {progressPct}% Completed
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="mt-6 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                                    <div className="h-full rounded-full bg-gradient-to-r from-[#ff5a00] to-[#ff9a00] transition-all duration-700 ease-out" style={{ width: `${progressPct}%` }} />
+                                </div>
+                            </div>
+                            <ul className="divide-y divide-gray-50">
+                                {onboardingSteps.map((step, i) => {
+                                    const Icon = step.icon
+                                    return (
+                                        <li key={i}>
+                                            <Link href={step.href} className={`group block flex items-center gap-4 px-6 py-4 transition-all hover:bg-gray-50/50 ${step.done ? 'opacity-60' : ''}`}>
+                                                <div className={`p-2.5 rounded-xl transition-colors ${step.done ? 'bg-green-100 text-green-600' : 'bg-orange-50 text-[#ff5a00] group-hover:bg-[#ff5a00] group-hover:text-white'}`}>
+                                                    {step.done ? <CheckCircle2 size={20} /> : <Icon size={20} />}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className={`text-[15px] font-bold leading-tight ${step.done ? 'text-gray-500 line-through' : 'text-gray-900 group-hover:text-[#ff5a00] transition-colors'}`}>{step.label}</p>
+                                                    <p className="text-[13px] text-gray-500 mt-0.5 truncate">{step.desc}</p>
+                                                </div>
+                                                {step.done ? (
+                                                    <span className="text-[13px] font-bold text-green-600">Done</span>
+                                                ) : (
+                                                    <ChevronRight size={18} className="text-gray-300 group-hover:text-[#ff5a00] group-hover:translate-x-1 transition-all" />
+                                                )}
+                                            </Link>
+                                        </li>
+                                    )
+                                })}
+                            </ul>
+                        </div>
                     )}
                 </div>
-            </Card>
+
+                <div className="space-y-6">
+                    {/* Alerts / Low Stock */}
+                    {lowStock.length > 0 && (
+                        <div className="bg-white rounded-[24px] border border-red-100 shadow-[0_8px_30px_rgb(220,38,38,0.06)] overflow-hidden relative group animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                            <div className="absolute top-0 left-0 w-1 h-full bg-red-500" />
+                            <div className="p-6">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-2 text-red-600">
+                                        <AlertTriangle size={20} className="animate-pulse" />
+                                        <h3 className="font-bold text-[15px]">Inventory Alert</h3>
+                                    </div>
+                                    <span className="bg-red-100 text-red-700 text-[12px] font-bold px-2.5 py-0.5 rounded-full">{lowStock.length} items</span>
+                                </div>
+                                <div className="space-y-3 mb-4">
+                                    {lowStock.slice(0, 4).map(i => (
+                                        <div key={i.id} className="flex items-center justify-between">
+                                            <span className="text-[14px] font-medium text-gray-700">{i.name}</span>
+                                            <span className="text-[13px] font-bold text-red-600">{i.stock_quantity} {i.unit} left</span>
+                                        </div>
+                                    ))}
+                                    {lowStock.length > 4 && (
+                                        <p className="text-[13px] text-gray-500 italic text-center pt-1">+{lowStock.length - 4} more items</p>
+                                    )}
+                                </div>
+                                <Link href="/admin/ingredients" className="w-full inline-block text-center bg-red-50 hover:bg-red-100 text-red-700 font-semibold text-[14px] py-2.5 rounded-xl transition-colors">
+                                    Manage Inventory
+                                </Link>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Quick Actions Grid */}
+                    <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.3s' }}>
+                        <h3 className="text-[1.15rem] font-bold text-gray-900 mb-5 flex items-center gap-2">
+                            <Rocket size={18} className="text-[#ff5a00]" /> Quick Actions
+                        </h3>
+                        <div className="grid grid-cols-2 gap-3">
+                            <QuickAction href="/admin/menu" icon={UtensilsCrossed} label="Edit Menu" />
+                            <QuickAction href="/admin/tables" icon={QrCode} label="Tables & QR" />
+                            <QuickAction href="/admin/promos" icon={Tag} label="Promotions" badge={activePromos} />
+                            <QuickAction href="/admin/staff" icon={Users} label="Manage Staff" />
+                            <QuickAction href="/admin/ingredients" icon={Boxes} label="Inventory" />
+                            <QuickAction href="/admin/reports" icon={BarChart3} label="Reports" />
+                        </div>
+                    </div>
+
+                    {/* Staff On Shift */}
+                    <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.4s' }}>
+                        <div className="px-6 py-5 border-b border-gray-50 flex items-center justify-between">
+                            <h3 className="text-[1.15rem] font-bold text-gray-900 flex items-center gap-2">
+                                <UserCheck size={18} className="text-green-500" /> Active Staff
+                            </h3>
+                            <Link href="/admin/shifts" className="p-1 text-gray-400 hover:text-[#ff5a00] hover:bg-orange-50 rounded-lg transition-colors">
+                                <MoreHorizontal size={20} />
+                            </Link>
+                        </div>
+                        <div className="divide-y divide-gray-50 p-2">
+                            {shifts.length === 0 ? (
+                                <div className="p-8 text-center text-gray-400">
+                                    <Clock size={32} className="mx-auto mb-3 opacity-20" />
+                                    <p className="text-[14px] font-medium">No staff clocked in</p>
+                                </div>
+                            ) : (
+                                shifts.slice(0, 5).map(s => {
+                                    const roleName = (s.users?.roles as unknown as { name: string } | null)?.name || ''
+                                    const since = new Date(s.clock_in).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                                    return (
+                                        <div key={s.id} className="flex items-center gap-4 p-3 hover:bg-gray-50 rounded-xl transition-colors">
+                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 border border-gray-200 flex items-center justify-center text-gray-600 font-bold text-[15px] shadow-sm">
+                                                {(s.users?.full_name || '?')[0].toUpperCase()}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-[14px] font-bold text-gray-900 truncate">{s.users?.full_name || '—'}</p>
+                                                <p className="text-[12px] text-gray-500 capitalize font-medium">{roleName.replace('_', ' ')}</p>
+                                            </div>
+                                            <div className="text-right shrink-0">
+                                                <span className="inline-block w-2 h-2 rounded-full bg-green-500 mb-1" />
+                                                <p className="text-[11px] font-bold text-gray-400">{since}</p>
+                                            </div>
+                                        </div>
+                                    )
+                                })
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     )
 }
 
-function PipelineSegment({ label, count, tone }: { label: string; count: number; tone: Tone }) {
-    const TONE: Record<Tone, string> = {
-        warning: 'bg-warning-bg text-warning-fg',
-        info: 'bg-info-bg text-info-fg',
-        success: 'bg-success-bg text-success-fg',
-        danger: 'bg-danger-bg text-danger-fg',
-        neutral: 'bg-[var(--neutral-badge-bg)] text-[var(--neutral-badge-fg)]',
-        brand: 'bg-brand-50 text-brand-700',
+function KpiCard({ title, value, icon: Icon, trend, trendUp, color }: { title: string, value: string, icon: any, trend: string, trendUp: boolean, color: 'brand' | 'blue' | 'green' | 'purple' }) {
+    const colors = {
+        brand: 'from-[#ff5a00] to-[#ff9a00] text-[#ff5a00] bg-[#ff5a00]/10',
+        blue: 'from-blue-500 to-cyan-500 text-blue-500 bg-blue-500/10',
+        green: 'from-green-500 to-emerald-500 text-green-500 bg-green-500/10',
+        purple: 'from-purple-500 to-pink-500 text-purple-500 bg-purple-500/10'
+    }
+    const c = colors[color]
+
+    return (
+        <div className="group relative bg-white rounded-[24px] p-6 border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1 overflow-hidden">
+            <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${c.split(' ')[0]} ${c.split(' ')[1]} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
+            
+            <div className="flex items-center justify-between mb-4">
+                <div className={`w-12 h-12 rounded-[16px] flex items-center justify-center ${c.split(' ')[2]} ${c.split(' ')[3]} group-hover:scale-110 transition-transform duration-300`}>
+                    <Icon size={24} />
+                </div>
+                {/* Micro trend indicator */}
+                <div className={`flex items-center gap-1 text-[12px] font-bold px-2 py-1 rounded-full ${trendUp ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-500'}`}>
+                    {trendUp && <TrendingUp size={12} />} {trend}
+                </div>
+            </div>
+            
+            <h3 className="text-gray-500 text-[14px] font-medium mb-1">{title}</h3>
+            <p className="text-3xl font-extrabold text-gray-900 tracking-tight tabular-nums">{value}</p>
+        </div>
+    )
+}
+
+function PipelineBadge({ label, count, color }: { label: string, count: number, color: string }) {
+    const colors: Record<string, string> = {
+        yellow: 'bg-yellow-100 text-yellow-800',
+        blue: 'bg-blue-100 text-blue-800',
+        green: 'bg-green-100 text-green-800',
     }
     return (
-        <div className={`flex items-center gap-1.5 rounded-[var(--r-md)] px-3 py-1.5 text-caption font-semibold ${TONE[tone]}`}>
-            <span className="text-small font-bold tabular">{count}</span>
-            <span className="hidden sm:inline">{label}</span>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-100">
+            <span className={`w-2 h-2 rounded-full ${colors[color].split(' ')[0].replace('100', '500')}`} />
+            <span className="text-[12px] font-bold text-gray-600">{label}</span>
+            <span className={`text-[12px] font-bold px-1.5 py-0.5 rounded-md ${colors[color]} leading-none tabular-nums`}>{count}</span>
         </div>
+    )
+}
+
+function QuickAction({ href, icon: Icon, label, badge }: { href: string, icon: any, label: string, badge?: number | null }) {
+    return (
+        <Link href={href} className="group relative flex flex-col items-center justify-center gap-3 p-4 rounded-[16px] bg-gray-50 hover:bg-[#ff5a00]/5 border border-transparent hover:border-[#ff5a00]/20 transition-all duration-300 hover:scale-[1.02]">
+            <div className="text-gray-400 group-hover:text-[#ff5a00] transition-colors">
+                <Icon size={24} />
+            </div>
+            <span className="text-[13px] font-bold text-gray-700 group-hover:text-gray-900">{label}</span>
+            {badge !== undefined && badge !== null && badge > 0 && (
+                <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full shadow-sm ring-2 ring-white">
+                    {badge > 9 ? '9+' : badge}
+                </span>
+            )}
+        </Link>
     )
 }

@@ -2,6 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { requireRole } from '@/lib/auth'
 import type { OrderStatus, OrderItemStatus } from '@/types/database'
 import { rollUpOrderStatus } from '@/lib/orderRollup'
 
@@ -22,6 +23,7 @@ const KITCHEN_ORDER_SELECT = `
  * and whenever the realtime channel reconnects, to catch up on missed events.
  */
 export async function getKitchenOrders(restaurantId: string) {
+    await requireRole('kitchen', 'manager', 'super_admin', 'cashier')
     const adminSupabase = await createAdminClient()
     const { data, error } = await adminSupabase
         .from('orders')
@@ -72,6 +74,7 @@ export async function setOrderItemsStatus(
     actorUserId?: string
 ): Promise<{ success?: boolean; error?: string; conflict?: boolean }> {
     if (itemIds.length === 0) return { error: 'No items selected' }
+    await requireRole('kitchen', 'manager', 'super_admin', 'cashier')
     const adminSupabase = await createAdminClient()
 
     // Build the write, then constrain it so only legal transitions land — the DB,

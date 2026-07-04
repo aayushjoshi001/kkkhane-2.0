@@ -1,6 +1,7 @@
 import { requireRole } from '@/lib/auth'
 import { getAllLoyaltyOverview } from '../actions'
 import { Heart, CheckCircle, XCircle } from 'lucide-react'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,35 +30,37 @@ export default async function LoyaltyPage() {
     const totalMembers = rows.reduce((s, r) => s + r.memberCount, 0)
 
     return (
-        <div className="space-y-6">
-            <div>
-                <h1 className="text-2xl font-extrabold text-gray-900">Loyalty Programs</h1>
-                <p className="text-gray-500 mt-1 text-sm">Platform-wide loyalty program overview across all tenants.</p>
-            </div>
+        <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
+            <PremiumPageHeader 
+                title="Loyalty Programs" 
+                description="Platform-wide loyalty program overview across all tenants." 
+                icon={<Heart size={18} />}
+                color="green"
+            />
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                    <div className="text-2xl font-extrabold text-pink-600">{activeCount}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Active Programs</div>
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-pink-600 tabular-nums">{activeCount}</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Active Programs</div>
                 </div>
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                    <div className="text-2xl font-extrabold text-gray-900">{totalMembers}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Total Members</div>
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">{totalMembers}</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Total Members</div>
                 </div>
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                    <div className="text-2xl font-extrabold text-gray-900">{rows.length}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Restaurants Configured</div>
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">{rows.length}</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Restaurants Configured</div>
                 </div>
             </div>
 
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
                 <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
                     <h2 className="font-semibold text-gray-800">Loyalty Overview</h2>
-                    <p className="text-xs text-gray-500 mt-0.5">Loyalty is available on Pro and Enterprise tiers</p>
+                    <p className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Loyalty is available on Pro and Enterprise tiers</p>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
+                        <thead className="bg-gray-50/50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
                             <tr>
                                 <th className="px-5 py-3 text-left">Restaurant</th>
                                 <th className="px-5 py-3 text-left">Tier</th>
@@ -70,7 +73,7 @@ export default async function LoyaltyPage() {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {rows.map(r => (
-                                <tr key={r.restaurant_id} className="hover:bg-gray-50/50">
+                                <tr key={r.restaurant_id} className="group hover:bg-gray-50/50 transition-colors">
                                     <td className="px-5 py-3 font-medium text-gray-900">{r.restaurants?.name || '—'}</td>
                                     <td className="px-5 py-3">
                                         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${TIER_COLORS[r.restaurants?.subscription_tier || 'free']}`}>

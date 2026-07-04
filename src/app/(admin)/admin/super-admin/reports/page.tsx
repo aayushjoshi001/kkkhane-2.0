@@ -1,6 +1,8 @@
 import { requireRole } from '@/lib/auth'
 import { getAllEodReportsAcrossRestaurants, getAllRestaurants } from '../actions'
 import ReportsClient, { type Report } from './ReportsClient'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { FileText } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,11 +17,13 @@ export default async function ReportsPage() {
     const restaurants = (restaurantsResult.data || []).map((r: { id: string; name: string }) => ({ id: r.id, name: r.name }))
 
     return (
-        <div className="space-y-6">
-            <div>
-                <h1 className="text-2xl font-extrabold text-gray-900">EOD Reports</h1>
-                <p className="text-gray-500 mt-1 text-sm">End-of-day reports across all restaurant tenants.</p>
-            </div>
+        <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
+            <PremiumPageHeader 
+                title="EOD Reports" 
+                description="End-of-day reports across all restaurant tenants." 
+                icon={<FileText size={18} />}
+                color="purple"
+            />
             <ReportsClient reports={(reportsResult.data || []) as unknown as Report[]} restaurants={restaurants} />
         </div>
     )

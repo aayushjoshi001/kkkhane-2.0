@@ -31,7 +31,7 @@ export default function ReportsClient({ reports, restaurants }: {
     return (
         <div className="space-y-4">
             {/* Filters */}
-            <div className="flex flex-wrap gap-3 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+            <div className="flex flex-wrap gap-3 bg-white p-6 rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] animate-fade-up" style={{ animationDelay: '0.1s' }}>
                 <select
                     value={filterRestaurant}
                     onChange={e => setFilterRestaurant(e.target.value)}
@@ -47,10 +47,10 @@ export default function ReportsClient({ reports, restaurants }: {
                 </div>
             </div>
 
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
+                        <thead className="bg-gray-50/50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
                             <tr>
                                 <th className="px-5 py-3 text-left">Restaurant</th>
                                 <th className="px-5 py-3 text-left">Report Date</th>
@@ -62,7 +62,7 @@ export default function ReportsClient({ reports, restaurants }: {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {filtered.map(r => (
-                                <tr key={r.id} className="hover:bg-gray-50/50">
+                                <tr key={r.id} className="group hover:bg-gray-50/50 transition-colors">
                                     <td className="px-5 py-3 font-medium text-gray-900">{r.restaurants?.name || '—'}</td>
                                     <td className="px-5 py-3 text-gray-700 font-medium">{r.report_date}</td>
                                     <td className="px-5 py-3 text-right text-gray-900 font-semibold">{r.total_orders}</td>

@@ -1,6 +1,7 @@
 import { requireRole } from '@/lib/auth'
 import { getAllIngredientsAcrossRestaurants } from '../actions'
 import { Package, AlertTriangle } from 'lucide-react'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,24 +30,26 @@ export default async function IngredientsPage() {
     }
 
     return (
-        <div className="space-y-6">
-            <div>
-                <h1 className="text-2xl font-extrabold text-gray-900">Ingredients</h1>
-                <p className="text-gray-500 mt-1 text-sm">Cross-tenant ingredient inventory overview.</p>
-            </div>
+        <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
+            <PremiumPageHeader 
+                title="Ingredients" 
+                description="Cross-tenant ingredient inventory overview." 
+                icon={<Package size={18} />}
+                color="purple"
+            />
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                    <div className="text-2xl font-extrabold text-gray-900">{ingredients.length}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Total Ingredients</div>
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">{ingredients.length}</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Total Ingredients</div>
                 </div>
                 <div className={`rounded-xl border shadow-sm p-4 ${lowStock.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}>
                     <div className={`text-2xl font-extrabold ${lowStock.length > 0 ? 'text-amber-700' : 'text-gray-900'}`}>{lowStock.length}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Low Stock Alerts</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Low Stock Alerts</div>
                 </div>
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                    <div className="text-2xl font-extrabold text-gray-900">{Object.keys(grouped).length}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Restaurants Tracking</div>
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">{Object.keys(grouped).length}</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Restaurants Tracking</div>
                 </div>
             </div>
 
@@ -70,7 +73,7 @@ export default async function IngredientsPage() {
             {Object.entries(grouped).map(([restaurantName, items]) => {
                 const restaurantLowStock = items.filter(i => i.reorder_level !== null && i.stock_quantity <= i.reorder_level)
                 return (
-                    <div key={restaurantName} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div key={restaurantName} className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
                         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
                             <h2 className="font-semibold text-gray-800">{restaurantName}</h2>
                             <span className="text-xs text-gray-500">
@@ -80,7 +83,7 @@ export default async function IngredientsPage() {
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
-                                <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
+                                <thead className="bg-gray-50/50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
                                     <tr>
                                         <th className="px-5 py-3 text-left">Ingredient</th>
                                         <th className="px-5 py-3 text-left">Unit</th>

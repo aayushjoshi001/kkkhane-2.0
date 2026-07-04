@@ -113,19 +113,18 @@ export async function POST(req: NextRequest) {
             )
         }
 
-        // Wait for auth trigger to create user record
-        await new Promise(resolve => setTimeout(resolve, 500))
-
-        // Update the auto-created user record with full details
+        // The auth trigger creates the public.users row synchronously in the same
+        // transaction as auth.users, so it already exists by the time createUser()
+        // resolves — upsert by id rather than waiting an arbitrary delay then update.
         const { error: updateError } = await supabase
             .from('users')
-            .update({
+            .upsert({
+                id: authUser.user.id,
                 restaurant_id,
                 full_name,
                 role_id,
                 is_active: true,
-            })
-            .eq('id', authUser.user.id)
+            }, { onConflict: 'id' })
 
         if (updateError) {
             console.error('User update error details:', {

@@ -4,15 +4,19 @@ import { useCartStore } from '@/lib/stores/cart'
 import { useHydratedStore } from '@/lib/stores/useHydratedStore'
 import { ChevronRight, X } from 'lucide-react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 
 export default function CartSummary({ sessionId, tableSlug }: { sessionId?: string; tableSlug?: string }) {
     const items = useHydratedStore(useCartStore, (s) => s.items)
     const storeSlug = useHydratedStore(useCartStore, (s) => s.restaurantSlug)
     const clearCart = useCartStore((s) => s.clearCart)
+    const searchParams = useSearchParams()
+    const isWaiter = searchParams.get('w') === '1'
 
     const count = items?.reduce((acc, item) => acc + item.quantity, 0) || 0
     const slug = tableSlug || storeSlug || 'menu'
+    const cartUrl = `/t/${slug}/cart${isWaiter ? '?w=1' : ''}`
 
     if (count === 0 || !sessionId) return null
 
@@ -65,7 +69,7 @@ export default function CartSummary({ sessionId, tableSlug }: { sessionId?: stri
 
                     {/* Right: Link to Cart */}
                     <Link
-                        href={`/t/${slug}/cart`}
+                        href={cartUrl}
                         className="flex items-center gap-0.5 text-xs font-bold text-white hover:opacity-90 active:scale-95 transition-transform"
                     >
                         View Cart

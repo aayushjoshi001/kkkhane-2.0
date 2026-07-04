@@ -4,7 +4,7 @@ import { ReactNode, useEffect, useState } from 'react'
 import { LogOut, ChefHat, LogIn, Loader2, PartyPopper } from 'lucide-react'
 import Logo from '@/components/shared/Logo'
 import SoundEnableButton from '@/components/shared/SoundEnableButton'
-import { createClient } from '@/lib/supabase/client'
+import { signOutAndRedirect } from '@/lib/auth/signOut'
 import { setCustomNotificationSound } from '@/lib/audio'
 import { useRouter } from 'next/navigation'
 import CommandPaletteMount from '@/components/ui/CommandPaletteMount'
@@ -24,18 +24,13 @@ interface Props {
 
 export default function KitchenLayoutClient({ children, staffName, userId, restaurantId, onShift = false, shiftsEnabled = false, notificationSoundUrl }: Props) {
     const router = useRouter()
-    const supabase = createClient()
     const [shift, setShift] = useState(onShift)
     const [busy, setBusy] = useState(false)
     const [meals, setMeals] = useState<number | null>(null) // non-null → show congrats
 
     useEffect(() => { setCustomNotificationSound(notificationSoundUrl || null) }, [notificationSoundUrl])
 
-    const signOut = async () => {
-        await supabase.auth.signOut()
-        router.push('/login')
-        router.refresh()
-    }
+    const signOut = () => signOutAndRedirect(router)
 
     const handleClockIn = async () => {
         setBusy(true)

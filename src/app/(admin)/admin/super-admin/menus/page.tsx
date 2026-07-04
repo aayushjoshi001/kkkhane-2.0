@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { getAllMenusAcrossRestaurants } from '../actions'
 import { UtensilsCrossed, ChevronDown, ChevronRight, CheckCircle, XCircle, Search } from 'lucide-react'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 
 interface MenuGroup {
     id: string
@@ -60,25 +61,27 @@ export default function MenusPage() {
     }
 
     return (
-        <div className="space-y-6">
-            <div>
-                <h1 className="text-2xl font-extrabold text-gray-900">Menu Catalog</h1>
-                <p className="text-gray-500 mt-1 text-sm">Read-only view of all restaurant menus across the platform.</p>
-            </div>
+        <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
+            <PremiumPageHeader 
+                title="Menu Catalog" 
+                description="Read-only view of all restaurant menus across the platform." 
+                icon={<UtensilsCrossed size={18} />}
+                color="orange"
+            />
 
             {/* Summary */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-                    <div className="text-2xl font-extrabold text-gray-900">{groups.length}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Restaurants</div>
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">{groups.length}</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Restaurants</div>
                 </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-                    <div className="text-2xl font-extrabold text-gray-900">{groups.reduce((s, g) => s + g.totalItems, 0)}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Total Items</div>
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">{groups.reduce((s, g) => s + g.totalItems, 0)}</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Total Items</div>
                 </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-                    <div className="text-2xl font-extrabold text-gray-900">{groups.reduce((s, g) => s + g.availableItems, 0)}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Available Items</div>
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">{groups.reduce((s, g) => s + g.availableItems, 0)}</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Available Items</div>
                 </div>
             </div>
 
@@ -97,7 +100,7 @@ export default function MenusPage() {
             {/* Accordion */}
             <div className="space-y-2">
                 {filtered.map(group => (
-                    <div key={group.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div key={group.id} className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
                         <button
                             onClick={() => toggle(group.id)}
                             className="w-full flex items-center gap-4 p-4 md:p-5 text-left hover:bg-gray-50 transition"
@@ -112,7 +115,7 @@ export default function MenusPage() {
                                         {group.subscription_tier}
                                     </span>
                                 </div>
-                                <p className="text-xs text-gray-500 mt-0.5">
+                                <p className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">
                                     {group.totalItems} items · {group.availableItems} available
                                 </p>
                             </div>
@@ -126,7 +129,7 @@ export default function MenusPage() {
                                 ) : (
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-sm">
-                                            <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold">
+                                            <thead className="bg-gray-50/50 text-xs text-gray-500 uppercase font-semibold">
                                                 <tr>
                                                     <th className="px-5 py-3 text-left">Item</th>
                                                     <th className="px-5 py-3 text-left">Category</th>
@@ -136,7 +139,7 @@ export default function MenusPage() {
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
                                                 {group.items.map((item) => (
-                                                    <tr key={item.id} className="hover:bg-gray-50/50">
+                                                    <tr key={item.id} className="group hover:bg-gray-50/50 transition-colors">
                                                         <td className="px-5 py-3 font-medium text-gray-900">{item.name}</td>
                                                         <td className="px-5 py-3 text-gray-500">{item.menu_categories?.name || '—'}</td>
                                                         <td className="px-5 py-3 text-right text-gray-900">Rs. {item.price.toFixed(2)}</td>

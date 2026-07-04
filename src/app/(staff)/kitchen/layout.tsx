@@ -1,5 +1,6 @@
 import { ReactNode } from 'react'
 import KitchenLayoutClient from '@/components/kitchen/KitchenLayoutClient'
+import SessionSync from '@/components/shared/SessionSync'
 import { getCurrentUser } from '@/lib/auth'
 import { getRestaurantFeatures } from '@/lib/features'
 import { FeatureProvider } from '@/lib/contexts/FeatureContext'
@@ -33,6 +34,7 @@ export default async function KitchenLayout({ children }: { children: ReactNode 
 
     return (
         <FeatureProvider features={features}>
+            <SessionSync userId={userId} />
             <KitchenLayoutClient
                 restaurantName={restaurant?.name || undefined}
                 staffName={user?.full_name || undefined}

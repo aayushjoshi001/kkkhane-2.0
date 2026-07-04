@@ -197,6 +197,7 @@ export interface Order {
     customer_note: string | null
     status: OrderStatus
     subtotal_amount: number
+    service_charge_amount: number
     tax_amount: number
     tip_amount: number
     discount_amount: number
@@ -300,6 +301,8 @@ export interface Settings {
         // Nepal-specific
         nepalPayEnabled: boolean
         vatEnabled: boolean
+        serviceChargeEnabled?: boolean
+        serviceChargeRate?: number
         phoneOtpEnabled: boolean
         bsDateEnabled: boolean
         // Notification
@@ -577,6 +580,7 @@ export interface TakeoutOrder {
     status: TakeoutStatus
     items: CartItem[]  // JSONB snapshot
     subtotal_amount: number
+    service_charge_amount: number
     tax_amount: number
     total_amount: number
     payment_status: PaymentStatus

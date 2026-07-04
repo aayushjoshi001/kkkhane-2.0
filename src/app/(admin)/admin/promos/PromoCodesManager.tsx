@@ -120,106 +120,112 @@ export default function PromoCodesManager({ initialPromos, restaurantId }: {
     }
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-6">
             <div className="flex justify-end">
-                <button onClick={openCreate} className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-800">
+                <button onClick={openCreate} className="flex items-center gap-2 bg-brand-500 text-white px-5 py-2.5 rounded-[var(--r-md)] text-sm font-bold shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all focus-ring">
                     <Plus size={16} /> New Promo Code
                 </button>
             </div>
 
             {showForm && (
-                <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-                    <h2 className="text-base font-bold text-gray-900">{editingId ? 'Edit Promo Code' : 'New Promo Code'}</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <form onSubmit={handleSubmit} className="bg-surface rounded-card border border-hairline p-6 space-y-6 shadow-sm">
+                    <h2 className="text-h3 text-ink">{editingId ? 'Edit Promo Code' : 'New Promo Code'}</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Code *</label>
+                            <label className="block text-small font-bold text-ink mb-1.5">Code *</label>
                             <input type="text" required value={form.code} onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })}
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="e.g. WELCOME20" />
+                                className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all font-mono" placeholder="e.g. WELCOME20" />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                            <label className="block text-small font-bold text-ink mb-1.5">Type</label>
                             <select value={form.promo_type} onChange={e => setForm({ ...form, promo_type: e.target.value })}
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                                className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all">
                                 {PROMO_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                            <label className="block text-small font-bold text-ink mb-1.5">
                                 Value {form.promo_type === 'percentage_off' ? '(%)' : '($)'}
                             </label>
                             <input type="text" inputMode="decimal" required value={form.value}
                                 onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setForm({ ...form, value: v }) }}
                                 placeholder={form.promo_type === 'percentage_off' ? 'e.g. 10' : 'e.g. 5'}
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                                className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all tabular-nums" />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Min Order ($)</label>
+                            <label className="block text-small font-bold text-ink mb-1.5">Min Order ($)</label>
                             <input type="text" inputMode="decimal" value={form.min_order_amount}
                                 onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setForm({ ...form, min_order_amount: v }) }}
                                 placeholder="e.g. 500"
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                                className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all tabular-nums" />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Max Discount ($)</label>
+                            <label className="block text-small font-bold text-ink mb-1.5">Max Discount ($)</label>
                             <input type="text" inputMode="decimal" value={form.max_discount_amount}
                                 onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setForm({ ...form, max_discount_amount: v }) }}
                                 placeholder="e.g. 200"
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                                className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all tabular-nums" />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Max Uses (0 = unlimited)</label>
+                            <label className="block text-small font-bold text-ink mb-1.5">Max Uses (0 = unlimited)</label>
                             <input type="text" inputMode="numeric" value={form.max_uses}
                                 onChange={e => { const v = e.target.value; if (/^\d*$/.test(v)) setForm({ ...form, max_uses: v }) }}
                                 placeholder="Leave empty for unlimited"
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                                className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all tabular-nums" />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Valid Until</label>
+                            <label className="block text-small font-bold text-ink mb-1.5">Valid Until</label>
                             <input type="datetime-local" value={form.valid_until} onChange={e => setForm({ ...form, valid_until: e.target.value })}
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                                className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all tabular-nums" />
                         </div>
                     </div>
-                    <div className="flex gap-2 justify-end">
-                        <button type="button" onClick={closeForm} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" disabled={saving} className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg disabled:opacity-50">
+                    <div className="flex gap-3 justify-end border-t border-hairline pt-6">
+                        <button type="button" onClick={closeForm} className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:shadow-md transition-all focus-ring">Cancel</button>
+                        <button type="submit" disabled={saving} className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:pointer-events-none focus-ring">
                             {saving ? 'Saving...' : editingId ? 'Save Changes' : 'Create Code'}
                         </button>
                     </div>
                 </form>
             )}
 
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="bg-surface rounded-card border border-hairline overflow-hidden shadow-sm">
                 <table className="w-full text-sm">
-                    <thead className="bg-gray-50 text-gray-600">
+                    <thead className="bg-surface-muted/50 text-ink-subtle uppercase tracking-wider text-[10px] font-bold border-b border-hairline">
                         <tr>
-                            <th className="text-left px-4 py-3 font-medium">Code</th>
-                            <th className="text-left px-4 py-3 font-medium">Type</th>
-                            <th className="text-left px-4 py-3 font-medium">Value</th>
-                            <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Uses</th>
-                            <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Expires</th>
-                            <th className="text-left px-4 py-3 font-medium">Status</th>
-                            <th className="text-right px-4 py-3 font-medium">Actions</th>
+                            <th className="text-left px-5 py-4">Code</th>
+                            <th className="text-left px-5 py-4">Type</th>
+                            <th className="text-left px-5 py-4">Value</th>
+                            <th className="text-left px-5 py-4 hidden md:table-cell">Uses</th>
+                            <th className="text-left px-5 py-4 hidden md:table-cell">Expires</th>
+                            <th className="text-left px-5 py-4">Status</th>
+                            <th className="text-right px-5 py-4">Actions</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-hairline">
                         {promos.map(promo => (
-                            <tr key={promo.id} className="hover:bg-gray-50">
-                                <td className="px-4 py-3 font-mono font-semibold text-gray-900">{promo.code}</td>
-                                <td className="px-4 py-3 capitalize text-gray-600">{promo.promo_type.replace('_', ' ')}</td>
-                                <td className="px-4 py-3 text-gray-700">{promo.promo_type === 'percentage_off' ? `${promo.value}%` : `$${promo.value}`}</td>
-                                <td className="px-4 py-3 text-gray-500 hidden md:table-cell">{promo.current_uses}/{promo.max_uses || '∞'}</td>
-                                <td className="px-4 py-3 text-gray-500 hidden md:table-cell">{promo.valid_until ? new Date(promo.valid_until).toLocaleDateString() : '—'}</td>
-                                <td className="px-4 py-3">
-                                    <button onClick={() => toggleActive(promo)} className="text-gray-500 hover:text-gray-900">
-                                        {promo.is_active ? <ToggleRight size={22} className="text-green-500" /> : <ToggleLeft size={22} />}
-                                    </button>
+                            <tr key={promo.id} className="hover:bg-surface-muted/30 transition-colors">
+                                <td className="px-5 py-4 font-mono font-bold text-ink tracking-wide">{promo.code}</td>
+                                <td className="px-5 py-4 capitalize text-ink-subtle">{promo.promo_type.replace('_', ' ')}</td>
+                                <td className="px-5 py-4 font-bold tabular-nums text-ink">{promo.promo_type === 'percentage_off' ? `${promo.value}%` : `$${promo.value}`}</td>
+                                <td className="px-5 py-4 text-ink-subtle font-medium tabular-nums hidden md:table-cell">{promo.current_uses} / {promo.max_uses || '∞'}</td>
+                                <td className="px-5 py-4 text-ink-subtle hidden md:table-cell">{promo.valid_until ? new Date(promo.valid_until).toLocaleDateString() : '—'}</td>
+                                <td className="px-5 py-4">
+                                    <label className="relative inline-flex items-center cursor-pointer group">
+                                        <input 
+                                            type="checkbox" 
+                                            className="sr-only peer" 
+                                            checked={promo.is_active} 
+                                            onChange={() => toggleActive(promo)}
+                                        />
+                                        <div className="w-11 h-6 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-hairline after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-shadow"></div>
+                                    </label>
                                 </td>
-                                <td className="px-4 py-3 text-right">
-                                    <div className="flex gap-1 justify-end">
-                                        <button onClick={() => openEdit(promo)} className="text-gray-400 hover:text-gray-800 p-1" title="Edit promo code">
+                                <td className="px-5 py-4 text-right">
+                                    <div className="flex gap-1.5 justify-end">
+                                        <button onClick={() => openEdit(promo)} className="p-2 text-ink-subtle hover:text-ink hover:bg-surface-muted rounded-[var(--r-md)] transition-colors" title="Edit promo code">
                                             <Pencil size={16} />
                                         </button>
-                                        <button onClick={() => handleDelete(promo.id)} className="text-gray-400 hover:text-red-500 p-1" title="Delete promo code">
+                                        <button onClick={() => handleDelete(promo.id)} className="p-2 text-ink-subtle hover:text-danger-fg hover:bg-danger-bg rounded-[var(--r-md)] transition-colors" title="Delete promo code">
                                             <Trash2 size={16} />
                                         </button>
                                     </div>
@@ -227,7 +233,7 @@ export default function PromoCodesManager({ initialPromos, restaurantId }: {
                             </tr>
                         ))}
                         {promos.length === 0 && (
-                            <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No promo codes yet. Create your first one!</td></tr>
+                            <tr><td colSpan={7} className="px-5 py-12 text-center font-bold text-ink-subtle/70">No promo codes yet. Create your first one!</td></tr>
                         )}
                     </tbody>
                 </table>

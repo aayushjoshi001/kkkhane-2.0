@@ -1,6 +1,7 @@
 import { requireRole } from '@/lib/auth'
 import { getAllTakeoutOrdersAcrossRestaurants } from '../actions'
 import { Truck } from 'lucide-react'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,30 +33,32 @@ export default async function TakeoutPage() {
     const activeCount = orders.filter(o => !['picked_up', 'cancelled'].includes(o.status)).length
 
     return (
-        <div className="space-y-6">
-            <div>
-                <h1 className="text-2xl font-extrabold text-gray-900">Takeout Orders</h1>
-                <p className="text-gray-500 mt-1 text-sm">Platform-wide takeout order overview across all restaurants.</p>
-            </div>
+        <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
+            <PremiumPageHeader 
+                title="Takeout Orders" 
+                description="Platform-wide takeout order overview across all restaurants." 
+                icon={<Truck size={18} />}
+                color="orange"
+            />
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                    <div className="text-2xl font-extrabold text-gray-900">{orders.length}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Total Orders</div>
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">{orders.length}</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Total Orders</div>
                 </div>
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                    <div className="text-2xl font-extrabold text-orange-600">{activeCount}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Active Orders</div>
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-orange-600 tabular-nums">{activeCount}</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Active Orders</div>
                 </div>
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                    <div className="text-2xl font-extrabold text-gray-900">
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">
                         Rs. {orders.reduce((s, o) => s + (o.total_amount || 0), 0).toLocaleString()}
                     </div>
-                    <div className="text-xs text-gray-500 mt-0.5">Total Revenue</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Total Revenue</div>
                 </div>
             </div>
 
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
                 <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
                     <h2 className="font-semibold text-gray-800">All Takeout Orders</h2>
                 </div>
@@ -63,7 +66,7 @@ export default async function TakeoutPage() {
                 {/* Desktop */}
                 <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
+                        <thead className="bg-gray-50/50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
                             <tr>
                                 <th className="px-5 py-3 text-left">Restaurant</th>
                                 <th className="px-5 py-3 text-left">Customer</th>
@@ -75,7 +78,7 @@ export default async function TakeoutPage() {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {orders.map(o => (
-                                <tr key={o.id} className="hover:bg-gray-50/50">
+                                <tr key={o.id} className="group hover:bg-gray-50/50 transition-colors">
                                     <td className="px-5 py-3 font-medium text-gray-900">{o.restaurants?.name || '—'}</td>
                                     <td className="px-5 py-3 text-gray-700">{o.customer_name}</td>
                                     <td className="px-5 py-3 text-gray-500 font-mono text-xs">{o.customer_phone}</td>

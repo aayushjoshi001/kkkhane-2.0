@@ -1,5 +1,6 @@
 import { requireRole } from '@/lib/auth'
 import { Settings, CheckCircle, XCircle, Shield } from 'lucide-react'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -92,19 +93,21 @@ export default async function ConfigPage() {
     const featureKeys = Object.keys(TIER_FEATURES.free) as (keyof typeof TIER_FEATURES.free)[]
 
     return (
-        <div className="space-y-8">
-            <div>
-                <h1 className="text-2xl font-extrabold text-gray-900">Platform Config</h1>
-                <p className="text-gray-500 mt-1 text-sm">Tier feature matrix, subscription limits, and platform defaults.</p>
-            </div>
+        <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
+            <PremiumPageHeader 
+                title="Platform Config" 
+                description="Tier feature matrix, subscription limits, and platform defaults." 
+                icon={<Settings size={18} />}
+                color="blue"
+            />
 
             {/* Tier Feature Matrix */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
                 <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                     <Shield size={18} className="text-indigo-600" />
                     <div>
                         <h2 className="font-semibold text-gray-800">Tier Feature Matrix</h2>
-                        <p className="text-xs text-gray-500 mt-0.5">Features unlocked per subscription tier</p>
+                        <p className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Features unlocked per subscription tier</p>
                     </div>
                 </div>
                 <div className="overflow-x-auto">
@@ -121,7 +124,7 @@ export default async function ConfigPage() {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {featureKeys.map(key => (
-                                <tr key={key} className="hover:bg-gray-50/50">
+                                <tr key={key} className="group hover:bg-gray-50/50 transition-colors">
                                     <td className="px-5 py-3 font-medium text-gray-800">{FEATURE_LABELS[key] || key}</td>
                                     {tiers.map(tier => (
                                         <td key={tier} className="px-5 py-3 text-center border-l border-gray-100">
@@ -139,14 +142,14 @@ export default async function ConfigPage() {
             </div>
 
             {/* Tier Limits */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
                 <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
                     <h2 className="font-semibold text-gray-800">Subscription Limits</h2>
-                    <p className="text-xs text-gray-500 mt-0.5">Maximum staff and menu items per tier</p>
+                    <p className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Maximum staff and menu items per tier</p>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-50 border-b border-gray-100">
+                        <thead className="bg-gray-50/50 border-b border-gray-100">
                             <tr>
                                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Tier</th>
                                 <th className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Max Staff</th>
@@ -155,7 +158,7 @@ export default async function ConfigPage() {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {tiers.map(tier => (
-                                <tr key={tier} className="hover:bg-gray-50/50">
+                                <tr key={tier} className="group hover:bg-gray-50/50 transition-colors">
                                     <td className="px-5 py-4">
                                         <span className={`px-3 py-1.5 rounded-full text-xs font-bold border ${TIER_STYLE[tier]}`}>
                                             {tier.charAt(0).toUpperCase() + tier.slice(1)}
@@ -175,12 +178,12 @@ export default async function ConfigPage() {
             </div>
 
             {/* Platform Defaults */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
                 <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                     <Settings size={18} className="text-gray-600" />
                     <div>
                         <h2 className="font-semibold text-gray-800">Platform Defaults</h2>
-                        <p className="text-xs text-gray-500 mt-0.5">Default settings applied to all new restaurant tenants</p>
+                        <p className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Default settings applied to all new restaurant tenants</p>
                     </div>
                 </div>
                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -198,7 +201,7 @@ export default async function ConfigPage() {
             </div>
 
             {/* Subscription Payment Methods */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.2s' }}>
                 <h2 className="font-semibold text-gray-800 mb-4">Accepted Subscription Payment Methods</h2>
                 <div className="flex flex-wrap gap-3">
                     {['Cash', 'eSewa', 'Khalti', 'Bank Transfer', 'FonePay'].map(method => (

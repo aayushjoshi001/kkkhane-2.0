@@ -1,20 +1,18 @@
 import { redirect } from 'next/navigation'
 import { getOptionalUser } from '@/lib/auth'
-import { LoginForm } from './LoginForm'
+import { ROLE_LANDING } from '@/lib/roleLanding'
+import AuthHero from '@/components/shared/AuthHero'
+import LoginScreen from './LoginScreen'
 
-// Role → landing page map
-const ROLE_LANDING: Record<string, string> = {
-    super_admin: '/admin/dashboard',
-    manager: '/admin/dashboard',
-    kitchen: '/kitchen',
-    waiter: '/waiter',
-    cashier: '/cashier',
-    onboarding: '/onboarding',
-}
-
-export default async function LoginPage(props: { searchParams: Promise<{ redirect?: string }> }) {
+export default async function LoginPage(props: { searchParams: Promise<{ redirect?: string; r?: string }> }) {
     const searchParams = await props.searchParams
-    const redirectTo = searchParams.redirect || '/admin/dashboard'
+    // Empty (not defaulted to /admin/dashboard) so loginAction can tell "user was
+    // bounced from a specific protected route" apart from "no redirect requested"
+    // and fall back to the role-based landing page in the latter case.
+    const redirectTo = searchParams.redirect || ''
+    // Present when a shared POS device is bookmarked to `/login?r=<restaurant-slug>` —
+    // routes straight to the staff name+PIN terminal instead of the owner form.
+    const staffTerminalSlug = searchParams.r || ''
 
     // If already logged in, redirect to appropriate dashboard
     const currentUser = await getOptionalUser()
@@ -24,8 +22,20 @@ export default async function LoginPage(props: { searchParams: Promise<{ redirec
     }
 
     return (
-        <div className="min-h-screen w-full flex items-center justify-center bg-canvas bg-[radial-gradient(circle,#E7E0D6_1.4px,transparent_1.4px)] bg-[size:26px_26px] overflow-auto p-4 sm:p-12">
-            <LoginForm redirectTo={redirectTo} />
+        <div className="h-[100dvh] w-full flex flex-col md:flex-row bg-[#ff6b00] overflow-hidden">
+            <div className="w-full md:w-[45%] lg:w-[40%] h-[35vh] md:h-full flex-shrink-0">
+                <AuthHero heightClassName="h-full" />
+            </div>
+            
+            <div className="flex-1 w-full relative z-10 flex flex-col bg-transparent md:bg-white rounded-t-[2rem] md:rounded-none -mt-6 md:mt-0 overflow-hidden">
+                <div className="flex-1 w-full bg-white md:bg-transparent rounded-t-[2rem] md:rounded-none overflow-y-auto no-scrollbar">
+                    <div className="min-h-full w-full flex flex-col px-6 sm:px-10 pt-4 pb-12">
+                        <div className="w-full max-w-[420px] mx-auto my-auto flex flex-col">
+                            <LoginScreen redirectTo={redirectTo} initialSlug={staffTerminalSlug} />
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     )
 }

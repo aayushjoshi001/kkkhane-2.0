@@ -5,11 +5,11 @@
 
 export type Tier = 'free' | 'basic' | 'pro' | 'enterprise'
 
-export const TIER_LIMITS: Record<Tier, { max_staff: number; max_menu_items: number }> = {
-    free:       { max_staff: 3,   max_menu_items: 20   },
-    basic:      { max_staff: 10,  max_menu_items: 100  },
-    pro:        { max_staff: 50,  max_menu_items: 500  },
-    enterprise: { max_staff: 999, max_menu_items: 9999 },
+export const TIER_LIMITS: Record<Tier, { max_staff: number; max_menu_items: number; max_tables: number }> = {
+    free:       { max_staff: 3,   max_menu_items: 20,   max_tables: 10  },
+    basic:      { max_staff: 10,  max_menu_items: 100,  max_tables: 30  },
+    pro:        { max_staff: 50,  max_menu_items: 500,  max_tables: 100 },
+    enterprise: { max_staff: 999, max_menu_items: 9999, max_tables: 999 },
 }
 
 const TIER_FEATURES: Record<Tier, {

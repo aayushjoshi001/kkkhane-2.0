@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import { Shield, ChefHat, Users, User, Check, AlertTriangle, Loader2, Pencil, Trash2, Eye, EyeOff, QrCode, Banknote, Search } from 'lucide-react'
-import { updateStaffRoleAction, toggleStaffStatusAction, updateStaffNameAction, resetStaffPasswordAction, deleteStaffAction, assignScannedUserAction } from '@/app/(admin)/admin/staff/actions'
+import { Shield, ChefHat, Users, User, Check, AlertTriangle, Loader2, Pencil, Trash2, Eye, EyeOff, Banknote, Search, KeyRound, Copy, Link2 } from 'lucide-react'
+import { updateStaffRoleAction, toggleStaffStatusAction, updateStaffNameAction, resetStaffPasswordAction, deleteStaffAction, createStaffPinAction } from '@/app/(admin)/admin/staff/actions'
+import { PIN_ELIGIBLE_ROLE_IDS, isPinEligibleRole } from '@/lib/staffPin'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
 
@@ -30,13 +31,15 @@ export default function StaffManager({
     roles,
     currentUserRole,
     currentUserId,
-    restaurantId
+    restaurantId,
+    restaurantSlug,
 }: {
     initialStaff: StaffMember[]
     roles: Role[]
     currentUserRole: string
     currentUserId: string
     restaurantId: string
+    restaurantSlug: string
 }) {
     const [staff, setStaff] = useState<StaffMember[]>(initialStaff)
     const [submittingId, setSubmittingId] = useState<string | null>(null)
@@ -60,6 +63,7 @@ export default function StaffManager({
 
     const [createModal, setCreateModal] = useState({
         isOpen: false,
+        mode: 'pin' as 'pin' | 'email',
         fullName: '',
         email: '',
         password: '',
@@ -67,16 +71,8 @@ export default function StaffManager({
         roleId: 4, // Default to waiter
         isCreating: false
     })
-
-    const [qrScanModal, setQrScanModal] = useState<{
-        isOpen: boolean
-        scanning: boolean
-        roleId: number
-    }>({
-        isOpen: false,
-        scanning: false,
-        roleId: 4
-    })
+    // Set once a PIN account is created — shown in place of the form until "Done".
+    const [pinResult, setPinResult] = useState<{ pin: string; fullName: string } | null>(null)
 
     const [editModal, setEditModal] = useState<{
         isOpen: boolean
@@ -180,6 +176,7 @@ export default function StaffManager({
             toast.success(data.message || 'Staff member created successfully')
             setCreateModal({
                 isOpen: false,
+                mode: 'pin',
                 fullName: '',
                 email: '',
                 password: '',
@@ -193,6 +190,42 @@ export default function StaffManager({
         } finally {
             setCreateModal(prev => ({ ...prev, isCreating: false }))
         }
+    }
+
+    const handleCreateStaffPin = async () => {
+        if (!createModal.fullName.trim()) {
+            toast.error('Please enter a name')
+            return
+        }
+
+        setCreateModal(prev => ({ ...prev, isCreating: true }))
+        const res = await createStaffPinAction({ fullName: createModal.fullName, roleId: createModal.roleId })
+        setCreateModal(prev => ({ ...prev, isCreating: false }))
+
+        if (!res.success || !res.pin) {
+            toast.error(res.error || 'Failed to create staff member')
+            return
+        }
+
+        if (res.staff) setStaff(prev => [res.staff as StaffMember, ...prev])
+        setPinResult({ pin: res.pin, fullName: createModal.fullName.trim() })
+    }
+
+    const closeCreateModal = () => {
+        setCreateModal({ isOpen: false, mode: 'pin', fullName: '', email: '', password: '', phone: '', roleId: 4, isCreating: false })
+        setPinResult(null)
+    }
+
+    // Computed post-mount (needs window.location.origin) — avoids an SSR/client mismatch.
+    const [terminalLink, setTerminalLink] = useState('')
+    useEffect(() => {
+        if (restaurantSlug) setTerminalLink(`${window.location.origin}/login?r=${restaurantSlug}`)
+    }, [restaurantSlug])
+
+    const handleCopyTerminalLink = () => {
+        if (!terminalLink) return
+        navigator.clipboard.writeText(terminalLink)
+        toast.success('Staff terminal link copied')
     }
 
     const openEditModal = (user: StaffMember) => {
@@ -264,73 +297,30 @@ export default function StaffManager({
 
     // Business Logic: Only super_admin can assign super_admin
     const availableRoles = roles.filter(r => r.name !== 'customer' && (currentUserRole === 'super_admin' || r.name !== 'super_admin'))
-
-    // Initialize QR Scanner when modal opens
-    useEffect(() => {
-        let scanner: any = null
-        if (qrScanModal.isOpen && qrScanModal.scanning) {
-            import('html5-qrcode').then(({ Html5QrcodeScanner }) => {
-                scanner = new Html5QrcodeScanner(
-                    'reader',
-                    { fps: 10, qrbox: { width: 250, height: 250 } },
-                    /* verbose= */ false
-                )
-                scanner.render(
-                    async (decodedText: string) => {
-                        scanner.pause(true)
-                        try {
-                            const data = JSON.parse(decodedText)
-                            if (data.type === 'kkkhane_invite' && data.userId) {
-                                const res = await assignScannedUserAction(data.userId, qrScanModal.roleId)
-                                if (res.success) {
-                                    toast.success(`${res.user?.full_name} assigned successfully!`)
-                                    setQrScanModal(prev => ({ ...prev, isOpen: false, scanning: false }))
-                                    setTimeout(() => window.location.reload(), 1000)
-                                } else {
-                                    toast.error(res.error || 'Failed to assign user')
-                                    setTimeout(() => scanner.resume(), 2000)
-                                }
-                            } else {
-                                toast.error('Invalid QR Code format')
-                                setTimeout(() => scanner.resume(), 2000)
-                            }
-                        } catch (e) {
-                            toast.error('Could not read QR code')
-                            setTimeout(() => scanner.resume(), 2000)
-                        }
-                    },
-                    (errorMessage: string) => {
-                        // ignore scan errors
-                    }
-                )
-            })
-        }
-
-        return () => {
-            if (scanner) {
-                scanner.clear().catch(console.error)
-            }
-        }
-    }, [qrScanModal.isOpen, qrScanModal.scanning, qrScanModal.roleId])
+    // PIN login only makes sense for POS roles (waiter/kitchen/cashier) — never managers/super admins.
+    const pinEligibleRoles = availableRoles.filter(r => (PIN_ELIGIBLE_ROLE_IDS as readonly number[]).includes(r.id))
 
     return (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="p-4 md:p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 bg-gray-50/50">
+        <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden">
+            <div className="p-5 md:p-6 border-b border-hairline flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-surface-muted/30">
                 <div>
-                    <h3 className="text-lg font-semibold text-gray-800">Team Roster ({staff.length})</h3>
-                    <p className="text-sm text-gray-500 mt-1">Create staff accounts and manage roles</p>
+                    <h3 className="text-h3 font-extrabold text-ink">Team Roster ({staff.length})</h3>
+                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-1.5">Create staff accounts and manage roles</p>
                 </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => setQrScanModal({ isOpen: true, scanning: true, roleId: 4 })}
-                        className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2 shrink-0 shadow-sm"
-                    >
-                        <QrCode size={16} />
-                        Scan QR Join Code
-                    </button>
+                <div className="flex items-center gap-3 flex-wrap justify-end">
+                    {restaurantSlug && (
+                        <button
+                            onClick={handleCopyTerminalLink}
+                            title="Copy the link staff use to sign in with their name + PIN on a shared device"
+                            className="px-4 py-2.5 text-xs font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors flex items-center gap-2 shrink-0 focus-ring"
+                        >
+                            <Link2 size={16} />
+                            <span className="hidden sm:inline">Staff Terminal Link</span>
+                        </button>
+                    )}
                     <button
                         onClick={() => setCreateModal(prev => ({ ...prev, isOpen: true }))}
-                        className="px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2 shrink-0"
+                        className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 shrink-0 focus-ring"
                     >
                         <Users size={16} />
                         Add Staff
@@ -339,21 +329,21 @@ export default function StaffManager({
             </div>
 
             {/* Filters */}
-            <div className="px-4 md:px-6 py-3 border-b border-gray-100 flex flex-col sm:flex-row gap-3 bg-white">
+            <div className="px-5 md:px-6 py-4 border-b border-hairline flex flex-col sm:flex-row gap-4 bg-surface">
                 <div className="relative flex-1">
-                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-subtle" />
                     <input
                         type="text"
                         placeholder="Search staff by name..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                        className="w-full pl-10 pr-4 py-2.5 rounded-[var(--r-md)] border border-hairline bg-surface text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
                     />
                 </div>
                 <select
                     value={roleFilter}
                     onChange={(e) => setRoleFilter(e.target.value)}
-                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 sm:w-48"
+                    className="rounded-[var(--r-md)] border border-hairline bg-surface px-4 py-2.5 text-sm font-bold text-ink outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] sm:w-56"
                 >
                     <option value="all">All Roles</option>
                     {roles.map(r => (
@@ -364,16 +354,16 @@ export default function StaffManager({
 
             {/* Desktop Table — hidden on mobile */}
             <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-left border-collapse">
+                <table className="w-full text-left whitespace-nowrap">
                     <thead>
-                        <tr className="bg-gray-50 border-b border-gray-100 text-sm font-semibold text-gray-600">
-                            <th className="p-4 font-medium pl-6">Staff Member</th>
-                            <th className="p-4 font-medium">System Role</th>
-                            <th className="p-4 font-medium">Status</th>
-                            <th className="p-4 font-medium text-right pr-6">Actions</th>
+                        <tr className="bg-surface-muted border-b border-hairline text-[11px] font-bold text-ink-subtle uppercase tracking-wider">
+                            <th className="px-6 py-4">Staff Member</th>
+                            <th className="px-6 py-4">System Role</th>
+                            <th className="px-6 py-4">Status</th>
+                            <th className="px-6 py-4 text-right">Actions</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-hairline">
                         {filteredStaff.map((user) => {
                             const isMe = user.id === currentUserId
                             const roleObj = Array.isArray(user.roles) ? user.roles[0] : user.roles
@@ -382,67 +372,67 @@ export default function StaffManager({
                             const canEdit = currentUserRole === 'super_admin' ? !isMe : (!isSuperAdmin && roleName !== 'manager' && !isMe)
 
                             return (
-                                <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
-                                    <td className="p-4 pl-6">
+                                <tr key={user.id} className="hover:bg-surface-muted/30 transition-colors">
+                                    <td className="px-6 py-4">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden shrink-0 border border-gray-200 flex items-center justify-center">
+                                            <div className="w-10 h-10 rounded-full bg-surface-muted overflow-hidden shrink-0 border border-hairline flex items-center justify-center shadow-sm">
                                                 {user.avatar_url ? (
                                                     <Image src={user.avatar_url} alt={user.full_name} width={40} height={40} className="w-full h-full object-cover" />
                                                 ) : (
-                                                    <span className="text-gray-500 font-medium text-sm">
+                                                    <span className="text-ink-subtle font-extrabold text-sm">
                                                         {user.full_name.charAt(0).toUpperCase()}
                                                     </span>
                                                 )}
                                             </div>
                                             <div>
-                                                <div className="font-medium text-gray-900 flex items-center gap-2">
+                                                <div className="font-extrabold text-ink flex items-center gap-2">
                                                     {user.full_name}
-                                                    {isMe && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 uppercase">You</span>}
+                                                    {isMe && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-50 text-brand-700 uppercase tracking-wider border border-brand-100">You</span>}
                                                 </div>
-                                                <div className="text-xs text-gray-500">ID: {user.id.substring(0, 8)}...</div>
+                                                <div className="text-[11px] text-ink-subtle font-mono mt-0.5 uppercase tracking-wider">ID: {user.id.substring(0, 8)}...</div>
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="p-4">
-                                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-50 border border-gray-200 text-sm font-medium text-gray-700">
+                                    <td className="px-6 py-4">
+                                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface border border-hairline text-xs font-bold text-ink shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
                                             {getRoleIcon(roleName)}
                                             {formatRoleName(roleName || 'Unknown')}
                                         </div>
                                     </td>
-                                    <td className="p-4">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase ${user.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                    <td className="px-6 py-4">
+                                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${user.is_active ? 'bg-success-bg/20 text-success-fg border-success-bg' : 'bg-danger-bg/20 text-danger-fg border-danger-bg'}`}>
                                             {user.is_active ? 'Active' : 'Suspended'}
                                         </span>
                                     </td>
-                                    <td className="p-4 text-right pr-6">
+                                    <td className="px-6 py-4 text-right">
                                         {canEdit ? (
-                                            <div className="flex items-center justify-end gap-1.5">
-                                                <button disabled={submittingId === user.id} onClick={() => openEditModal(user)} className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-700 px-2.5 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">
-                                                    <Pencil size={13} /> Edit
+                                            <div className="flex items-center justify-end gap-2">
+                                                <button disabled={submittingId === user.id} onClick={() => openEditModal(user)} className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-ink-subtle px-3 py-2 rounded-[var(--r-md)] hover:bg-surface-muted hover:text-ink transition-colors focus-ring">
+                                                    <Pencil size={14} /> Edit
                                                 </button>
-                                                <button disabled={submittingId === user.id} onClick={() => setChangeRoleModal({ isOpen: true, user, newRoleId: user.role_id })} className="text-sm font-medium text-primary px-2.5 py-1.5 rounded-lg hover:bg-primary/10 transition-colors">
+                                                <button disabled={submittingId === user.id} onClick={() => setChangeRoleModal({ isOpen: true, user, newRoleId: user.role_id })} className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-brand-600 px-3 py-2 rounded-[var(--r-md)] hover:bg-brand-50 transition-colors focus-ring">
                                                     Role
                                                 </button>
-                                                <button disabled={submittingId === user.id} onClick={() => handleToggleStatus(user)} className={`text-sm font-medium px-2.5 py-1.5 rounded-lg transition-colors ${user.is_active ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'}`}>
+                                                <button disabled={submittingId === user.id} onClick={() => handleToggleStatus(user)} className={`inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider px-3 py-2 rounded-[var(--r-md)] transition-colors focus-ring ${user.is_active ? 'text-danger-fg hover:bg-danger-bg/20' : 'text-success-fg hover:bg-success-bg/20'}`}>
                                                     {submittingId === user.id ? <Loader2 size={14} className="animate-spin inline" /> : (user.is_active ? 'Suspend' : 'Activate')}
                                                 </button>
                                             </div>
                                         ) : (
-                                            <span className="text-sm text-gray-400 font-medium px-3 py-1.5">—</span>
+                                            <span className="text-sm text-ink-muted font-bold px-3 py-1.5">—</span>
                                         )}
                                     </td>
                                 </tr>
                             )
                         })}
                         {filteredStaff.length === 0 && (
-                            <tr><td colSpan={4} className="p-8 text-center text-gray-500">No staff members found.</td></tr>
+                            <tr><td colSpan={4} className="p-8 text-center text-ink-subtle font-bold italic">No staff members found.</td></tr>
                         )}
                     </tbody>
                 </table>
             </div>
 
             {/* Mobile Card List — visible only on small screens */}
-            <div className="md:hidden divide-y divide-gray-100">
+            <div className="md:hidden divide-y divide-hairline">
                 {filteredStaff.map((user) => {
                     const isMe = user.id === currentUserId
                     const roleObj = Array.isArray(user.roles) ? user.roles[0] : user.roles
@@ -451,25 +441,25 @@ export default function StaffManager({
                     const canEdit = currentUserRole === 'super_admin' ? !isMe : (!isSuperAdmin && roleName !== 'manager' && !isMe)
 
                     return (
-                        <div key={user.id} className="p-4 space-y-3">
+                        <div key={user.id} className="p-5 space-y-4">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden shrink-0 border border-gray-200 flex items-center justify-center">
+                                <div className="w-12 h-12 rounded-full bg-surface-muted overflow-hidden shrink-0 border border-hairline flex items-center justify-center shadow-sm">
                                     {user.avatar_url ? (
-                                        <Image src={user.avatar_url} alt={user.full_name} width={40} height={40} className="w-full h-full object-cover" />
+                                        <Image src={user.avatar_url} alt={user.full_name} width={48} height={48} className="w-full h-full object-cover" />
                                     ) : (
-                                        <span className="text-gray-500 font-medium text-sm">{user.full_name.charAt(0).toUpperCase()}</span>
+                                        <span className="text-ink-subtle font-extrabold text-base">{user.full_name.charAt(0).toUpperCase()}</span>
                                     )}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="font-medium text-gray-900 flex items-center gap-2 truncate">
+                                    <div className="font-extrabold text-ink flex items-center gap-2 truncate">
                                         {user.full_name}
-                                        {isMe && <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-100 text-blue-700 uppercase shrink-0">You</span>}
+                                        {isMe && <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-brand-50 text-brand-700 uppercase border border-brand-100 shrink-0">You</span>}
                                     </div>
-                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200 text-xs font-medium text-gray-700">
+                                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-surface border border-hairline text-[11px] font-bold text-ink shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
                                             {getRoleIcon(roleName)} {formatRoleName(roleName || 'Unknown')}
                                         </span>
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${user.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${user.is_active ? 'bg-success-bg/20 text-success-fg border-success-bg' : 'bg-danger-bg/20 text-danger-fg border-danger-bg'}`}>
                                             {user.is_active ? 'Active' : 'Suspended'}
                                         </span>
                                     </div>
@@ -477,13 +467,13 @@ export default function StaffManager({
                             </div>
                             {canEdit && (
                                 <div className="grid grid-cols-3 gap-2">
-                                    <button disabled={submittingId === user.id} onClick={() => openEditModal(user)} className="py-2 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg border border-gray-200 active:scale-95 transition flex items-center justify-center gap-1">
-                                        <Pencil size={12} /> Edit
+                                    <button disabled={submittingId === user.id} onClick={() => openEditModal(user)} className="py-2.5 text-[11px] uppercase tracking-wider font-bold text-ink bg-surface rounded-[var(--r-md)] border border-hairline active:scale-95 transition flex items-center justify-center gap-1.5 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+                                        <Pencil size={14} /> Edit
                                     </button>
-                                    <button disabled={submittingId === user.id} onClick={() => setChangeRoleModal({ isOpen: true, user, newRoleId: user.role_id })} className="py-2 text-sm font-medium text-primary bg-primary/5 rounded-lg border border-primary/20 active:scale-95 transition">
+                                    <button disabled={submittingId === user.id} onClick={() => setChangeRoleModal({ isOpen: true, user, newRoleId: user.role_id })} className="py-2.5 text-[11px] uppercase tracking-wider font-bold text-brand-600 bg-brand-50 rounded-[var(--r-md)] active:scale-95 transition border border-brand-100">
                                         Role
                                     </button>
-                                    <button disabled={submittingId === user.id} onClick={() => handleToggleStatus(user)} className={`py-2 text-sm font-medium rounded-lg border active:scale-95 transition ${user.is_active ? 'text-red-600 bg-red-50 border-red-200' : 'text-green-600 bg-green-50 border-green-200'}`}>
+                                    <button disabled={submittingId === user.id} onClick={() => handleToggleStatus(user)} className={`py-2.5 text-[11px] uppercase tracking-wider font-bold rounded-[var(--r-md)] border active:scale-95 transition ${user.is_active ? 'text-danger-fg bg-danger-bg/20 border-danger-bg' : 'text-success-fg bg-success-bg/20 border-success-bg'}`}>
                                         {submittingId === user.id ? <Loader2 size={14} className="animate-spin mx-auto" /> : (user.is_active ? 'Suspend' : 'Activate')}
                                     </button>
                                 </div>
@@ -492,40 +482,40 @@ export default function StaffManager({
                     )
                 })}
                 {filteredStaff.length === 0 && (
-                    <div className="p-8 text-center text-gray-500">No staff members found.</div>
+                    <div className="p-8 text-center text-ink-subtle font-bold italic">No staff members found.</div>
                 )}
             </div>
 
             {/* Edit Staff Modal */}
             {editModal.isOpen && editModal.user && (
                 <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
-                        <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between shrink-0">
+                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+                        <div className="px-6 py-5 border-b border-hairline flex items-center justify-between shrink-0 bg-surface-muted/30">
                             <div>
-                                <h3 className="font-bold text-gray-900">Edit Staff</h3>
-                                <p className="text-xs text-gray-400 mt-0.5">{editModal.user.full_name}</p>
+                                <h3 className="font-extrabold text-ink text-lg">Edit Staff</h3>
+                                <p className="text-[11px] text-ink-subtle uppercase tracking-wider font-bold mt-1">{editModal.user.full_name}</p>
                             </div>
-                            <button onClick={() => setEditModal(prev => ({ ...prev, isOpen: false }))} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100">×</button>
+                            <button onClick={() => setEditModal(prev => ({ ...prev, isOpen: false }))} className="w-8 h-8 flex items-center justify-center rounded-[var(--r-md)] text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors focus-ring">×</button>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                        <div className="flex-1 overflow-y-auto p-6 space-y-8">
                             {/* Name */}
                             <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-3">Display Name</label>
-                                <div className="flex gap-2">
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-3">Display Name</label>
+                                <div className="flex gap-3">
                                     <input
                                         type="text"
                                         value={editModal.fullName}
                                         onChange={e => setEditModal(prev => ({ ...prev, fullName: e.target.value }))}
-                                        className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                                        className="flex-1 px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
                                         placeholder="Full name"
                                     />
                                     <button
                                         onClick={handleSaveName}
                                         disabled={editModal.saving || editModal.fullName.trim() === editModal.user.full_name}
-                                        className="px-4 py-2 text-sm font-semibold text-white bg-primary rounded-xl disabled:opacity-40 hover:opacity-90 transition flex items-center gap-1.5"
+                                        className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] disabled:opacity-40 hover:opacity-90 transition-all flex items-center gap-1.5 shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] focus-ring"
                                     >
-                                        {editModal.saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                                        {editModal.saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
                                         Save
                                     </button>
                                 </div>
@@ -533,55 +523,55 @@ export default function StaffManager({
 
                             {/* Password */}
                             <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-3">Reset Password</label>
-                                <div className="space-y-2">
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-3">Reset Password</label>
+                                <div className="space-y-3">
                                     <div className="relative">
                                         <input
                                             type={editModal.showPassword ? 'text' : 'password'}
                                             value={editModal.newPassword}
                                             onChange={e => setEditModal(prev => ({ ...prev, newPassword: e.target.value }))}
-                                            className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary pr-10"
+                                            className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all pr-12"
                                             placeholder="New password (min 8 chars)"
                                         />
                                         <button
                                             type="button"
                                             onClick={() => setEditModal(prev => ({ ...prev, showPassword: !prev.showPassword }))}
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-ink transition-colors p-1"
                                         >
-                                            {editModal.showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                                            {editModal.showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                         </button>
                                     </div>
                                     <input
                                         type={editModal.showPassword ? 'text' : 'password'}
                                         value={editModal.confirmPassword}
                                         onChange={e => setEditModal(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                                        className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
                                         placeholder="Confirm new password"
                                     />
                                     <button
                                         onClick={handleResetPassword}
                                         disabled={editModal.saving || !editModal.newPassword || editModal.newPassword !== editModal.confirmPassword}
-                                        className="w-full py-2 text-sm font-semibold text-white bg-primary rounded-xl disabled:opacity-40 hover:opacity-90 transition flex items-center justify-center gap-2"
+                                        className="w-full py-3 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] disabled:opacity-40 hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 focus-ring"
                                     >
-                                        {editModal.saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                                        {editModal.saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
                                         Update Password
                                     </button>
                                     {editModal.newPassword && editModal.confirmPassword && editModal.newPassword !== editModal.confirmPassword && (
-                                        <p className="text-xs text-red-500">Passwords do not match</p>
+                                        <p className="text-[11px] font-bold text-danger-fg uppercase tracking-wider">Passwords do not match</p>
                                     )}
                                 </div>
                             </div>
 
                             {/* Danger zone */}
-                            <div className="border border-red-100 rounded-xl p-4 bg-red-50/50">
-                                <p className="text-sm font-semibold text-red-800 mb-1">Danger Zone</p>
-                                <p className="text-xs text-red-600 mb-3">Permanently deletes the account and revokes all access. This cannot be undone.</p>
+                            <div className="border border-danger-bg rounded-[var(--r-md)] p-5 bg-danger-bg/10">
+                                <p className="text-[11px] font-bold uppercase tracking-wider text-danger-fg mb-1.5">Danger Zone</p>
+                                <p className="text-sm font-medium text-danger-fg/80 mb-4">Permanently deletes the account and revokes all access. This cannot be undone.</p>
                                 <button
                                     onClick={() => handleDeleteStaff(editModal.user!)}
                                     disabled={!!editModal.deletingId}
-                                    className="flex items-center gap-2 text-sm font-semibold text-red-600 bg-white border border-red-200 px-4 py-2 rounded-xl hover:bg-red-50 active:scale-95 disabled:opacity-50 transition"
+                                    className="flex w-full justify-center items-center gap-2 text-sm font-bold text-white bg-danger-fg px-4 py-3 rounded-[var(--r-md)] hover:bg-danger-fg/90 active:scale-95 disabled:opacity-50 transition shadow-[0_4px_12px_rgba(239,68,68,0.3)] focus-ring focus:ring-danger-fg/20"
                                 >
-                                    {editModal.deletingId ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                                    {editModal.deletingId ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                                     Delete Account Permanently
                                 </button>
                             </div>
@@ -593,51 +583,51 @@ export default function StaffManager({
             {/* Role Change Modal */}
             {changeRoleModal.isOpen && changeRoleModal.user && (
                 <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                         <div className="p-6">
-                            <h3 className="text-lg font-extrabold text-gray-900 mb-2">Change Role</h3>
-                            <p className="text-sm text-gray-500 mb-6">
-                                Select a new role for <span className="font-semibold text-gray-900">{changeRoleModal.user.full_name}</span>.
+                            <h3 className="text-h3 font-extrabold text-ink mb-1.5">Change Role</h3>
+                            <p className="text-sm text-ink-subtle font-medium mb-6">
+                                Select a new role for <span className="font-extrabold text-ink">{changeRoleModal.user.full_name}</span>.
                             </p>
 
                             <div className="space-y-3">
                                 {availableRoles.map(role => (
-                                    <label key={role.id} className={`flex items-start gap-3 p-4 border rounded-xl cursor-pointer transition-colors ${changeRoleModal.newRoleId === role.id ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'}`}>
+                                    <label key={role.id} className={`flex items-start gap-4 p-4 border rounded-[var(--r-md)] cursor-pointer transition-all ${changeRoleModal.newRoleId === role.id ? 'border-brand-500 bg-brand-50 shadow-[inset_0_2px_4px_rgba(251,99,3,0.05)]' : 'border-hairline bg-surface hover:bg-surface-muted/50'}`}>
                                         <input
                                             type="radio"
                                             name="role"
                                             value={role.id}
                                             checked={changeRoleModal.newRoleId === role.id}
                                             onChange={() => setChangeRoleModal({ ...changeRoleModal, newRoleId: role.id })}
-                                            className="mt-1 text-primary focus:ring-primary"
+                                            className="mt-1 text-brand-500 focus:ring-brand-500/20"
                                         />
                                         <div>
-                                            <div className="font-medium text-gray-900 flex items-center gap-2">
+                                            <div className="font-extrabold text-ink flex items-center gap-2">
                                                 {getRoleIcon(role.name)}
                                                 {formatRoleName(role.name)}
                                             </div>
-                                            <p className="text-xs text-gray-500 mt-1">{role.description}</p>
+                                            <p className="text-[11px] text-ink-subtle font-bold uppercase tracking-wider mt-1">{role.description}</p>
                                         </div>
                                     </label>
                                 ))}
                             </div>
 
                             {changeRoleModal.newRoleId === 1 && (
-                                <div className="mt-4 p-3 bg-amber-50 text-amber-800 rounded-lg text-sm flex items-start gap-2 border border-amber-200">
-                                    <AlertTriangle size={18} className="shrink-0 text-amber-500" />
+                                <div className="mt-5 p-4 bg-amber-50 text-amber-800 rounded-[var(--r-md)] text-sm font-medium flex items-start gap-3 border border-amber-200 shadow-[inset_0_2px_4px_rgba(245,158,11,0.05)]">
+                                    <AlertTriangle size={18} className="shrink-0 text-amber-600 mt-0.5" />
                                     <p>Warning: You are granting full Super Admin access. This user will have complete control over the system.</p>
                                 </div>
                             )}
                         </div>
 
-                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
-                            <button onClick={() => setChangeRoleModal({ isOpen: false, user: null, newRoleId: 0 })} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50">
+                        <div className="px-6 py-5 bg-surface-muted/30 border-t border-hairline flex justify-end gap-3">
+                            <button onClick={() => setChangeRoleModal({ isOpen: false, user: null, newRoleId: 0 })} className="px-5 py-2.5 text-sm font-bold text-ink-subtle bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted hover:text-ink transition-colors focus-ring">
                                 Cancel
                             </button>
                             <button
                                 disabled={submittingId === changeRoleModal.user.id}
                                 onClick={handleRoleChange}
-                                className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg shadow-sm hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+                                className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 flex items-center gap-2 focus-ring"
                             >
                                 {submittingId === changeRoleModal.user.id ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
                                 Save Role
@@ -650,132 +640,177 @@ export default function StaffManager({
             {/* Create Staff Modal */}
             {createModal.isOpen && (
                 <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        <div className="p-6">
-                            <h3 className="text-lg font-extrabold text-gray-900 mb-2">Create Staff Account</h3>
-                            <p className="text-sm text-gray-500 mb-6">Add a new staff member to your restaurant.</p>
-
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Full Name *</label>
-                                    <input
-                                        type="text"
-                                        value={createModal.fullName}
-                                        onChange={(e) => setCreateModal(prev => ({ ...prev, fullName: e.target.value }))}
-                                        placeholder="John Doe"
-                                        disabled={createModal.isCreating}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-50"
-                                    />
+                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        {pinResult ? (
+                            // ── PIN success panel ──
+                            <div className="p-8 text-center">
+                                <div className="mx-auto w-16 h-16 rounded-full bg-success-bg/20 border border-success-bg flex items-center justify-center mb-6 animate-in zoom-in-50 duration-300">
+                                    <Check size={32} className="text-success-fg" strokeWidth={3} />
                                 </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Email Address *</label>
-                                    <input
-                                        type="email"
-                                        value={createModal.email}
-                                        onChange={(e) => setCreateModal(prev => ({ ...prev, email: e.target.value }))}
-                                        placeholder="john@example.com"
-                                        disabled={createModal.isCreating}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-50"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Password *</label>
-                                    <input
-                                        type="password"
-                                        value={createModal.password}
-                                        onChange={(e) => setCreateModal(prev => ({ ...prev, password: e.target.value }))}
-                                        placeholder="At least 8 characters"
-                                        disabled={createModal.isCreating}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-50"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone Number</label>
-                                    <input
-                                        type="tel"
-                                        value={createModal.phone}
-                                        onChange={(e) => setCreateModal(prev => ({ ...prev, phone: e.target.value }))}
-                                        placeholder="123-456-7890"
-                                        disabled={createModal.isCreating}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-50"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Initial Role</label>
-                                    <select
-                                        value={createModal.roleId}
-                                        onChange={(e) => setCreateModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
-                                        disabled={createModal.isCreating}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-50"
-                                    >
-                                        {availableRoles.map(role => (
-                                            <option key={role.id} value={role.id}>
-                                                {formatRoleName(role.name)}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
-                            <button
-                                onClick={() => setCreateModal(prev => ({ ...prev, isOpen: false }))}
-                                disabled={createModal.isCreating}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 disabled:opacity-50"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleCreateStaff}
-                                disabled={createModal.isCreating}
-                                className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg shadow-sm hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
-                            >
-                                {createModal.isCreating ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                                Create Staff
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* QR Scan Modal */}
-            {qrScanModal.isOpen && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        <div className="p-6">
-                            <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-lg font-extrabold text-gray-900">Scan Join QR Code</h3>
-                                <button onClick={() => setQrScanModal({ isOpen: false, scanning: false, roleId: 4 })} className="text-gray-400 hover:text-gray-600">×</button>
-                            </div>
-                            <p className="text-sm text-gray-500 mb-6">Point your camera at a user's Join QR Code to invite them to this restaurant.</p>
-
-                            <div className="mb-4">
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Assign Role</label>
-                                <select
-                                    value={qrScanModal.roleId}
-                                    onChange={(e) => setQrScanModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                                >
-                                    {availableRoles.map(role => (
-                                        <option key={role.id} value={role.id}>
-                                            {formatRoleName(role.name)}
-                                        </option>
+                                <h3 className="text-h2 font-extrabold text-ink">{pinResult.fullName} is all set!</h3>
+                                <p className="text-sm font-medium text-ink-subtle mt-2 mb-8 leading-relaxed px-4">
+                                    Share this PIN with them — they&apos;ll tap their name on the staff terminal and enter it to sign in.
+                                </p>
+                                <div className="flex justify-center gap-3 mb-8">
+                                    {pinResult.pin.split('').map((digit, i) => (
+                                        <div key={i} className="w-14 h-16 rounded-[var(--r-md)] bg-surface-muted/50 border-2 border-hairline flex items-center justify-center text-3xl font-black text-ink tabular-nums shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
+                                            {digit}
+                                        </div>
                                     ))}
-                                </select>
+                                </div>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => { navigator.clipboard.writeText(pinResult.pin); toast.success('PIN copied') }}
+                                        className="flex-1 py-3 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] hover:bg-surface-muted transition-colors flex items-center justify-center gap-2 shadow-sm focus-ring"
+                                    >
+                                        <Copy size={16} /> Copy PIN
+                                    </button>
+                                    <button
+                                        onClick={closeCreateModal}
+                                        className="flex-1 py-3 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] transition-all hover:-translate-y-0.5 active:translate-y-0 focus-ring"
+                                    >
+                                        Done
+                                    </button>
+                                </div>
                             </div>
+                        ) : (
+                            <>
+                                <div className="p-6 pb-0">
+                                    <h3 className="text-h3 font-extrabold text-ink mb-1.5">Create Staff Account</h3>
+                                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-6">Add a new staff member to your restaurant</p>
 
-                            <div className="rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
-                                <div id="reader" className="w-full min-h-[300px]"></div>
-                            </div>
-                        </div>
+                                    {/* Login method toggle */}
+                                    <div className="grid grid-cols-2 gap-1 p-1 bg-surface-muted/50 rounded-[var(--r-md)] border border-hairline mb-6 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
+                                        <button
+                                            type="button"
+                                            onClick={() => setCreateModal(prev => ({ ...prev, mode: 'pin', roleId: isPinEligibleRole(prev.roleId) ? prev.roleId : 4 }))}
+                                            className={`py-2 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-2 focus-ring ${createModal.mode === 'pin' ? 'bg-surface text-ink shadow-[0_2px_8px_rgba(0,0,0,0.08)]' : 'text-ink-subtle hover:text-ink hover:bg-surface/50'}`}
+                                        >
+                                            <KeyRound size={14} /> Quick PIN
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCreateModal(prev => ({ ...prev, mode: 'email' }))}
+                                            className={`py-2 rounded-md text-xs font-bold transition-all focus-ring ${createModal.mode === 'email' ? 'bg-surface text-ink shadow-[0_2px_8px_rgba(0,0,0,0.08)]' : 'text-ink-subtle hover:text-ink hover:bg-surface/50'}`}
+                                        >
+                                            Email &amp; Password
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="px-6 pb-6 space-y-5">
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Full Name *</label>
+                                        <input
+                                            type="text"
+                                            value={createModal.fullName}
+                                            onChange={(e) => setCreateModal(prev => ({ ...prev, fullName: e.target.value }))}
+                                            placeholder="John Doe"
+                                            disabled={createModal.isCreating}
+                                            className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
+                                        />
+                                    </div>
+
+                                    {createModal.mode === 'pin' ? (
+                                        <>
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Role</label>
+                                                <select
+                                                    value={createModal.roleId}
+                                                    onChange={(e) => setCreateModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
+                                                    disabled={createModal.isCreating}
+                                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
+                                                >
+                                                    {pinEligibleRoles.map(role => (
+                                                        <option key={role.id} value={role.id}>{formatRoleName(role.name)}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="p-4 bg-brand-50 border border-brand-100 rounded-[var(--r-md)] text-[11px] font-medium text-brand-700 flex items-start gap-3 leading-relaxed shadow-[inset_0_2px_4px_rgba(251,99,3,0.03)]">
+                                                <KeyRound size={16} className="shrink-0 mt-0.5 text-brand-600" />
+                                                A random 4-digit PIN will be generated after you create the account. Staff sign in by tapping their name on the shared terminal and entering it — no email or password needed.
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Email Address *</label>
+                                                <input
+                                                    type="email"
+                                                    value={createModal.email}
+                                                    onChange={(e) => setCreateModal(prev => ({ ...prev, email: e.target.value }))}
+                                                    placeholder="john@example.com"
+                                                    disabled={createModal.isCreating}
+                                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Password *</label>
+                                                <input
+                                                    type="password"
+                                                    value={createModal.password}
+                                                    onChange={(e) => setCreateModal(prev => ({ ...prev, password: e.target.value }))}
+                                                    placeholder="At least 8 characters"
+                                                    disabled={createModal.isCreating}
+                                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Phone Number</label>
+                                                <input
+                                                    type="tel"
+                                                    value={createModal.phone}
+                                                    onChange={(e) => setCreateModal(prev => ({ ...prev, phone: e.target.value }))}
+                                                    placeholder="123-456-7890"
+                                                    disabled={createModal.isCreating}
+                                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Initial Role</label>
+                                                <select
+                                                    value={createModal.roleId}
+                                                    onChange={(e) => setCreateModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
+                                                    disabled={createModal.isCreating}
+                                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
+                                                >
+                                                    {availableRoles.map(role => (
+                                                        <option key={role.id} value={role.id}>{formatRoleName(role.name)}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+
+                                <div className="px-6 py-5 bg-surface-muted/30 border-t border-hairline flex justify-end gap-3">
+                                    <button
+                                        onClick={closeCreateModal}
+                                        disabled={createModal.isCreating}
+                                        className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors disabled:opacity-50 focus-ring"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={createModal.mode === 'pin' ? handleCreateStaffPin : handleCreateStaff}
+                                        disabled={createModal.isCreating}
+                                        className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 flex items-center gap-2 focus-ring"
+                                    >
+                                        {createModal.isCreating
+                                            ? <Loader2 size={16} className="animate-spin" />
+                                            : createModal.mode === 'pin' ? <KeyRound size={16} /> : <Check size={16} />}
+                                        {createModal.mode === 'pin' ? 'Generate PIN & Create' : 'Create Staff'}
+                                    </button>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             )}
+
         </div>
     )
 }

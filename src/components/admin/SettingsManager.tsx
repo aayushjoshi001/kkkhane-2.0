@@ -257,22 +257,22 @@ export default function SettingsManager({
         <>
         <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
             {/* General Information */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
-                    <div className="p-2 bg-[var(--color-primary)]/10 text-[var(--color-primary)] rounded-lg">
+            <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden">
+                <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 shadow-[inset_0_2px_4px_rgba(251,99,3,0.05)]">
                         <Building size={20} />
                     </div>
                     <div>
-                        <h3 className="text-lg font-semibold text-gray-800">General Information</h3>
-                        <p className="text-sm text-gray-500">Your restaurant&apos;s brand and physical details</p>
+                        <h3 className="text-h3 font-extrabold text-ink">General Information</h3>
+                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Your restaurant's brand and physical details</p>
                     </div>
                 </div>
 
                 <div className="p-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-                                <Store size={14} className="text-gray-400" />
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                <Store size={14} className="text-brand-500" />
                                 Restaurant Name *
                             </label>
                             <input
@@ -281,13 +281,13 @@ export default function SettingsManager({
                                 value={formData.name}
                                 onChange={handleChange}
                                 disabled={!canEdit || isSubmitting}
-                                className="w-full border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] sm:text-sm p-2.5 border disabled:bg-gray-50 disabled:text-gray-500"
+                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
                                 required
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-                                <MapPin size={14} className="text-gray-400" />
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                <MapPin size={14} className="text-brand-500" />
                                 Physical Address
                             </label>
                             <input
@@ -296,15 +296,15 @@ export default function SettingsManager({
                                 value={formData.address || ''}
                                 onChange={handleChange}
                                 disabled={!canEdit || isSubmitting}
-                                className="w-full border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] sm:text-sm p-2.5 border disabled:bg-gray-50 disabled:text-gray-500"
+                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
                             />
                         </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-                                <Phone size={14} className="text-gray-400" />
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                <Phone size={14} className="text-brand-500" />
                                 Contact Phone
                             </label>
                             <input
@@ -313,12 +313,12 @@ export default function SettingsManager({
                                 value={formData.contact_phone || ''}
                                 onChange={handleChange}
                                 disabled={!canEdit || isSubmitting}
-                                className="w-full border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] sm:text-sm p-2.5 border disabled:bg-gray-50 disabled:text-gray-500"
+                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50 tabular-nums"
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-                                <Mail size={14} className="text-gray-400" />
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                <Mail size={14} className="text-brand-500" />
                                 Contact Email
                             </label>
                             <input
@@ -327,14 +327,14 @@ export default function SettingsManager({
                                 value={formData.contact_email || ''}
                                 onChange={handleChange}
                                 disabled={!canEdit || isSubmitting}
-                                className="w-full border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] sm:text-sm p-2.5 border disabled:bg-gray-50 disabled:text-gray-500"
+                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
                             />
                         </div>
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-                            <Shield size={14} className="text-gray-400" />
+                        <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                            <Shield size={14} className="text-brand-500" />
                             Allowed WiFi IP Addresses
                         </label>
                         <input
@@ -343,33 +343,33 @@ export default function SettingsManager({
                             value={formData.allowed_ips || ''}
                             onChange={handleChange}
                             disabled={!canEdit || isSubmitting}
-                            className="w-full border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] sm:text-sm p-2.5 border disabled:bg-gray-50 disabled:text-gray-500"
+                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50 tabular-nums"
                             placeholder="e.g., 103.10.22.45, 103.10.22.46 (comma-separated)"
                         />
-                        <p className="mt-1.5 text-xs text-gray-500">
+                        <p className="mt-2 text-[11px] font-bold text-ink-muted uppercase tracking-wider">
                             Provide a comma-separated list of allowed public IP addresses. Waiters and customers must be connected to this network to access their panels. Leave blank to disable network restriction. Managers can access from anywhere.
                         </p>
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Restaurant Logo</label>
+                        <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Restaurant Logo</label>
                         <div className="flex items-start gap-4">
                             {/* Current logo preview or placeholder */}
-                            <div className="w-20 h-20 rounded-xl border-2 border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
+                            <div className="w-20 h-20 rounded-[var(--r-md)] border border-hairline bg-surface-muted/50 flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
                                 {formData.logo_url
                                     ? <Image src={formData.logo_url} alt="Logo" width={80} height={80} className="w-full h-full object-contain p-1" />
-                                    : <Store size={28} className="text-gray-300" />
+                                    : <Store size={28} className="text-ink-subtle" />
                                 }
                             </div>
                             <div className="flex-1 space-y-2">
                                 {/* Upload button */}
                                 {canEdit && (
-                                    <label className={`flex items-center gap-2 px-4 py-2.5 border-2 border-dashed rounded-lg cursor-pointer transition ${uploadingField === 'logo_url' ? 'border-[var(--color-primary)]/40 bg-[var(--color-primary)]/5' : 'border-gray-300 hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/5'}`}>
+                                    <label className={`flex items-center gap-2 px-4 py-2.5 border border-dashed rounded-[var(--r-md)] cursor-pointer transition-all focus-ring ${uploadingField === 'logo_url' ? 'border-brand-500/40 bg-brand-50' : 'border-hairline bg-surface hover:border-brand-500 hover:bg-surface-muted'}`}>
                                         {uploadingField === 'logo_url'
-                                            ? <Loader2 size={15} className="animate-spin text-[var(--color-primary)]" />
-                                            : <Upload size={15} className="text-gray-500" />
+                                            ? <Loader2 size={16} className="animate-spin text-brand-500" />
+                                            : <Upload size={16} className="text-ink-subtle" />
                                         }
-                                        <span className="text-sm font-medium text-gray-600">
+                                        <span className="text-sm font-bold text-ink">
                                             {uploadingField === 'logo_url' ? 'Uploading…' : 'Upload Logo'}
                                         </span>
                                         <input
@@ -388,12 +388,12 @@ export default function SettingsManager({
                                     value={formData.logo_url || ''}
                                     onChange={handleChange}
                                     disabled={!canEdit || isSubmitting}
-                                    className="w-full border-gray-300 rounded-lg shadow-sm sm:text-sm p-2 border disabled:bg-gray-50 disabled:text-gray-500"
+                                    className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
                                     placeholder="or paste image URL…"
                                 />
                                 {formData.logo_url && canEdit && (
-                                    <button type="button" onClick={() => setFormData(p => ({ ...p, logo_url: null }))} className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700">
-                                        <X size={12} /> Remove logo
+                                    <button type="button" onClick={() => setFormData(p => ({ ...p, logo_url: null }))} className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-danger-fg hover:text-danger-fg/80 transition-colors mt-2 focus-ring px-1">
+                                        <X size={14} /> Remove logo
                                     </button>
                                 )}
                             </div>
@@ -403,22 +403,22 @@ export default function SettingsManager({
             </div>
 
             {/* Financial Details */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
-                    <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg">
+            <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden">
+                <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-500/20 shadow-[inset_0_2px_4px_rgba(16,185,129,0.05)]">
                         <Percent size={20} />
                     </div>
                     <div>
-                        <h3 className="text-lg font-semibold text-gray-800">Financial Rules</h3>
-                        <p className="text-sm text-gray-500">Taxes, service charges, and currency settings</p>
+                        <h3 className="text-h3 font-extrabold text-ink">Financial Rules</h3>
+                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Taxes, service charges, and currency settings</p>
                     </div>
                 </div>
 
                 <div className="p-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Tax Rate (%) *</label>
-                            <div className="relative border-gray-300 focus-within:ring-1 focus-within:ring-[var(--color-primary)] focus-within:border-[var(--color-primary)] rounded-lg shadow-sm border bg-white overflow-hidden">
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Tax Rate (%) *</label>
+                            <div className="relative bg-surface border border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus-within:ring-4 focus-within:ring-brand-500/10 focus-within:border-brand-500 transition-all overflow-hidden">
                                 <input
                                     type="text"
                                     inputMode="decimal"
@@ -431,18 +431,18 @@ export default function SettingsManager({
                                         }
                                     }}
                                     disabled={!canEdit || isSubmitting}
-                                    className="w-full py-2.5 pl-3 pr-10 border-0 focus:ring-0 sm:text-sm disabled:bg-gray-50 disabled:text-gray-500"
+                                    className="w-full py-2.5 pl-4 pr-10 border-none bg-transparent text-sm font-bold text-ink focus:ring-0 tabular-nums disabled:opacity-50"
                                     placeholder="e.g. 13"
                                     required
                                 />
-                                <div className="absolute inset-y-0 right-0 flex items-center pointer-events-none pr-3">
-                                    <span className="text-gray-500 sm:text-sm">%</span>
+                                <div className="absolute inset-y-0 right-0 flex items-center pointer-events-none pr-4">
+                                    <span className="text-ink-subtle text-sm font-bold">%</span>
                                 </div>
                             </div>
-                            <p className="mt-1.5 text-xs text-gray-500">Applied automatically to all menu item purchases.</p>
+                            <p className="mt-2 text-[11px] font-bold text-ink-muted uppercase tracking-wider">Applied automatically to all menu item purchases.</p>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Currency Code *</label>
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Currency Code *</label>
                             <input
                                 type="text"
                                 name="currency"
@@ -453,19 +453,17 @@ export default function SettingsManager({
                                 }}
                                 disabled={!canEdit || isSubmitting}
                                 maxLength={3}
-                                className="w-full border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] sm:text-sm p-2.5 border uppercase disabled:bg-gray-50 disabled:text-gray-500"
+                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink uppercase focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
                                 placeholder="USD"
                                 required
                             />
-                            <p className="mt-1.5 text-xs text-gray-500">Standard 3-letter currency code (e.g., NPR, USD, EUR).</p>
+                            <p className="mt-2 text-[11px] font-bold text-ink-muted uppercase tracking-wider">Standard 3-letter currency code (e.g., NPR, USD, EUR).</p>
                         </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-                                Currency Symbol
-                            </label>
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Currency Symbol</label>
                             <input
                                 type="text"
                                 name="currency_symbol"
@@ -476,7 +474,7 @@ export default function SettingsManager({
                                 }}
                                 disabled={!canEdit || isSubmitting}
                                 maxLength={5}
-                                className="w-full border-gray-300 rounded-lg shadow-sm sm:text-sm p-2.5 border disabled:bg-gray-50 disabled:text-gray-500"
+                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
                                 placeholder="Rs."
                             />
                         </div>
@@ -485,53 +483,53 @@ export default function SettingsManager({
             </div>
 
             {/* Business Hours */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
-                    <div className="p-2 bg-sky-100 text-sky-600 rounded-lg">
+            <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden mt-6">
+                <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 shadow-[inset_0_2px_4px_rgba(251,99,3,0.05)]">
                         <Clock size={20} />
                     </div>
                     <div>
-                        <h3 className="text-lg font-semibold text-gray-800">Business Hours</h3>
-                        <p className="text-sm text-gray-500">Opening times shown to customers, by day of week</p>
+                        <h3 className="text-h3 font-extrabold text-ink">Business Hours</h3>
+                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Opening times shown to customers, by day of week</p>
                     </div>
                 </div>
 
-                <div className="p-6 space-y-3">
+                <div className="p-6 space-y-4">
                     {WEEKDAYS.map(({ key, label }) => {
                         const day = businessHours[key]
                         return (
-                            <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-                                <span className="w-28 text-sm font-medium text-gray-700 shrink-0">{label}</span>
+                            <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-3 rounded-[var(--r-md)] border border-hairline bg-surface-muted/30 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
+                                <span className="w-28 text-sm font-extrabold text-ink shrink-0">{label}</span>
                                 {day.closed ? (
-                                    <span className="text-sm text-gray-400 flex-1">Closed</span>
+                                    <span className="text-sm font-bold text-ink-subtle flex-1">Closed</span>
                                 ) : (
-                                    <div className="flex items-center gap-2 flex-1">
+                                    <div className="flex items-center gap-3 flex-1">
                                         <input
                                             type="time"
                                             value={day.open}
                                             onChange={e => updateDayHours(key, { open: e.target.value })}
                                             disabled={!canEdit || isSubmitting}
-                                            className="border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] sm:text-sm p-2 border disabled:bg-gray-50 disabled:text-gray-500"
+                                            className="bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all p-2 disabled:opacity-50"
                                         />
-                                        <span className="text-gray-400 text-sm">to</span>
+                                        <span className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider">to</span>
                                         <input
                                             type="time"
                                             value={day.close}
                                             onChange={e => updateDayHours(key, { close: e.target.value })}
                                             disabled={!canEdit || isSubmitting}
-                                            className="border-gray-300 rounded-lg shadow-sm focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)] sm:text-sm p-2 border disabled:bg-gray-50 disabled:text-gray-500"
+                                            className="bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all p-2 disabled:opacity-50"
                                         />
                                     </div>
                                 )}
-                                <label className="flex items-center gap-2 cursor-pointer shrink-0 sm:ml-auto">
+                                <label className="flex items-center gap-2 cursor-pointer shrink-0 sm:ml-auto select-none">
                                     <input
                                         type="checkbox"
                                         checked={day.closed}
                                         onChange={e => updateDayHours(key, { closed: e.target.checked })}
                                         disabled={!canEdit || isSubmitting}
-                                        className="h-4 w-4 rounded border-gray-300 text-[var(--color-primary)] focus:ring-[var(--color-primary)]"
+                                        className="h-5 w-5 rounded-[4px] border-hairline text-brand-500 focus:ring-brand-500/20 bg-surface shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-colors disabled:opacity-50"
                                     />
-                                    <span className="text-sm text-gray-600">Closed</span>
+                                    <span className="text-[11px] font-bold text-ink uppercase tracking-wider">Closed</span>
                                 </label>
                             </div>
                         )
@@ -540,21 +538,21 @@ export default function SettingsManager({
             </div>
 
             {/* Nepal / IRD Compliance */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
-                    <div className="p-2 bg-[var(--color-primary)]/10 text-[var(--color-primary)] rounded-lg">
+            <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden mt-6">
+                <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 shadow-[inset_0_2px_4px_rgba(251,99,3,0.05)]">
                         <Shield size={20} />
                     </div>
                     <div>
-                        <h3 className="text-lg font-semibold text-gray-800">Tax & Compliance (Nepal)</h3>
-                        <p className="text-sm text-gray-500">PAN/VAT registration and IRD invoice settings</p>
+                        <h3 className="text-h3 font-extrabold text-ink">Tax & Compliance (Nepal)</h3>
+                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">PAN/VAT registration and IRD invoice settings</p>
                     </div>
                 </div>
 
                 <div className="p-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="text-sm font-medium text-gray-700 mb-1">PAN Number</label>
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">PAN Number</label>
                             <input
                                 type="text"
                                 name="pan_number"
@@ -562,24 +560,24 @@ export default function SettingsManager({
                                 onChange={handleChange}
                                 disabled={!canEdit || isSubmitting}
                                 maxLength={9}
-                                className="w-full border-gray-300 rounded-lg shadow-sm sm:text-sm p-2.5 border disabled:bg-gray-50 disabled:text-gray-500"
+                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50 tabular-nums"
                                 placeholder="123456789"
                             />
-                            <p className="mt-1.5 text-xs text-gray-500">9-digit IRD PAN number for invoicing</p>
+                            <p className="mt-2 text-[11px] font-bold text-ink-muted uppercase tracking-wider">9-digit IRD PAN number for invoicing</p>
                         </div>
                         <div className="flex items-center gap-4 pt-6">
-                            <label className="flex items-center gap-3 cursor-pointer">
+                            <label className="flex items-center gap-3 cursor-pointer select-none">
                                 <input
                                     type="checkbox"
                                     name="vat_registered"
                                     checked={formData.vat_registered || false}
                                     onChange={handleCheckboxChange}
                                     disabled={!canEdit || isSubmitting}
-                                    className="h-5 w-5 rounded border-gray-300 text-[var(--color-primary)] focus:ring-[var(--color-primary)]"
+                                    className="h-5 w-5 rounded-[4px] border-hairline text-brand-500 focus:ring-brand-500/20 bg-surface shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-colors disabled:opacity-50"
                                 />
                                 <div>
-                                    <span className="text-sm font-medium text-gray-700">VAT Registered</span>
-                                    <p className="text-xs text-gray-500">Enable 13% VAT on invoices</p>
+                                    <span className="text-sm font-bold text-ink block">VAT Registered</span>
+                                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Enable 13% VAT on invoices</p>
                                 </div>
                             </label>
                         </div>
@@ -588,29 +586,29 @@ export default function SettingsManager({
             </div>
 
             {/* QR Payment Setup */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
-                    <div className="p-2 bg-[var(--color-primary)]/10 text-[var(--color-primary)] rounded-lg">
+            <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden mt-6">
+                <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 shadow-[inset_0_2px_4px_rgba(251,99,3,0.05)]">
                         <QrCode size={20} />
                     </div>
                     <div>
-                        <h3 className="text-lg font-semibold text-gray-800">QR Payment</h3>
-                        <p className="text-sm text-gray-500">Upload your eSewa/Khalti/Fonepay QR for customers</p>
+                        <h3 className="text-h3 font-extrabold text-ink">QR Payment</h3>
+                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Upload your eSewa/Khalti/Fonepay QR for customers</p>
                     </div>
                 </div>
 
                 <div className="p-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="text-sm font-medium text-gray-700 mb-2 block">QR Code Image</label>
-                            <div className="space-y-2">
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">QR Code Image</label>
+                            <div className="space-y-3">
                                 {canEdit && (
-                                    <label className={`flex items-center gap-2 px-4 py-2.5 border-2 border-dashed rounded-lg cursor-pointer transition ${uploadingField === 'payment_qr_url' ? 'border-[var(--color-primary)]/40 bg-[var(--color-primary)]/5' : 'border-gray-300 hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/5'}`}>
+                                    <label className={`flex items-center gap-2 px-4 py-2.5 border border-dashed rounded-[var(--r-md)] cursor-pointer transition-all focus-ring ${uploadingField === 'payment_qr_url' ? 'border-brand-500/40 bg-brand-50' : 'border-hairline bg-surface hover:border-brand-500 hover:bg-surface-muted'}`}>
                                         {uploadingField === 'payment_qr_url'
-                                            ? <Loader2 size={15} className="animate-spin text-[var(--color-primary)]" />
-                                            : <Upload size={15} className="text-gray-500" />
+                                            ? <Loader2 size={16} className="animate-spin text-brand-500" />
+                                            : <Upload size={16} className="text-ink-subtle" />
                                         }
-                                        <span className="text-sm font-medium text-gray-600">
+                                        <span className="text-sm font-bold text-ink">
                                             {uploadingField === 'payment_qr_url' ? 'Uploading…' : 'Upload QR Image'}
                                         </span>
                                         <input
@@ -628,19 +626,19 @@ export default function SettingsManager({
                                     value={formData.payment_qr_url || ''}
                                     onChange={handleChange}
                                     disabled={!canEdit || isSubmitting}
-                                    className="w-full border-gray-300 rounded-lg shadow-sm sm:text-sm p-2 border disabled:bg-gray-50 disabled:text-gray-500"
+                                    className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
                                     placeholder="or paste QR image URL…"
                                 />
                             </div>
                         </div>
                         <div>
-                            <label className="text-sm font-medium text-gray-700 mb-2 block">QR Provider</label>
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">QR Provider</label>
                             <select
                                 name="payment_qr_label"
                                 value={formData.payment_qr_label || ''}
                                 onChange={handleChange}
                                 disabled={!canEdit || isSubmitting}
-                                className="w-full border-gray-300 rounded-lg shadow-sm sm:text-sm p-2.5 border disabled:bg-gray-50 disabled:text-gray-500"
+                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
                             >
                                 <option value="">Select provider…</option>
                                 <option value="esewa">eSewa</option>
@@ -651,11 +649,11 @@ export default function SettingsManager({
                             </select>
 
                             {formData.payment_qr_url && (
-                                <div className="mt-4 flex items-start gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
-                                    <Image src={formData.payment_qr_url} alt="Payment QR" width={96} height={96} className="h-24 w-24 object-contain bg-white rounded-lg p-1 border border-gray-200 shrink-0" />
+                                <div className="mt-4 flex items-start gap-4 p-4 rounded-[var(--r-md)] border border-hairline bg-surface-muted/30 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
+                                    <Image src={formData.payment_qr_url} alt="Payment QR" width={96} height={96} className="h-24 w-24 object-contain bg-surface rounded-[var(--r-md)] p-2 border border-hairline shrink-0 shadow-sm" />
                                     {canEdit && (
-                                        <button type="button" onClick={() => setFormData(p => ({ ...p, payment_qr_url: null }))} className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 mt-1">
-                                            <X size={12} /> Remove QR
+                                        <button type="button" onClick={() => setFormData(p => ({ ...p, payment_qr_url: null }))} className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-danger-fg hover:text-danger-fg/80 transition-colors mt-1 focus-ring px-1">
+                                            <X size={14} /> Remove QR
                                         </button>
                                     )}
                                 </div>
@@ -666,39 +664,39 @@ export default function SettingsManager({
             </div>
 
             {/* Action Bar */}
-            <div className="flex items-center justify-end gap-4 bg-gray-50 rounded-2xl p-4 border border-gray-200">
+            <div className="flex items-center justify-end gap-4 bg-surface rounded-[var(--r-md)] p-4 border border-hairline mt-6 shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
                 {!canEdit && (
-                    <span className="text-sm text-amber-600 font-medium px-4 py-2 bg-amber-50 rounded-lg border border-amber-200 mr-auto flex-1 text-left">
-                        You do not have permission to modify system settings.
-                    </span>
+                    <div className="text-[11px] font-bold text-amber-700 bg-amber-50 rounded-[var(--r-md)] border border-amber-200 px-4 py-3 mr-auto flex-1 text-left uppercase tracking-wider flex items-center gap-2">
+                        <Shield size={14} /> You do not have permission to modify system settings.
+                    </div>
                 )}
 
                 {isSuccess && (
-                    <span className="text-sm text-green-600 font-medium flex items-center gap-1.5 animate-in fade-in duration-300">
-                        <Check size={16} /> Saved successfully
+                    <span className="text-[11px] font-bold text-success-fg uppercase tracking-wider flex items-center gap-1.5 animate-in fade-in duration-300 bg-success-bg/20 px-3 py-1.5 rounded-full border border-success-bg">
+                        <Check size={14} /> Saved successfully
                     </span>
                 )}
 
                 <button
                     type="submit"
                     disabled={!canEdit || isSubmitting}
-                    className="flex items-center gap-2 bg-[var(--color-primary)] text-white px-6 py-2.5 rounded-xl text-sm font-medium hover:opacity-90 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center gap-2 bg-brand-500 text-white px-6 py-3 rounded-[var(--r-md)] text-sm font-bold shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 focus-ring"
                 >
-                    {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                    {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                     Save Changes
                 </button>
             </div>
         </form>
 
         {/* Feature Toggles — separate from the form since they save instantly */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6 max-w-4xl">
-            <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
-                <div className="p-2 bg-[var(--color-primary)]/10 text-[var(--color-primary)] rounded-lg">
+        <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden mt-8 max-w-4xl">
+            <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 shadow-[inset_0_2px_4px_rgba(251,99,3,0.05)]">
                     {isSavingFeatures ? <Loader2 size={20} className="animate-spin" /> : <ToggleRight size={20} />}
                 </div>
                 <div>
-                    <h3 className="text-lg font-semibold text-gray-800">Feature Flags</h3>
-                    <p className="text-sm text-gray-500">Enable or disable features for your restaurant — changes apply instantly</p>
+                    <h3 className="text-h3 font-extrabold text-ink">Feature Flags</h3>
+                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Enable or disable features for your restaurant — changes apply instantly</p>
                 </div>
             </div>
 
@@ -726,20 +724,20 @@ export default function SettingsManager({
                             key={key}
                             onClick={() => toggleFeature(key)}
                             disabled={!canEdit || isSavingFeatures}
-                            className={`flex items-center justify-between p-4 rounded-xl border transition-all text-left ${
+                            className={`flex items-center justify-between p-4 rounded-[var(--r-md)] border transition-all text-left group focus-ring ${
                                 features[key]
-                                    ? 'bg-[var(--color-primary)]/8 border-[var(--color-primary)]/20'
-                                    : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                    ? 'bg-brand-50/50 border-brand-500/30 shadow-[inset_0_2px_4px_rgba(251,99,3,0.02)]'
+                                    : 'bg-surface border-hairline hover:bg-surface-muted/50 hover:border-ink-subtle/30 shadow-[0_2px_4px_rgba(0,0,0,0.02)]'
+                            } disabled:opacity-50`}
                         >
-                            <div>
-                                <span className="text-sm font-semibold text-gray-800">{label}</span>
-                                <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
+                            <div className="pr-4">
+                                <span className={`text-sm font-extrabold ${features[key] ? 'text-brand-700' : 'text-ink'}`}>{label}</span>
+                                <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-1">{desc}</p>
                             </div>
                             {features[key] ? (
-                                <ToggleRight size={28} className="text-[var(--color-primary)] shrink-0" />
+                                <ToggleRight size={28} className="text-brand-500 shrink-0 drop-shadow-sm" />
                             ) : (
-                                <ToggleLeft size={28} className="text-gray-400 shrink-0" />
+                                <ToggleLeft size={28} className="text-ink-muted shrink-0 group-hover:text-ink-subtle transition-colors" />
                             )}
                         </button>
                     ))}
@@ -748,37 +746,37 @@ export default function SettingsManager({
         </div>
 
         {/* Quick-Serve Items — manager-configurable one-tap customer requests */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6 max-w-4xl">
-            <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
-                <div className="p-2 bg-purple-100 text-purple-600 rounded-lg">
+        <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden mt-6 max-w-4xl">
+            <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-500/20 shadow-[inset_0_2px_4px_rgba(99,102,241,0.05)]">
                     <Bell size={20} />
                 </div>
                 <div>
-                    <h3 className="text-lg font-semibold text-gray-800">Quick-Serve Items</h3>
-                    <p className="text-sm text-gray-500">One-tap items customers can request (water, cold drinks, tissue…). Each goes to the waiter feed.</p>
+                    <h3 className="text-h3 font-extrabold text-ink">Quick-Serve Items</h3>
+                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">One-tap items customers can request (water, cold drinks, tissue…). Each goes to the waiter feed.</p>
                 </div>
             </div>
             <div className="p-6">
                 <div className="flex flex-wrap gap-2 mb-4">
                     {quickServeItems.length === 0 && (
-                        <span className="text-sm text-gray-400">No quick items yet — add one below.</span>
+                        <span className="text-sm font-bold text-ink-subtle italic">No quick items yet — add one below.</span>
                     )}
                     {quickServeItems.map((item) => (
-                        <span key={item} className="inline-flex items-center gap-1.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-full pl-3 pr-1.5 py-1 text-sm font-medium">
+                        <span key={item} className="inline-flex items-center gap-2 bg-indigo-50/50 text-indigo-700 border border-indigo-200/50 rounded-full pl-3 pr-1 py-1 text-[11px] font-bold uppercase tracking-wider shadow-[inset_0_2px_4px_rgba(99,102,241,0.02)]">
                             {item}
                             <button
                                 type="button"
                                 disabled={!canEdit || isSavingFeatures}
                                 onClick={() => saveQuickItems(quickServeItems.filter(i => i !== item))}
-                                className="w-5 h-5 rounded-full hover:bg-purple-200 flex items-center justify-center disabled:opacity-40"
+                                className="w-6 h-6 rounded-full hover:bg-indigo-100 flex items-center justify-center disabled:opacity-40 transition-colors"
                                 aria-label={`Remove ${item}`}
                             >
-                                ×
+                                <X size={14} />
                             </button>
                         </span>
                     ))}
                 </div>
-                <div className="flex gap-2 max-w-sm">
+                <div className="flex gap-3 max-w-sm">
                     <input
                         type="text"
                         value={newQuickItem}
@@ -786,13 +784,13 @@ export default function SettingsManager({
                         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addQuickItem() } }}
                         disabled={!canEdit}
                         placeholder="e.g. Cold Drink"
-                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
+                        className="flex-1 bg-surface border border-hairline rounded-[var(--r-md)] px-4 py-2.5 text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
                     />
                     <button
                         type="button"
                         onClick={addQuickItem}
                         disabled={!canEdit || isSavingFeatures || !newQuickItem.trim()}
-                        className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:opacity-90 disabled:opacity-40"
+                        className="px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-[var(--r-md)] hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 focus-ring shadow-[0_4px_12px_rgba(79,70,229,0.25)] hover:shadow-[0_6px_16px_rgba(79,70,229,0.4)] hover:-translate-y-0.5 active:translate-y-0"
                     >
                         Add
                     </button>
@@ -801,22 +799,22 @@ export default function SettingsManager({
         </div>
 
         {/* Notification Sound */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6 max-w-4xl">
-            <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
-                <div className="p-2 bg-amber-100 text-amber-600 rounded-lg">
+        <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden mt-6 max-w-4xl">
+            <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0 border border-amber-500/20 shadow-[inset_0_2px_4px_rgba(245,158,11,0.05)]">
                     <Bell size={20} />
                 </div>
                 <div>
-                    <h3 className="text-lg font-semibold text-gray-800">Notification Sound</h3>
-                    <p className="text-sm text-gray-500">Custom sound played on kitchen and waiter screens when a new order arrives</p>
+                    <h3 className="text-h3 font-extrabold text-ink">Notification Sound</h3>
+                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Custom sound played on kitchen and waiter screens when a new order arrives</p>
                 </div>
             </div>
-            <div className="p-6 flex flex-col sm:flex-row items-start gap-4">
-                <label className={`flex items-center gap-2 px-4 py-2.5 border-2 border-dashed rounded-lg cursor-pointer transition ${uploadingField === 'notification_sound' ? 'border-amber-300 bg-amber-50' : 'border-gray-300 hover:border-amber-400 hover:bg-amber-50'} ${!canEdit ? 'opacity-50 pointer-events-none' : ''}`}>
+            <div className="p-6 flex flex-col sm:flex-row items-center gap-4">
+                <label className={`flex items-center gap-2 px-5 py-3 border border-dashed rounded-[var(--r-md)] cursor-pointer transition-all focus-ring shrink-0 ${uploadingField === 'notification_sound' ? 'border-amber-400/50 bg-amber-50' : 'border-hairline hover:border-amber-400 hover:bg-surface-muted'} ${!canEdit ? 'opacity-50 pointer-events-none' : ''}`}>
                     {uploadingField === 'notification_sound'
                         ? <Loader2 size={16} className="animate-spin text-amber-600" />
                         : <Upload size={16} className="text-amber-600" />}
-                    <span className="text-sm font-medium text-gray-700">
+                    <span className="text-sm font-bold text-ink">
                         {uploadingField === 'notification_sound' ? 'Uploading…' : features.notificationSoundUrl ? 'Replace sound' : 'Upload MP3/WAV'}
                     </span>
                     <input
@@ -830,24 +828,24 @@ export default function SettingsManager({
                 </label>
 
                 {features.notificationSoundUrl && (
-                    <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-3 flex-wrap flex-1 min-w-0">
                         <button
                             type="button"
                             onClick={handleTestSound}
                             disabled={testingSound}
-                            className="flex items-center gap-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-3 py-2 rounded-lg hover:bg-green-100 transition disabled:opacity-60"
+                            className="flex items-center gap-1.5 text-[11px] font-bold text-success-fg uppercase tracking-wider bg-success-bg/20 border border-success-bg px-4 py-2.5 rounded-[var(--r-md)] hover:bg-success-bg/30 transition-colors disabled:opacity-50 focus-ring shrink-0"
                         >
-                            {testingSound ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Test sound
+                            {testingSound ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Test sound
                         </button>
                         <button
                             type="button"
                             onClick={handleRemoveSound}
                             disabled={!canEdit}
-                            className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 disabled:opacity-50"
+                            className="flex items-center gap-1 text-[11px] font-bold text-danger-fg uppercase tracking-wider hover:text-danger-fg/80 disabled:opacity-50 transition-colors focus-ring px-2 py-2 shrink-0"
                         >
-                            <X size={12} /> Remove
+                            <X size={14} /> Remove
                         </button>
-                        <span className="text-xs text-gray-400 max-w-xs truncate">{features.notificationSoundUrl.split('/').pop()}</span>
+                        <span className="text-[11px] font-bold text-ink-muted uppercase tracking-wider truncate" title={features.notificationSoundUrl.split('/').pop()}>{features.notificationSoundUrl.split('/').pop()}</span>
                     </div>
                 )}
 
@@ -857,11 +855,11 @@ export default function SettingsManager({
                             type="button"
                             onClick={handleTestSound}
                             disabled={testingSound}
-                            className="flex items-center gap-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-3 py-2 rounded-lg hover:bg-green-100 transition disabled:opacity-60"
+                            className="flex items-center gap-1.5 text-[11px] font-bold text-success-fg uppercase tracking-wider bg-success-bg/20 border border-success-bg px-4 py-2.5 rounded-[var(--r-md)] hover:bg-success-bg/30 transition-colors disabled:opacity-50 focus-ring shrink-0"
                         >
-                            {testingSound ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Test default tone
+                            {testingSound ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Test default tone
                         </button>
-                        <span className="text-sm text-gray-400">No custom sound — default pip-pip tone will play</span>
+                        <span className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider">No custom sound — default pip-pip tone will play</span>
                     </div>
                 )}
             </div>

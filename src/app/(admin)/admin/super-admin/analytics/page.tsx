@@ -1,6 +1,7 @@
 import { requireRole } from '@/lib/auth'
 import { getPlatformAnalytics } from '../actions'
 import { BarChart3, TrendingUp, Building2 } from 'lucide-react'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,14 +55,16 @@ export default async function AnalyticsPage() {
     }
 
     return (
-        <div className="space-y-6">
-            <div>
-                <h1 className="text-2xl font-extrabold text-gray-900">Platform Analytics</h1>
-                <p className="text-gray-500 mt-1 text-sm">Business intelligence across all restaurant tenants.</p>
-            </div>
+        <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
+            <PremiumPageHeader 
+                title="Platform Analytics" 
+                description="Business intelligence across all restaurant tenants." 
+                icon={<BarChart3 size={18} />}
+                color="blue"
+            />
 
             {/* MRR Chart */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
                 <div className="flex items-center justify-between mb-5">
                     <div>
                         <h2 className="font-semibold text-gray-800">Monthly Subscription Revenue (Last 12 Months)</h2>
@@ -94,7 +97,7 @@ export default async function AnalyticsPage() {
             </div>
 
             {/* Tenant Growth Chart */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.2s' }}>
                 <div className="flex items-center justify-between mb-5">
                     <div>
                         <h2 className="font-semibold text-gray-800">New Tenant Signups (Last 6 Months)</h2>
@@ -123,7 +126,7 @@ export default async function AnalyticsPage() {
             </div>
 
             {/* Tier Breakdown */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.3s' }}>
                 <h2 className="font-semibold text-gray-800 mb-4">Subscription Tier Breakdown</h2>
                 <div className="flex flex-wrap gap-4">
                     {Object.entries(tierCount).map(([tier, count]) => (
@@ -137,7 +140,7 @@ export default async function AnalyticsPage() {
             </div>
 
             {/* Restaurant Performance Table */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.4s' }}>
                 <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
                     <div>
                         <h2 className="font-semibold text-gray-800">Restaurant Performance (Last 30 Days)</h2>
@@ -162,7 +165,7 @@ export default async function AnalyticsPage() {
                             {analytics.restaurantStats.map((r, i) => {
                                 const avgOrderVal = r.orders30d > 0 ? r.revenue30d / r.orders30d : 0
                                 return (
-                                    <tr key={r.id} className={`hover:bg-gray-50/50 ${r.isSuspended ? 'bg-red-50/30' : ''}`}>
+                                    <tr key={r.id} className={`group hover:bg-gray-50/50 transition-colors ${r.isSuspended ? 'bg-red-50/30' : ''}`}>
                                         <td className="px-5 py-3 text-gray-400 text-xs font-medium">{i + 1}</td>
                                         <td className="px-5 py-3 font-medium text-gray-900">{r.name}</td>
                                         <td className="px-5 py-3">

@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import SettingsManager from '@/components/admin/SettingsManager'
 import { getRestaurantFeatures } from '@/lib/features'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { Settings } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,14 +41,12 @@ export default async function SettingsPage() {
 
     return (
         <div className="space-y-6">
-            <header>
-                <div className="flex justify-between items-center">
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900">System Settings</h1>
-                        <p className="text-gray-500 mt-1">Configure your restaurant&apos;s core information and operational rules</p>
-                    </div>
-                </div>
-            </header>
+            <PremiumPageHeader 
+                title="System Settings" 
+                description="Configure your restaurant's core information and operational rules" 
+                icon={<Settings size={18} />}
+                color="purple"
+            />
 
             <SettingsManager
                 initialRestaurant={initialRestaurant}
