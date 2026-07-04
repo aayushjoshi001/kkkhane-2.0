@@ -148,17 +148,17 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
     return (
         <div className="space-y-5">
             {/* Header */}
-            <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center justify-between flex-wrap gap-3 mb-2">
                 <div>
-                    <h1 className="text-xl font-extrabold text-ink">Analytics</h1>
-                    <p className="text-sm text-ink-subtle mt-0.5">Revenue, trends & insights</p>
+                    <h1 className="text-h2 font-extrabold text-ink">Analytics</h1>
+                    <p className="text-ink-subtle font-medium mt-1">Revenue, trends & insights</p>
                 </div>
-                <div className="flex items-center bg-surface-muted rounded-xl p-1 gap-0.5">
+                <div className="flex items-center bg-surface-muted rounded-[var(--r-md)] p-1 gap-1 border border-hairline shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
                     {(['7d', '30d'] as const).map(p => (
                         <button
                             key={p}
                             onClick={() => setPeriod(p)}
-                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${period === p ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'}`}
+                            className={`px-5 py-2 rounded-md text-xs font-bold transition-all focus-ring ${period === p ? 'bg-surface text-ink shadow-[0_2px_8px_rgba(0,0,0,0.08)]' : 'text-ink-subtle hover:text-ink hover:bg-surface/50'}`}
                         >
                             {p === '7d' ? 'Last 7 days' : 'Last 30 days'}
                         </button>
@@ -199,20 +199,20 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
             </div>
 
             {/* Main chart */}
-            <div className="bg-surface rounded-card border border-hairline shadow-sm p-5">
-                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-                    <h2 className="font-semibold text-ink text-sm">
+            <div className="bg-surface rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)] p-6">
+                <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
+                    <h2 className="font-extrabold text-ink text-base">
                         {chartMetric === 'revenue' ? 'Revenue' : 'Order Count'}
-                        <span className="text-ink-subtle font-normal ml-2 text-xs">
+                        <span className="text-ink-subtle font-medium ml-2 text-xs">
                             {period === '7d' ? 'last 7 days' : 'last 30 days'}
                         </span>
                     </h2>
-                    <div className="flex items-center bg-surface-muted rounded-lg p-0.5 gap-0.5">
+                    <div className="flex items-center bg-surface-muted rounded-[var(--r-md)] p-1 gap-1 border border-hairline shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
                         {(['revenue', 'orders'] as const).map(m => (
                             <button
                                 key={m}
                                 onClick={() => setChartMetric(m)}
-                                className={`px-3 py-1 rounded-md text-xs font-medium transition-all capitalize ${chartMetric === m ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'}`}
+                                className={`px-4 py-1.5 rounded-md text-[11px] font-bold tracking-wider transition-all capitalize focus-ring ${chartMetric === m ? 'bg-surface text-ink shadow-sm' : 'text-ink-subtle hover:text-ink hover:bg-surface/50'}`}
                             >
                                 {m}
                             </button>
@@ -227,13 +227,15 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
             </div>
 
             {/* Rush hour + Top items */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 {/* Rush hour heatmap */}
-                <div className="bg-surface rounded-card border border-hairline shadow-sm p-5">
-                    <div className="flex items-center gap-2 mb-4">
-                        <Clock size={14} className="text-blue-500" />
-                        <h2 className="font-semibold text-ink text-sm">Rush Hours</h2>
-                        <span className="text-xs text-ink-subtle ml-auto">last 30 days</span>
+                <div className="bg-surface rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)] p-6">
+                    <div className="flex items-center gap-2 mb-6 border-b border-hairline pb-4">
+                        <div className="w-8 h-8 rounded-full bg-brand-50 border border-brand-100 flex items-center justify-center">
+                            <Clock size={16} className="text-brand-600" />
+                        </div>
+                        <h2 className="font-extrabold text-ink text-base">Rush Hours</h2>
+                        <span className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider ml-auto">last 30 days</span>
                     </div>
                     <div className="grid grid-cols-6 gap-1.5">
                         {peakHours.map(h => {
@@ -280,11 +282,13 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
                 </div>
 
                 {/* Top items */}
-                <div className="bg-surface rounded-card border border-hairline shadow-sm p-5">
-                    <div className="flex items-center gap-2 mb-4">
-                        <Trophy size={14} className="text-amber-500" />
-                        <h2 className="font-semibold text-ink text-sm">Most Ordered</h2>
-                        <span className="text-xs text-ink-subtle ml-auto">last 30 days</span>
+                <div className="bg-surface rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)] p-6">
+                    <div className="flex items-center gap-2 mb-6 border-b border-hairline pb-4">
+                        <div className="w-8 h-8 rounded-full bg-amber-50 border border-amber-100 flex items-center justify-center">
+                            <Trophy size={16} className="text-amber-600" />
+                        </div>
+                        <h2 className="font-extrabold text-ink text-base">Most Ordered</h2>
+                        <span className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider ml-auto">last 30 days</span>
                     </div>
                     {topItems.length === 0 ? (
                         <p className="text-sm text-ink-subtle text-center py-6">No order data yet.</p>
@@ -317,11 +321,13 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
             </div>
 
             {/* Cancelled orders */}
-            <div className="bg-surface rounded-card border border-hairline shadow-sm overflow-hidden">
-                <div className="px-5 py-3.5 border-b border-hairline flex items-center gap-2">
-                    <XCircle size={14} className="text-red-400" />
-                    <h2 className="font-semibold text-ink text-sm">Cancelled Orders</h2>
-                    <span className="ml-auto text-xs text-ink-subtle">{cancelled.length} in last 30 days</span>
+            <div className="bg-surface rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)] overflow-hidden">
+                <div className="px-6 py-5 border-b border-hairline flex items-center gap-2 bg-surface-muted/30">
+                    <div className="w-8 h-8 rounded-full bg-danger-bg/20 border border-danger-bg flex items-center justify-center">
+                        <XCircle size={16} className="text-danger-fg" />
+                    </div>
+                    <h2 className="font-extrabold text-ink text-base">Cancelled Orders</h2>
+                    <span className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider ml-auto">{cancelled.length} in last 30 days</span>
                 </div>
                 {cancelled.length === 0 ? (
                     <div className="px-5 py-10 text-center text-sm text-ink-subtle">
@@ -365,11 +371,13 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
 
             {/* Customer feedback */}
             {kpis.ratingCount > 0 && (
-                <div className="bg-surface rounded-card border border-hairline shadow-sm overflow-hidden">
-                    <div className="px-5 py-3.5 border-b border-hairline flex items-center justify-between">
+                <div className="bg-surface rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)] overflow-hidden">
+                    <div className="px-6 py-5 border-b border-hairline flex items-center justify-between bg-surface-muted/30">
                         <div className="flex items-center gap-2">
-                            <Star size={14} className="text-amber-500" />
-                            <h2 className="font-semibold text-ink text-sm">Customer Feedback</h2>
+                            <div className="w-8 h-8 rounded-full bg-amber-50 border border-amber-100 flex items-center justify-center">
+                                <Star size={16} className="text-amber-500" />
+                            </div>
+                            <h2 className="font-extrabold text-ink text-base">Customer Feedback</h2>
                         </div>
                         {kpis.avgRating !== null && (
                             <span className="text-xs text-amber-600 font-semibold">
@@ -377,10 +385,10 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
                             </span>
                         )}
                     </div>
-                    <div className="p-5 grid md:grid-cols-2 gap-6">
+                    <div className="p-6 grid md:grid-cols-2 gap-8">
                         <div>
-                            <p className="text-[10px] font-semibold text-ink-subtle uppercase tracking-wider mb-3">Rating Breakdown</p>
-                            <div className="space-y-2">
+                            <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-4">Rating Breakdown</p>
+                            <div className="space-y-3">
                                 {ratingCounts.slice().reverse().map(({ star, count }) => {
                                     const pct = kpis.ratingCount > 0 ? Math.round((count / kpis.ratingCount) * 100) : 0
                                     return (
@@ -400,11 +408,11 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
                             </div>
                         </div>
                         <div>
-                            <p className="text-[10px] font-semibold text-ink-subtle uppercase tracking-wider mb-3">Recent Comments</p>
+                            <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-4">Recent Comments</p>
                             {topComments.length === 0 ? (
-                                <p className="text-sm text-ink-subtle">No comments yet.</p>
+                                <p className="text-sm font-bold italic text-ink-subtle">No comments yet.</p>
                             ) : (
-                                <ul className="space-y-3">
+                                <ul className="space-y-4">
                                     {topComments.map((f, i) => (
                                         <li key={i} className="border-l-2 border-amber-200 pl-3">
                                             <p className="text-sm text-ink">"{f.comment}"</p>

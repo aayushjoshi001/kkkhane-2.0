@@ -1,6 +1,7 @@
 import { requireRole } from '@/lib/auth'
 import { getAllSubscriptionPayments, getAllRestaurants } from '../actions'
 import { CreditCard, AlertTriangle, CheckCircle, Clock } from 'lucide-react'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,56 +56,66 @@ export default async function PaymentsPage() {
     })
 
     return (
-        <div className="space-y-6">
-            <div>
-                <h1 className="text-2xl font-extrabold text-gray-900">Subscription Payments</h1>
-                <p className="text-gray-500 mt-1 text-sm">Track subscription billing and tenant payment history.</p>
-            </div>
+        <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
+            <PremiumPageHeader 
+                title="Subscription Payments" 
+                description="Track subscription billing and tenant payment history." 
+                icon={<CreditCard size={18} />}
+                color="emerald"
+            />
 
             {/* KPI row */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                    <div className="text-2xl font-extrabold text-gray-900">Rs. {totalMrr.toLocaleString()}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Revenue Last 30 Days</div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-5 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6">
+                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">Rs. {totalMrr.toLocaleString()}</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Revenue Last 30 Days</div>
                 </div>
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                    <div className="text-2xl font-extrabold text-gray-900">{payments.length}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Total Payments Recorded</div>
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6">
+                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">{payments.length}</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Total Payments Recorded</div>
                 </div>
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                    <div className={`text-2xl font-extrabold ${expiringSoon.length > 0 ? 'text-amber-600' : 'text-gray-900'}`}>
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6">
+                    <div className={`text-2xl sm:text-3xl font-extrabold tabular-nums ${expiringSoon.length > 0 ? 'text-amber-600' : 'text-gray-900'}`}>
                         {expiringSoon.length}
                     </div>
-                    <div className="text-xs text-gray-500 mt-0.5">Expiring This Week</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Expiring This Week</div>
                 </div>
             </div>
 
             {/* Expiring Alert */}
             {expiringSoon.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-                    <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                        <p className="text-sm font-semibold text-amber-800">Subscriptions expiring soon</p>
-                        <ul className="mt-1 space-y-0.5">
-                            {expiringSoon.map(r => (
-                                <li key={r.id} className="text-xs text-amber-700">
-                                    <strong>{r.name}</strong> — expires {new Date(r.subscription_expires_at!).toLocaleDateString('en-IN')}
-                                </li>
-                            ))}
-                        </ul>
+                <div className="bg-white rounded-[24px] border border-amber-200 shadow-[0_8px_30px_rgb(245,158,11,0.06)] overflow-hidden relative group animate-fade-up" style={{ animationDelay: '0.15s' }}>
+                    <div className="absolute top-0 left-0 w-1 h-full bg-amber-500" />
+                    <div className="p-6 flex items-start gap-3">
+                        <AlertTriangle size={24} className="text-amber-500 shrink-0 mt-0.5 animate-pulse" />
+                        <div className="flex-1">
+                            <p className="font-bold text-amber-800 text-[15px]">Subscriptions renewing soon</p>
+                            <ul className="mt-2 space-y-2">
+                                {expiringSoon.map(r => (
+                                    <li key={r.id} className="flex items-center justify-between text-sm">
+                                        <span className="font-medium text-gray-700">
+                                            <strong>{r.name}</strong>
+                                        </span>
+                                        <span className="text-[13px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md border border-amber-100">
+                                            expires {new Date(r.subscription_expires_at!).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
                     </div>
                 </div>
             )}
 
             {/* Payment History */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-                    <h2 className="font-semibold text-gray-800">Payment History</h2>
-                    <p className="text-xs text-gray-500 mt-0.5">All recorded subscription payments</p>
+            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                <div className="px-6 py-5 border-b border-gray-50 bg-gray-50/50">
+                    <h2 className="text-[1.15rem] font-bold text-gray-900">Payment History</h2>
+                    <p className="text-[13px] text-gray-500 mt-0.5">All recorded subscription payments</p>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
+                        <thead className="bg-gray-50/50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
                             <tr>
                                 <th className="px-5 py-3 text-left">Restaurant</th>
                                 <th className="px-5 py-3 text-left">Tier</th>
@@ -116,7 +127,7 @@ export default async function PaymentsPage() {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {payments.map(p => (
-                                <tr key={p.id} className="hover:bg-gray-50/50">
+                                <tr key={p.id} className="group hover:bg-gray-50/50 transition-colors">
                                     <td className="px-5 py-3 font-medium text-gray-900">{p.restaurants?.name || '—'}</td>
                                     <td className="px-5 py-3">
                                         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${TIER_COLORS[p.restaurants?.subscription_tier || 'free']}`}>
@@ -138,14 +149,14 @@ export default async function PaymentsPage() {
             </div>
 
             {/* Subscription Status */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-                    <h2 className="font-semibold text-gray-800">Subscription Status</h2>
-                    <p className="text-xs text-gray-500 mt-0.5">Current billing status for all tenants</p>
+            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.3s' }}>
+                <div className="px-6 py-5 border-b border-gray-50 bg-gray-50/50">
+                    <h2 className="text-[1.15rem] font-bold text-gray-900">Subscription Status</h2>
+                    <p className="text-[13px] text-gray-500 mt-0.5">Current billing status for all tenants</p>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
+                        <thead className="bg-gray-50/50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
                             <tr>
                                 <th className="px-5 py-3 text-left">Restaurant</th>
                                 <th className="px-5 py-3 text-left">Tier</th>
@@ -160,7 +171,7 @@ export default async function PaymentsPage() {
                                     ? Math.ceil((new Date(r.subscription_expires_at).getTime() - now) / (1000 * 60 * 60 * 24))
                                     : null
                                 return (
-                                    <tr key={r.id} className={`hover:bg-gray-50/50 ${r.is_suspended ? 'bg-red-50/30' : ''}`}>
+                                    <tr key={r.id} className={`group hover:bg-gray-50/50 transition-colors ${r.is_suspended ? 'bg-red-50/30 hover:bg-red-50/50' : ''}`}>
                                         <td className="px-5 py-3 font-medium text-gray-900">{r.name}</td>
                                         <td className="px-5 py-3">
                                             <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${TIER_COLORS[r.subscription_tier] || TIER_COLORS.free}`}>

@@ -10,6 +10,8 @@ import { requireRole } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import { getRestaurantFeatures } from '@/lib/features'
 import { FeatureProvider } from '@/lib/contexts/FeatureContext'
+import { SidebarProvider } from '@/lib/contexts/SidebarContext'
+import SidebarToggle from '@/components/admin/SidebarToggle'
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
     // requireRole() uses the React.cache-wrapped getCurrentUser — no duplicate DB call
@@ -44,39 +46,39 @@ export default async function AdminLayout({ children }: { children: ReactNode })
 
     return (
         <FeatureProvider features={features}>
-        <div className="min-h-screen bg-canvas flex">
-            <SessionSync userId={currentUser.id} />
-            {isSuperAdmin ? <SuperAdminSidebar /> : <AdminSidebar userRole={roleNameRaw} restaurantName={restaurantName} />}
-            {!isSuperAdmin && currentUser.restaurantId && (
-                <AdminOrderNotifier restaurantId={currentUser.restaurantId} />
-            )}
+            <SidebarProvider>
+                <div className="min-h-screen bg-canvas flex">
+                    <SessionSync userId={currentUser.id} />
+                    {isSuperAdmin ? <SuperAdminSidebar /> : <AdminSidebar userRole={roleNameRaw} restaurantName={restaurantName} />}
+                    {!isSuperAdmin && currentUser.restaurantId && (
+                        <AdminOrderNotifier restaurantId={currentUser.restaurantId} />
+                    )}
 
-            {/* Main Content */}
-            <main className="flex-1 flex flex-col overflow-hidden min-w-0">
-                <header className="bg-surface border-b border-hairline px-5 md:px-8 h-16 flex items-center justify-between shrink-0 z-10">
-                    <h2 className="text-h3 text-ink pl-10 md:pl-0 truncate">
-                        {isSuperAdmin ? 'SaaS Control Panel' : (restaurantName || 'Management Console')}
-                    </h2>
-                    <div className="flex items-center gap-3">
-                        <CommandHint />
-                        {!isSuperAdmin && <SoundEnableButton variant="light" />}
-                        <span className={`text-caption font-semibold px-2.5 py-1 rounded-full ${
-                            isSuperAdmin
-                                ? 'bg-brand-50 text-brand-700'
-                                : 'bg-[var(--neutral-badge-bg)] text-[var(--neutral-badge-fg)]'
-                        }`}>
-                            {roleDisplay}
-                        </span>
-                    </div>
-                </header>
-                <CommandPaletteMount role={roleNameRaw} theme="light" />
-                <div className="flex-1 overflow-auto p-5 md:p-8">
-                    <div className="max-w-6xl mx-auto">
-                        {children}
-                    </div>
+                    {/* Main Content */}
+                    <main className="flex-1 flex flex-col overflow-hidden min-w-0">
+                        <header className="bg-surface border-b border-hairline px-5 md:px-8 h-16 flex items-center justify-between shrink-0 z-10">
+                            <SidebarToggle isSuperAdmin={isSuperAdmin} />
+                            <div className="flex items-center gap-3">
+                                <CommandHint />
+                                {!isSuperAdmin && <SoundEnableButton variant="light" />}
+                                <span className={`text-caption font-semibold px-2.5 py-1 rounded-full ${
+                                    isSuperAdmin
+                                        ? 'bg-brand-50 text-brand-700'
+                                        : 'bg-[var(--neutral-badge-bg)] text-[var(--neutral-badge-fg)]'
+                                }`}>
+                                    {roleDisplay}
+                                </span>
+                            </div>
+                        </header>
+                        <CommandPaletteMount role={roleNameRaw} theme="light" />
+                        <div className="flex-1 overflow-auto p-5 md:p-8">
+                            <div className="max-w-6xl mx-auto">
+                                {children}
+                            </div>
+                        </div>
+                    </main>
                 </div>
-            </main>
-        </div>
+            </SidebarProvider>
         </FeatureProvider>
     )
 }

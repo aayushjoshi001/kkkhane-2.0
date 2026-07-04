@@ -63,21 +63,21 @@ export default function CombosManager({
     // If database schema is not set up
     if (!isDbReady) {
         return (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 space-y-4">
+            <div className="bg-surface-muted/30 border border-hairline rounded-[var(--r-lg)] p-6 space-y-4 shadow-inner">
                 <div className="flex gap-3">
                     <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={20} />
                     <div>
-                        <h3 className="font-bold text-amber-900">Database Schema Migration Required</h3>
-                        <p className="text-amber-700 text-sm mt-1">
+                        <h3 className="font-bold text-ink">Database Schema Migration Required</h3>
+                        <p className="text-ink-subtle text-sm mt-1">
                             The Combo Offers feature requires updates to the database schema. Please apply the migration SQL file to enable this page.
                         </p>
                         <p className="text-amber-600 text-xs mt-1 font-mono">{dbError || 'Column menu_items.is_combo or table combo_items does not exist'}</p>
                     </div>
                 </div>
 
-                <div className="bg-gray-900 text-gray-200 p-4 rounded-lg font-mono text-xs overflow-x-auto space-y-2">
-                    <p className="text-gray-400"># Run the migration file or execute this SQL in the Supabase SQL Editor:</p>
-                    <code>{`-- 1. Add is_combo to menu_items
+                <div className="bg-surface text-ink-subtle p-4 rounded-[var(--r-md)] font-mono text-xs overflow-x-auto space-y-2 border border-hairline shadow-sm">
+                    <p className="text-ink-subtle/70"># Run the migration file or execute this SQL in the Supabase SQL Editor:</p>
+                    <code className="text-ink">{`-- 1. Add is_combo to menu_items
 ALTER TABLE public.menu_items ADD COLUMN is_combo BOOLEAN DEFAULT false NOT NULL;
 
 -- 2. Create combo_items relation table
@@ -327,47 +327,47 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
             <div className="flex justify-end">
                 <button
                     onClick={openNewComboForm}
-                    className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-gray-800 transition active:scale-95 shadow-sm"
+                    className="flex items-center gap-2 bg-brand-500 text-white px-5 py-2.5 rounded-[var(--r-md)] text-sm font-bold shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all focus-ring"
                 >
                     <Plus size={16} /> Create Combo Offer
                 </button>
             </div>
 
             {showForm && (
-                <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-200 p-6 space-y-6 shadow-sm">
-                    <h2 className="text-lg font-bold text-gray-900">{editingCombo ? 'Edit Combo Offer' : 'Create New Combo Offer'}</h2>
+                <form onSubmit={handleSubmit} className="bg-surface rounded-card border border-hairline p-6 space-y-6 shadow-sm">
+                    <h2 className="text-h3 text-ink">{editingCombo ? 'Edit Combo Offer' : 'Create New Combo Offer'}</h2>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-5">
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Combo Name *</label>
+                                <label className="block text-small font-bold text-ink mb-1.5">Combo Name *</label>
                                 <input
                                     type="text"
                                     required
                                     value={form.name}
                                     onChange={e => setForm({ ...form, name: e.target.value })}
-                                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-none"
+                                    className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                     placeholder="e.g. Double Deal Burger Bundle"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Description</label>
+                                <label className="block text-small font-bold text-ink mb-1.5">Description</label>
                                 <textarea
                                     value={form.description}
                                     onChange={e => setForm({ ...form, description: e.target.value })}
-                                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-none h-24 resize-none"
+                                    className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all resize-none h-24"
                                     placeholder="e.g. Get 2 Burgers, French Fries, and 2 Coca-Colas at a special discount."
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-2 gap-5">
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Category *</label>
+                                    <label className="block text-small font-bold text-ink mb-1.5">Category *</label>
                                     <select
                                         value={form.category_id}
                                         onChange={e => setForm({ ...form, category_id: e.target.value })}
-                                        className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-none bg-white"
+                                        className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                     >
                                         {categories.map(c => (
                                             <option key={c.id} value={c.id}>
@@ -377,7 +377,7 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Price ({currencySymbol}) *</label>
+                                    <label className="block text-small font-bold text-ink mb-1.5">Price ({currencySymbol}) *</label>
                                     <input
                                         type="number"
                                         step="0.01"
@@ -385,20 +385,20 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                                         min="0"
                                         value={form.price || ''}
                                         onChange={e => setForm({ ...form, price: +e.target.value })}
-                                        className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-none"
+                                        className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all tabular-nums"
                                     />
                                 </div>
                             </div>
 
                             <div>
-                                <div className="flex items-center justify-between mb-1.5">
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Image (Optional)</label>
-                                    <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-                                        <button type="button" onClick={() => setImageMode('upload')} className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${imageMode === 'upload' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
-                                            <Upload size={11} /> Upload
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="block text-small font-bold text-ink">Image (Optional)</label>
+                                    <div className="flex items-center gap-1 bg-surface-muted rounded-[var(--r-md)] p-1 border border-hairline">
+                                        <button type="button" onClick={() => setImageMode('upload')} className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${imageMode === 'upload' ? 'bg-surface shadow-sm text-ink' : 'text-ink-subtle hover:text-ink'}`}>
+                                            <Upload size={12} /> Upload
                                         </button>
-                                        <button type="button" onClick={() => setImageMode('url')} className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${imageMode === 'url' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
-                                            <LinkIcon size={11} /> URL
+                                        <button type="button" onClick={() => setImageMode('url')} className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${imageMode === 'url' ? 'bg-surface shadow-sm text-ink' : 'text-ink-subtle hover:text-ink'}`}>
+                                            <LinkIcon size={12} /> URL
                                         </button>
                                     </div>
                                 </div>
@@ -412,37 +412,39 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                                             onChange={e => { const f = e.target.files?.[0]; if (f) uploadComboImage(f) }}
                                         />
                                         {form.image_url ? (
-                                            <div className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-50 group" style={{ height: 140 }}>
+                                            <div className="relative rounded-[var(--r-md)] overflow-hidden border border-hairline bg-surface-muted shadow-inner group/img" style={{ height: 160 }}>
                                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                                 <img src={form.image_url} alt="Combo preview" className="w-full h-full object-cover" />
-                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                                    <button type="button" onClick={() => imageInputRef.current?.click()} className="bg-white text-gray-900 text-xs font-medium px-3 py-1.5 rounded-lg shadow flex items-center gap-1">
-                                                        <Upload size={12} /> Change
+                                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-sm">
+                                                    <button type="button" onClick={() => imageInputRef.current?.click()} className="bg-surface text-ink text-xs font-bold px-4 py-2 rounded-[var(--r-md)] shadow-sm flex items-center gap-1.5 hover:-translate-y-0.5 transition-transform">
+                                                        <Upload size={14} /> Change
                                                     </button>
-                                                    <button type="button" onClick={() => setForm(prev => ({ ...prev, image_url: '' }))} className="bg-red-500 text-white text-xs font-medium px-3 py-1.5 rounded-lg shadow flex items-center gap-1">
-                                                        <X size={12} /> Remove
+                                                    <button type="button" onClick={() => setForm(prev => ({ ...prev, image_url: '' }))} className="bg-danger-bg text-danger-fg text-xs font-bold px-4 py-2 rounded-[var(--r-md)] shadow-sm flex items-center gap-1.5 hover:-translate-y-0.5 transition-transform">
+                                                        <X size={14} /> Remove
                                                     </button>
                                                 </div>
                                             </div>
                                         ) : (
-                                            <button type="button" onClick={() => imageInputRef.current?.click()} disabled={imageUploading} className="w-full border-2 border-dashed border-gray-200 rounded-xl h-28 flex flex-col items-center justify-center gap-2 text-gray-400 hover:border-primary hover:text-primary transition-colors disabled:opacity-50">
-                                                {imageUploading ? <Loader2 size={20} className="animate-spin" /> : <ImageIcon size={20} />}
-                                                <span className="text-xs font-medium">{imageUploading ? 'Uploading…' : 'Click to upload photo'}</span>
-                                                {!imageUploading && <span className="text-xs text-gray-300">JPG, PNG, WEBP up to 5MB</span>}
+                                            <button type="button" onClick={() => imageInputRef.current?.click()} disabled={imageUploading} className="w-full border-2 border-dashed border-hairline rounded-[var(--r-md)] h-36 flex flex-col items-center justify-center gap-3 text-ink-subtle hover:border-brand-400 hover:text-brand-500 hover:bg-brand-50 transition-colors disabled:opacity-50 focus-ring">
+                                                {imageUploading ? <Loader2 size={28} className="animate-spin" /> : <ImageIcon size={28} />}
+                                                <div className="flex flex-col items-center gap-1">
+                                                    <span className="text-sm font-bold">{imageUploading ? 'Uploading…' : 'Click to upload photo'}</span>
+                                                    {!imageUploading && <span className="text-xs text-ink-subtle">JPG, PNG, WEBP up to 5MB</span>}
+                                                </div>
                                             </button>
                                         )}
                                     </div>
                                 ) : (
-                                    <div className="space-y-2">
+                                    <div className="space-y-3">
                                         <input
                                             type="url"
                                             value={form.image_url}
                                             onChange={e => setForm({ ...form, image_url: e.target.value })}
-                                            className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-none"
+                                            className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                             placeholder="https://images.unsplash.com/photo-..."
                                         />
                                         {form.image_url && (
-                                            <div className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-50" style={{ height: 120 }}>
+                                            <div className="relative rounded-[var(--r-md)] overflow-hidden border border-hairline bg-surface-muted shadow-inner" style={{ height: 140 }}>
                                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                                 <img src={form.image_url} alt="Combo preview" className="w-full h-full object-cover" onError={e => (e.currentTarget.style.display = 'none')} />
                                             </div>
@@ -451,38 +453,37 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                                 )}
                             </div>
 
-                            <div className="flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setForm(prev => ({ ...prev, is_available: !prev.is_available }))}
-                                    className="text-gray-500"
-                                >
-                                    {form.is_available ? <ToggleRight size={26} className="text-green-500" /> : <ToggleLeft size={26} />}
-                                </button>
-                                <span className="text-sm font-semibold text-gray-700">Available on menu</span>
+                            <div className="flex items-center justify-between p-4 bg-surface-muted/30 rounded-[var(--r-lg)] border border-hairline mt-2">
+                                <div>
+                                    <span className="text-small font-bold text-ink block">Available on menu</span>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer group">
+                                    <input type="checkbox" className="sr-only peer" checked={form.is_available} onChange={e => setForm(prev => ({ ...prev, is_available: e.target.checked }))} />
+                                    <div className="w-11 h-6 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-hairline after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-shadow"></div>
+                                </label>
                             </div>
                         </div>
 
                         {/* Components Builder */}
-                        <div className="border-t md:border-t-0 md:border-l border-gray-100 md:pl-5 pt-5 md:pt-0 space-y-4">
+                        <div className="border-t md:border-t-0 md:border-l border-hairline md:pl-6 pt-6 md:pt-0 space-y-5">
                             <div className="flex items-center justify-between">
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Bundle Items *</label>
+                                <label className="block text-small font-bold text-ink">Bundle Items *</label>
                                 <button
                                     type="button"
                                     onClick={handleAddComponentRow}
-                                    className="text-xs text-primary font-bold hover:underline flex items-center gap-1"
+                                    className="text-xs font-bold text-brand-500 hover:text-brand-600 transition-colors flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-brand-50"
                                 >
                                     <Plus size={14} /> Add Item
                                 </button>
                             </div>
 
-                            <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                            <div className="space-y-3 max-h-72 overflow-y-auto pr-1 custom-scrollbar">
                                 {form.components.map((comp, idx) => (
-                                    <div key={idx} className="flex gap-2 items-center">
+                                    <div key={idx} className="flex gap-3 items-center bg-surface p-2.5 rounded-[var(--r-md)] border border-hairline shadow-sm">
                                         <select
                                             value={comp.item_id}
                                             onChange={e => handleComponentChange(idx, 'item_id', e.target.value)}
-                                            className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-none bg-white min-w-0"
+                                            className="flex-1 w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 text-sm p-2.5 border bg-surface text-ink transition-all min-w-0"
                                         >
                                             {menuItems.map(item => (
                                                 <option key={item.id} value={item.id}>
@@ -496,20 +497,20 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                                             required
                                             value={comp.quantity}
                                             onChange={e => handleComponentChange(idx, 'quantity', +e.target.value)}
-                                            className="w-16 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none text-center"
+                                            className="w-16 border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 text-sm p-2.5 border bg-surface text-ink transition-all text-center tabular-nums"
                                         />
                                         <button
                                             type="button"
                                             onClick={() => handleRemoveComponentRow(idx)}
                                             disabled={form.components.length === 1}
-                                            className="p-2 text-gray-400 hover:text-red-500 disabled:opacity-30 rounded-lg hover:bg-red-50 transition shrink-0"
+                                            className="p-2 text-ink-subtle hover:text-danger-fg disabled:opacity-30 rounded-[var(--r-md)] hover:bg-danger-bg transition-colors shrink-0"
                                         >
                                             <Trash2 size={16} />
                                         </button>
                                     </div>
                                 ))}
                                 {form.components.length === 0 && (
-                                    <p className="text-xs text-gray-400 text-center py-6 border border-dashed border-gray-200 rounded-xl">
+                                    <p className="text-xs text-ink-subtle text-center py-6 border-2 border-dashed border-hairline rounded-[var(--r-md)]">
                                         No items added yet. Click &quot;Add Item&quot; to build this combo.
                                     </p>
                                 )}
@@ -517,25 +518,25 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
 
                             {/* Savings Summary box */}
                             {formNormalTotal > 0 && (
-                                <div className="p-4 bg-gradient-to-r from-amber-500/5 to-orange-500/5 border border-amber-500/10 rounded-2xl flex items-start gap-3">
-                                    <Info className="text-amber-500 shrink-0 mt-0.5" size={16} />
-                                    <div className="text-xs text-gray-600 space-y-1">
+                                <div className="p-4 bg-brand-50/50 border border-brand-100/50 rounded-[var(--r-lg)] flex items-start gap-3 shadow-inner">
+                                    <Info className="text-brand-500 shrink-0 mt-0.5" size={16} />
+                                    <div className="text-sm text-ink-subtle space-y-1.5">
                                         <p>
-                                            Normal total value of items: <span className="font-bold text-gray-900">{money(formNormalTotal)}</span>
+                                            Normal total value of items: <span className="font-bold text-ink tabular-nums">{money(formNormalTotal)}</span>
                                         </p>
                                         <p>
-                                            Combo offer price: <span className="font-bold text-gray-900">{money(form.price)}</span>
+                                            Combo offer price: <span className="font-bold text-ink tabular-nums">{money(form.price)}</span>
                                         </p>
                                         {formSavings > 0 ? (
-                                            <p className="text-green-600 font-semibold flex items-center gap-1 mt-1.5 bg-green-50 px-2 py-0.5 rounded-lg w-max border border-green-100">
-                                                <Sparkles size={12} /> Saves customers {money(formSavings)} ({formSavingsPercentage}%)!
+                                            <p className="text-success-fg font-bold flex items-center gap-1.5 mt-2 bg-success-bg/50 px-2.5 py-1 rounded-[var(--r-md)] w-max border border-success-bg">
+                                                <Sparkles size={14} /> Saves customers {money(formSavings)} ({formSavingsPercentage}%)!
                                             </p>
                                         ) : formSavings < 0 ? (
-                                            <p className="text-amber-600 font-medium mt-1.5">
+                                            <p className="text-amber-600 font-bold mt-2">
                                                 Note: Combo price is higher than standard pricing.
                                             </p>
                                         ) : (
-                                            <p className="text-gray-400 mt-1.5">Same as purchasing individually.</p>
+                                            <p className="text-ink-subtle mt-2">Same as purchasing individually.</p>
                                         )}
                                     </div>
                                 </div>
@@ -543,19 +544,20 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                         </div>
                     </div>
 
-                    <div className="flex gap-3 justify-end border-t border-gray-100 pt-5">
+                    <div className="flex gap-3 justify-end border-t border-hairline pt-6 mt-4">
                         <button
                             type="button"
                             onClick={() => setShowForm(false)}
-                            className="px-5 py-2.5 border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 rounded-xl transition"
+                            className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:shadow-md transition-all focus-ring"
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
                             disabled={saving}
-                            className="px-5 py-2.5 bg-gray-900 text-white text-sm font-semibold rounded-xl hover:bg-gray-800 transition disabled:opacity-50 flex items-center gap-2"
+                            className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2 focus-ring"
                         >
+                            {saving ? <Loader2 size={18} className="animate-spin" /> : (editingCombo ? <Edit2 size={16} /> : <Plus size={16} />)}
                             {saving ? 'Saving...' : editingCombo ? 'Update Combo' : 'Create Combo'}
                         </button>
                     </div>
@@ -563,21 +565,21 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
             )}
 
             {/* List Table */}
-            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+            <div className="bg-surface rounded-card border border-hairline overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-50 text-gray-500 uppercase tracking-wider text-[10px] font-bold">
+                        <thead className="bg-surface-muted/50 text-ink-subtle uppercase tracking-wider text-[10px] font-bold border-b border-hairline">
                             <tr>
-                                <th className="text-left px-5 py-4 font-semibold">Combo Details</th>
-                                <th className="text-left px-5 py-4 font-semibold">Category</th>
-                                <th className="text-left px-5 py-4 font-semibold">Price</th>
-                                <th className="text-left px-5 py-4 font-semibold hidden md:table-cell">Bundle Contents</th>
-                                <th className="text-left px-5 py-4 font-semibold hidden md:table-cell">Savings</th>
-                                <th className="text-left px-5 py-4 font-semibold">Status</th>
-                                <th className="text-right px-5 py-4 font-semibold">Actions</th>
+                                <th className="text-left px-6 py-4 font-bold">Combo Details</th>
+                                <th className="text-left px-6 py-4 font-bold">Category</th>
+                                <th className="text-left px-6 py-4 font-bold">Price</th>
+                                <th className="text-left px-6 py-4 font-bold hidden md:table-cell">Bundle Contents</th>
+                                <th className="text-left px-6 py-4 font-bold hidden md:table-cell">Savings</th>
+                                <th className="text-left px-6 py-4 font-bold">Status</th>
+                                <th className="text-right px-6 py-4 font-bold">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-hairline">
                             {combos.map(combo => {
                                 const category = categories.find(c => c.id === combo.category_id)
                                 // Get components
@@ -589,91 +591,90 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                                 const savingsPct = normalTotal > 0 ? Math.round((savingsAmount / normalTotal) * 100) : 0
 
                                 return (
-                                    <tr key={combo.id} className="hover:bg-gray-50 transition duration-150">
-                                        <td className="px-5 py-4">
+                                    <tr key={combo.id} className="hover:bg-surface-muted/30 transition-colors duration-150">
+                                        <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
                                                 {combo.image_url ? (
                                                     // eslint-disable-next-line @next/next/no-img-element
                                                     <img
                                                         src={combo.image_url}
                                                         alt={combo.name}
-                                                        className="w-10 h-10 rounded-xl object-cover shrink-0"
+                                                        className="w-12 h-12 rounded-[var(--r-md)] object-cover shrink-0 shadow-sm border border-hairline"
                                                     />
                                                 ) : (
-                                                    <div className="w-10 h-10 rounded-xl bg-gray-100 shrink-0 flex items-center justify-center text-lg">
+                                                    <div className="w-12 h-12 rounded-[var(--r-md)] bg-surface-muted border border-hairline shrink-0 flex items-center justify-center text-lg shadow-sm">
                                                         📦
                                                     </div>
                                                 )}
                                                 <div>
-                                                    <p className="font-bold text-gray-900 text-sm leading-snug">{combo.name}</p>
+                                                    <p className="font-bold text-ink text-sm leading-snug">{combo.name}</p>
                                                     {combo.description && (
-                                                        <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{combo.description}</p>
+                                                        <p className="text-xs text-ink-subtle mt-1 line-clamp-1">{combo.description}</p>
                                                     )}
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-5 py-4 text-gray-600 font-medium">
-                                            {category ? category.name : <span className="text-gray-400 italic">None</span>}
+                                        <td className="px-6 py-4 text-ink-subtle font-medium">
+                                            {category ? category.name : <span className="text-ink-subtle/50 italic">None</span>}
                                         </td>
-                                        <td className="px-5 py-4 font-bold text-gray-900">
+                                        <td className="px-6 py-4 font-bold text-ink tabular-nums">
                                             {money(combo.price)}
                                         </td>
-                                        <td className="px-5 py-4 text-xs text-gray-500 hidden md:table-cell">
-                                            <div className="space-y-0.5 max-w-xs">
+                                        <td className="px-6 py-4 text-xs text-ink-subtle hidden md:table-cell">
+                                            <div className="space-y-1 max-w-[200px]">
                                                 {componentsList.map(c => {
                                                     const it = menuItems.find(m => m.id === c.item_id)
                                                     return (
                                                         <div key={c.id} className="flex justify-between font-medium">
-                                                            <span className="text-gray-600">{it?.name || 'Item'}</span>
-                                                            <span className="text-gray-400 tabular-nums">×{c.quantity}</span>
+                                                            <span className="text-ink line-clamp-1">{it?.name || 'Item'}</span>
+                                                            <span className="text-ink-subtle/70 tabular-nums shrink-0 ml-2">×{c.quantity}</span>
                                                         </div>
                                                     )
                                                 })}
                                                 {componentsList.length === 0 && (
-                                                    <span className="text-amber-500 font-medium flex items-center gap-1">
-                                                        <AlertCircle size={12} /> Empty bundle contents
+                                                    <span className="text-amber-500 font-bold flex items-center gap-1.5 bg-amber-50 px-2 py-1 rounded-md w-max">
+                                                        <AlertCircle size={12} /> Empty bundle
                                                     </span>
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-5 py-4 hidden md:table-cell">
+                                        <td className="px-6 py-4 hidden md:table-cell">
                                             {savingsAmount > 0 ? (
                                                 <div>
-                                                    <span className="text-xs font-bold bg-green-50 text-green-700 px-2 py-0.5 rounded-full border border-green-100 inline-block">
+                                                    <span className="text-xs font-bold bg-success-bg/50 text-success-fg px-2.5 py-1 rounded-full border border-success-bg inline-block tabular-nums">
                                                         {money(savingsAmount)} ({savingsPct}%)
                                                     </span>
                                                 </div>
                                             ) : (
-                                                <span className="text-xs text-gray-400">—</span>
+                                                <span className="text-xs text-ink-subtle/50">—</span>
                                             )}
                                         </td>
-                                        <td className="px-5 py-4">
-                                            <button
-                                                onClick={() => handleToggleActive(combo)}
-                                                className="text-gray-400 hover:text-gray-600 transition"
-                                            >
-                                                {combo.is_available ? (
-                                                    <ToggleRight size={24} className="text-green-500" />
-                                                ) : (
-                                                    <ToggleLeft size={24} />
-                                                )}
-                                            </button>
+                                        <td className="px-6 py-4">
+                                            <label className="relative inline-flex items-center cursor-pointer group">
+                                                <input 
+                                                    type="checkbox" 
+                                                    className="sr-only peer" 
+                                                    checked={combo.is_available} 
+                                                    onChange={() => handleToggleActive(combo)}
+                                                />
+                                                <div className="w-11 h-6 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-hairline after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-shadow"></div>
+                                            </label>
                                         </td>
-                                        <td className="px-5 py-4 text-right">
-                                            <div className="flex gap-1 justify-end">
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex gap-1.5 justify-end">
                                                 <button
                                                     onClick={() => openEditForm(combo)}
-                                                    className="p-1.5 text-gray-400 hover:text-gray-800 rounded-lg hover:bg-gray-100 transition"
+                                                    className="p-2 text-ink-subtle hover:text-ink hover:bg-surface-muted rounded-[var(--r-md)] transition-colors"
                                                     title="Edit Combo"
                                                 >
-                                                    <Edit2 size={15} />
+                                                    <Edit2 size={16} />
                                                 </button>
                                                 <button
                                                     onClick={() => handleDeleteCombo(combo.id)}
-                                                    className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition"
+                                                    className="p-2 text-ink-subtle hover:text-danger-fg hover:bg-danger-bg rounded-[var(--r-md)] transition-colors"
                                                     title="Delete Combo"
                                                 >
-                                                    <Trash2 size={15} />
+                                                    <Trash2 size={16} />
                                                 </button>
                                             </div>
                                         </td>
@@ -682,10 +683,10 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                             })}
                             {combos.length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="px-5 py-12 text-center text-gray-400">
-                                        <ShoppingBag className="mx-auto mb-2 text-gray-200" size={36} />
-                                        <p className="font-medium text-gray-500">No combo offers found.</p>
-                                        <p className="text-xs text-gray-400 mt-0.5">Click &quot;Create Combo Offer&quot; above to add one.</p>
+                                    <td colSpan={7} className="px-6 py-16 text-center text-ink-subtle">
+                                        <ShoppingBag className="mx-auto mb-3 text-ink-subtle/30" size={40} />
+                                        <p className="font-bold text-ink text-base">No combo offers found.</p>
+                                        <p className="text-sm mt-1">Click &quot;Create Combo Offer&quot; above to add one.</p>
                                     </td>
                                 </tr>
                             )}

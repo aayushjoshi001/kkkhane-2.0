@@ -28,15 +28,15 @@ export default async function HomepagePage() {
     return (
         <div className="space-y-6">
             <header>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center bg-surface p-6 rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)]">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900">Homepage Manager</h1>
-                        <p className="text-gray-600 mt-1">Customize your restaurant&apos;s homepage that customers see when they scan the QR code</p>
+                        <h1 className="text-h1 font-extrabold text-ink tracking-tight">Homepage Manager</h1>
+                        <p className="text-sm font-medium text-ink-subtle mt-1 max-w-2xl">Customize your restaurant&apos;s homepage that customers see when they scan the QR code</p>
                     </div>
                 </div>
             </header>
 
-            <div className="bg-white rounded-lg shadow">
+            <div>
                 <HomepageManager restaurantId={restaurantId} />
             </div>
         </div>

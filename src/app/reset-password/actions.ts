@@ -17,10 +17,18 @@ export async function resetPasswordAction(
     }
 
     const supabase = await createServerClient()
-    const { error } = await supabase.auth.updateUser({ password })
+    try {
+        const { error } = await supabase.auth.updateUser({ password })
 
-    if (error) {
-        return { error: error.message, success: false }
+        if (error) {
+            return { error: error.message, success: false }
+        }
+    } catch (e: any) {
+        console.error('Reset password error:', e)
+        if (e?.message?.includes('fetch failed') || e?.cause?.code) {
+            return { error: 'Network error connecting to the server. Please try again later.', success: false }
+        }
+        return { error: 'An unexpected error occurred. Please try again.', success: false }
     }
 
     return { error: null, success: true }

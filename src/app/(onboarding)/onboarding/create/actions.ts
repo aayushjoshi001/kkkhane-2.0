@@ -19,9 +19,22 @@ export async function createOnboardingRestaurant(formData: FormData) {
         return { error: 'Restaurant name is required', field: 'restaurantName' }
     }
 
+    const slug = formData.get('restaurantSlug') as string
+    if (!slug || slug.trim() === '') {
+        return { error: 'Restaurant URL Slug is required', field: 'restaurantSlug' }
+    }
+
     const contactPhone = (formData.get('contactPhone') as string) || null
     const address = (formData.get('address') as string) || null
     const businessType = (formData.get('type') as string) || null
+    
+    // Tax Info
+    const panNumber = (formData.get('panNumber') as string) || null
+    const vatRegistered = formData.get('vatRegistered') === 'true'
+    
+    // Slogan
+    const slogan = (formData.get('slogan') as string) || null
+
     const latitudeRaw = formData.get('latitude') as string
     const longitudeRaw = formData.get('longitude') as string
     const latitude = latitudeRaw ? parseFloat(latitudeRaw) : null
@@ -36,10 +49,13 @@ export async function createOnboardingRestaurant(formData: FormData) {
         ownerEmail: user.email,
         ownerName: userRow?.full_name || user.email || 'Owner',
         name: restaurantName.trim(),
-        slug: normalizeSlug(restaurantName),
+        slug: normalizeSlug(slug),
         contactPhone,
         address,
         businessType,
+        panNumber,
+        vatRegistered,
+        slogan,
         latitude,
         longitude,
         tier: 'free',

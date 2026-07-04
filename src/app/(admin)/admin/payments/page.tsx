@@ -17,9 +17,9 @@ export default async function AdminPaymentsPage() {
 
     return (
         <div className="space-y-6">
-            <header>
-                <h1 className="text-2xl font-bold text-gray-900">Payment Verification</h1>
-                <p className="text-gray-500 mt-1">Review and approve customer payment claims</p>
+            <header className="mb-6">
+                <h1 className="text-h2 font-extrabold text-ink">Payment Verification</h1>
+                <p className="text-ink-subtle font-medium mt-1">Review and approve customer payment claims</p>
             </header>
 
             <PaymentVerificationPanel

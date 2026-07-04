@@ -28,12 +28,12 @@ export default async function AdminTakeoutPage() {
 
     return (
         <div className="space-y-6">
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <header className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Takeout Orders</h1>
-                    <p className="text-gray-500 mt-1">Manage pending and active takeout orders.</p>
+                    <h1 className="text-h2 font-extrabold text-ink">Takeout Orders</h1>
+                    <p className="text-ink-subtle font-medium mt-1">Manage pending and active takeout orders</p>
                 </div>
-            </div>
+            </header>
             <TakeoutDashboard 
                 initialOrders={orders} 
                 restaurantId={rid} 

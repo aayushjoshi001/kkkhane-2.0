@@ -26,9 +26,14 @@ export default async function LoginPage(props: { searchParams: Promise<{ redirec
             <div className="w-full md:w-[45%] lg:w-[40%] h-[35vh] md:h-full flex-shrink-0">
                 <AuthHero heightClassName="h-full" />
             </div>
-            <div className="flex-1 w-full flex flex-col justify-start md:justify-center items-center px-0 md:px-8 -mt-6 md:mt-0 relative z-10 bg-transparent md:bg-white rounded-t-[2rem] md:rounded-none overflow-hidden">
-                <div className="w-full h-full bg-white md:bg-transparent px-6 sm:px-10 pt-4 pb-12 flex flex-col items-center md:justify-center overflow-y-auto no-scrollbar">
-                    <LoginScreen redirectTo={redirectTo} initialSlug={staffTerminalSlug} />
+            
+            <div className="flex-1 w-full relative z-10 flex flex-col bg-transparent md:bg-white rounded-t-[2rem] md:rounded-none -mt-6 md:mt-0 overflow-hidden">
+                <div className="flex-1 w-full bg-white md:bg-transparent rounded-t-[2rem] md:rounded-none overflow-y-auto no-scrollbar">
+                    <div className="min-h-full w-full flex flex-col px-6 sm:px-10 pt-4 pb-12">
+                        <div className="w-full max-w-[420px] mx-auto my-auto flex flex-col">
+                            <LoginScreen redirectTo={redirectTo} initialSlug={staffTerminalSlug} />
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

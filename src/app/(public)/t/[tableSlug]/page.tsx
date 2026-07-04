@@ -6,6 +6,7 @@ import type { MenuItem } from '@/types/database'
 import TablePageClient from './TablePageClient'
 import { verifyClientIp } from '@/lib/ip-check'
 import { getOrCreateActiveSession } from '@/lib/sessions'
+import { getOptionalUser } from '@/lib/auth'
 
 import type { Metadata } from 'next'
 
@@ -32,13 +33,14 @@ export async function generateMetadata(props: {
 
 export default async function CustomerMenuPage(props: {
     params: Promise<{ tableSlug: string }>
-    searchParams: Promise<{ s?: string }>
+    searchParams: Promise<{ s?: string; w?: string }>
 }) {
     const params = await props.params;
     const searchParams = await props.searchParams;
     // 1. Session & Table Validation
     const tableToken = params.tableSlug
     let sessionToken = searchParams.s
+    const isWaiterMode = searchParams.w === '1'
 
     const supabase = await createAdminClient()
 
@@ -96,22 +98,24 @@ export default async function CustomerMenuPage(props: {
         features,
         menuData,
         menuLayout,
-        { allowed: isIpAllowed }
+        ipCheckResult,
+        optionalUser
     ] = await Promise.all([
         getRestaurantFeatures(restaurantId),
         getCachedMenuData(restaurantId),
         getMenuLayout(restaurantId),
-        verifyClientIp(restaurantId, 'customer')
+        verifyClientIp(restaurantId, 'customer'),
+        isWaiterMode ? getOptionalUser() : Promise.resolve(null)
     ])
 
-    const isIpRestricted = !isIpAllowed
+    const isIpRestricted = !ipCheckResult.allowed && !optionalUser
 
     // Optional "Waiter-Managed Sessions" feature (manager-toggleable, package-gated):
     //  • ON  → a waiter must open the table session before guests can order.
     //  • OFF → self-service: auto-open a session on QR scan so guests order instantly.
     const waiterSessionEnabled = features?.waiterSessionEnabled === true
 
-    if (!sessionToken && isIpAllowed && !waiterSessionEnabled) {
+    if (!sessionToken && !isIpRestricted && !waiterSessionEnabled) {
         const session = await getOrCreateActiveSession(supabase, tableData.id, restaurantId)
         if (session) {
             sessionToken = session.session_token

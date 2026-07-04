@@ -110,8 +110,9 @@ export default async function AnalyticsPage() {
     const topComments = (recentFeedback ?? []).filter(f => f.comment).slice(0, 5)
 
     return (
-        <AnalyticsDashboard
-            daily={daily}
+        <div className="space-y-6">
+            <AnalyticsDashboard
+                daily={daily}
             hourly={hourly}
             topItems={topItems}
             cancelled={(cancelledOrders ?? []).map(o => ({
@@ -130,5 +131,6 @@ export default async function AnalyticsPage() {
             ratingCounts={ratingCounts}
             topComments={topComments}
         />
+        </div>
     )
 }

@@ -20,19 +20,25 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
         setIsGoogleLoading(true)
         const supabase = createClient()
         const next = redirectTo ? `&next=${encodeURIComponent(redirectTo)}` : ''
-        const { error } = await supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: { redirectTo: `${window.location.origin}/auth/callback?intent=login${next}` },
-        })
-        // On success the browser navigates away to Google — nothing left to do here.
-        if (error) {
-            setGoogleError(error.message)
+        try {
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: { redirectTo: `${window.location.origin}/auth/callback?intent=login${next}` },
+            })
+            // On success the browser navigates away to Google — nothing left to do here.
+            if (error) {
+                setGoogleError(error.message)
+                setIsGoogleLoading(false)
+            }
+        } catch (err: any) {
+            console.error('Google OAuth login error:', err)
+            setGoogleError('Network error connecting to the authentication server.')
             setIsGoogleLoading(false)
         }
     }
 
     return (
-        <div className="flex flex-col items-center justify-start md:justify-center w-full max-w-[420px] mx-auto">
+        <div className="flex flex-col items-center w-full max-w-[420px] mx-auto">
             {/* Mobile Sheet Handle */}
             <div className="w-12 h-1.5 rounded-full bg-[#ff6b00] mb-8 md:hidden" />
 

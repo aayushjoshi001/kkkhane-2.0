@@ -25,21 +25,34 @@ export async function loginAction(prevState: { error: string | null }, formData:
     const adminSupabase = await createAdminClient()
 
     if (email === 'newuser@srms.app' && password === 'Password123!') {
-        await adminSupabase.auth.admin.createUser({
-            email,
-            password,
-            email_confirm: true,
-            user_metadata: { full_name: 'New Onboarding User' }
-        })
+        try {
+            await adminSupabase.auth.admin.createUser({
+                email,
+                password,
+                email_confirm: true,
+                user_metadata: { full_name: 'New Onboarding User' }
+            })
+        } catch (e) {
+            // Ignore existing user errors or network errors on demo account creation
+            console.error('Demo user creation error:', e)
+        }
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-    })
+    try {
+        const { error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+        })
 
-    if (error) {
-        return { error: error.message }
+        if (error) {
+            return { error: error.message }
+        }
+    } catch (err: any) {
+        console.error('Login error:', err)
+        if (err?.message?.includes('fetch failed') || err?.cause?.code) {
+            return { error: 'Network connection failed. Please check your internet or try again later.' }
+        }
+        return { error: 'An unexpected error occurred during login. Please try again.' }
     }
 
     // If middleware bounced the user off a specific protected route, send them

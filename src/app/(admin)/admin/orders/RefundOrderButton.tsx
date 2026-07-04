@@ -51,29 +51,29 @@ export default function RefundOrderButton({
         <>
             <button
                 onClick={() => setOpen(true)}
-                className="text-xs text-red-600 border border-red-200 rounded-lg px-2.5 py-1 hover:bg-red-50 transition font-medium"
+                className="text-xs text-danger-fg border border-danger-bg/50 rounded-[var(--r-md)] px-3 py-1.5 hover:bg-danger-bg/20 transition-colors font-bold tracking-wide focus-ring"
             >
                 {label}
             </button>
 
             {open && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-surface rounded-card shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-hairline w-full max-w-sm p-6 space-y-5 animate-in zoom-in-95 duration-200">
                         <div className="flex items-center gap-2">
-                            <RotateCcw size={18} className="text-red-500" />
-                            <h2 className="text-base font-bold text-gray-900">{label} Order</h2>
+                            <RotateCcw size={18} className="text-danger-fg" />
+                            <h2 className="text-h3 text-ink">{label} Order</h2>
                         </div>
 
                         {refundedAmount > 0 && (
-                            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-[var(--r-md)] px-3 py-2 font-medium">
                                 {money(refundedAmount)} already refunded. Remaining: {money(maxRefundable)}
                             </p>
                         )}
 
                         {paymentStatus === 'paid' && (
                             <div>
-                                <label className="block text-xs font-medium text-gray-600 mb-1">
-                                    Refund amount <span className="text-gray-400">(max {money(maxRefundable)})</span>
+                                <label className="block text-small font-bold text-ink mb-1.5">
+                                    Refund amount <span className="text-ink-subtle/70 font-normal">(max {money(maxRefundable)})</span>
                                 </label>
                                 <input
                                     type="number"
@@ -83,27 +83,27 @@ export default function RefundOrderButton({
                                     value={amountStr}
                                     onChange={(e) => setAmountStr(e.target.value)}
                                     placeholder={`${maxRefundable} (full refund)`}
-                                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+                                    className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all tabular-nums"
                                 />
                             </div>
                         )}
 
                         <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Reason</label>
+                            <label className="block text-small font-bold text-ink mb-1.5">Reason</label>
                             <textarea
                                 value={reason}
                                 onChange={(e) => setReason(e.target.value)}
                                 placeholder="e.g. wrong item delivered, customer complaint…"
-                                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-300"
+                                className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all resize-none"
                                 rows={3}
                                 maxLength={200}
                             />
                         </div>
 
-                        <div className="flex gap-2 justify-end">
+                        <div className="flex gap-3 justify-end pt-2 border-t border-hairline mt-2">
                             <button
                                 onClick={() => { setOpen(false); setReason(''); setAmountStr('') }}
-                                className="px-4 py-2 text-sm rounded-xl border border-gray-200 hover:bg-gray-50 transition"
+                                className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:shadow-md transition-all focus-ring"
                                 disabled={loading}
                             >
                                 Cancel
@@ -111,9 +111,9 @@ export default function RefundOrderButton({
                             <button
                                 onClick={handleSubmit}
                                 disabled={loading || !reason.trim()}
-                                className="px-4 py-2 text-sm rounded-xl bg-red-600 text-white font-medium hover:bg-red-700 disabled:opacity-50 transition flex items-center gap-1.5"
+                                className="px-5 py-2.5 text-sm font-bold text-white bg-danger-fg rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(239,68,68,0.25)] hover:shadow-[0_6px_16px_rgba(239,68,68,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2 focus-ring"
                             >
-                                {loading && <Loader2 size={14} className="animate-spin" />}
+                                {loading && <Loader2 size={16} className="animate-spin" />}
                                 Confirm {parsedAmount < maxRefundable && parsedAmount > 0 ? `Partial ${label}` : label}
                             </button>
                         </div>

@@ -1,6 +1,8 @@
 import { requireRole } from '@/lib/auth'
 import { getAllRestaurants, getSaasMetrics } from '../actions'
 import SuperAdminDashboard from '../SuperAdminDashboard'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { Building2 } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,11 +30,13 @@ export default async function RestaurantsPage() {
     ])
 
     return (
-        <div className="space-y-6">
-            <div>
-                <h1 className="text-2xl font-extrabold text-gray-900">Restaurants</h1>
-                <p className="text-gray-500 mt-1 text-sm">Create, suspend, and manage all restaurant tenants and their subscriptions.</p>
-            </div>
+        <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
+            <PremiumPageHeader 
+                title="Restaurants" 
+                description="Create, suspend, and manage all restaurant tenants and their subscriptions." 
+                icon={<Building2 size={18} />}
+                color="indigo"
+            />
 
             <SuperAdminDashboard
                 restaurants={(restaurantsResult.data || []) as Restaurant[]}

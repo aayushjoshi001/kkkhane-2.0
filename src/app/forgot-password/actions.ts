@@ -22,8 +22,15 @@ export async function forgotPasswordAction(
     const supabase = await createServerClient()
     const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password`
 
-    // Always return success to prevent email enumeration
-    await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+    try {
+        // Always return success to prevent email enumeration
+        await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+    } catch (e: any) {
+        console.error('Forgot password error:', e)
+        if (e?.message?.includes('fetch failed') || e?.cause?.code) {
+            return { error: 'Network error connecting to the server. Please try again later.', success: false }
+        }
+    }
 
     return { error: null, success: true }
 }

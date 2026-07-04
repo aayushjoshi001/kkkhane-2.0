@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { ArrowLeft, Delete, ChefHat, User, Banknote, Loader2, Check, Store } from 'lucide-react'
-import { getActiveStaffForTerminal, staffPinLoginAction, type TerminalStaffMember } from './staffActions'
+import { ArrowLeft, Delete, ChefHat, User, Banknote, Loader2, Check, Store, ShieldAlert, Lock, Mail, X } from 'lucide-react'
+import { getActiveStaffForTerminal, staffPinLoginAction, authorizeUnpairAction, type TerminalStaffMember } from './staffActions'
 
 type Phase = 'resolving' | 'slug-entry' | 'grid' | 'pin' | 'success'
 
@@ -35,6 +35,13 @@ export default function StaffLoginView({ initialSlug, onSwitchToOwnerLogin }: { 
     const [pinError, setPinError] = useState<string | null>(null)
     const [isSubmitting, setIsSubmitting] = useState(false)
 
+    // Unpair Modal State
+    const [showUnpairModal, setShowUnpairModal] = useState(false)
+    const [unpairEmail, setUnpairEmail] = useState('')
+    const [unpairPassword, setUnpairPassword] = useState('')
+    const [unpairLoading, setUnpairLoading] = useState(false)
+    const [unpairError, setUnpairError] = useState<string | null>(null)
+
     const resolveSlug = useCallback(async (slug: string) => {
         setResolving(true)
         setSlugError(null)
@@ -61,11 +68,27 @@ export default function StaffLoginView({ initialSlug, onSwitchToOwnerLogin }: { 
         } else {
             setPhase('slug-entry')
         }
-        // Only ever run this resolution once on mount — resolveSlug is stable via useCallback.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
-    const handleSwitchRestaurant = () => {
+    const handleUnpairSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        setUnpairError(null)
+        setUnpairLoading(true)
+
+        const res = await authorizeUnpairAction({ email: unpairEmail, password: unpairPassword })
+        
+        setUnpairLoading(false)
+
+        if (!res.success) {
+            setUnpairError(res.error || 'Authorization failed')
+            return
+        }
+
+        // Wipe successful
+        setShowUnpairModal(false)
+        setUnpairEmail('')
+        setUnpairPassword('')
         localStorage.removeItem(STAFF_TERMINAL_STORAGE_KEY)
         setRestaurant(null)
         setStaffList([])
@@ -175,7 +198,7 @@ export default function StaffLoginView({ initialSlug, onSwitchToOwnerLogin }: { 
     // ── Name grid ──
     if (phase === 'grid') {
         return (
-            <div className="w-full bg-white rounded-[2.5rem] shadow-2xl border border-gray-100 pt-3 pb-8 px-6 sm:px-8 flex flex-col items-center animate-in fade-in duration-300">
+            <div className="w-full bg-white rounded-[2.5rem] shadow-2xl border border-gray-100 pt-3 pb-8 px-6 sm:px-8 flex flex-col items-center animate-in fade-in duration-300 relative overflow-hidden">
                 <div className="w-10 h-1.5 rounded-full bg-gray-200 mb-6" />
 
                 <div className="flex flex-col items-center gap-2 mb-7">
@@ -218,14 +241,75 @@ export default function StaffLoginView({ initialSlug, onSwitchToOwnerLogin }: { 
                 )}
 
                 <div className="flex items-center gap-4 mt-8">
-                    <button onClick={handleSwitchRestaurant} className="text-xs font-semibold text-gray-400 hover:text-gray-600 transition-colors">
-                        Not your restaurant?
+                    <button onClick={() => setShowUnpairModal(true)} className="flex items-center gap-1.5 text-xs font-bold text-gray-400 hover:text-red-500 transition-colors">
+                        <ShieldAlert size={14} /> Unpair terminal
                     </button>
                     <span className="text-gray-200">·</span>
                     <button onClick={onSwitchToOwnerLogin} className="text-xs font-semibold text-gray-400 hover:text-gray-600 transition-colors">
                         Owner/manager sign in
                     </button>
                 </div>
+
+                {/* Manager Override Unpair Modal */}
+                {showUnpairModal && (
+                    <div className="absolute inset-0 z-50 bg-white/95 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
+                        <div className="bg-white border border-gray-100 shadow-2xl rounded-3xl p-8 w-full max-w-sm relative">
+                            <button 
+                                onClick={() => setShowUnpairModal(false)}
+                                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 p-2"
+                            >
+                                <X size={20} />
+                            </button>
+                            
+                            <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center mb-4 text-red-500">
+                                <ShieldAlert size={24} />
+                            </div>
+                            <h3 className="text-lg font-bold text-gray-900 mb-1">Manager Override</h3>
+                            <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+                                Enter your manager credentials to unpair this terminal from {restaurant?.name}.
+                            </p>
+
+                            <form onSubmit={handleUnpairSubmit} className="flex flex-col gap-4">
+                                {unpairError && (
+                                    <div className="bg-red-50 text-red-700 px-3 py-2.5 rounded-xl text-xs font-medium border border-red-100">
+                                        {unpairError}
+                                    </div>
+                                )}
+                                
+                                <div className="relative">
+                                    <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <input 
+                                        type="email" 
+                                        required
+                                        value={unpairEmail}
+                                        onChange={e => setUnpairEmail(e.target.value)}
+                                        placeholder="Manager Email" 
+                                        className="h-11 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 text-sm outline-none text-gray-900 placeholder:text-gray-400 focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all"
+                                    />
+                                </div>
+                                <div className="relative">
+                                    <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <input 
+                                        type="password" 
+                                        required
+                                        value={unpairPassword}
+                                        onChange={e => setUnpairPassword(e.target.value)}
+                                        placeholder="Password" 
+                                        className="h-11 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 text-sm outline-none text-gray-900 placeholder:text-gray-400 focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all"
+                                    />
+                                </div>
+
+                                <button 
+                                    type="submit"
+                                    disabled={unpairLoading}
+                                    className="w-full h-11 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-bold shadow-md shadow-red-500/20 transition-all flex items-center justify-center mt-2 disabled:opacity-70"
+                                >
+                                    {unpairLoading ? <Loader2 size={18} className="animate-spin" /> : 'Confirm Unpair'}
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                )}
             </div>
         )
     }

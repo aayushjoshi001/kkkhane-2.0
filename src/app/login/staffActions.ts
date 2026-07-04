@@ -35,33 +35,38 @@ export async function getActiveStaffForTerminal(slugRaw: string): Promise<Termin
 
     const supabase = await createAdminClient()
 
-    const { data: restaurant } = await supabase
-        .from('restaurants')
-        .select('id, name, logo_url, is_suspended')
-        .eq('slug', slug)
-        .maybeSingle()
+    try {
+        const { data: restaurant } = await supabase
+            .from('restaurants')
+            .select('id, name, logo_url, is_suspended')
+            .eq('slug', slug)
+            .maybeSingle()
 
-    if (!restaurant || restaurant.is_suspended) {
-        return { error: 'No restaurant found for that code' }
-    }
+        if (!restaurant || restaurant.is_suspended) {
+            return { error: 'No restaurant found for that code' }
+        }
 
-    const { data: staff } = await supabase
-        .from('users')
-        .select('id, full_name, avatar_url, role_id, roles(name)')
-        .eq('restaurant_id', restaurant.id)
-        .eq('is_active', true)
-        .in('role_id', PIN_ELIGIBLE_ROLE_IDS as unknown as number[])
-        .order('full_name', { ascending: true })
+        const { data: staff } = await supabase
+            .from('users')
+            .select('id, full_name, avatar_url, role_id, roles(name)')
+            .eq('restaurant_id', restaurant.id)
+            .eq('is_active', true)
+            .in('role_id', PIN_ELIGIBLE_ROLE_IDS as unknown as number[])
+            .order('full_name', { ascending: true })
 
-    return {
-        restaurant: { id: restaurant.id, name: restaurant.name, logoUrl: restaurant.logo_url },
-        staff: (staff || []).map(s => ({
-            id: s.id,
-            full_name: s.full_name,
-            avatar_url: s.avatar_url,
-            role_id: s.role_id,
-            roleName: (s.roles as unknown as { name: string } | null)?.name || '',
-        })),
+        return {
+            restaurant: { id: restaurant.id, name: restaurant.name, logoUrl: restaurant.logo_url },
+            staff: (staff || []).map(s => ({
+                id: s.id,
+                full_name: s.full_name,
+                avatar_url: s.avatar_url,
+                role_id: s.role_id,
+                roleName: (s.roles as unknown as { name: string } | null)?.name || '',
+            })),
+        }
+    } catch (err: any) {
+        console.error('Terminal lookup error:', err)
+        return { error: 'Network error connecting to the server.' }
     }
 }
 
@@ -115,21 +120,87 @@ export async function staffPinLoginAction(params: { userId: string; restaurantId
     const { data: pinValid } = await adminSupabase.rpc('verify_staff_pin', { p_user_id: userId, p_pin: pin })
     if (!pinValid) return { error: 'Incorrect PIN' }
 
-    const { data: linkData, error: linkError } = await adminSupabase.auth.admin.generateLink({
-        type: 'magiclink',
-        email: user.email,
-    })
-    if (linkError || !linkData?.properties?.hashed_token) {
-        return { error: 'Login failed. Please try again.' }
+    try {
+        const { data: linkData, error: linkError } = await adminSupabase.auth.admin.generateLink({
+            type: 'magiclink',
+            email: user.email,
+        })
+        if (linkError || !linkData?.properties?.hashed_token) {
+            return { error: 'Login failed. Please try again.' }
+        }
+
+        const serverClient = await createServerClient()
+        const { error: verifyError } = await serverClient.auth.verifyOtp({
+            email: user.email,
+            token_hash: linkData.properties.hashed_token,
+            type: 'magiclink',
+        })
+        if (verifyError) return { error: 'Login failed. Please try again.' }
+    } catch (err: any) {
+        console.error('Staff PIN login error:', err)
+        if (err?.message?.includes('fetch failed') || err?.cause?.code) {
+            return { error: 'Network connection failed. Please check your internet or try again later.' }
+        }
+        return { error: 'An unexpected error occurred during login.' }
     }
 
-    const serverClient = await createServerClient()
-    const { error: verifyError } = await serverClient.auth.verifyOtp({
-        email: user.email,
-        token_hash: linkData.properties.hashed_token,
-        type: 'magiclink',
-    })
-    if (verifyError) return { error: 'Login failed. Please try again.' }
-
     return { success: true, landing: ROLE_LANDING[roleName] || '/login' }
+}
+
+/**
+ * Validates a manager/owner's credentials to authorize wiping the terminal slug
+ * from a POS device, ensuring cashiers cannot unpair a terminal themselves.
+ */
+export async function authorizeUnpairAction(params: { email: string; password: string }): Promise<{ success?: boolean; error?: string }> {
+    const { email, password } = params
+
+    if (!email || !password) return { error: 'Email and password are required' }
+
+    const rateLimitError = await checkRateLimit('UNPAIR_TERMINAL', 5, 900)
+    if (rateLimitError) return { error: rateLimitError }
+
+    const adminSupabase = await createAdminClient()
+
+    // We just need to verify the password, so we use signInWithPassword on a dummy client,
+    // or just use admin auth. Supabase admin does not have a direct verify password method.
+    // The easiest way is to use a standard client to attempt a login.
+    const tempClient = await createServerClient()
+    let signInData;
+    
+    try {
+        const { data, error } = await tempClient.auth.signInWithPassword({
+            email,
+            password
+        })
+
+        if (error || !data.user) {
+            return { error: 'Invalid manager credentials' }
+        }
+        signInData = data;
+    } catch (err: any) {
+        console.error('Authorize unpair error:', err)
+        if (err?.message?.includes('fetch failed') || err?.cause?.code) {
+            return { error: 'Network connection failed. Please check your internet or try again later.' }
+        }
+        return { error: 'An unexpected error occurred. Please try again.' }
+    }
+
+    // Now check if this user is actually a manager or super_admin
+    const { data: userData } = await adminSupabase
+        .from('users')
+        .select('role_id, roles(name)')
+        .eq('id', signInData.user.id)
+        .single()
+
+    const roleName = (userData?.roles as unknown as { name: string } | null)?.name
+    
+    // We must sign them out immediately since we are just checking credentials, 
+    // we don't want the terminal browser to actually hold this manager's session.
+    await tempClient.auth.signOut()
+
+    if (roleName !== 'manager' && roleName !== 'super_admin') {
+        return { error: 'Only managers can unpair a terminal' }
+    }
+
+    return { success: true }
 }
