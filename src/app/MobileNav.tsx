@@ -5,10 +5,10 @@ import { Menu, X } from 'lucide-react'
 import Link from 'next/link'
 
 const NAV_LINKS = [
-    { href: '#features', label: 'Features' },
-    { href: '#how-it-works', label: 'How it Works' },
-    { href: '#pricing', label: 'Pricing' },
-    { href: '#faq', label: 'FAQ' },
+    { href: '/#features', label: 'Features' },
+    { href: '/#how-it-works', label: 'How it Works' },
+    { href: '/#pricing', label: 'Pricing' },
+    { href: '/#faq', label: 'FAQ' },
 ]
 
 export default function MobileNav() {
@@ -84,9 +84,9 @@ export default function MobileNav() {
                         Staff Login
                     </Link>
                     <Link
-                        href="#pricing"
+                        href="/#pricing"
                         onClick={() => setTimeout(() => setOpen(false), 150)}
-                        className="flex items-center justify-center mt-2 px-4 py-3 text-base font-semibold text-white bg-[var(--color-primary)] rounded-xl hover:opacity-90 transition-all"
+                        className="flex items-center justify-center mt-2 px-4 py-3 text-base font-semibold text-white bg-brand-500 rounded-xl hover:bg-brand-600 transition-all shadow-[0_4px_12px_rgba(251,99,3,0.25)]"
                     >
                         Get Started
                     </Link>

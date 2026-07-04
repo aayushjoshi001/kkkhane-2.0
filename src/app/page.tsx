@@ -217,6 +217,34 @@ export default async function Home() {
                 </div>
             </section>
 
+            {/* ── How It Works ─────────────────────────────────────────────── */}
+            <section id="how-it-works" className="py-32 bg-white border-y border-gray-100">
+                <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="text-center mb-20 max-w-3xl mx-auto">
+                        <h2 className="text-4xl sm:text-5xl font-extrabold text-gray-900 mb-6 tracking-tight">
+                            Setup in <span className="text-brand-500">minutes.</span>
+                        </h2>
+                        <p className="text-xl text-gray-500 font-medium">Getting started is effortless. We designed it to be so intuitive, you won&apos;t need a manual.</p>
+                    </div>
+                    <div className="grid md:grid-cols-3 gap-10">
+                        {[
+                            { step: '01', title: 'Create Account', desc: 'Sign up for free. No credit card required. Instantly access your dashboard.' },
+                            { step: '02', title: 'Add Menu & Staff', desc: 'Upload your items, set prices, and invite your team members with custom roles.' },
+                            { step: '03', title: 'Start Taking Orders', desc: 'Generate QR codes for tables and let customers order, or use the POS.' },
+                        ].map((s, i) => (
+                            <div key={i} className="relative bg-[#FAFAF8] rounded-[2.5rem] p-10 border border-gray-100 hover:shadow-xl hover:-translate-y-2 transition-all duration-300">
+                                <span className="text-[6rem] font-black text-gray-900/5 absolute top-4 right-6 pointer-events-none">{s.step}</span>
+                                <div className="w-14 h-14 bg-brand-100 text-brand-600 rounded-2xl flex items-center justify-center font-bold text-xl mb-8 shadow-sm">
+                                    {i + 1}
+                                </div>
+                                <h3 className="text-2xl font-bold text-gray-900 mb-4">{s.title}</h3>
+                                <p className="text-gray-500 font-medium leading-relaxed">{s.desc}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
             {/* ── 5. Testimonials Masonry ────────────────────────────────────── */}
             <section className="py-32 bg-white">
                 <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
@@ -261,8 +289,63 @@ export default async function Home() {
                 </div>
             </section>
 
+            {/* ── Pricing Section ────────────────────────────────────────────── */}
+            <section id="pricing" className="py-32 bg-[#FAFAF8]">
+                <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="text-center mb-20 max-w-3xl mx-auto">
+                        <h2 className="text-4xl sm:text-5xl font-extrabold text-gray-900 mb-6 tracking-tight">Simple, transparent pricing.</h2>
+                        <p className="text-xl text-gray-500 font-medium">No hidden fees, no hardware lock-in. Choose the plan that fits your growth.</p>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                        {/* Free Tier */}
+                        <div className="bg-white rounded-[2.5rem] p-10 border border-gray-200 hover:border-gray-300 transition-all hover:shadow-xl flex flex-col">
+                            <h3 className="text-2xl font-extrabold text-gray-900 mb-2">Essential</h3>
+                            <p className="text-gray-500 font-medium mb-6">Perfect for small cafes and startups.</p>
+                            <div className="mb-8">
+                                <span className="text-5xl font-black text-gray-900">Free</span>
+                            </div>
+                            <ul className="space-y-4 mb-10 flex-1">
+                                {['Digital QR Menu', 'Order Management', 'Basic Reports', 'Up to 3 Staff Members', 'Email Support'].map((f, i) => (
+                                    <li key={i} className="flex items-center gap-3 font-medium text-gray-700">
+                                        <CheckCircle className="text-brand-500 shrink-0" size={20} />
+                                        {f}
+                                    </li>
+                                ))}
+                            </ul>
+                            <Link href="/signup" className="w-full text-center bg-gray-50 text-gray-900 font-bold py-4 rounded-2xl border border-gray-200 hover:bg-gray-100 transition-colors">
+                                Get Started
+                            </Link>
+                        </div>
+
+                        {/* Pro Tier */}
+                        <div className="bg-gray-900 rounded-[2.5rem] p-10 border border-gray-800 hover:border-gray-700 transition-all hover:shadow-2xl shadow-xl shadow-gray-900/20 relative flex flex-col overflow-hidden">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-brand-500 opacity-20 blur-[80px] rounded-full pointer-events-none" />
+                            <div className="absolute top-6 right-8 bg-brand-500 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">Most Popular</div>
+                            <h3 className="text-2xl font-extrabold text-white mb-2">Professional</h3>
+                            <p className="text-gray-400 font-medium mb-6">For growing restaurants that need more power.</p>
+                            <div className="mb-8 flex items-end gap-2">
+                                <span className="text-5xl font-black text-white">Rs. 2,999</span>
+                                <span className="text-gray-400 font-medium mb-2">/month</span>
+                            </div>
+                            <ul className="space-y-4 mb-10 flex-1">
+                                {['Everything in Essential', 'IRD Approved Billing', 'Unlimited Staff Members', 'Advanced Analytics & Exports', 'Priority 24/7 Support'].map((f, i) => (
+                                    <li key={i} className="flex items-center gap-3 font-medium text-gray-300">
+                                        <CheckCircle className="text-brand-400 shrink-0" size={20} />
+                                        {f}
+                                    </li>
+                                ))}
+                            </ul>
+                            <Link href="/signup" className="w-full text-center bg-brand-500 text-white font-extrabold py-4 rounded-2xl hover:bg-brand-400 transition-colors shadow-lg shadow-brand-500/20">
+                                Start 14-Day Free Trial
+                            </Link>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             {/* ── 6. FAQ Section ─────────────────────────────────────────────── */}
-            <section id="faq" className="py-24 bg-[#FAFAF8]">
+            <section id="faq" className="py-24 bg-white">
                 <div className="max-w-[900px] mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-16">
                         <h2 className="text-4xl font-extrabold text-gray-900 tracking-tight">Frequently Asked Questions</h2>
