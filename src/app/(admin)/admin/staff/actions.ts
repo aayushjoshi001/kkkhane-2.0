@@ -113,7 +113,7 @@ export async function createStaffPinAction(input: { fullName: string; roleId: nu
 
     const { data: newStaff } = await supabase
         .from('users')
-        .select('id, full_name, avatar_url, is_active, role_id, created_at, roles(id, name, description)')
+        .select('id, full_name, avatar_url, is_active, role_id, department_id, created_at, roles(id, name, description), departments(id, name)')
         .eq('id', userId)
         .single()
 

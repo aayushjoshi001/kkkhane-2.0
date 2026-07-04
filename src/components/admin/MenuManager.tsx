@@ -675,7 +675,7 @@ export default function MenuManager({
                                         <Image src={categoryImageUrl} alt="Category" fill sizes="400px" className="object-cover" />
                                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/cat:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-sm">
                                             <label className="bg-surface text-ink text-xs font-bold px-4 py-2 rounded-[var(--r-md)] shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 cursor-pointer hover:-translate-y-0.5">
-                                                <input type="file" accept="image/*" className="hidden" disabled={categoryImageUploading} onChange={e => { const f = e.target.files?.[0]; if (f) uploadCategoryImage(f); e.target.value = '' }} />
+                                                <input type="file" accept="image/*" className="sr-only" disabled={categoryImageUploading} onChange={e => { const f = e.target.files?.[0]; if (f) uploadCategoryImage(f); e.target.value = '' }} />
                                                 <Upload size={14} /> Change
                                             </label>
                                             <button type="button" onClick={() => setCategoryImageUrl('')} className="bg-danger-bg text-danger-fg text-xs font-bold px-4 py-2 rounded-[var(--r-md)] shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 hover:-translate-y-0.5">
@@ -685,7 +685,7 @@ export default function MenuManager({
                                     </div>
                                 ) : (
                                     <label className="w-full border-2 border-dashed border-hairline rounded-[var(--r-md)] h-32 flex flex-col items-center justify-center gap-2 text-ink-subtle hover:border-brand-400 hover:text-brand-500 hover:bg-brand-50 transition-colors cursor-pointer">
-                                        <input type="file" accept="image/*" className="hidden" disabled={categoryImageUploading} onChange={e => { const f = e.target.files?.[0]; if (f) uploadCategoryImage(f); e.target.value = '' }} />
+                                        <input type="file" accept="image/*" className="sr-only" disabled={categoryImageUploading} onChange={e => { const f = e.target.files?.[0]; if (f) uploadCategoryImage(f); e.target.value = '' }} />
                                         {categoryImageUploading ? <Loader2 size={24} className="animate-spin" /> : <ImageIcon size={24} />}
                                         <span className="text-xs font-bold">{categoryImageUploading ? 'Uploading…' : 'Click to upload photo'}</span>
                                     </label>
@@ -809,7 +809,7 @@ export default function MenuManager({
                                             ref={imageInputRef}
                                             type="file"
                                             accept="image/*"
-                                            className="hidden"
+                                            className="sr-only"
                                             onChange={e => { const f = e.target.files?.[0]; if (f) uploadMenuImage(f) }}
                                         />
                                         {itemFormData.image_url ? (
@@ -883,7 +883,7 @@ export default function MenuManager({
                                                     <input
                                                         type="file"
                                                         accept="image/*"
-                                                        className="hidden"
+                                                        className="sr-only"
                                                         disabled={variationUploadIdx !== null}
                                                         onChange={e => { const f = e.target.files?.[0]; if (f) uploadVariationImage(idx, f); e.target.value = '' }}
                                                     />

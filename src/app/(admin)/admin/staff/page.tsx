@@ -41,16 +41,28 @@ export default async function StaffManagementPage() {
             avatar_url,
             is_active,
             role_id,
+            department_id,
             created_at,
             roles (
                 id,
                 name,
                 description
+            ),
+            departments (
+                id,
+                name
             )
         `)
         .eq('restaurant_id', restaurantId)
         .neq('role_id', 5) // Exclude standard customers from the staff dashboard
         .order('created_at', { ascending: false })
+
+    // 4. Fetch departments
+    const { data: departments } = await adminSupabase
+        .from('departments')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .order('name', { ascending: true })
 
     return (
         <div className="space-y-6">
@@ -64,6 +76,7 @@ export default async function StaffManagementPage() {
             <StaffManager
                 initialStaff={staffMembers || []}
                 roles={roles || []}
+                departments={departments || []}
                 currentUserRole={currentUserRole}
                 currentUserId={userId}
                 restaurantId={restaurantId}

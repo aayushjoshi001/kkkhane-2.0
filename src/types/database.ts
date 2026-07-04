@@ -66,9 +66,18 @@ export interface Restaurant {
     allowed_ips: string | null
 }
 
+export interface Department {
+    id: string
+    restaurant_id: string
+    name: string
+    description: string | null
+    created_at: string
+}
+
 export interface User {
     id: string
     restaurant_id: string
+    department_id: string | null
     full_name: string
     avatar_url: string | null
     role_id: number
@@ -77,6 +86,7 @@ export interface User {
     updated_at: string
     // Joined fields
     roles?: Role
+    departments?: Department
 }
 
 export type TableStatus = 'available' | 'dirty' | 'reserved'

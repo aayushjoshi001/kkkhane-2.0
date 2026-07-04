@@ -376,7 +376,7 @@ export default function SettingsManager({
                                             ref={logoInputRef}
                                             type="file"
                                             accept="image/*"
-                                            className="hidden"
+                                            className="sr-only"
                                             onChange={(e) => { if (e.target.files?.[0]) handleFileUpload(e.target.files[0], 'logo_url') }}
                                         />
                                     </label>
@@ -615,7 +615,7 @@ export default function SettingsManager({
                                             ref={qrInputRef}
                                             type="file"
                                             accept="image/*"
-                                            className="hidden"
+                                            className="sr-only"
                                             onChange={(e) => { if (e.target.files?.[0]) handleFileUpload(e.target.files[0], 'payment_qr_url') }}
                                         />
                                     </label>
@@ -821,7 +821,7 @@ export default function SettingsManager({
                         ref={soundInputRef}
                         type="file"
                         accept="audio/mpeg,audio/mp3,audio/wav,audio/ogg"
-                        className="hidden"
+                        className="sr-only"
                         disabled={!canEdit || uploadingField === 'notification_sound'}
                         onChange={(e) => { if (e.target.files?.[0]) handleSoundUpload(e.target.files[0]) }}
                     />

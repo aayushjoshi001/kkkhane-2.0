@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { Shield, ChefHat, Users, User, Check, AlertTriangle, Loader2, Pencil, Trash2, Eye, EyeOff, Banknote, Search, KeyRound, Copy, Link2 } from 'lucide-react'
 import { updateStaffRoleAction, toggleStaffStatusAction, updateStaffNameAction, resetStaffPasswordAction, deleteStaffAction, createStaffPinAction } from '@/app/(admin)/admin/staff/actions'
+import { createDepartmentAction, updateDepartmentAction, deleteDepartmentAction, updateStaffDepartmentAction } from '@/app/(admin)/admin/staff/department-actions'
 import { PIN_ELIGIBLE_ROLE_IDS, isPinEligibleRole } from '@/lib/staffPin'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
@@ -14,10 +15,13 @@ type StaffMember = {
     avatar_url: string | null
     is_active: boolean
     role_id: number
+    department_id: string | null
     created_at: string
     // Supabase can return arrays for joins depending on the query shape
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     roles: any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    departments: any
 }
 
 type Role = {
@@ -26,9 +30,16 @@ type Role = {
     description: string | null
 }
 
+export type Department = {
+    id: string
+    name: string
+    description: string | null
+}
+
 export default function StaffManager({
     initialStaff,
     roles,
+    departments: initialDepartments,
     currentUserRole,
     currentUserId,
     restaurantId,
@@ -36,12 +47,15 @@ export default function StaffManager({
 }: {
     initialStaff: StaffMember[]
     roles: Role[]
+    departments: Department[]
     currentUserRole: string
     currentUserId: string
     restaurantId: string
     restaurantSlug: string
 }) {
     const [staff, setStaff] = useState<StaffMember[]>(initialStaff)
+    const [departments, setDepartments] = useState<Department[]>(initialDepartments)
+    const [activeTab, setActiveTab] = useState<'staff' | 'departments'>('staff')
     const [submittingId, setSubmittingId] = useState<string | null>(null)
     const { confirm } = useConfirmStore()
 
@@ -78,6 +92,7 @@ export default function StaffManager({
         isOpen: boolean
         user: StaffMember | null
         fullName: string
+        departmentId: string | null
         newPassword: string
         confirmPassword: string
         showPassword: boolean
@@ -87,11 +102,26 @@ export default function StaffManager({
         isOpen: false,
         user: null,
         fullName: '',
+        departmentId: null,
         newPassword: '',
         confirmPassword: '',
         showPassword: false,
         saving: false,
         deletingId: null,
+    })
+
+    const [departmentModal, setDepartmentModal] = useState<{
+        isOpen: boolean
+        department: Department | null
+        name: string
+        description: string
+        saving: boolean
+    }>({
+        isOpen: false,
+        department: null,
+        name: '',
+        description: '',
+        saving: false
     })
 
     const handleRoleChange = async () => {
@@ -229,19 +259,37 @@ export default function StaffManager({
     }
 
     const openEditModal = (user: StaffMember) => {
-        setEditModal({ isOpen: true, user, fullName: user.full_name, newPassword: '', confirmPassword: '', showPassword: false, saving: false, deletingId: null })
+        setEditModal({ isOpen: true, user, fullName: user.full_name, departmentId: user.department_id, newPassword: '', confirmPassword: '', showPassword: false, saving: false, deletingId: null })
     }
 
-    const handleSaveName = async () => {
+    const handleSaveProfile = async () => {
         if (!editModal.user) return
         setEditModal(prev => ({ ...prev, saving: true }))
-        const res = await updateStaffNameAction(editModal.user!.id, editModal.fullName)
-        if (res.success) {
-            setStaff(prev => prev.map(s => s.id === editModal.user!.id ? { ...s, full_name: editModal.fullName.trim() } : s))
-            toast.success('Name updated')
-        } else {
-            toast.error(res.error || 'Failed to update name')
+        
+        let success = true
+        
+        if (editModal.fullName.trim() !== editModal.user.full_name) {
+            const res = await updateStaffNameAction(editModal.user.id, editModal.fullName)
+            if (res.success) {
+                setStaff(prev => prev.map(s => s.id === editModal.user!.id ? { ...s, full_name: editModal.fullName.trim() } : s))
+            } else {
+                toast.error(res.error || 'Failed to update name')
+                success = false
+            }
         }
+        
+        if (editModal.departmentId !== editModal.user.department_id) {
+            const res = await updateStaffDepartmentAction(editModal.user.id, editModal.departmentId)
+            if (res.success) {
+                const newDept = departments.find(d => d.id === editModal.departmentId)
+                setStaff(prev => prev.map(s => s.id === editModal.user!.id ? { ...s, department_id: editModal.departmentId, departments: newDept || null } : s))
+            } else {
+                toast.error(res.error || 'Failed to update department')
+                success = false
+            }
+        }
+
+        if (success) toast.success('Profile updated')
         setEditModal(prev => ({ ...prev, saving: false }))
     }
 
@@ -272,11 +320,62 @@ export default function StaffManager({
         const res = await deleteStaffAction(user.id)
         if (res.success) {
             setStaff(prev => prev.filter(s => s.id !== user.id))
-            setEditModal({ isOpen: false, user: null, fullName: '', newPassword: '', confirmPassword: '', showPassword: false, saving: false, deletingId: null })
+            setEditModal({ isOpen: false, user: null, fullName: '', departmentId: null, newPassword: '', confirmPassword: '', showPassword: false, saving: false, deletingId: null })
             toast.success(`${user.full_name} has been removed`)
         } else {
             toast.error(res.error || 'Failed to delete account')
             setEditModal(prev => ({ ...prev, deletingId: null }))
+        }
+    }
+
+    const handleSaveDepartment = async () => {
+        if (!departmentModal.name.trim()) {
+            toast.error('Department name is required')
+            return
+        }
+        setDepartmentModal(prev => ({ ...prev, saving: true }))
+        
+        if (departmentModal.department) {
+            const res = await updateDepartmentAction(departmentModal.department.id, departmentModal.name, departmentModal.description)
+            if (res.success) {
+                setDepartments(prev => prev.map(d => d.id === departmentModal.department!.id ? { ...d, name: departmentModal.name.trim(), description: departmentModal.description.trim() || null } : d))
+                toast.success('Department updated')
+                setDepartmentModal({ isOpen: false, department: null, name: '', description: '', saving: false })
+            } else {
+                toast.error(res.error || 'Failed to update department')
+                setDepartmentModal(prev => ({ ...prev, saving: false }))
+            }
+        } else {
+            const res = await createDepartmentAction(departmentModal.name, departmentModal.description)
+            if (res.success && res.department) {
+                setDepartments(prev => [...prev, res.department as Department])
+                toast.success('Department created')
+                setDepartmentModal({ isOpen: false, department: null, name: '', description: '', saving: false })
+            } else {
+                toast.error(res.error || 'Failed to create department')
+                setDepartmentModal(prev => ({ ...prev, saving: false }))
+            }
+        }
+    }
+
+    const handleDeleteDepartment = async (dept: Department) => {
+        const staffInDept = staff.filter(s => s.department_id === dept.id).length
+        
+        const ok = await confirm({
+            title: 'Delete Department?',
+            message: `Are you sure you want to delete ${dept.name}?${staffInDept > 0 ? ` ${staffInDept} staff members will be unassigned from this department.` : ''}`,
+            confirmText: 'Delete Department',
+            isDestructive: true,
+        })
+        if (!ok) return
+        
+        const res = await deleteDepartmentAction(dept.id)
+        if (res.success) {
+            setDepartments(prev => prev.filter(d => d.id !== dept.id))
+            setStaff(prev => prev.map(s => s.department_id === dept.id ? { ...s, department_id: null, departments: null } : s))
+            toast.success('Department deleted')
+        } else {
+            toast.error(res.error || 'Failed to delete department')
         }
     }
 
@@ -304,31 +403,61 @@ export default function StaffManager({
         <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden">
             <div className="p-5 md:p-6 border-b border-hairline flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-surface-muted/30">
                 <div>
-                    <h3 className="text-h3 font-extrabold text-ink">Team Roster ({staff.length})</h3>
-                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-1.5">Create staff accounts and manage roles</p>
+                    <h3 className="text-h3 font-extrabold text-ink">Staff Management</h3>
+                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-1.5">Manage accounts, roles, and departments</p>
                 </div>
                 <div className="flex items-center gap-3 flex-wrap justify-end">
-                    {restaurantSlug && (
+                    {activeTab === 'staff' ? (
+                        <>
+                            {restaurantSlug && (
+                                <button
+                                    onClick={handleCopyTerminalLink}
+                                    title="Copy the link staff use to sign in with their name + PIN on a shared device"
+                                    className="px-4 py-2.5 text-xs font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors flex items-center gap-2 shrink-0 focus-ring"
+                                >
+                                    <Link2 size={16} />
+                                    <span className="hidden sm:inline">Staff Terminal Link</span>
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setCreateModal(prev => ({ ...prev, isOpen: true }))}
+                                className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 shrink-0 focus-ring"
+                            >
+                                <Users size={16} />
+                                Add Staff
+                            </button>
+                        </>
+                    ) : (
                         <button
-                            onClick={handleCopyTerminalLink}
-                            title="Copy the link staff use to sign in with their name + PIN on a shared device"
-                            className="px-4 py-2.5 text-xs font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors flex items-center gap-2 shrink-0 focus-ring"
+                            onClick={() => setDepartmentModal({ isOpen: true, department: null, name: '', description: '', saving: false })}
+                            className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 shrink-0 focus-ring"
                         >
-                            <Link2 size={16} />
-                            <span className="hidden sm:inline">Staff Terminal Link</span>
+                            <Check size={16} />
+                            Add Department
                         </button>
                     )}
-                    <button
-                        onClick={() => setCreateModal(prev => ({ ...prev, isOpen: true }))}
-                        className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 shrink-0 focus-ring"
-                    >
-                        <Users size={16} />
-                        Add Staff
-                    </button>
                 </div>
             </div>
 
-            {/* Filters */}
+            {/* Tabs */}
+            <div className="flex px-5 md:px-6 border-b border-hairline bg-surface">
+                <button
+                    onClick={() => setActiveTab('staff')}
+                    className={`py-3.5 px-1 mr-6 text-sm font-bold border-b-2 transition-colors ${activeTab === 'staff' ? 'border-brand-500 text-brand-600' : 'border-transparent text-ink-subtle hover:text-ink'}`}
+                >
+                    Team Roster ({staff.length})
+                </button>
+                <button
+                    onClick={() => setActiveTab('departments')}
+                    className={`py-3.5 px-1 text-sm font-bold border-b-2 transition-colors ${activeTab === 'departments' ? 'border-brand-500 text-brand-600' : 'border-transparent text-ink-subtle hover:text-ink'}`}
+                >
+                    Departments ({departments.length})
+                </button>
+            </div>
+
+            {activeTab === 'staff' && (
+                <>
+                    {/* Filters */}
             <div className="px-5 md:px-6 py-4 border-b border-hairline flex flex-col sm:flex-row gap-4 bg-surface">
                 <div className="relative flex-1">
                     <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-subtle" />
@@ -360,6 +489,7 @@ export default function StaffManager({
                             <th className="px-6 py-4">Staff Member</th>
                             <th className="px-6 py-4">System Role</th>
                             <th className="px-6 py-4">Status</th>
+                            <th className="px-6 py-4">Department</th>
                             <th className="px-6 py-4 text-right">Actions</th>
                         </tr>
                     </thead>
@@ -403,6 +533,13 @@ export default function StaffManager({
                                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${user.is_active ? 'bg-success-bg/20 text-success-fg border-success-bg' : 'bg-danger-bg/20 text-danger-fg border-danger-bg'}`}>
                                             {user.is_active ? 'Active' : 'Suspended'}
                                         </span>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        {user.departments ? (
+                                            <span className="text-sm font-bold text-ink">{user.departments.name}</span>
+                                        ) : (
+                                            <span className="text-sm font-bold text-ink-muted italic">Unassigned</span>
+                                        )}
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         {canEdit ? (
@@ -485,6 +622,60 @@ export default function StaffManager({
                     <div className="p-8 text-center text-ink-subtle font-bold italic">No staff members found.</div>
                 )}
             </div>
+            </>
+            )}
+
+            {activeTab === 'departments' && (
+                <div className="divide-y divide-hairline">
+                    {departments.length === 0 ? (
+                        <div className="p-12 text-center">
+                            <div className="w-16 h-16 rounded-full bg-surface-muted border border-hairline flex items-center justify-center mx-auto mb-4">
+                                <Users size={24} className="text-ink-subtle" />
+                            </div>
+                            <h4 className="text-lg font-extrabold text-ink mb-2">No Departments Yet</h4>
+                            <p className="text-sm font-medium text-ink-subtle max-w-md mx-auto mb-6">Create departments like "Kitchen", "Front of House", or "Delivery" to organize your staff better.</p>
+                            <button
+                                onClick={() => setDepartmentModal({ isOpen: true, department: null, name: '', description: '', saving: false })}
+                                className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] transition-all"
+                            >
+                                <Check size={16} /> Create Department
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="p-5 md:p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {departments.map(dept => {
+                                const staffCount = staff.filter(s => s.department_id === dept.id).length
+                                return (
+                                    <div key={dept.id} className="p-5 rounded-card bg-surface border border-hairline shadow-sm hover:shadow-md transition-shadow group relative">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <h4 className="font-extrabold text-ink text-lg">{dept.name}</h4>
+                                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={() => setDepartmentModal({ isOpen: true, department: dept, name: dept.name, description: dept.description || '', saving: false })}
+                                                    className="p-1.5 text-ink-subtle hover:text-ink hover:bg-surface-muted rounded-md transition-colors"
+                                                >
+                                                    <Pencil size={14} />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteDepartment(dept)}
+                                                    className="p-1.5 text-danger-fg/70 hover:text-danger-fg hover:bg-danger-bg/20 rounded-md transition-colors"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                        {dept.description && <p className="text-sm text-ink-subtle mb-4 line-clamp-2">{dept.description}</p>}
+                                        <div className="flex items-center gap-2 mt-auto pt-4 border-t border-hairline">
+                                            <Users size={14} className="text-brand-500" />
+                                            <span className="text-xs font-bold text-ink">{staffCount} member{staffCount !== 1 ? 's' : ''}</span>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Edit Staff Modal */}
             {editModal.isOpen && editModal.user && (
@@ -511,14 +702,29 @@ export default function StaffManager({
                                         placeholder="Full name"
                                     />
                                     <button
-                                        onClick={handleSaveName}
-                                        disabled={editModal.saving || editModal.fullName.trim() === editModal.user.full_name}
+                                        onClick={handleSaveProfile}
+                                        disabled={editModal.saving || (editModal.fullName.trim() === editModal.user.full_name && editModal.departmentId === editModal.user.department_id)}
                                         className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] disabled:opacity-40 hover:opacity-90 transition-all flex items-center gap-1.5 shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] focus-ring"
                                     >
                                         {editModal.saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
                                         Save
                                     </button>
                                 </div>
+                            </div>
+
+                            {/* Department */}
+                            <div>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-3">Department</label>
+                                <select
+                                    value={editModal.departmentId || ''}
+                                    onChange={e => setEditModal(prev => ({ ...prev, departmentId: e.target.value || null }))}
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
+                                >
+                                    <option value="">No Department</option>
+                                    {departments.map(d => (
+                                        <option key={d.id} value={d.id}>{d.name}</option>
+                                    ))}
+                                </select>
                             </div>
 
                             {/* Password */}
@@ -807,6 +1013,62 @@ export default function StaffManager({
                                 </div>
                             </>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* Department Modal */}
+            {departmentModal.isOpen && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="px-6 py-5 border-b border-hairline flex items-center justify-between shrink-0 bg-surface-muted/30">
+                            <div>
+                                <h3 className="font-extrabold text-ink text-lg">{departmentModal.department ? 'Edit Department' : 'Create Department'}</h3>
+                                <p className="text-[11px] text-ink-subtle uppercase tracking-wider font-bold mt-1">Organize your team</p>
+                            </div>
+                            <button onClick={() => setDepartmentModal(prev => ({ ...prev, isOpen: false }))} className="w-8 h-8 flex items-center justify-center rounded-[var(--r-md)] text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors focus-ring">×</button>
+                        </div>
+                        <div className="p-6 space-y-5">
+                            <div>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Department Name *</label>
+                                <input
+                                    type="text"
+                                    value={departmentModal.name}
+                                    onChange={e => setDepartmentModal(prev => ({ ...prev, name: e.target.value }))}
+                                    placeholder="e.g. Kitchen, Front of House"
+                                    disabled={departmentModal.saving}
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Description</label>
+                                <textarea
+                                    value={departmentModal.description}
+                                    onChange={e => setDepartmentModal(prev => ({ ...prev, description: e.target.value }))}
+                                    placeholder="Optional description"
+                                    disabled={departmentModal.saving}
+                                    rows={3}
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all resize-none"
+                                />
+                            </div>
+                        </div>
+                        <div className="px-6 py-5 bg-surface-muted/30 border-t border-hairline flex justify-end gap-3">
+                            <button
+                                onClick={() => setDepartmentModal(prev => ({ ...prev, isOpen: false }))}
+                                disabled={departmentModal.saving}
+                                className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors disabled:opacity-50 focus-ring"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSaveDepartment}
+                                disabled={departmentModal.saving || !departmentModal.name.trim()}
+                                className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 flex items-center gap-2 focus-ring"
+                            >
+                                {departmentModal.saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                                Save Department
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

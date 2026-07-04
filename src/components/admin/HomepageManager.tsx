@@ -304,7 +304,7 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                                         if (url) await patchAndSave({ logo_url: url })
                                     }
                                 }}
-                                className="hidden"
+                                className="sr-only"
                             />
                         </label>
                     </div>
@@ -334,7 +334,7 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                             <label className="flex items-center gap-2 px-5 py-3 border-2 border-dashed border-brand-500/30 bg-brand-50/50 rounded-[var(--r-md)] cursor-pointer hover:border-brand-500 hover:bg-brand-50 transition-all w-fit group">
                                 <Upload size={16} className="text-brand-500 group-hover:-translate-y-0.5 transition-transform" />
                                 <span className="text-[11px] font-bold uppercase tracking-wider text-brand-600">{config.hero_image_url ? 'Replace Image' : 'Upload Image'}</span>
-                                <input type="file" accept="image/*" onChange={async (e) => { if (e.target.files?.[0]) { const url = await uploadFile(e.target.files[0], 'image'); if (url) await patchAndSave({ hero_image_url: url }) } }} className="hidden" />
+                                <input type="file" accept="image/*" onChange={async (e) => { if (e.target.files?.[0]) { const url = await uploadFile(e.target.files[0], 'image'); if (url) await patchAndSave({ hero_image_url: url }) } }} className="sr-only" />
                             </label>
                             <UrlField label="…or paste an image URL" value={config.hero_image_url || ''} placeholder="https://…/image.jpg" onSave={(v) => patchAndSave({ hero_image_url: v || null })} />
                         </div>
@@ -353,7 +353,7 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                             <label className="flex items-center gap-2 px-5 py-3 border-2 border-dashed border-brand-500/30 bg-brand-50/50 rounded-[var(--r-md)] cursor-pointer hover:border-brand-500 hover:bg-brand-50 transition-all w-fit group">
                                 <Upload size={16} className="text-brand-500 group-hover:-translate-y-0.5 transition-transform" />
                                 <span className="text-[11px] font-bold uppercase tracking-wider text-brand-600">{config.hero_video_url ? 'Replace Video' : 'Upload Video (MP4 / WebM / MOV)'}</span>
-                                <input type="file" accept="video/*" onChange={async (e) => { if (e.target.files?.[0]) { const url = await uploadFile(e.target.files[0], 'video'); if (url) await patchAndSave({ hero_video_url: url }) } }} className="hidden" />
+                                <input type="file" accept="video/*" onChange={async (e) => { if (e.target.files?.[0]) { const url = await uploadFile(e.target.files[0], 'video'); if (url) await patchAndSave({ hero_video_url: url }) } }} className="sr-only" />
                             </label>
                             <UrlField label="…or paste a video URL (e.g. a hosted .mp4)" value={config.hero_video_url || ''} placeholder="https://…/video.mp4" onSave={(v) => patchAndSave({ hero_video_url: v || null })} />
                         </div>
@@ -385,7 +385,7 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                             <label className="flex items-center gap-2 px-5 py-3 border-2 border-dashed border-brand-500/30 bg-brand-50/50 rounded-[var(--r-md)] cursor-pointer hover:border-brand-500 hover:bg-brand-50 transition-all w-fit group">
                                 <Upload size={16} className="text-brand-500 group-hover:-translate-y-0.5 transition-transform" />
                                 <span className="text-[11px] font-bold uppercase tracking-wider text-brand-600">{config.about?.image_url ? 'Replace Image' : 'Upload Image'}</span>
-                                <input type="file" accept="image/*" onChange={async (e) => { if (e.target.files?.[0]) { const url = await uploadFile(e.target.files[0], 'image'); if (url) await patchAndSave({ about: { ...DEFAULT_CONFIG.about!, ...config.about, image_url: url } }) } }} className="hidden" />
+                                <input type="file" accept="image/*" onChange={async (e) => { if (e.target.files?.[0]) { const url = await uploadFile(e.target.files[0], 'image'); if (url) await patchAndSave({ about: { ...DEFAULT_CONFIG.about!, ...config.about, image_url: url } }) } }} className="sr-only" />
                             </label>
                         </div>
                         <SaveButton onClick={save} isSaving={isSaving} />
@@ -473,7 +473,7 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                                             await patchAndSave({ gallery: [...gallery, ...newItems] });
                                         }
                                     } 
-                                }} className="hidden" />
+                                }} className="sr-only" />
                             </label>
                         </div>
                         <UrlField label="…or paste an image/video URL to add" value="" placeholder="https://…/media.jpg" onSave={(v) => { 

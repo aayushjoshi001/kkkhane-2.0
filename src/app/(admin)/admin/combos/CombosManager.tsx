@@ -408,7 +408,7 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                                             ref={imageInputRef}
                                             type="file"
                                             accept="image/*"
-                                            className="hidden"
+                                            className="sr-only"
                                             onChange={e => { const f = e.target.files?.[0]; if (f) uploadComboImage(f) }}
                                         />
                                         {form.image_url ? (

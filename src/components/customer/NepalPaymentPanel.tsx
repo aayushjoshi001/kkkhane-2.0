@@ -228,7 +228,7 @@ export default function NepalPaymentPanel({
                                         accept="image/*"
                                         capture="environment"
                                         onChange={handleFileChange}
-                                        className="hidden"
+                                        className="sr-only"
                                     />
                                 </label>
                             )}
@@ -278,7 +278,7 @@ export default function NepalPaymentPanel({
                                     type="file"
                                     accept="image/*"
                                     onChange={handleFileChange}
-                                    className="hidden"
+                                    className="sr-only"
                                 />
                             </label>
                         )}

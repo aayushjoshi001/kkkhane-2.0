@@ -188,7 +188,7 @@ export default function ThemeCustomizer({
                                 accept="image/*"
                                 disabled={isUploading}
                                 onChange={(e) => { if (e.target.files?.[0]) handleLogoUpload(e.target.files[0]) }}
-                                className="hidden"
+                                className="sr-only"
                             />
                         </label>
                         {logoUrl && (

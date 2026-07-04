@@ -69,7 +69,7 @@ export default function MobileNav() {
                         <a
                             key={link.href}
                             href={link.href}
-                            onClick={() => setOpen(false)}
+                            onClick={() => setTimeout(() => setOpen(false), 150)}
                             className="flex items-center px-4 py-3 text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors"
                         >
                             {link.label}
@@ -78,14 +78,14 @@ export default function MobileNav() {
                     <hr className="my-2 border-gray-100" />
                     <Link
                         href="/login"
-                        onClick={() => setOpen(false)}
+                        onClick={() => setTimeout(() => setOpen(false), 150)}
                         className="flex items-center px-4 py-3 text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors"
                     >
                         Staff Login
                     </Link>
                     <Link
                         href="#pricing"
-                        onClick={() => setOpen(false)}
+                        onClick={() => setTimeout(() => setOpen(false), 150)}
                         className="flex items-center justify-center mt-2 px-4 py-3 text-base font-semibold text-white bg-[var(--color-primary)] rounded-xl hover:opacity-90 transition-all"
                     >
                         Get Started

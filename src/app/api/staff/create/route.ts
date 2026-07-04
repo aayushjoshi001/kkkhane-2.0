@@ -158,8 +158,10 @@ export async function POST(req: NextRequest) {
                 avatar_url,
                 is_active,
                 role_id,
+                department_id,
                 created_at,
-                roles(id, name, description)
+                roles(id, name, description),
+                departments(id, name)
             `)
             .eq('id', authUser.user.id)
             .single()
