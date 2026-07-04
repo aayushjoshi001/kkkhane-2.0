@@ -38,7 +38,7 @@ export default async function TakeoutPage() {
                 title="Takeout Orders" 
                 description="Platform-wide takeout order overview across all restaurants." 
                 icon={<Truck size={18} />}
-                color="amber"
+                color="orange"
             />
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">

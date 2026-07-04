@@ -61,7 +61,7 @@ export default async function PaymentsPage() {
                 title="Subscription Payments" 
                 description="Track subscription billing and tenant payment history." 
                 icon={<CreditCard size={18} />}
-                color="emerald"
+                color="green"
             />
 
             {/* KPI row */}

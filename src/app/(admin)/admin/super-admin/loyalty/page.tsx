@@ -35,7 +35,7 @@ export default async function LoyaltyPage() {
                 title="Loyalty Programs" 
                 description="Platform-wide loyalty program overview across all tenants." 
                 icon={<Heart size={18} />}
-                color="emerald"
+                color="green"
             />
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">

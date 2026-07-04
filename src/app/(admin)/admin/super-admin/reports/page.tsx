@@ -22,7 +22,7 @@ export default async function ReportsPage() {
                 title="EOD Reports" 
                 description="End-of-day reports across all restaurant tenants." 
                 icon={<FileText size={18} />}
-                color="indigo"
+                color="purple"
             />
             <ReportsClient reports={(reportsResult.data || []) as unknown as Report[]} restaurants={restaurants} />
         </div>

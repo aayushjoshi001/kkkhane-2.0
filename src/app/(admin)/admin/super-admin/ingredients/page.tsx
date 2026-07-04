@@ -35,7 +35,7 @@ export default async function IngredientsPage() {
                 title="Ingredients" 
                 description="Cross-tenant ingredient inventory overview." 
                 icon={<Package size={18} />}
-                color="indigo"
+                color="purple"
             />
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">

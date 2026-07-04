@@ -47,7 +47,7 @@ export default async function StaffPage() {
                 title="Platform Staff" 
                 description="All staff members across every restaurant tenant." 
                 icon={<Users size={18} />}
-                color="indigo"
+                color="purple"
             />
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

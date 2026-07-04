@@ -35,7 +35,7 @@ export default async function RestaurantsPage() {
                 title="Restaurants" 
                 description="Create, suspend, and manage all restaurant tenants and their subscriptions." 
                 icon={<Building2 size={18} />}
-                color="indigo"
+                color="purple"
             />
 
             <SuperAdminDashboard

@@ -45,7 +45,7 @@ export default async function PromosPage() {
                 title="Promo Codes" 
                 description="All promo codes across every restaurant tenant." 
                 icon={<Tag size={18} />}
-                color="rose"
+                color="orange"
             />
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">

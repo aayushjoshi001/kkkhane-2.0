@@ -32,7 +32,7 @@ export default async function PricingPage() {
                 title="Dynamic Pricing" 
                 description="Read-only overview of dynamic pricing feature across all tenants." 
                 icon={<DollarSign size={18} />}
-                color="indigo"
+                color="purple"
             />
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-5 animate-fade-up" style={{ animationDelay: '0.1s' }}>

@@ -66,7 +66,7 @@ export default function MenusPage() {
                 title="Menu Catalog" 
                 description="Read-only view of all restaurant menus across the platform." 
                 icon={<UtensilsCrossed size={18} />}
-                color="amber"
+                color="orange"
             />
 
             {/* Summary */}

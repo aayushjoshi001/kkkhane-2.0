@@ -36,7 +36,7 @@ export default async function TablesPage() {
                 title="Tables & QR Codes" 
                 description="All tables across every restaurant tenant with active session status." 
                 icon={<Grid3X3 size={18} />}
-                color="emerald"
+                color="green"
             />
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
