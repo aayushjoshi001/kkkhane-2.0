@@ -1,6 +1,7 @@
 import { requireRole } from '@/lib/auth'
 import { getAllShiftsAcrossRestaurants } from '../actions'
 import { Clock } from 'lucide-react'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,20 +39,22 @@ export default async function ShiftsPage() {
     const recentShifts = result.recentShifts as unknown as Shift[]
 
     return (
-        <div className="space-y-6">
-            <div>
-                <h1 className="text-2xl font-extrabold text-gray-900">Staff Shifts</h1>
-                <p className="text-gray-500 mt-1 text-sm">Active and recent staff shifts across all restaurant tenants.</p>
-            </div>
+        <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
+            <PremiumPageHeader 
+                title="Staff Shifts" 
+                description="Active and recent staff shifts across all restaurant tenants." 
+                icon={<Clock size={18} />}
+                color="blue"
+            />
 
             <div className="grid grid-cols-2 gap-4">
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-                    <div className="text-2xl font-extrabold text-emerald-700">{activeShifts.length}</div>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-emerald-700 tabular-nums">{activeShifts.length}</div>
                     <div className="text-xs text-emerald-600 mt-0.5 font-medium">Currently Clocked In</div>
                 </div>
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                    <div className="text-2xl font-extrabold text-gray-900">{recentShifts.length}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Recent Shifts</div>
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">{recentShifts.length}</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Recent Shifts</div>
                 </div>
             </div>
 
@@ -67,7 +70,7 @@ export default async function ShiftsPage() {
             )}
 
             {/* Recent Shifts */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
                 <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
                     <h2 className="font-semibold text-gray-800">Recent Shifts</h2>
                 </div>
@@ -93,7 +96,7 @@ function ShiftTable({ shifts }: { shifts: Shift[] }) {
     return (
         <div className="overflow-x-auto">
             <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
+                <thead className="bg-gray-50/50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
                     <tr>
                         <th className="px-5 py-3 text-left">Staff</th>
                         <th className="px-5 py-3 text-left">Restaurant</th>
@@ -107,7 +110,7 @@ function ShiftTable({ shifts }: { shifts: Shift[] }) {
                     {shifts.map(s => {
                         const roleName = s.users?.roles?.name || ''
                         return (
-                            <tr key={s.id} className="hover:bg-gray-50/50">
+                            <tr key={s.id} className="group hover:bg-gray-50/50 transition-colors">
                                 <td className="px-5 py-3 font-medium text-gray-900">{s.users?.full_name || '—'}</td>
                                 <td className="px-5 py-3 text-gray-600">{s.restaurants?.name || '—'}</td>
                                 <td className="px-5 py-3">

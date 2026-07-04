@@ -1,6 +1,7 @@
 import { requireRole } from '@/lib/auth'
 import { getAllPromoCodesAcrossRestaurants } from '../actions'
 import { Tag, CheckCircle, XCircle } from 'lucide-react'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,34 +40,36 @@ export default async function PromosPage() {
     const totalUses = promos.reduce((s, p) => s + (p.current_uses || 0), 0)
 
     return (
-        <div className="space-y-6">
-            <div>
-                <h1 className="text-2xl font-extrabold text-gray-900">Promo Codes</h1>
-                <p className="text-gray-500 mt-1 text-sm">All promo codes across every restaurant tenant.</p>
-            </div>
+        <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
+            <PremiumPageHeader 
+                title="Promo Codes" 
+                description="All promo codes across every restaurant tenant." 
+                icon={<Tag size={18} />}
+                color="rose"
+            />
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                    <div className="text-2xl font-extrabold text-gray-900">{promos.length}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Total Promo Codes</div>
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">{promos.length}</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Total Promo Codes</div>
                 </div>
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                    <div className="text-2xl font-extrabold text-emerald-600">{activeCount}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Active</div>
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600 tabular-nums">{activeCount}</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Active</div>
                 </div>
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                    <div className="text-2xl font-extrabold text-gray-900">{totalUses}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Total Uses</div>
+                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">{totalUses}</div>
+                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Total Uses</div>
                 </div>
             </div>
 
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
                 <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
                     <h2 className="font-semibold text-gray-800">All Promo Codes</h2>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
+                        <thead className="bg-gray-50/50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
                             <tr>
                                 <th className="px-5 py-3 text-left">Restaurant</th>
                                 <th className="px-5 py-3 text-left">Code</th>
@@ -79,7 +82,7 @@ export default async function PromosPage() {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {promos.map(p => (
-                                <tr key={p.id} className="hover:bg-gray-50/50">
+                                <tr key={p.id} className="group hover:bg-gray-50/50 transition-colors">
                                     <td className="px-5 py-3 font-medium text-gray-900">{p.restaurants?.name || '—'}</td>
                                     <td className="px-5 py-3 font-mono font-bold text-gray-800 text-xs">{p.code}</td>
                                     <td className="px-5 py-3 text-gray-600 text-xs">{PROMO_TYPE_LABEL[p.promo_type] || p.promo_type}</td>
