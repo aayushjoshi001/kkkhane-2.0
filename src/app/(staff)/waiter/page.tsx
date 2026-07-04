@@ -144,8 +144,7 @@ export default async function WaiterPage() {
     // Counts for tabs
     const spaceCount = 0 // Not typically badgered
     const ordersCount = (activeOrders || []).filter(o => o.status === 'ready').length + (ordersToConfirm?.length || 0) + (readyTakeouts?.length || 0) + readyDeliveries.length
-    const customerCount = (serviceRequests || []).filter(r => r.status === 'pending').length
-    const billingCount = (unpaidDelivered?.length || 0) + (paymentClaims?.length || 0)
+    const customerCount = ((serviceRequests || []).filter(r => r.status === 'pending').length) + (unpaidDelivered?.length || 0) + (paymentClaims?.length || 0)
 
     const spaceContent = (
         <div className="space-y-6 pt-1">
@@ -218,11 +217,6 @@ export default async function WaiterPage() {
                     staffNames={staffNames}
                 />
             )}
-        </div>
-    )
-
-    const billingContent = (
-        <div className="space-y-6 pt-1">
             {unpaidDelivered && unpaidDelivered.length > 0 && (
                 <CashPaymentFeed
                     initialOrders={unpaidDelivered as unknown as UnpaidOrder[]}
@@ -246,12 +240,10 @@ export default async function WaiterPage() {
                     spaceContent={spaceContent}
                     ordersContent={ordersContent}
                     customerContent={customerContent}
-                    billingContent={billingContent}
                     counts={{
                         space: spaceCount,
                         orders: ordersCount,
                         customer: customerCount,
-                        billing: billingCount
                     }}
                 />
             </div>

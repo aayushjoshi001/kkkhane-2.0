@@ -2,18 +2,16 @@
 
 import React, { ReactNode, useState, isValidElement, cloneElement } from 'react'
 
-type TabID = 'space' | 'orders' | 'customer' | 'billing'
+type TabID = 'space' | 'orders' | 'customer'
 
 interface WaiterTabsProps {
     spaceContent: ReactNode
     ordersContent: ReactNode
     customerContent: ReactNode
-    billingContent: ReactNode
     counts: {
         space: number
         orders: number
         customer: number
-        billing: number
     }
     floorStatsElement?: ReactNode
 }
@@ -22,7 +20,6 @@ export default function WaiterTabs({
     spaceContent,
     ordersContent,
     customerContent,
-    billingContent,
     counts,
     floorStatsElement,
 }: WaiterTabsProps) {
@@ -30,9 +27,8 @@ export default function WaiterTabs({
 
     const tabs: { id: TabID; label: string; count: number }[] = [
         { id: 'space', label: 'Space', count: counts.space },
-        { id: 'orders', label: 'Orders', count: counts.orders },
+        { id: 'orders', label: 'Kitchen', count: counts.orders },
         { id: 'customer', label: 'Customer', count: counts.customer },
-        { id: 'billing', label: 'Billing', count: counts.billing },
     ]
 
     const handleStatClick = (key: string) => {
@@ -81,7 +77,6 @@ export default function WaiterTabs({
                 {activeTab === 'space' && <div className="animate-fade-in">{spaceContent}</div>}
                 {activeTab === 'orders' && <div className="animate-fade-in">{ordersContent}</div>}
                 {activeTab === 'customer' && <div className="animate-fade-in">{customerContent}</div>}
-                {activeTab === 'billing' && <div className="animate-fade-in">{billingContent}</div>}
             </div>
         </div>
     )
