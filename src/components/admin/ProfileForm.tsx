@@ -6,7 +6,7 @@ import { User } from '@/types/database'
 import { Save, Loader2, Camera, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-export default function ProfileForm({ user }: { user: User }) {
+export default function ProfileForm({ user, email }: { user: any, email: string }) {
     const [isSaving, setIsSaving] = useState(false)
     const [isUploading, setIsUploading] = useState(false)
     const [avatarUrl, setAvatarUrl] = useState<string>(user.avatar_url || '')
@@ -125,9 +125,9 @@ export default function ProfileForm({ user }: { user: User }) {
                 <hr className="border-hairline" />
 
                 {/* Info Section */}
-                <div className="space-y-5">
-                    <div>
-                        <label className="block text-sm font-bold text-ink mb-2">Full Name</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                        <label className="block text-sm font-bold text-ink">Full Name <span className="text-brand-500">*</span></label>
                         <input
                             type="text"
                             value={fullName}
@@ -138,16 +138,60 @@ export default function ProfileForm({ user }: { user: User }) {
                         />
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-bold text-ink mb-2">Role</label>
+                    <div className="space-y-2">
+                        <label className="block text-sm font-bold text-ink">Email Address</label>
+                        <input
+                            type="email"
+                            value={email}
+                            disabled
+                            className="w-full h-11 px-4 bg-surface-muted/50 border border-hairline rounded-[var(--r-md)] text-ink-subtle font-bold cursor-not-allowed text-sm"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="block text-sm font-bold text-ink">Role</label>
                         <input
                             type="text"
                             value={roleLabel.charAt(0).toUpperCase() + roleLabel.slice(1)}
                             disabled
                             className="w-full h-11 px-4 bg-surface-muted/50 border border-hairline rounded-[var(--r-md)] text-ink-subtle font-bold cursor-not-allowed uppercase text-xs tracking-wider"
                         />
-                        <p className="text-xs text-ink-muted mt-2">Your role determines your access level. Only Super Admins can change roles.</p>
                     </div>
+
+                    <div className="space-y-2">
+                        <label className="block text-sm font-bold text-ink">Department</label>
+                        <input
+                            type="text"
+                            value={user.departments?.name || 'Unassigned'}
+                            disabled
+                            className="w-full h-11 px-4 bg-surface-muted/50 border border-hairline rounded-[var(--r-md)] text-ink-subtle font-bold cursor-not-allowed text-sm"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="block text-sm font-bold text-ink">Account Status</label>
+                        <div className="w-full h-11 px-4 bg-surface-muted/50 border border-hairline rounded-[var(--r-md)] flex items-center gap-2 text-sm font-bold cursor-not-allowed">
+                            {user.is_active ? (
+                                <><span className="w-2 h-2 rounded-full bg-emerald-500" /> <span className="text-emerald-700">Active</span></>
+                            ) : (
+                                <><span className="w-2 h-2 rounded-full bg-rose-500" /> <span className="text-rose-700">Suspended</span></>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="block text-sm font-bold text-ink">Member Since</label>
+                        <input
+                            type="text"
+                            value={new Date(user.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+                            disabled
+                            className="w-full h-11 px-4 bg-surface-muted/50 border border-hairline rounded-[var(--r-md)] text-ink-subtle font-bold cursor-not-allowed text-sm"
+                        />
+                    </div>
+                </div>
+
+                <div className="text-xs text-ink-muted">
+                    <p>Contact your Super Admin if you need to change your email, role, or department.</p>
                 </div>
 
             </div>

@@ -14,14 +14,18 @@ export default async function ProfilePage() {
     // Fetch user details from `users` table
     const { data: dbUser } = await supabase
         .from('users')
-        .select('*')
+        .select('*, departments(*), roles(*)')
         .eq('id', user.id)
         .single()
 
     if (!dbUser) return notFound()
 
+    // Get auth user to retrieve email
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const email = authUser?.email || ''
+
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 pb-24">
             <PremiumPageHeader 
                 title="My Profile" 
                 description="Manage your personal information and preferences"
@@ -29,8 +33,8 @@ export default async function ProfilePage() {
                 color="orange"
             />
             
-            <div className="max-w-2xl">
-                <ProfileForm user={dbUser} />
+            <div className="max-w-2xl -mt-12 relative z-20">
+                <ProfileForm user={dbUser} email={email} />
             </div>
         </div>
     )

@@ -117,6 +117,7 @@ export const CreateStaffSchema = z.object({
   email: EMAIL,
   full_name: z.string().min(2).max(255),
   role_id: z.number().int().min(1).max(10, 'Invalid role'),
+  department_id: UUID.optional().nullable(),
   phone: PHONE.optional(),
   password: z.string().min(8, 'Password must be at least 8 characters').max(128)
 })

@@ -40,7 +40,7 @@ export default async function SettingsPage() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 pb-24">
             <PremiumPageHeader 
                 title="System Settings" 
                 description="Configure your restaurant's core information and operational rules" 
@@ -48,12 +48,14 @@ export default async function SettingsPage() {
                 color="purple"
             />
 
-            <SettingsManager
-                initialRestaurant={initialRestaurant}
-                initialFeatures={features}
-                initialBusinessHours={settingsRow?.business_hours ?? null}
-                canEdit={role === 'super_admin' || role === 'manager'}
-            />
+            <div className="-mt-12 relative z-20">
+                <SettingsManager
+                    initialRestaurant={initialRestaurant}
+                    initialFeatures={features}
+                    initialBusinessHours={settingsRow?.business_hours ?? null}
+                    canEdit={role === 'super_admin' || role === 'manager'}
+                />
+            </div>
         </div>
     )
 }
