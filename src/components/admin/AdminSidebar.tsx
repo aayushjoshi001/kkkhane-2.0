@@ -127,7 +127,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
 
             {/* Footer Profile & Theme Toggle */}
             <div className={cn("p-4 relative z-10 shrink-0", isCollapsed && "p-2 flex flex-col gap-2 items-center")}>
-                <div className={cn(
+                <Link href="/admin/profile" className={cn(
                     "flex items-center rounded-2xl transition-all duration-300 group cursor-pointer backdrop-blur-md",
                     isCollapsed ? "flex-col p-2 gap-2" : "gap-3 p-3",
                     isDark 
@@ -196,7 +196,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                             <LogOut size={16} />
                         </button>
                     </div>
-                </div>
+                </Link>
             </div>
         </div>
     )
