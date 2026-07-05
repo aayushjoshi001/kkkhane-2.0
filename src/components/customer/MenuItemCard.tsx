@@ -197,7 +197,7 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
                             className="bg-white text-[#FF7A2E] px-3.5 py-1.5 rounded-full flex items-center justify-center font-black active:scale-95 transition-all shadow-sm text-[10px] tracking-wider uppercase leading-none min-w-[56px] text-center hover:bg-orange-50"
                             aria-label={`Add ${displayName} to cart`}
                         >
-                            ADD
+                            Add to cart
                         </button>
                     ) : (
                         <div className="bg-white rounded-full flex flex-row items-center gap-2 p-1 px-1.5 shadow-sm h-7">

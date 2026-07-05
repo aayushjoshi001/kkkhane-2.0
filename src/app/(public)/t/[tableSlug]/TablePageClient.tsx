@@ -11,7 +11,7 @@ import CartSummary from '@/components/customer/CartSummary'
 import Logo from '@/components/shared/Logo'
 import PhysicalMenuGallery from '@/components/customer/PhysicalMenuGallery'
 import { TranslationProvider } from '@/lib/contexts/TranslationContext'
-import { UtensilsCrossed, RefreshCw, Bell, Check, Loader2, Home, X, ShoppingBag, ChefHat, Search } from 'lucide-react'
+import { UtensilsCrossed, RefreshCw, Bell, Check, Loader2, Home, X, ShoppingBag, ChefHat, Search, CreditCard } from 'lucide-react'
 import { useCartStore } from '@/lib/stores/cart'
 import { requestSessionOpen } from '@/app/api/service-requests/actions'
 import ActiveOrderPill from '@/components/customer/ActiveOrderPill'
@@ -463,14 +463,14 @@ export default function TablePageClient({
                     <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Cart</span>
                 </Link>
 
-                {/* Call Waiter */}
-                <button
-                    onClick={() => setIsServiceOpen(prev => !prev)}
+                {/* Payment */}
+                <Link
+                    href={`/t/${tableData.qr_token}/checkout`}
                     className="flex flex-col items-center justify-center text-white/80 hover:text-white transition active:scale-95 w-16"
                 >
-                    <Bell size={18} className="stroke-[2.5px] text-white" />
-                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Ring</span>
-                </button>
+                    <CreditCard size={18} className="stroke-[2.5px] text-white" />
+                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Pay</span>
+                </Link>
             </div>
         </div>
     )
