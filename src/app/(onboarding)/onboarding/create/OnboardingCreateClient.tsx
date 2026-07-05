@@ -41,7 +41,7 @@ export default function OnboardingCreateClient() {
     const [position, setPosition] = useState<{lat: number, lng: number} | null>(null)
     
     useEffect(() => {
-        iconFix()
+        fixLeafletDefaultIcon()
     }, [])
 
     // Auto-generate slug from name if not manually edited
@@ -405,6 +405,7 @@ export default function OnboardingCreateClient() {
                                 >
                                     <TileLayer
                                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                                     />
                                     {position && <Marker position={position} />}
                                     <MapClickHandler onLocationSelect={(lat, lng) => updatePositionAndAddress(lat, lng)} />

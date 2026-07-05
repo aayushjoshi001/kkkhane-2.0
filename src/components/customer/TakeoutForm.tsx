@@ -13,24 +13,13 @@ import { ArrowLeft, Clock, Loader2, ShoppingBag, MapPin } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import dynamic from 'next/dynamic'
 import 'leaflet/dist/leaflet.css'
+import { fixLeafletDefaultIcon } from '@/lib/leafletIcons'
 
 // Dynamically import Map to prevent SSR issues
 const MapContainer = dynamic(() => import('react-leaflet').then(mod => mod.MapContainer), { ssr: false })
 const TileLayer = dynamic(() => import('react-leaflet').then(mod => mod.TileLayer), { ssr: false })
 const Marker = dynamic(() => import('react-leaflet').then(mod => mod.Marker), { ssr: false })
 const MapController = dynamic(() => import('@/components/shared/MapController'), { ssr: false })
-
-// Fix for default marker icons in leaflet
-const iconFix = () => {
-    import('leaflet').then(L => {
-        delete (L.Icon.Default.prototype as any)._getIconUrl;
-        L.Icon.Default.mergeOptions({
-            iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-            iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-        })
-    })
-}
 
 interface TakeoutFormProps {
     restaurantId: string
@@ -64,7 +53,7 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
 
     useEffect(() => {
         setMounted(true)
-        iconFix()
+        fixLeafletDefaultIcon()
     }, [])
 
     const handleGeolocate = () => {
@@ -360,6 +349,7 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                                         >
                                             <TileLayer
                                                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                                             />
                                             {(latitude && longitude) && <Marker position={[latitude, longitude]} />}
                                             <MapController

@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import CommandPaletteMount from '@/components/ui/CommandPaletteMount'
 import { clockIn, clockOut, getShiftStats } from '@/app/api/staff/actions'
 import { toast } from 'react-hot-toast'
+import Link from 'next/link'
 
 interface Props {
     children: ReactNode
@@ -67,14 +68,17 @@ export default function KitchenLayoutClient({ children, staffName, userId, resta
                 <div className="flex items-center gap-2.5 min-w-0">
                     <Logo className="h-7 shrink-0" />
                     <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                            <span className="font-extrabold text-gray-900 leading-none truncate max-w-30">{staffName || 'Staff'}</span>
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#FB6303] bg-[#FFEAD9] px-2 py-0.5 rounded-full">
+                        <Link 
+                            href="/kitchen/profile" 
+                            className="flex items-center gap-2 hover:bg-gray-50 p-1 rounded-md transition-colors cursor-pointer group"
+                        >
+                            <span className="font-extrabold text-gray-900 leading-none truncate max-w-30 group-hover:text-[#FB6303] transition-colors">{staffName || 'Staff'}</span>
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#FB6303] bg-[#FFEAD9] px-2 py-0.5 rounded-full group-hover:bg-[#FB6303] group-hover:text-white transition-colors">
                                 <ChefHat size={11} /> Kitchen
                             </span>
-                        </div>
+                        </Link>
                         {shiftsEnabled && (
-                            <div className="flex items-center gap-1.5 mt-1">
+                            <div className="flex items-center gap-1.5 mt-1 ml-1">
                                 <span className={`w-1.5 h-1.5 rounded-full ${shift ? 'bg-emerald-500' : 'bg-gray-300'}`} />
                                 <span className={`text-[11px] font-semibold ${shift ? 'text-emerald-600' : 'text-gray-400'}`}>
                                     {shift ? 'On Shift' : 'Off Shift'}

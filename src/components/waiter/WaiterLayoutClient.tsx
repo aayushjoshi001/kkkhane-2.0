@@ -11,6 +11,7 @@ import { CommandHint } from '@/components/ui/CommandHint'
 import CommandPaletteMount from '@/components/ui/CommandPaletteMount'
 import { clockIn, clockOut } from '@/app/api/staff/actions'
 import { toast } from 'react-hot-toast'
+import Link from 'next/link'
 
 interface Props {
     children: ReactNode
@@ -113,17 +114,22 @@ export default function WaiterLayoutClient({
                         {staffName && (
                             <div className="hidden md:flex items-center gap-2">
                                 <div className="h-4 w-px bg-gray-200" />
-                                <div className="w-7 h-7 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center text-[var(--color-primary)] text-xs font-bold">
-                                    {staffName[0].toUpperCase()}
-                                </div>
-                                <div className="flex flex-col min-w-0">
-                                    <span className="text-xs font-semibold text-gray-700 max-w-28 truncate leading-none">{staffName}</span>
-                                    {shiftsEnabled && (
-                                        <span className={`text-[10px] font-bold ${shift ? 'text-emerald-600' : 'text-gray-400'} mt-0.5 leading-none`}>
-                                            {shift ? 'On Shift' : 'Off Shift'}
-                                        </span>
-                                    )}
-                                </div>
+                                <Link 
+                                    href={`/${commandRole}/profile`} 
+                                    className="flex items-center gap-2 hover:bg-gray-50 p-1.5 rounded-lg transition-colors cursor-pointer group"
+                                >
+                                    <div className="w-7 h-7 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center text-[var(--color-primary)] text-xs font-bold group-hover:bg-[var(--color-primary)]/20 transition-colors">
+                                        {staffName[0].toUpperCase()}
+                                    </div>
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="text-xs font-semibold text-gray-700 max-w-28 truncate leading-none group-hover:text-[var(--color-primary)] transition-colors">{staffName}</span>
+                                        {shiftsEnabled && (
+                                            <span className={`text-[10px] font-bold ${shift ? 'text-emerald-600' : 'text-gray-400'} mt-0.5 leading-none`}>
+                                                {shift ? 'On Shift' : 'Off Shift'}
+                                            </span>
+                                        )}
+                                    </div>
+                                </Link>
                             </div>
                         )}
                         <div className="h-4 w-px bg-gray-200 hidden md:block" />

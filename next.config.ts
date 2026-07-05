@@ -101,8 +101,8 @@ const nextConfig: NextConfig = {
               // 'unsafe-eval' is only needed by the dev/HMR runtime — never ship it to prod.
               `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`,
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob: https://*.supabase.co https://images.unsplash.com",
-              "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+              "img-src 'self' data: blob: https://*.supabase.co https://images.unsplash.com https://*.tile.openstreetmap.org",
+              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://nominatim.openstreetmap.org",
               "font-src 'self' https://fonts.gstatic.com",
               "media-src 'self' blob:",
               "frame-src 'self'",

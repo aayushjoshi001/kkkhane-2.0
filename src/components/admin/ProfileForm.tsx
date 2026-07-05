@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { updateProfile } from '@/app/(admin)/admin/profile/actions'
+import { updateProfile } from '@/lib/actions/profile'
 import { User } from '@/types/database'
 import { Save, Loader2, Camera, X } from 'lucide-react'
 import toast from 'react-hot-toast'
