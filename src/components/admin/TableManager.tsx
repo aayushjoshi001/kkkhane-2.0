@@ -484,66 +484,78 @@ export default function TableManager({
                 </div>
             )}
 
-            {/* URL/Phone Preview Modal */}
-            {previewTable && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={closePreview}>
-                    {/* Close button — always visible, top-right of viewport */}
-                    <button
-                        onClick={closePreview}
-                        className="absolute top-3 right-3 sm:top-5 sm:right-5 z-[70] w-10 h-10 bg-white/15 hover:bg-white/25 rounded-full flex items-center justify-center text-white transition-colors"
-                        aria-label="Close preview"
-                    >
-                        <X size={20} />
-                    </button>
+            {/* URL/Phone Preview Modal - ALWAYS RENDERED but conditionally visible for instant iframe swapping */}
+            <div 
+                className={`fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4 transition-opacity duration-200 ${previewTable ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} 
+                onClick={closePreview}
+            >
+                {/* Close button — always visible, top-right of viewport */}
+                <button
+                    onClick={closePreview}
+                    className="absolute top-3 right-3 sm:top-5 sm:right-5 z-[70] w-10 h-10 bg-white/15 hover:bg-white/25 rounded-full flex items-center justify-center text-white transition-colors"
+                    aria-label="Close preview"
+                >
+                    <X size={20} />
+                </button>
 
-                    {/* Table label */}
-                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[70] text-white text-sm font-semibold bg-white/10 px-4 py-1.5 rounded-full backdrop-blur-sm">
-                        {previewTable.label} — Customer View
-                    </div>
-
-                    {/* Phone frame — responsive sizing */}
-                    <div
-                        className="relative w-[280px] h-[560px] sm:w-[320px] sm:h-[640px] mt-10"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        {/* Phone bezel */}
-                        <div className="absolute inset-0 bg-gray-900 rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl border border-gray-700">
-                            {/* Notch */}
-                            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-28 sm:w-32 h-5 sm:h-6 bg-gray-900 rounded-b-xl z-20" />
-                        </div>
-
-                        {/* Screen */}
-                        <div className="absolute inset-2 sm:inset-3 top-3 sm:top-4 rounded-[1.25rem] sm:rounded-[1.5rem] overflow-hidden bg-gray-100 flex flex-col">
-                            {/* Browser chrome */}
-                            <div className="bg-gray-100 px-3 sm:px-4 pb-1.5 sm:pb-2 pt-6 sm:pt-7 border-b border-gray-200 shrink-0 flex items-center gap-2">
-                                <div className="w-4 h-4 text-gray-400"><Smartphone size={14} /></div>
-                                <div className="flex-1 bg-gray-200/80 rounded-lg text-[9px] sm:text-[10px] text-center text-gray-500 py-1 sm:py-1.5 px-2 truncate font-mono">
-                                    {baseUrl.replace(/https?:\/\//, '')}/t/{previewTable.qr_token.substring(0, 8)}…
-                                </div>
-                            </div>
-
-                            {/* Loading state */}
-                            {!iframeLoaded && (
-                                <div className="flex-1 flex flex-col items-center justify-center gap-3 bg-white">
-                                    <Loader2 size={24} className="animate-spin text-gray-400" />
-                                    <p className="text-xs text-gray-400">Loading menu…</p>
-                                </div>
-                            )}
-
-                            {/* Iframe — customer menu page (use relative path for speed) */}
-                            <iframe
-                                src={`/t/${previewTable.qr_token}`}
-                                className={`w-full flex-1 border-none bg-white ${iframeLoaded ? '' : 'sr-only'}`}
-                                title={`Customer menu preview for ${previewTable.label}`}
-                                onLoad={() => setIframeLoaded(true)}
-                            />
-                        </div>
-
-                        {/* Home indicator bar */}
-                        <div className="absolute bottom-1.5 sm:bottom-2 left-1/2 -translate-x-1/2 w-24 sm:w-28 h-1 bg-gray-600 rounded-full" />
-                    </div>
+                {/* Table label */}
+                <div className={`absolute top-4 left-1/2 -translate-x-1/2 z-[70] text-white text-sm font-semibold bg-white/10 px-4 py-1.5 rounded-full backdrop-blur-sm transition-transform duration-300 ${previewTable ? 'translate-y-0' : '-translate-y-10'}`}>
+                    {previewTable?.label || 'Preview'} — Customer View
                 </div>
-            )}
+
+                {/* Phone frame — responsive sizing */}
+                <div
+                    className={`relative w-[280px] h-[560px] sm:w-[320px] sm:h-[640px] mt-10 transition-transform duration-300 ${previewTable ? 'scale-100 translate-y-0' : 'scale-95 translate-y-8'}`}
+                    onClick={e => e.stopPropagation()}
+                >
+                    {/* Phone bezel */}
+                    <div className="absolute inset-0 bg-gray-900 rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl border border-gray-700">
+                        {/* Notch */}
+                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-28 sm:w-32 h-5 sm:h-6 bg-gray-900 rounded-b-xl z-20" />
+                    </div>
+
+                    {/* Screen */}
+                    <div className="absolute inset-2 sm:inset-3 top-3 sm:top-4 rounded-[1.25rem] sm:rounded-[1.5rem] overflow-hidden bg-gray-100 flex flex-col">
+                        {/* Browser chrome */}
+                        <div className="bg-gray-100 px-3 sm:px-4 pb-1.5 sm:pb-2 pt-6 sm:pt-7 border-b border-gray-200 shrink-0 flex items-center gap-2">
+                            <div className="w-4 h-4 text-gray-400"><Smartphone size={14} /></div>
+                            <div className="flex-1 bg-gray-200/80 rounded-lg text-[9px] sm:text-[10px] text-center text-gray-500 py-1 sm:py-1.5 px-2 truncate font-mono">
+                                {baseUrl.replace(/https?:\/\//, '')}/t/{previewTable?.qr_token?.substring(0, 8) || '...'}…
+                            </div>
+                        </div>
+
+                        {/* Loading state */}
+                        {!iframeLoaded && previewTable && (
+                            <div className="absolute inset-0 top-[60px] flex flex-col items-center justify-center gap-3 bg-white z-0">
+                                <Loader2 size={24} className="animate-spin text-gray-400" />
+                                <p className="text-xs text-gray-400">Loading menu…</p>
+                            </div>
+                        )}
+
+                        {/* Iframes — map over preloadedTokens + active token so they mount once and stay mounted */}
+                        <div className="flex-1 relative bg-white z-10">
+                            {Array.from(new Set([...preloadedTokens, previewTable?.qr_token].filter(Boolean) as string[])).map(token => {
+                                const isActive = previewTable?.qr_token === token
+                                return (
+                                    <iframe
+                                        key={token}
+                                        src={`/t/${token}`}
+                                        className={`absolute inset-0 w-full h-full border-none bg-white transition-opacity duration-200 ${isActive ? 'opacity-100 pointer-events-auto z-10' : 'opacity-0 pointer-events-none z-0'}`}
+                                        title={`Customer menu preview`}
+                                        onLoad={() => {
+                                            if (isActive) setIframeLoaded(true)
+                                        }}
+                                        loading="eager"
+                                    />
+                                )
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Home indicator bar */}
+                    <div className="absolute bottom-1.5 sm:bottom-2 left-1/2 -translate-x-1/2 w-24 sm:w-28 h-1 bg-gray-600 rounded-full" />
+                </div>
+            </div>
 
             {/* Shared dynamic high-resolution QR canvas for crisp on-demand downloads */}
             {qrToDownload && (
@@ -564,13 +576,6 @@ export default function TableManager({
                     />
                 </div>
             )}
-
-            {/* Hidden iframes for preloading on hover to eliminate loading latency */}
-            <div className="hidden" aria-hidden="true">
-                {Array.from(preloadedTokens).map(token => (
-                    <iframe key={token} src={`/t/${token}`} loading="eager" />
-                ))}
-            </div>
         </div>
     )
 }
