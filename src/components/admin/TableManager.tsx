@@ -41,6 +41,17 @@ export default function TableManager({
     const [baseUrl, setBaseUrl] = useState(appUrl)
     useEffect(() => { setBaseUrl(window.location.origin) }, [])
 
+    // Eagerly preload the first 2 tables on mount so they are instantly ready
+    useEffect(() => {
+        if (initialTables.length > 0) {
+            setPreloadedTokens(prev => {
+                const next = new Set(prev)
+                initialTables.slice(0, 2).forEach(t => next.add(t.qr_token))
+                return next
+            })
+        }
+    }, [initialTables])
+
     const openPreview = useCallback((table: Table) => {
         setIframeLoaded(false)
         setPreviewTable(table)
@@ -327,7 +338,12 @@ export default function TableManager({
                         const menuUrl = `${baseUrl}/t/${table.qr_token}`
 
                         return (
-                            <div key={table.id} className="border border-hairline rounded-card overflow-hidden hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-all group flex flex-col bg-surface shadow-sm">
+                            <div 
+                                key={table.id} 
+                                className="border border-hairline rounded-card overflow-hidden hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-all group flex flex-col bg-surface shadow-sm"
+                                onMouseEnter={() => setPreloadedTokens(prev => new Set(prev).add(table.qr_token))}
+                                onTouchStart={() => setPreloadedTokens(prev => new Set(prev).add(table.qr_token))}
+                            >
                                 <div className="p-5 border-b border-hairline flex justify-between items-center bg-surface-muted/30">
                                     <div>
                                         <h4 className="font-extrabold text-ink text-base">{table.label}</h4>
@@ -402,7 +418,6 @@ export default function TableManager({
 
                                     <div className="flex gap-3 w-full">
                                         <button
-                                            onMouseEnter={() => setPreloadedTokens(prev => new Set(prev).add(table.qr_token))}
                                             onClick={() => openPreview(table)}
                                             className="flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold text-ink bg-surface rounded-[var(--r-md)] border border-hairline hover:bg-surface-muted active:scale-95 transition-all shadow-sm focus-ring"
                                         >
