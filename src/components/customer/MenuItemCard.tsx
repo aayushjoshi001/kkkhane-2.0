@@ -187,7 +187,7 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
             {/* Body */}
             <div className="p-3 flex flex-col flex-1 min-w-0 gap-1">
                 <div className="flex flex-col gap-0.5">
-                    <h3 className="font-semibold text-[13px] text-gray-900 leading-snug line-clamp-2">
+                    <h3 className="font-semibold text-[13px] text-gray-900 leading-snug line-clamp-1 h-5">
                         {displayName}
                     </h3>
                     <span className="font-bold text-[13px] text-[var(--color-primary)] tabular-nums block mt-0.5">
@@ -197,47 +197,6 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
                         }
                     </span>
                 </div>
-
-                {displayDesc && (
-                    <p className="text-[11px] text-gray-400 line-clamp-2 leading-relaxed mt-0.5">{displayDesc}</p>
-                )}
-
-                {item.is_combo && (
-                    <div className="mt-2 pt-2 border-t border-dashed border-gray-100 space-y-1 shrink-0">
-                        <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1 leading-none">
-                            <Sparkles size={9} className="text-amber-500" /> Includes:
-                        </p>
-                        <div className="space-y-0.5">
-                            {comboItems
-                                .filter(c => c.combo_id === item.id)
-                                .map(c => {
-                                    const componentItem = menuItems.find(m => m.id === c.item_id)
-                                    return (
-                                        <div key={c.id} className="flex justify-between text-[10px] text-gray-400 font-medium leading-normal">
-                                            <span className="truncate pr-1">{componentItem?.name || 'Item'}</span>
-                                            <span className="tabular-nums font-semibold text-gray-500">×{c.quantity}</span>
-                                        </div>
-                                    )
-                                })
-                            }
-                        </div>
-                    </div>
-                )}
-
-                {(item.preparation_min || displayAllergens.length > 0) && (
-                    <div className="flex items-center gap-2 mt-0.5">
-                        {item.preparation_min && item.preparation_min > 0 && (
-                            <span className="flex items-center gap-0.5 text-[10px] text-gray-400">
-                                <Clock size={9} /> {item.preparation_min}m
-                            </span>
-                        )}
-                        {displayAllergens.length > 0 && (
-                            <span className="text-[11px]">
-                                {displayAllergens.map(a => ALLERGEN_ICONS[a.toLowerCase()] || '').filter(Boolean).join(' ')}
-                            </span>
-                        )}
-                    </div>
-                )}
 
                 {/* Cart controls */}
                 <div className="mt-auto pt-2">

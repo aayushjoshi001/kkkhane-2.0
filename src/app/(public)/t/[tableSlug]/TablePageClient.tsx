@@ -242,12 +242,6 @@ export default function TablePageClient({
                         </span>
                     </div>
 
-                    {/* Middle: Centered Table Badge */}
-                    <div className="flex-1 text-center min-w-0">
-                        <span className="text-xs font-bold text-gray-800 bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-full inline-block truncate max-w-full">
-                            Table {tableData.label}
-                        </span>
-                    </div>
 
                     {/* Right side: platform logo */}
                     <div className="flex items-center shrink-0 pr-2">
