@@ -134,135 +134,71 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
 
     return (
         <>
-        <div className={`group relative bg-white rounded-[var(--border-radius)] overflow-hidden border border-gray-100 shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 flex flex-row sm:flex-col ${!item.is_available ? 'opacity-70' : ''}`}>
+        <div className={`group relative bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm transition-all duration-200 hover:shadow-md flex flex-row w-full h-24 p-2 gap-2.5 items-center ${!item.is_available ? 'opacity-70' : ''}`}>
             {/* Image */}
-            <div className="relative w-[110px] shrink-0 min-h-[110px] sm:w-full sm:min-h-0 sm:aspect-[4/3] bg-gray-100 overflow-hidden">
+            <div className="relative w-20 h-20 rounded-xl bg-gray-100 overflow-hidden shrink-0">
                 {item.image_url ? (
                     <Image
                         src={item.image_url}
                         alt={displayName}
                         fill
                         className="object-cover group-hover:scale-105 transition-transform duration-500"
-                        sizes="(max-width: 640px) 50vw, 33vw"
+                        sizes="80px"
                     />
                 ) : (
                     <div className="absolute inset-0 flex items-center justify-center"
                          style={{ background: 'linear-gradient(135deg, #f5f0eb 0%, #ede8e0 100%)' }}>
-                        <span className="text-3xl opacity-20">🍽️</span>
+                        <span className="text-2xl opacity-20">🍽️</span>
                     </div>
                 )}
 
                 {/* Sold out overlay */}
                 {!item.is_available && (
                     <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
-                        <span className="bg-white text-gray-600 font-semibold px-3 py-1 rounded-full text-xs border border-gray-200 shadow-sm">
+                        <span className="bg-white text-gray-600 font-semibold px-2 py-0.5 rounded text-[10px] border border-gray-200 shadow-xs">
                             Sold Out
                         </span>
                     </div>
                 )}
-
-                {/* Cart quantity badge */}
-                {quantity > 0 && (
-                    <div className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-[var(--color-primary)] text-white text-xs font-bold flex items-center justify-center shadow-md ring-2 ring-white">
-                        {quantity}
-                    </div>
-                )}
-
-                {/* Tag pill */}
-                {item.is_combo ? (
-                    <div className="absolute bottom-2 left-2 z-10">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200/50 flex items-center gap-0.5 shadow-sm">
-                            ★ Combo Deal
-                        </span>
-                    </div>
-                ) : tagStyle && firstTag ? (
-                    <div className="absolute bottom-2 left-2 z-10">
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${tagStyle.cls}`}>
-                            {tagStyle.icon && <span className="mr-0.5">{tagStyle.icon}</span>}{firstTag}
-                        </span>
-                    </div>
-                ) : null}
             </div>
 
             {/* Body */}
-            <div className="p-3 flex flex-col flex-1 min-w-0 gap-1">
+            <div className="flex flex-col flex-1 h-full justify-between min-w-0 py-0.5 pr-8 relative">
                 <div className="flex flex-col gap-0.5">
-                    <h3 className="font-semibold text-[13px] text-gray-900 leading-snug line-clamp-2">
+                    <h3 className="font-bold text-[13px] text-gray-900 leading-snug line-clamp-2">
                         {displayName}
                     </h3>
-                    <span className="font-bold text-[13px] text-[var(--color-primary)] tabular-nums block mt-0.5">
+                    <span className="font-extrabold text-[12px] text-[#FB6303] tabular-nums mt-0.5">
                         {hasVariations && item.variations!.length > 0
-                            ? `${money(Math.min(...item.variations!.map(v => v.price)))} – ${money(Math.max(...item.variations!.map(v => v.price)))}`
+                            ? `${money(Math.min(...item.variations!.map(v => v.price)))}`
                             : money(item.price)
                         }
                     </span>
                 </div>
 
-                {displayDesc && (
-                    <p className="text-[11px] text-gray-400 line-clamp-2 leading-relaxed mt-0.5">{displayDesc}</p>
-                )}
-
-                {item.is_combo && (
-                    <div className="mt-2 pt-2 border-t border-dashed border-gray-100 space-y-1 shrink-0">
-                        <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1 leading-none">
-                            <Sparkles size={9} className="text-amber-500" /> Includes:
-                        </p>
-                        <div className="space-y-0.5">
-                            {comboItems
-                                .filter(c => c.combo_id === item.id)
-                                .map(c => {
-                                    const componentItem = menuItems.find(m => m.id === c.item_id)
-                                    return (
-                                        <div key={c.id} className="flex justify-between text-[10px] text-gray-400 font-medium leading-normal">
-                                            <span className="truncate pr-1">{componentItem?.name || 'Item'}</span>
-                                            <span className="tabular-nums font-semibold text-gray-500">×{c.quantity}</span>
-                                        </div>
-                                    )
-                                })
-                            }
-                        </div>
-                    </div>
-                )}
-
-                {(item.preparation_min || displayAllergens.length > 0) && (
-                    <div className="flex items-center gap-2 mt-0.5">
-                        {item.preparation_min && item.preparation_min > 0 && (
-                            <span className="flex items-center gap-0.5 text-[10px] text-gray-400">
-                                <Clock size={9} /> {item.preparation_min}m
-                            </span>
-                        )}
-                        {displayAllergens.length > 0 && (
-                            <span className="text-[11px]">
-                                {displayAllergens.map(a => ALLERGEN_ICONS[a.toLowerCase()] || '').filter(Boolean).join(' ')}
-                            </span>
-                        )}
-                    </div>
-                )}
-
                 {/* Cart controls */}
-                <div className="mt-auto pt-2">
-                    {(!isTakeout && !sessionId) ? (
-                        <div className="h-12" />
-                    ) : (quantity === 0 || hasModifiers || hasVariations) ? (
+                <div className="absolute bottom-0.5 right-0 z-10">
+                    {(!isTakeout && !sessionId) ? null : (quantity === 0 || hasModifiers || hasVariations) ? (
                         <button
                             onClick={handleAdd}
                             disabled={!item.is_available}
-                            className="w-full flex items-center justify-center gap-1.5 h-12 rounded-lg text-xs font-semibold transition-all active:scale-95 bg-[var(--color-primary)] text-white disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90"
+                            className="w-7 h-7 bg-[#FB6303] rounded-lg flex items-center justify-center text-white active:scale-90 transition disabled:opacity-40"
+                            aria-label={`Add ${displayName} to cart`}
                         >
-                            <Plus size={13} strokeWidth={2.5} /> Add
+                            <Plus size={14} strokeWidth={3} />
                         </button>
                     ) : (
-                        <div className="flex items-center justify-between bg-gray-50 rounded-lg p-0.5 border border-gray-100 h-12">
+                        <div className="flex items-center bg-gray-50 border border-gray-150 rounded-lg p-0.5 h-7 gap-1">
                             <button onClick={handleRemove}
                                     aria-label={`Remove one ${displayName}`}
-                                    className="w-11 h-11 flex items-center justify-center rounded-md bg-white shadow-sm text-gray-600 active:scale-95 transition-all hover:bg-gray-50">
-                                <Minus size={15} />
+                                    className="w-5 h-5 flex items-center justify-center rounded bg-white shadow-xs text-gray-600 active:scale-95 transition">
+                                <Minus size={11} strokeWidth={3} />
                             </button>
-                            <span className="font-bold text-sm text-gray-900 w-6 text-center tabular-nums">{quantity}</span>
+                            <span className="font-bold text-xs text-gray-950 w-4 text-center tabular-nums">{quantity}</span>
                             <button onClick={handleAdd}
                                     aria-label={`Add one ${displayName}`}
-                                    className="w-11 h-11 flex items-center justify-center rounded-md bg-[var(--color-primary)] text-white active:scale-95 transition-all hover:opacity-90">
-                                <Plus size={15} />
+                                    className="w-5 h-5 flex items-center justify-center rounded bg-[#FB6303] text-white active:scale-95 transition">
+                                <Plus size={11} strokeWidth={3} />
                             </button>
                         </div>
                     )}

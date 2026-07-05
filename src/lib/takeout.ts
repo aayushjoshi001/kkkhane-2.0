@@ -31,8 +31,8 @@ export const TAKEOUT_STATUS_TO_ORDER: Record<TakeoutStatus, OrderStatus> = {
 // SELECT used to read takeout orders (orders + their items) for the adapter.
 export const TAKEOUT_ORDER_SELECT = `
     id, restaurant_id, loyalty_member_id, customer_name, customer_phone, customer_email,
-    pickup_time, status, subtotal_amount, tax_amount, total_amount, payment_status,
-    stripe_payment_intent_id, promo_code_id, discount_amount, service_charge_amount, customer_note,
+    pickup_time, status, subtotal_amount, tax_amount, service_charge_amount, total_amount, payment_status,
+    stripe_payment_intent_id, promo_code_id, discount_amount, customer_note,
     placed_at, confirmed_at, ready_at, delivered_at,
     order_type, delivery_address, delivery_verification_code,
     order_items ( menu_item_id, quantity, unit_price, special_request, menu_items ( name ) )
@@ -57,12 +57,12 @@ export interface TakeoutOrderRow {
     status: OrderStatus
     subtotal_amount: number | string | null
     tax_amount: number | string | null
+    service_charge_amount?: number | string | null
     total_amount: number | string | null
     payment_status: PaymentStatus
     stripe_payment_intent_id: string | null
     promo_code_id: string | null
     discount_amount: number | string | null
-    service_charge_amount?: number | string | null
     customer_note: string | null
     placed_at: string
     confirmed_at: string | null
@@ -102,12 +102,12 @@ export function mapOrderRowToTakeout(row: TakeoutOrderRow): TakeoutOrder {
         items,
         subtotal_amount: Number(row.subtotal_amount ?? 0),
         tax_amount: Number(row.tax_amount ?? 0),
+        service_charge_amount: Number(row.service_charge_amount ?? 0),
         total_amount: Number(row.total_amount ?? 0),
         payment_status: row.payment_status,
         stripe_payment_intent_id: row.stripe_payment_intent_id ?? null,
         promo_code_id: row.promo_code_id ?? null,
         discount_amount: Number(row.discount_amount ?? 0),
-        service_charge_amount: Number(row.service_charge_amount ?? 0),
         customer_note: row.customer_note ?? null,
         kitchen_note: null,
         placed_at: row.placed_at,

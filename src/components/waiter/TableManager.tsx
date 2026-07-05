@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
-import { openSession, closeSession, setTableStatus, claimTableCleaning, releaseTableCleaning, markTableClean } from '@/app/(staff)/waiter/actions'
+import { openSession, closeSession, setTableStatus, claimTableCleaning, releaseTableCleaning, markTableClean, openSessionFromRequest } from '@/app/(staff)/waiter/actions'
+import { createClient } from '@/lib/supabase/client'
 import { Users, QrCode, PowerOff, Power, Sparkles, CalendarClock, UtensilsCrossed, Footprints, Check, X, Flame, ShoppingCart } from 'lucide-react'
 import type { Table, Session } from '@/types/database'
 import { QRCodeSVG } from 'qrcode.react'
@@ -62,6 +63,64 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
 
     const [mounted, setMounted] = useState(false)
     useEffect(() => { setMounted(true) }, [])
+
+    const [openSessionRequests, setOpenSessionRequests] = useState<Record<string, string>>({})
+
+    useEffect(() => {
+        const fetchOpenSessionRequests = async () => {
+            const supabase = createClient()
+            const { data } = await supabase
+                .from('service_requests')
+                .select('id, table_id')
+                .eq('request_type', 'open_session')
+                .in('status', ['pending', 'acknowledged'])
+            if (data) {
+                const map: Record<string, string> = {}
+                for (const r of data) {
+                    if (r.table_id) map[r.table_id] = r.id
+                }
+                setOpenSessionRequests(map)
+            }
+        }
+        fetchOpenSessionRequests()
+    }, [])
+
+    useRestaurantTable(restaurantId, 'service_requests', (payload) => {
+        if (payload.eventType === 'INSERT') {
+            const { id, request_type, status, table_id } = payload.new
+            if (request_type === 'open_session' && ['pending', 'acknowledged'].includes(status) && table_id) {
+                setOpenSessionRequests(prev => ({ ...prev, [table_id]: id }))
+            }
+        } else if (payload.eventType === 'UPDATE') {
+            const { id, request_type, status, table_id } = payload.new
+            if (request_type === 'open_session') {
+                if (status === 'completed' || status === 'cancelled') {
+                    setOpenSessionRequests(prev => {
+                        const next = { ...prev }
+                        for (const tid in next) {
+                            if (next[tid] === id) {
+                                delete next[tid]
+                            }
+                        }
+                        return next
+                    })
+                } else if (table_id) {
+                    setOpenSessionRequests(prev => ({ ...prev, [table_id]: id }))
+                }
+            }
+        } else if (payload.eventType === 'DELETE') {
+            const { id } = payload.old
+            setOpenSessionRequests(prev => {
+                const next = { ...prev }
+                for (const tid in next) {
+                    if (next[tid] === id) {
+                        delete next[tid]
+                    }
+                }
+                return next
+            })
+        }
+    })
 
     const [filter, setFilter] = useState<'all' | 'available' | 'reserved' | 'occupied' | 'dirty'>('all')
 
@@ -138,14 +197,25 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
 
     const handleOpenSession = async (tableId: string) => {
         setIsProcessing(true)
-        const res = await openSession(tableId, restaurantId)
+        const pendingRequestId = openSessionRequests[tableId]
+        let res: { error?: string; success?: boolean; session?: any }
+        if (pendingRequestId) {
+            res = await openSessionFromRequest(pendingRequestId, tableId, restaurantId)
+        } else {
+            res = await openSession(tableId, restaurantId)
+        }
         if (res.error || !res.session) {
             toast.error(res.error || 'Failed to open session')
             setIsProcessing(false)
             return
         }
-        // Optimistically flip the table to active so the card updates instantly,
-        // even if the Realtime INSERT event is delayed or never arrives.
+        if (pendingRequestId) {
+            setOpenSessionRequests(prev => {
+                const next = { ...prev }
+                delete next[tableId]
+                return next
+            })
+        }
         const session = res.session as Session
         await setTableStatus(tableId, 'available')
         setTables(prev => prev.map(t => t.id === tableId ? { ...t, activeSession: session } : t))
@@ -240,24 +310,20 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                             <button
                                 key={key}
                                 onClick={() => setFilter(key)}
-                                className={`relative flex items-center justify-center py-2 px-1 sm:py-2.5 sm:px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 w-full whitespace-nowrap ${
+                                className={`relative flex items-center justify-center gap-1.5 py-2 px-1 sm:py-2.5 sm:px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 w-full whitespace-nowrap ${
                                     isActive 
                                         ? activeColors[key] 
                                         : 'bg-white border border-hairline text-gray-500 hover:bg-gray-50 hover:text-gray-700 shadow-sm'
                                 }`}
                             >
-                                <span>{label}</span>
                                 {count > 0 && (
-                                    <div className="absolute -top-2.5 -right-2.5 w-6 h-6 flex items-center justify-center pointer-events-none">
-                                        <Flame 
-                                            size={22} 
-                                            className="transition-all fill-[#EA580C] text-[#EA580C]" 
-                                        />
-                                        <span className="absolute text-[8.5px] font-black tracking-tighter pt-1.5 text-white">
-                                            {count}
-                                        </span>
-                                    </div>
+                                    <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md min-w-[18px] text-center ${
+                                        isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-700'
+                                    }`}>
+                                        {count}
+                                    </span>
                                 )}
+                                <span>{label}</span>
                             </button>
                         )
                     })}
@@ -300,12 +366,15 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                 pending:  { dot: 'bg-warning',               label: '● Waiting', cls: 'text-warning-fg' },
                             }
                             const tl = orderLight ? trafficLight[orderLight] : null
+                            const hasOpenRequest = !table.activeSession && !!openSessionRequests[table.id]
 
                             return (
                                 <button
                                     key={table.id}
                                     onClick={() => setSelectedTable(isSelected ? null : table)}
-                                    className={`relative aspect-square rounded-[20px] border flex flex-col items-center justify-center transition-all duration-300 ${cfg.card} ${
+                                    className={`relative aspect-square rounded-[20px] border flex flex-col items-center justify-center transition-all duration-300 ${
+                                        hasOpenRequest ? 'border-violet-300 bg-violet-50/10 shadow-[0_0_12px_rgba(139,92,246,0.15)] animate-pulse' : cfg.card
+                                    } ${
                                         isSelected ? 'ring-2 ring-offset-2 ring-brand-500 scale-[1.02] z-10 shadow-[0_8px_20px_rgb(251,99,3,0.15)] bg-white' : 'hover:-translate-y-1 hover:shadow-md hover:bg-white active:scale-95'
                                     }`}
                                 >
@@ -319,11 +388,20 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                     )}
                                     {tl ? (
                                         <span className={`text-[9px] font-bold mt-0.5 ${tl.cls}`}>{tl.label}</span>
+                                    ) : hasOpenRequest ? (
+                                        <span className="text-[9px] font-black text-violet-600 mt-0.5 animate-pulse uppercase tracking-wide">🛎️ Open Session</span>
                                     ) : cfg.label ? (
                                         <span className={`text-[9px] font-bold uppercase tracking-wide mt-0.5 ${cfg.labelCls}`}>{cfg.label}</span>
                                     ) : null}
                                     {/* Session status dot (top-right) */}
-                                    <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${cfg.dot}`} />
+                                    {hasOpenRequest ? (
+                                        <span className="absolute top-1.5 right-1.5 flex h-2 w-2">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75" />
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-500" />
+                                        </span>
+                                    ) : (
+                                        <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${cfg.dot}`} />
+                                    )}
                                     {/* Order traffic light dot (top-left) */}
                                     {tl && <span className={`absolute top-1.5 left-1.5 w-2 h-2 rounded-full ${tl.dot}`} />}
                                 </button>

@@ -101,7 +101,7 @@ export async function openSessionFromRequest(
     requestId: string,
     tableId: string,
     restaurantId: string
-): Promise<{ error?: string; success?: boolean }> {
+): Promise<{ error?: string; success?: boolean; session?: any }> {
     const result = await openSession(tableId, restaurantId)
     if (result.error) return { error: result.error }
 
@@ -111,7 +111,7 @@ export async function openSessionFromRequest(
         .update({ status: 'completed', completed_at: new Date().toISOString() })
         .eq('id', requestId)
 
-    return { success: true }
+    return { success: true, session: result.session }
 }
 
 /**

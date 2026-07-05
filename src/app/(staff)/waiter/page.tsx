@@ -1,7 +1,7 @@
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import TableManager, { type TableWithSession } from '@/components/waiter/TableManager'
-import ServiceRequestFeed, { type ServiceRequestWithTable } from '@/components/waiter/ServiceRequestFeed'
+import WaiterCustomerTabs, { type ServiceRequestWithTable } from '@/components/waiter/WaiterCustomerTabs'
 import PaymentVerificationFeed, { type PaymentClaim } from '@/components/waiter/PaymentVerificationFeed'
 import WaiterOrderFeed, { type WaiterOrder } from '@/components/waiter/WaiterOrderFeed'
 import OrderConfirmFeed, { type ConfirmOrder } from '@/components/waiter/OrderConfirmFeed'
@@ -21,6 +21,43 @@ export const revalidate = 0
 export default async function WaiterPage() {
     const { id: userId, restaurantId } = await getCurrentUser()
     const adminSupabase = await createAdminClient()
+
+    // Self-healing database cleanup: purge any sessions/orders/requests for inactive tables
+    const { data: inactiveTables } = await adminSupabase
+        .from('tables')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', false)
+        
+    const inactiveTableIds = inactiveTables?.map(t => t.id) || []
+    if (inactiveTableIds.length > 0) {
+        // Delete direct service requests
+        await adminSupabase.from('service_requests').delete().in('table_id', inactiveTableIds)
+        
+        // Get sessions for these tables
+        const { data: inactiveSessions } = await adminSupabase
+            .from('sessions')
+            .select('id')
+            .in('table_id', inactiveTableIds)
+            
+        const inactiveSessionIds = inactiveSessions?.map(s => s.id) || []
+        if (inactiveSessionIds.length > 0) {
+            // Get orders
+            const { data: inactiveOrders } = await adminSupabase
+                .from('orders')
+                .select('id')
+                .in('session_id', inactiveSessionIds)
+                
+            const inactiveOrderIds = inactiveOrders?.map(o => o.id) || []
+            if (inactiveOrderIds.length > 0) {
+                await adminSupabase.from('order_items').delete().in('order_id', inactiveOrderIds)
+                await adminSupabase.from('payment_verifications').delete().in('order_id', inactiveOrderIds)
+                await adminSupabase.from('orders').delete().in('id', inactiveOrderIds)
+            }
+            await adminSupabase.from('service_requests').delete().in('session_id', inactiveSessionIds)
+            await adminSupabase.from('sessions').delete().in('id', inactiveSessionIds)
+        }
+    }
 
     const now = new Date().toISOString()
 
@@ -69,8 +106,9 @@ export default async function WaiterPage() {
             .limit(20),
         adminSupabase
             .from('payment_verifications')
-            .select('*')
+            .select('*, orders:orders!inner(order_type)')
             .eq('restaurant_id', restaurantId)
+            .eq('orders.order_type', 'dine_in')
             .order('created_at', { ascending: false })
             .limit(20),
         adminSupabase
@@ -144,8 +182,10 @@ export default async function WaiterPage() {
     // Counts for tabs
     const spaceCount = 0 // Not typically badgered
     const ordersCount = (activeOrders || []).filter(o => o.status === 'ready').length + (ordersToConfirm?.length || 0) + (readyTakeouts?.length || 0) + readyDeliveries.length
-    const customerCount = (serviceRequests || []).filter(r => r.status === 'pending').length
-    const billingCount = (unpaidDelivered?.length || 0) + (paymentClaims?.length || 0)
+    
+    const pendingRequestsCount = (serviceRequests || []).filter(r => r.status === 'pending' && r.request_type !== 'open_session').length
+    const pendingClaimsCount = (paymentClaims || []).filter(c => !c.staff_verified && !c.staff_rejected).length
+    const customerCount = pendingRequestsCount + (unpaidDelivered?.length || 0) + pendingClaimsCount
 
     const spaceContent = (
         <div className="space-y-6 pt-1">
@@ -210,32 +250,15 @@ export default async function WaiterPage() {
 
     const customerContent = (
         <div className="space-y-6 pt-1">
-            {features?.serviceRequestsEnabled !== false && (
-                <ServiceRequestFeed
-                    initialRequests={(serviceRequests || []) as unknown as ServiceRequestWithTable[]}
-                    restaurantId={restaurantId}
-                    userId={userId}
-                    staffNames={staffNames}
-                />
-            )}
-        </div>
-    )
-
-    const billingContent = (
-        <div className="space-y-6 pt-1">
-            {unpaidDelivered && unpaidDelivered.length > 0 && (
-                <CashPaymentFeed
-                    initialOrders={unpaidDelivered as unknown as UnpaidOrder[]}
-                    restaurantId={restaurantId}
-                />
-            )}
-            {features?.nepalPayEnabled && (
-                <PaymentVerificationFeed
-                    initialClaims={(paymentClaims || []) as unknown as PaymentClaim[]}
-                    restaurantId={restaurantId}
-                    userId={userId}
-                />
-            )}
+            <WaiterCustomerTabs
+                initialRequests={(serviceRequests || []) as unknown as ServiceRequestWithTable[]}
+                initialUnpaidOrders={(unpaidDelivered || []) as unknown as UnpaidOrder[]}
+                initialClaims={(paymentClaims || []) as unknown as PaymentClaim[]}
+                restaurantId={restaurantId}
+                userId={userId}
+                staffNames={staffNames}
+                features={features}
+            />
         </div>
     )
 
@@ -246,12 +269,10 @@ export default async function WaiterPage() {
                     spaceContent={spaceContent}
                     ordersContent={ordersContent}
                     customerContent={customerContent}
-                    billingContent={billingContent}
                     counts={{
                         space: spaceCount,
                         orders: ordersCount,
                         customer: customerCount,
-                        billing: billingCount
                     }}
                 />
             </div>

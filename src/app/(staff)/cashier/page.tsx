@@ -13,7 +13,9 @@ export default async function CashierPage() {
         { data: unpaidOrders },
         { data: activeOrders },
         { data: tables },
+        { data: activeSessions },
         { data: paymentClaims },
+        restaurantData,
     ] = await Promise.all([
         // Delivered but not yet paid — ready for cashier
         adminSupabase
@@ -21,7 +23,7 @@ export default async function CashierPage() {
             .select(`
                 id, total_amount, delivered_at, payment_status, payment_method, session_id,
                 sessions ( id, tables ( id, label ) ),
-                order_items ( quantity, menu_items ( name ) )
+                order_items ( quantity, unit_price, menu_items ( name ) )
             `)
             .eq('restaurant_id', restaurantId)
             .eq('status', 'delivered')
@@ -29,13 +31,12 @@ export default async function CashierPage() {
             .order('delivered_at', { ascending: true })
             .limit(50),
 
-        // Currently being prepared / pending — so cashier can see incoming
         adminSupabase
             .from('orders')
             .select(`
-                id, status, total_amount, placed_at, session_id, order_type, customer_name, customer_phone, delivery_address,
+                id, status, total_amount, placed_at, session_id, order_type, customer_name, customer_phone, delivery_address, payment_status,
                 sessions ( id, tables ( label ) ),
-                order_items ( id, quantity, status, menu_items ( name ) )
+                order_items ( id, quantity, status, unit_price, menu_items ( name ) )
             `)
             .eq('restaurant_id', restaurantId)
             .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
@@ -44,10 +45,17 @@ export default async function CashierPage() {
         // All active tables
         adminSupabase
             .from('tables')
-            .select('id, label, capacity')
+            .select('id, label, capacity, table_status, cleaning_claimed_by, cleaning_claimed_at, qr_token')
             .eq('restaurant_id', restaurantId)
             .eq('is_active', true)
             .order('label', { ascending: true }),
+
+        // All active sessions
+        adminSupabase
+            .from('sessions')
+            .select('id, table_id, restaurant_id, status, opened_at, session_token')
+            .eq('restaurant_id', restaurantId)
+            .eq('status', 'active'),
 
         // Online payment claims (UPI/card) awaiting staff verification
         adminSupabase
@@ -56,16 +64,34 @@ export default async function CashierPage() {
             .eq('restaurant_id', restaurantId)
             .order('created_at', { ascending: false })
             .limit(20),
+
+        // Restaurant slug for manual takeaway/delivery redirect
+        adminSupabase
+            .from('restaurants')
+            .select('slug')
+            .eq('id', restaurantId)
+            .single(),
     ])
+
+    const activeSessionsByTable = Object.fromEntries(
+        (activeSessions || []).map(s => [s.table_id, s])
+    )
+    const mappedTables = tables?.map(t => ({
+        ...t,
+        activeSession: activeSessionsByTable[t.id] || null
+    })) || []
+
+    const restaurantSlug = restaurantData?.data?.slug || ''
 
     return (
         <CashierClient
             restaurantId={restaurantId}
+            restaurantSlug={restaurantSlug}
             userId={userId}
             initialUnpaid={(unpaidOrders || []) as unknown as UnpaidOrder[]}
             initialActive={(activeOrders || []) as unknown as ActiveOrder[]}
             initialClaims={(paymentClaims || []) as unknown as PaymentClaim[]}
-            tables={(tables || []).map(t => ({ id: t.id, label: t.label, capacity: t.capacity }))}
+            tables={mappedTables as any}
         />
     )
 }

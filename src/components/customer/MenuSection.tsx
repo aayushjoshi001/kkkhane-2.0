@@ -16,6 +16,8 @@ export default function MenuSection({
     restaurantSlug,
     restaurantId,
     layout = 'grid',
+    searchQuery = '',
+    setSearchQuery = () => {},
 }: {
     categories: MenuCategory[]
     items: MenuItem[]
@@ -24,10 +26,11 @@ export default function MenuSection({
     restaurantSlug: string
     restaurantId?: string
     layout?: 'grid' | 'list'
+    searchQuery?: string
+    setSearchQuery?: (val: string) => void
 }) {
     const { t } = useTranslation()
     const [activeCategory, setActiveCategory] = useState('all')
-    const [searchQuery, setSearchQuery] = useState('')
     const observerRef = useRef<IntersectionObserver | null>(null)
     // Track whether a programmatic scroll is in progress to suppress spy updates
     const isScrollingRef = useRef(false)
@@ -47,8 +50,8 @@ export default function MenuSection({
     useEffect(() => {
         if (observerRef.current) observerRef.current.disconnect()
 
-        // Sticky header (56px) + category nav (44px) + small gap = ~108px
-        const SCROLL_OFFSET = 110
+        // Sticky header (56px) + banner (40px) + search (52px) + category nav (44px) = ~192px
+        const SCROLL_OFFSET = 200
 
         observerRef.current = new IntersectionObserver(
             (entries) => {
@@ -101,28 +104,6 @@ export default function MenuSection({
 
     return (
         <>
-            <div className="sticky top-[56px] md:top-[64px] z-40 bg-gray-50/80 backdrop-blur-md pb-2 px-4 md:px-0">
-                <div className="relative max-w-3xl mx-auto mt-2">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Search className="h-4 w-4 text-gray-400" />
-                    </div>
-                    <input
-                        type="text"
-                        placeholder="Search menu items..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="block w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-xl leading-5 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary sm:text-sm transition-all"
-                    />
-                    {searchQuery && (
-                        <button
-                            onClick={() => setSearchQuery('')}
-                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-                        >
-                            <X className="h-4 w-4" />
-                        </button>
-                    )}
-                </div>
-            </div>
 
             {!searchQuery && (
                 <CategoryNav
@@ -205,21 +186,31 @@ function ItemGrid({ items, comboItems, menuItems, sessionId, restaurantSlug, res
     restaurantId?: string
     layout?: 'grid' | 'list'
 }) {
+    // If layout is 'list', use simple vertical flex.
+    // Otherwise on mobile: flex row horizontal scroll; on desktop: regular grid.
     const containerCls = layout === 'list'
         ? 'flex flex-col gap-3'
-        : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4'
+        : 'flex overflow-x-auto gap-3 pb-4 scrollbar-none snap-x snap-mandatory sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:gap-4 -mx-4 px-4 sm:mx-0 sm:px-0'
+
     return (
-        <div className={containerCls}>
+        <div className={containerCls} style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
             {items.map((item) => (
-                <MenuItemCard
+                <div
                     key={item.id}
-                    item={item}
-                    comboItems={comboItems}
-                    menuItems={menuItems}
-                    sessionId={sessionId}
-                    restaurantSlug={restaurantSlug}
-                    restaurantId={restaurantId}
-                />
+                    className={layout === 'list'
+                        ? 'w-full'
+                        : 'w-[calc((100vw-32px-12px)/2.25)] sm:w-auto shrink-0 snap-start h-full'
+                    }
+                >
+                    <MenuItemCard
+                        item={item}
+                        comboItems={comboItems}
+                        menuItems={menuItems}
+                        sessionId={sessionId}
+                        restaurantSlug={restaurantSlug}
+                        restaurantId={restaurantId}
+                    />
+                </div>
             ))}
         </div>
     )

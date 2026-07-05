@@ -15,29 +15,23 @@ export default async function TakeoutOrderPage({
     const supabase = await createAdminClient()
 
     let orderRow = null
-    let fetchError = null
 
     for (let attempt = 1; attempt <= 3; attempt++) {
-        const { data, error } = await supabase
+        const { data } = await supabase
             .from('orders')
             .select(TAKEOUT_ORDER_SELECT)
             .eq('id', orderId)
             .in('order_type', ['takeout', 'delivery'])
-            .single()
+            .maybeSingle()
 
         if (data) {
             orderRow = data
             break
-        } else {
-            fetchError = error
-            if (attempt < 3) {
-                await new Promise((resolve) => setTimeout(resolve, 300))
-            }
         }
-    }
 
-    if (fetchError && !orderRow) {
-        console.error('Takeout order fetch error:', fetchError)
+        if (attempt < 3) {
+            await new Promise((resolve) => setTimeout(resolve, 500))
+        }
     }
 
     if (!orderRow) return notFound()
