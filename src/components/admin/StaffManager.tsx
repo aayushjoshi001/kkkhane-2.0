@@ -40,12 +40,15 @@ export type Invitation = {
     id: string
     email: string
     role_id: number
+    department_id: string | null
     status: 'pending' | 'accepted' | 'revoked' | 'expired'
     expires_at: string
     created_at: string
     // Supabase can return arrays for joins depending on the query shape
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     roles: any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    departments: any
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     invited_by: any
 }
@@ -98,6 +101,7 @@ export default function StaffManager({
         password: '',
         phone: '',
         roleId: 4, // Default to waiter
+        departmentId: '' as string,
         isCreating: false
     })
 
@@ -105,6 +109,7 @@ export default function StaffManager({
         isOpen: false,
         email: '',
         roleId: 4, // Default to waiter
+        departmentId: '' as string,
         isInviting: false
     })
 
@@ -207,6 +212,7 @@ export default function StaffManager({
                     password: createModal.password,
                     phone: createModal.phone || undefined,
                     role_id: createModal.roleId,
+                    department_id: createModal.departmentId || undefined,
                     restaurant_id: restaurantId,
                 }),
             })
@@ -231,6 +237,7 @@ export default function StaffManager({
                 password: '',
                 phone: '',
                 roleId: 4,
+                departmentId: '',
                 isCreating: false
             })
         } catch (error) {
@@ -242,7 +249,7 @@ export default function StaffManager({
     }
 
     const closeCreateModal = () => {
-        setCreateModal({ isOpen: false, fullName: '', email: '', password: '', phone: '', roleId: 4, isCreating: false })
+        setCreateModal({ isOpen: false, fullName: '', email: '', password: '', phone: '', roleId: 4, departmentId: '', isCreating: false })
     }
 
     const handleSendInvite = async () => {
@@ -252,7 +259,11 @@ export default function StaffManager({
         }
 
         setInviteModal(prev => ({ ...prev, isInviting: true }))
-        const res = await createInvitationAction({ email: inviteModal.email.trim(), roleId: inviteModal.roleId })
+        const res = await createInvitationAction({
+            email: inviteModal.email.trim(),
+            roleId: inviteModal.roleId,
+            departmentId: inviteModal.departmentId || null,
+        })
         setInviteModal(prev => ({ ...prev, isInviting: false }))
 
         if (!res.success) {
@@ -267,7 +278,7 @@ export default function StaffManager({
             })
         }
         toast.success(`Invitation sent to ${inviteModal.email.trim()}`)
-        setInviteModal({ isOpen: false, email: '', roleId: 4, isInviting: false })
+        setInviteModal({ isOpen: false, email: '', roleId: 4, departmentId: '', isInviting: false })
     }
 
     const handleRevokeInvite = async (invitation: Invitation) => {
@@ -751,6 +762,7 @@ export default function StaffManager({
                                     <tr className="bg-surface-muted border-b border-hairline text-[11px] font-bold text-ink-subtle uppercase tracking-wider">
                                         <th className="px-6 py-4">Email</th>
                                         <th className="px-6 py-4">Role</th>
+                                        <th className="px-6 py-4">Department</th>
                                         <th className="px-6 py-4">Status</th>
                                         <th className="px-6 py-4">Expires</th>
                                         <th className="px-6 py-4 text-right">Actions</th>
@@ -760,6 +772,7 @@ export default function StaffManager({
                                     {invitations.map(invitation => {
                                         const status = formatInviteStatus(invitation)
                                         const roleObj = Array.isArray(invitation.roles) ? invitation.roles[0] : invitation.roles
+                                        const deptObj = Array.isArray(invitation.departments) ? invitation.departments[0] : invitation.departments
                                         const statusStyle = status === 'pending'
                                             ? 'bg-brand-50 text-brand-700 border-brand-100'
                                             : status === 'accepted'
@@ -774,6 +787,13 @@ export default function StaffManager({
                                                         {getRoleIcon(roleObj?.name || '')}
                                                         {formatRoleName(roleObj?.name || 'Unknown')}
                                                     </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    {deptObj ? (
+                                                        <span className="text-sm font-bold text-ink">{deptObj.name}</span>
+                                                    ) : (
+                                                        <span className="text-sm font-bold text-ink-muted italic">Unassigned</span>
+                                                    )}
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${statusStyle}`}>
@@ -1047,6 +1067,21 @@ export default function StaffManager({
                                     ))}
                                 </select>
                             </div>
+
+                            <div>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Department <span className="text-gray-400 font-normal normal-case">(optional)</span></label>
+                                <select
+                                    value={createModal.departmentId}
+                                    onChange={(e) => setCreateModal(prev => ({ ...prev, departmentId: e.target.value }))}
+                                    disabled={createModal.isCreating}
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
+                                >
+                                    <option value="">No Department</option>
+                                    {departments.map(dept => (
+                                        <option key={dept.id} value={dept.id}>{dept.name}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
 
                         <div className="px-6 py-5 bg-surface-muted/30 border-t border-hairline flex justify-end gap-3">
@@ -1105,11 +1140,26 @@ export default function StaffManager({
                                     ))}
                                 </select>
                             </div>
+
+                            <div>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Department <span className="text-gray-400 font-normal normal-case">(optional)</span></label>
+                                <select
+                                    value={inviteModal.departmentId}
+                                    onChange={(e) => setInviteModal(prev => ({ ...prev, departmentId: e.target.value }))}
+                                    disabled={inviteModal.isInviting}
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
+                                >
+                                    <option value="">No Department</option>
+                                    {departments.map(dept => (
+                                        <option key={dept.id} value={dept.id}>{dept.name}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
 
                         <div className="px-6 py-5 bg-surface-muted/30 border-t border-hairline flex justify-end gap-3">
                             <button
-                                onClick={() => setInviteModal({ isOpen: false, email: '', roleId: 4, isInviting: false })}
+                                onClick={() => setInviteModal({ isOpen: false, email: '', roleId: 4, departmentId: '', isInviting: false })}
                                 disabled={inviteModal.isInviting}
                                 className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors disabled:opacity-50 focus-ring"
                             >

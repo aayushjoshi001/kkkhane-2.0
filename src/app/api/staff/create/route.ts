@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
             )
         }
 
-        const { email, full_name, role_id, password, phone, restaurant_id } = validation.data
+        const { email, full_name, role_id, department_id, password, phone, restaurant_id } = validation.data
 
         // Managers cannot create super_admin accounts
         if (userRole === 'manager' && role_id === 1) {
@@ -71,6 +71,20 @@ export async function POST(req: NextRequest) {
 
         if (!restaurant) {
             return NextResponse.json({ error: 'Restaurant not found' }, { status: 404 })
+        }
+
+        // A department_id, if provided, must belong to this same restaurant
+        if (department_id) {
+            const { data: department } = await supabase
+                .from('departments')
+                .select('id')
+                .eq('id', department_id)
+                .eq('restaurant_id', restaurant_id)
+                .maybeSingle()
+
+            if (!department) {
+                return NextResponse.json({ error: 'Invalid department' }, { status: 400 })
+            }
         }
 
         // Check subscription limits
@@ -118,6 +132,7 @@ export async function POST(req: NextRequest) {
                 restaurant_id,
                 full_name,
                 role_id,
+                department_id: department_id || null,
                 is_active: true,
             }, { onConflict: 'id' })
 

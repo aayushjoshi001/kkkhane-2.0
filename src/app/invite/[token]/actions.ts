@@ -29,7 +29,7 @@ export async function acceptInvitationAction(
 
     const { data: invitation } = await supabase
         .from('invitations')
-        .select('id, restaurant_id, email, role_id, status, expires_at')
+        .select('id, restaurant_id, email, role_id, department_id, status, expires_at')
         .eq('token_hash', tokenHash)
         .maybeSingle()
 
@@ -89,6 +89,7 @@ export async function acceptInvitationAction(
             restaurant_id: invitation.restaurant_id,
             full_name: fullName,
             role_id: invitation.role_id,
+            department_id: invitation.department_id,
             is_active: true,
         }, { onConflict: 'id' })
 

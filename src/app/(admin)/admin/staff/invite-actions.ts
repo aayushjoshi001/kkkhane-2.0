@@ -20,9 +20,9 @@ function hashToken(token: string) {
     return createHash('sha256').update(token).digest('hex')
 }
 
-const INVITATION_SELECT = 'id, email, role_id, status, expires_at, created_at, roles(id, name, description), invited_by(id, full_name)'
+const INVITATION_SELECT = 'id, email, role_id, department_id, status, expires_at, created_at, roles(id, name, description), departments(id, name), invited_by(id, full_name)'
 
-export async function createInvitationAction(input: { email: string; roleId: number }) {
+export async function createInvitationAction(input: { email: string; roleId: number; departmentId?: string | null }) {
     const currentUser = await getCurrentUser()
     if (!['manager', 'super_admin'].includes(currentUser.role)) {
         return { error: 'You do not have permission to invite staff' }
@@ -40,6 +40,18 @@ export async function createInvitationAction(input: { email: string; roleId: num
     if (rateLimitError) return { error: rateLimitError }
 
     const supabase = await createAdminClient()
+
+    // A department, if picked, must belong to this same restaurant
+    if (input.departmentId) {
+        const { data: department } = await supabase
+            .from('departments')
+            .select('id')
+            .eq('id', input.departmentId)
+            .eq('restaurant_id', currentUser.restaurantId)
+            .maybeSingle()
+
+        if (!department) return { error: 'Invalid department' }
+    }
 
     // Reject if this email is already a staff/customer account in this restaurant.
     const { data: existingUser } = await supabase
@@ -88,11 +100,13 @@ export async function createInvitationAction(input: { email: string; roleId: num
         .eq('status', 'pending')
         .maybeSingle()
 
+    const departmentId = input.departmentId || null
+
     let invitationId: string
     if (pendingInvite) {
         const { error } = await supabase
             .from('invitations')
-            .update({ role_id: input.roleId, token_hash: tokenHash, expires_at: expiresAt })
+            .update({ role_id: input.roleId, department_id: departmentId, token_hash: tokenHash, expires_at: expiresAt })
             .eq('id', pendingInvite.id)
         if (error) return { error: error.message }
         invitationId = pendingInvite.id
@@ -103,6 +117,7 @@ export async function createInvitationAction(input: { email: string; roleId: num
                 restaurant_id: currentUser.restaurantId,
                 email,
                 role_id: input.roleId,
+                department_id: departmentId,
                 token_hash: tokenHash,
                 invited_by: currentUser.id,
                 expires_at: expiresAt,
@@ -131,7 +146,7 @@ export async function createInvitationAction(input: { email: string; roleId: num
         action: 'staff_invited',
         entityType: 'invitation',
         entityId: invitationId,
-        newValue: { email, role_id: input.roleId },
+        newValue: { email, role_id: input.roleId, department_id: departmentId },
     })
 
     const { data: invitation } = await supabase
