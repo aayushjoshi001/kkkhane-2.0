@@ -35,10 +35,14 @@ export default function ServiceRequestPanel({
     sessionId,
     restaurantId,
     quickItems = [],
+    isOpen,
+    onClose,
 }: {
     sessionId: string
     restaurantId: string
     quickItems?: string[]
+    isOpen: boolean
+    onClose: () => void
 }) {
     // Manager-configured quick-serve items (water, cold drinks, tissue…) become
     // one-tap requests. Fall back to sensible defaults if none are configured.
@@ -53,7 +57,6 @@ export default function ServiceRequestPanel({
         }))
         : DEFAULT_QUICK_OPTIONS
     const REQUEST_OPTIONS = [...CORE_OPTIONS, ...quickOptions]
-    const [isOpen, setIsOpen] = useState(false)
     const [loading, setLoading] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
     const [customMessage, setCustomMessage] = useState('')
@@ -108,24 +111,14 @@ export default function ServiceRequestPanel({
         }
     }
 
-    if (!isOpen) {
-        return (
-            <button
-                onClick={() => setIsOpen(true)}
-                className={`fixed ${fabBottom} right-4 z-60 bg-white shadow-xl border border-gray-200 rounded-full p-3.5 active:scale-95 transition-all duration-300`}
-                aria-label="Service requests"
-            >
-                <Bell size={22} className="text-gray-700" />
-            </button>
-        )
-    }
+    if (!isOpen) return null
 
     return (
         <div className={`fixed ${fabBottom} right-4 z-60 w-72 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden`}>
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
                 <h3 className="font-semibold text-gray-800 text-sm">Need Help?</h3>
-                <button onClick={() => setIsOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
                     <X size={18} />
                 </button>
             </div>

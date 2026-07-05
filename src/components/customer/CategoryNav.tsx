@@ -27,13 +27,13 @@ export default function CategoryNav({
         onCategoryChange(id)
         const target = document.getElementById(`category-section-${id}`)
         if (target) {
-            const top = target.getBoundingClientRect().top + window.scrollY - 108
+            const top = target.getBoundingClientRect().top + window.scrollY - 192
             window.scrollTo({ top, behavior: 'smooth' })
         }
     }
 
     return (
-        <div className="bg-white/95 backdrop-blur-md border-b border-gray-100/80 sticky top-14 z-10">
+        <div className="bg-white/95 backdrop-blur-md border-b border-gray-100/80 sticky top-[148px] z-10">
             <div
                 ref={scrollRef}
                 className="flex overflow-x-auto gap-1.5 px-4 py-2.5"
