@@ -352,7 +352,7 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
                                         </span>
                                     </div>
                                     {c.note ? (
-                                        <p className="text-sm text-ink mt-0.5">"{c.note}"</p>
+                                        <p className="text-sm text-ink mt-0.5">&quot;{c.note}&quot;</p>
                                     ) : (
                                         <p className="text-xs text-ink-subtle mt-0.5 italic">No reason provided</p>
                                     )}
@@ -415,7 +415,7 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
                                 <ul className="space-y-4">
                                     {topComments.map((f, i) => (
                                         <li key={i} className="border-l-2 border-amber-200 pl-3">
-                                            <p className="text-sm text-ink">"{f.comment}"</p>
+                                            <p className="text-sm text-ink">&quot;{f.comment}&quot;</p>
                                             <p className="text-[10px] text-ink-subtle mt-0.5">
                                                 {'★'.repeat(f.rating)}{'☆'.repeat(5 - f.rating)}
                                                 {' · '}{new Date(f.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}

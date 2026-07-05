@@ -20,3 +20,4 @@ export { CommandHint, openCommandPalette, COMMAND_OPEN_EVENT } from './CommandHi
 export { default as CommandPaletteMount } from './CommandPaletteMount'
 export { default as AgingTimer } from './AgingTimer'
 export type { AgingTimerProps } from './AgingTimer'
+export * from './NepaliInput'

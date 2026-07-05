@@ -264,7 +264,7 @@ export default function SettingsManager({
                     </div>
                     <div>
                         <h3 className="text-h3 font-extrabold text-ink">General Information</h3>
-                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Your restaurant's brand and physical details</p>
+                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Your restaurant&apos;s brand and physical details</p>
                     </div>
                 </div>
 

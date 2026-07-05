@@ -151,7 +151,7 @@ export default function ContactPage() {
                                     <p className="text-gray-500 font-bold text-xs uppercase tracking-wider">Kathmandu, Nepal</p>
                                 </div>
                             </div>
-                            <a href="https://maps.google.com" target="_blank" rel="noreferrer" className="block text-center w-full py-2 mt-3 bg-gray-900 text-white rounded-xl text-xs font-bold hover:bg-black transition-colors">
+                            <a href="https://maps.google.com" target="_blank" rel="noopener noreferrer" className="block text-center w-full py-2 mt-3 bg-gray-900 text-white rounded-xl text-xs font-bold hover:bg-black transition-colors">
                                 Get Directions
                             </a>
                         </div>

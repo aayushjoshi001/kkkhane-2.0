@@ -26,6 +26,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
     const [imgError, setImgError] = useState(false)
 
     // Load theme preference on mount
+    // eslint-disable-next-line
     useEffect(() => {
         const storedTheme = localStorage.getItem('srms-theme')
         if (storedTheme === 'light') {

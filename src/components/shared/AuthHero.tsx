@@ -31,7 +31,7 @@ export default function AuthHero({ heightClassName = 'h-64 sm:h-72' }: { heightC
 
             <div className="relative z-10 h-full flex flex-col items-center justify-center gap-3 px-4 text-center">
                 <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-white shadow-lg flex items-center justify-center p-1.5">
-                    <Image src="/brand/icon.png" alt="" width={64} height={64} className="w-full h-full object-contain" />
+                    <Image src="/brand/icon.png" alt="KKKhane Logo" width={64} height={64} className="w-full h-full object-contain" />
                 </div>
                 <span className="text-white font-extrabold text-2xl sm:text-3xl tracking-tight">kkkhane</span>
                 <span className="text-white/80 text-[10px] sm:text-[11px] font-bold tracking-[0.15em] uppercase">

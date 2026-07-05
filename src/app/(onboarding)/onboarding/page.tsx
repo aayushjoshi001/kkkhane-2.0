@@ -15,21 +15,22 @@ export default async function OnboardingPage() {
         redirect('/admin/dashboard')
     }
 
-    // Fetch full name from users table
+    // Fetch full name + avatar from users table
     const adminSupabase = await createAdminClient()
     const { data: userData } = await adminSupabase
         .from('users')
-        .select('full_name')
+        .select('full_name, avatar_url')
         .eq('id', currentUser.id)
         .single()
 
     const userName = userData?.full_name || currentUser.email.split('@')[0] || 'User'
 
     return (
-        <OnboardingGetStarted 
+        <OnboardingGetStarted
             userId={currentUser.id}
             userEmail={currentUser.email}
             userName={userName}
+            userAvatarUrl={userData?.avatar_url}
         />
     )
 }

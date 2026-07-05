@@ -695,7 +695,7 @@ export default function StaffManager({
                                 <Users size={24} className="text-ink-subtle" />
                             </div>
                             <h4 className="text-lg font-extrabold text-ink mb-2">No Departments Yet</h4>
-                            <p className="text-sm font-medium text-ink-subtle max-w-md mx-auto mb-6">Create departments like "Kitchen", "Front of House", or "Delivery" to organize your staff better.</p>
+                            <p className="text-sm font-medium text-ink-subtle max-w-md mx-auto mb-6">Create departments like &quot;Kitchen&quot;, &quot;Front of House&quot;, or &quot;Delivery&quot; to organize your staff better.</p>
                             <button
                                 onClick={() => setDepartmentModal({ isOpen: true, department: null, name: '', description: '', saving: false })}
                                 className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] transition-all"

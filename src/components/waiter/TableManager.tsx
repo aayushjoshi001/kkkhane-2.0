@@ -198,7 +198,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
     const handleOpenSession = async (tableId: string) => {
         setIsProcessing(true)
         const pendingRequestId = openSessionRequests[tableId]
-        let res: { error?: string; success?: boolean; session?: any }
+        let res: { error?: string; success?: boolean; session?: Record<string, unknown> }
         if (pendingRequestId) {
             res = await openSessionFromRequest(pendingRequestId, tableId, restaurantId)
         } else {
@@ -505,7 +505,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                                     await handleClaimCleaning(selectedTable.id)
                                                     setSelectedTable(null)
                                                 }}>
-                                                    I'm Going to Clean
+                                                    I&apos;m Going to Clean
                                                 </Button>
                                             )}
 

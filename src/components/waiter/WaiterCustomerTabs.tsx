@@ -48,7 +48,7 @@ interface Props {
     restaurantId: string
     userId: string
     staffNames?: Record<string, string>
-    features: any
+    features: { digital_menu: boolean; ordering: boolean; payments: boolean }
 }
 
 type TabType = 'food' | 'service' | 'billing'

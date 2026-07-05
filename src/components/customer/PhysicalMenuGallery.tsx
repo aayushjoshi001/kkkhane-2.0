@@ -87,7 +87,7 @@ export default function PhysicalMenuGallery({ images, restaurantName }: { images
                                         idx === currentIndex ? 'border-white scale-110 shadow-lg' : 'border-transparent opacity-50 hover:opacity-100'
                                     }`}
                                 >
-                                    <Image src={img} alt="" fill sizes="48px" className="object-cover" />
+                                    <Image src={img} alt="Menu page preview" fill sizes="48px" className="object-cover" />
                                 </button>
                             ))}
                         </div>

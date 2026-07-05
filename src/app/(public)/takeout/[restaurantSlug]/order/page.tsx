@@ -10,13 +10,13 @@ export default function TakeoutOrderRedirectPage() {
     const router = useRouter()
     const params = useParams()
     const restaurantSlug = params.restaurantSlug as string
-    const orders = useHydratedStore(useActiveOrders, (s) => s.orders) || []
+    const orders = useHydratedStore(useActiveOrders, (s) => s.orders)
 
     useEffect(() => {
         if (!restaurantSlug) return
 
         // Find most recent active takeout order for this restaurant
-        const activeOrder = orders.find(
+        const activeOrder = (orders || []).find(
             (o) => o.type === 'takeout' && o.slug === restaurantSlug
         )
 

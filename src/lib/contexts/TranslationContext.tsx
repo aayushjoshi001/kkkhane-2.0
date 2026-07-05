@@ -42,6 +42,7 @@ export function TranslationProvider({
     useEffect(() => {
         const stored = localStorage.getItem(storageKey)
         if (stored && supportedLanguages.some(l => l.code === stored)) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setLangState(stored)
         }
     }, [storageKey, supportedLanguages])

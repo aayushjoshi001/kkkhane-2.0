@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, MapPin, Store, Globe, FileText, Phone } from 'lucide-react'
-import { createOnboardingRestaurant } from './actions'
+import { ChevronLeft, MapPin, Store, Globe, FileText, Phone, Upload, X, Loader2, Check } from 'lucide-react'
+import { createOnboardingRestaurant, setOnboardingLogo, checkSlugAvailability } from './actions'
 import { createClient } from '@/lib/supabase/client'
 import dynamic from 'next/dynamic'
 import 'leaflet/dist/leaflet.css'
 import { fixLeafletDefaultIcon } from '@/lib/leafletIcons'
+import { SLUG_REGEX, PAN_REGEX, VAT_REGEX, PHONE_REGEX } from '@/lib/validation'
 
 // Dynamically import Map to prevent SSR issues
 const MapContainer = dynamic(() => import('react-leaflet').then(mod => mod.MapContainer), { ssr: false })
@@ -32,17 +33,53 @@ export default function OnboardingCreateClient() {
     const [selectedType, setSelectedType] = useState('Restaurant')
     const [address, setAddress] = useState('')
     const [vatRegistered, setVatRegistered] = useState(false)
-    
+    const [vatNumber, setVatNumber] = useState('')
+    const [panNumber, setPanNumber] = useState('')
+    const [telephone, setTelephone] = useState('')
+    const [restaurantEmail, setRestaurantEmail] = useState('')
+    const [contactPhoneRaw, setContactPhoneRaw] = useState('')
+
+    // Logo — held in memory, uploaded only after the restaurant is created
+    const [logoFile, setLogoFile] = useState<File | null>(null)
+    const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null)
+    const logoInputRef = useRef<HTMLInputElement>(null)
+
+    // Validation
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+    const [slugStatus, setSlugStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle')
+
     // Modals
     const [isMapModalOpen, setIsMapModalOpen] = useState(false)
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false)
-    
+    const [mapSnapshot, setMapSnapshot] = useState<{ position: { lat: number, lng: number } | null, address: string } | null>(null)
+
     // Map State
     const [position, setPosition] = useState<{lat: number, lng: number} | null>(null)
-    
+
     useEffect(() => {
         fixLeafletDefaultIcon()
     }, [])
+
+    // Revoke the object URL when the logo changes or the component unmounts
+    useEffect(() => {
+        return () => {
+            if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl)
+        }
+    }, [logoPreviewUrl])
+
+    // Live slug-availability check — debounced, only once the format is valid
+    useEffect(() => {
+        if (!slug || !SLUG_REGEX.test(slug) || slug.length < 2) {
+            setSlugStatus('idle')
+            return
+        }
+        setSlugStatus('checking')
+        const timeout = setTimeout(async () => {
+            const res = await checkSlugAvailability(slug)
+            setSlugStatus(res.available ? 'available' : 'taken')
+        }, 350)
+        return () => clearTimeout(timeout)
+    }, [slug])
 
     // Auto-generate slug from name if not manually edited
     useEffect(() => {
@@ -94,21 +131,82 @@ export default function OnboardingCreateClient() {
         }
     }
 
+    const handleCancelMap = () => {
+        if (mapSnapshot) {
+            setPosition(mapSnapshot.position)
+            setAddress(mapSnapshot.address)
+        }
+        setIsMapModalOpen(false)
+    }
+
+    const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl)
+        setLogoFile(file)
+        setLogoPreviewUrl(URL.createObjectURL(file))
+    }
+
+    const removeLogo = () => {
+        if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl)
+        setLogoFile(null)
+        setLogoPreviewUrl(null)
+        if (logoInputRef.current) logoInputRef.current.value = ''
+    }
+
+    /**
+     * Client-side checks mirror the server's OnboardingRestaurantSchema
+     * regexes (same source of truth, imported from lib/validation.ts) — this
+     * is UX sugar to catch obvious mistakes before a round trip; the server
+     * re-validates regardless and is authoritative.
+     */
+    const validateFields = (): Record<string, string> => {
+        const errors: Record<string, string> = {}
+        if (!restaurantName.trim() || restaurantName.trim().length < 2) {
+            errors.restaurantName = 'Restaurant name must be at least 2 characters'
+        }
+        if (!SLUG_REGEX.test(slug) || slug.length < 2) {
+            errors.restaurantSlug = 'Use lowercase letters, numbers, and hyphens only'
+        } else if (slugStatus === 'taken') {
+            errors.restaurantSlug = 'This URL is already taken'
+        }
+        if (!contactPhoneRaw.trim() || !PHONE_REGEX.test(contactPhoneRaw.trim())) {
+            errors.contactPhone = 'Enter a valid phone number'
+        }
+        if (panNumber && !PAN_REGEX.test(panNumber)) {
+            errors.panNumber = 'PAN must be exactly 9 digits'
+        }
+        if (vatRegistered && !VAT_REGEX.test(vatNumber)) {
+            errors.vatNumber = 'VAT number must be exactly 9 digits'
+        }
+        if (restaurantEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(restaurantEmail)) {
+            errors.restaurantEmail = 'Enter a valid email address'
+        }
+        return errors
+    }
+
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
-        setIsLoading(true)
         setError(null)
-        
+
+        const clientErrors = validateFields()
+        if (Object.keys(clientErrors).length > 0) {
+            setFieldErrors(clientErrors)
+            window.scrollTo({ top: 0, behavior: 'smooth' })
+            return
+        }
+        setFieldErrors({})
+        setIsLoading(true)
+
         const formData = new FormData(e.currentTarget)
-        formData.append('type', selectedType)
-        formData.append('vatRegistered', vatRegistered.toString())
+        formData.set('businessType', selectedType)
+        formData.set('vatRegistered', vatRegistered.toString())
         if (position) {
-            formData.append('latitude', position.lat.toString())
-            formData.append('longitude', position.lng.toString())
+            formData.set('latitude', position.lat.toString())
+            formData.set('longitude', position.lng.toString())
         }
 
         const countryCode = formData.get('countryCode') as string
-        const contactPhoneRaw = formData.get('contactPhoneRaw') as string
         if (countryCode && contactPhoneRaw) {
             formData.set('contactPhone', `${countryCode} ${contactPhoneRaw}`)
         }
@@ -117,9 +215,28 @@ export default function OnboardingCreateClient() {
             const result = await createOnboardingRestaurant(formData)
             if (result.error) {
                 setError(result.error)
-                // Scroll to top to see error
+                if (result.fieldErrors) setFieldErrors(result.fieldErrors)
                 window.scrollTo({ top: 0, behavior: 'smooth' })
-            } else if (result.success) {
+                return
+            }
+
+            if (result.success && result.restaurantId) {
+                if (logoFile) {
+                    try {
+                        await supabase.auth.refreshSession()
+                        const logoFormData = new FormData()
+                        logoFormData.append('file', logoFile)
+                        logoFormData.append('type', 'image')
+                        logoFormData.append('folder', 'settings')
+                        const res = await fetch('/api/upload', { method: 'POST', body: logoFormData })
+                        const data = await res.json()
+                        if (res.ok && data.url) {
+                            await setOnboardingLogo(result.restaurantId, data.url)
+                        }
+                    } catch {
+                        // Non-fatal — the restaurant already exists; logo can be added later in Settings.
+                    }
+                }
                 setIsSuccessModalOpen(true)
             }
         } catch (err) {
@@ -173,8 +290,39 @@ export default function OnboardingCreateClient() {
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                             <div className="sm:col-span-2">
+                                <label className={labelClasses}>Restaurant Logo <span className="text-gray-400 font-normal">(optional)</span></label>
+                                <div className="flex items-center gap-4">
+                                    <div className="w-20 h-20 rounded-xl border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
+                                        {logoPreviewUrl ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={logoPreviewUrl} alt="Logo preview" className="w-full h-full object-contain p-1" />
+                                        ) : (
+                                            <Store size={28} className="text-gray-300" />
+                                        )}
+                                    </div>
+                                    <div className="flex-1 space-y-2">
+                                        <label className="inline-flex items-center gap-2 px-4 py-2.5 border border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-[#ff5a00] hover:bg-orange-50 transition-all">
+                                            <Upload size={16} className="text-gray-500" />
+                                            <span className="text-sm font-semibold text-gray-700">{logoFile ? 'Change Logo' : 'Upload Logo'}</span>
+                                            <input
+                                                ref={logoInputRef}
+                                                type="file"
+                                                accept="image/jpeg,image/png,image/webp,image/gif"
+                                                className="hidden"
+                                                onChange={handleLogoFileChange}
+                                            />
+                                        </label>
+                                        {logoFile && (
+                                            <button type="button" onClick={removeLogo} className="flex items-center gap-1.5 text-xs font-bold text-red-500 hover:text-red-600 transition-colors">
+                                                <X size={12} /> Remove
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="sm:col-span-2">
                                 <label className={labelClasses}>Restaurant Name <span className="text-red-500">*</span></label>
-                                <input 
+                                <input
                                     name="restaurantName"
                                     value={restaurantName}
                                     onChange={(e) => setRestaurantName(e.target.value)}
@@ -182,6 +330,7 @@ export default function OnboardingCreateClient() {
                                     placeholder="e.g. Himalayan Kitchen"
                                     className={inputClasses}
                                 />
+                                {fieldErrors.restaurantName && <p className="text-xs text-red-600 mt-1.5 font-medium">{fieldErrors.restaurantName}</p>}
                             </div>
                             <div className="sm:col-span-2">
                                 <label className={labelClasses}>Slogan / Tagline <span className="text-gray-400 font-normal">(optional)</span></label>
@@ -224,16 +373,29 @@ export default function OnboardingCreateClient() {
                                 <div className="bg-gray-50 px-4 flex items-center justify-center border-r border-gray-200 text-gray-500 text-sm select-none">
                                     kkkhane.com/t/
                                 </div>
-                                <input 
-                                    name="restaurantSlug" 
-                                    value={slug} 
-                                    onChange={handleSlugChange} 
+                                <input
+                                    name="restaurantSlug"
+                                    value={slug}
+                                    onChange={handleSlugChange}
                                     required
-                                    placeholder="himalayan-kitchen" 
-                                    className="flex-1 px-3 outline-none text-sm text-gray-900 placeholder:text-gray-400" 
+                                    placeholder="himalayan-kitchen"
+                                    className="flex-1 px-3 outline-none text-sm text-gray-900 placeholder:text-gray-400"
                                 />
+                                <div className="flex items-center px-3">
+                                    {slugStatus === 'checking' && <Loader2 size={16} className="animate-spin text-gray-400" />}
+                                    {slugStatus === 'available' && <Check size={16} className="text-green-600" />}
+                                    {slugStatus === 'taken' && <X size={16} className="text-red-500" />}
+                                </div>
                             </div>
-                            <p className="text-xs text-gray-500 mt-2">Customers will scan QR codes leading to this URL to view your menu.</p>
+                            {fieldErrors.restaurantSlug ? (
+                                <p className="text-xs text-red-600 mt-2 font-medium">{fieldErrors.restaurantSlug}</p>
+                            ) : slugStatus === 'taken' ? (
+                                <p className="text-xs text-red-600 mt-2 font-medium">✗ This URL is already taken</p>
+                            ) : slugStatus === 'available' ? (
+                                <p className="text-xs text-green-600 mt-2 font-medium">✓ Available</p>
+                            ) : (
+                                <p className="text-xs text-gray-500 mt-2">Customers will scan QR codes leading to this URL to view your menu.</p>
+                            )}
                         </div>
                     </section>
 
@@ -262,15 +424,28 @@ export default function OnboardingCreateClient() {
                                         name="contactPhoneRaw"
                                         type="tel"
                                         required
+                                        value={contactPhoneRaw}
+                                        onChange={(e) => setContactPhoneRaw(e.target.value)}
                                         placeholder="98XXXXXXX"
                                         className="flex-1 px-3 text-sm outline-none text-gray-900 w-full placeholder:text-gray-400"
                                     />
                                 </div>
+                                {fieldErrors.contactPhone && <p className="text-xs text-red-600 mt-1.5 font-medium">{fieldErrors.contactPhone}</p>}
+                            </div>
+                            <div>
+                                <label className={labelClasses}>Telephone <span className="text-gray-400 font-normal">(optional)</span></label>
+                                <input
+                                    name="telephone"
+                                    value={telephone}
+                                    onChange={(e) => setTelephone(e.target.value)}
+                                    placeholder="e.g. 01-4123456"
+                                    className={inputClasses}
+                                />
                             </div>
                             <div className="sm:col-span-2">
                                 <label className={labelClasses}>Address & Map Location <span className="text-red-500">*</span></label>
                                 <div className="flex gap-3">
-                                    <input 
+                                    <input
                                         name="address"
                                         required
                                         value={address}
@@ -280,7 +455,7 @@ export default function OnboardingCreateClient() {
                                     />
                                     <button
                                         type="button"
-                                        onClick={() => setIsMapModalOpen(true)}
+                                        onClick={() => { setMapSnapshot({ position, address }); setIsMapModalOpen(true) }}
                                         className="w-[52px] h-[52px] flex items-center justify-center rounded-xl border border-gray-200 text-[#ff5a00] bg-orange-50 hover:bg-orange-100 transition-colors shrink-0 shadow-sm"
                                         title="Pin on Map"
                                     >
@@ -289,6 +464,18 @@ export default function OnboardingCreateClient() {
                                 </div>
                                 {!position && <p className="text-xs text-orange-600 mt-2">Please pin your exact location on the map for delivery/customer accuracy.</p>}
                                 {position && <p className="text-xs text-green-600 mt-2 font-medium">✓ Location pinned successfully.</p>}
+                            </div>
+                            <div className="sm:col-span-2">
+                                <label className={labelClasses}>Restaurant Email <span className="text-gray-400 font-normal">(optional)</span></label>
+                                <input
+                                    name="restaurantEmail"
+                                    type="email"
+                                    value={restaurantEmail}
+                                    onChange={(e) => setRestaurantEmail(e.target.value)}
+                                    placeholder="Leave blank to use your login email"
+                                    className={inputClasses}
+                                />
+                                {fieldErrors.restaurantEmail && <p className="text-xs text-red-600 mt-1.5 font-medium">{fieldErrors.restaurantEmail}</p>}
                             </div>
                         </div>
                     </section>
@@ -301,15 +488,18 @@ export default function OnboardingCreateClient() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                             <div>
                                 <label className={labelClasses}>PAN Number <span className="text-gray-400 font-normal">(optional)</span></label>
-                                <input 
+                                <input
                                     name="panNumber"
+                                    value={panNumber}
+                                    onChange={(e) => setPanNumber(e.target.value)}
                                     placeholder="Enter 9-digit PAN"
                                     className={inputClasses}
                                 />
+                                {fieldErrors.panNumber && <p className="text-xs text-red-600 mt-1.5 font-medium">{fieldErrors.panNumber}</p>}
                             </div>
                             <div className="flex flex-col justify-center pt-6">
                                 <label className="flex items-center gap-3 cursor-pointer">
-                                    <input 
+                                    <input
                                         type="checkbox"
                                         checked={vatRegistered}
                                         onChange={(e) => setVatRegistered(e.target.checked)}
@@ -318,6 +508,19 @@ export default function OnboardingCreateClient() {
                                     <span className="text-sm font-semibold text-gray-900">This business is VAT Registered (13%)</span>
                                 </label>
                             </div>
+                            {vatRegistered && (
+                                <div className="sm:col-span-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <label className={labelClasses}>VAT Number <span className="text-red-500">*</span></label>
+                                    <input
+                                        name="vatNumber"
+                                        value={vatNumber}
+                                        onChange={(e) => setVatNumber(e.target.value)}
+                                        placeholder="Enter 9-digit VAT number"
+                                        className={inputClasses}
+                                    />
+                                    {fieldErrors.vatNumber && <p className="text-xs text-red-600 mt-1.5 font-medium">{fieldErrors.vatNumber}</p>}
+                                </div>
+                            )}
                         </div>
                     </section>
 
@@ -361,8 +564,8 @@ export default function OnboardingCreateClient() {
                                 />
                                 <button type="button" onClick={handleSearchLocation} className="text-[#ff5a00] font-semibold text-sm px-2 hover:text-[#ff4500]">Search</button>
                             </div>
-                            <button 
-                                onClick={() => setIsMapModalOpen(false)}
+                            <button
+                                onClick={handleCancelMap}
                                 className="w-12 h-[52px] bg-white rounded-xl shadow-lg border border-gray-100 flex items-center justify-center text-gray-500 hover:text-red-500 transition-colors shrink-0"
                             >
                                 ✕
@@ -381,8 +584,8 @@ export default function OnboardingCreateClient() {
 
                         {/* Map Footer Overlay Buttons */}
                         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-full max-w-md px-4 z-[1000] flex gap-4">
-                            <button 
-                                onClick={() => setIsMapModalOpen(false)}
+                            <button
+                                onClick={handleCancelMap}
                                 className="flex-1 bg-white text-gray-700 font-bold py-3.5 rounded-xl shadow-lg border border-gray-100 hover:bg-gray-50 transition-colors"
                             >
                                 Cancel

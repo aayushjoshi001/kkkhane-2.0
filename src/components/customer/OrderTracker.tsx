@@ -11,6 +11,7 @@ import { CheckCircle, Clock, ChefHat, Package, PartyPopper, ChevronLeft, MapPin 
 import type { Order, OrderItem, MenuItem, OrderItemModifier } from '@/types/database'
 import Confetti from '@/components/customer/Confetti'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import OrderPaymentSection from './OrderPaymentSection'
 import OrderSplitBillSection from './OrderSplitBillSection'
 import FeedbackPrompt from './FeedbackPrompt'
@@ -189,6 +190,22 @@ export default function OrderTracker({
                                 </p>
                             </div>
                         </div>
+                    </div>
+
+                    {/* Post-Order Loyalty Conversion Banner */}
+                    <div className="mt-6 mx-4">
+                        <Link href={`/r/${restaurantInfo?.slug || 'unknown'}/login`} className="block">
+                            <div className="bg-gradient-to-r from-brand-600 to-brand-500 rounded-2xl p-4 text-white shadow-lg shadow-brand-500/30 flex items-center gap-4 active:scale-[0.98] transition-transform">
+                                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center shrink-0">
+                                    <PartyPopper size={24} className="text-white" />
+                                </div>
+                                <div className="flex-1">
+                                    <h4 className="font-bold text-sm">Claim {Math.floor(order.total_amount * 0.1)} Points! 🎁</h4>
+                                    <p className="text-xs text-white/80 mt-0.5">Save your profile to earn loyalty rewards.</p>
+                                </div>
+                                <ChevronLeft size={20} className="rotate-180 text-white/50" />
+                            </div>
+                        </Link>
                     </div>
 
                     {/* Track Your Order Button */}

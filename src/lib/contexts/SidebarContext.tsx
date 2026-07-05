@@ -29,6 +29,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     // Load saved desktop state
     useEffect(() => {
         const saved = localStorage.getItem('srms-sidebar-collapsed')
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (saved === 'true') {
             setIsCollapsed(true)
         }
@@ -36,6 +37,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
 
     // Close mobile sidebar on route change
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsOpen(false)
     }, [pathname])
 

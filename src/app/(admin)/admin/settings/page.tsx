@@ -40,7 +40,7 @@ export default async function SettingsPage() {
     }
 
     return (
-        <div className="space-y-6 pb-24">
+        <div className="space-y-6 pb-24 max-w-5xl mx-auto w-full">
             <PremiumPageHeader 
                 title="System Settings" 
                 description="Configure your restaurant's core information and operational rules" 
@@ -48,7 +48,7 @@ export default async function SettingsPage() {
                 color="purple"
             />
 
-            <div className="-mt-12 relative z-20">
+            <div className="-mt-12 relative z-20 w-full">
                 <SettingsManager
                     initialRestaurant={initialRestaurant}
                     initialFeatures={features}

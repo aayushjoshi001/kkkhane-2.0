@@ -1,45 +1,47 @@
 /**
- * Sparrow SMS integration (Nepal)
- * Docs: https://sparrowsms.com/api-documentation
- * Env vars required: SPARROW_SMS_TOKEN, SPARROW_SMS_FROM
+ * MessageBird SMS integration
+ * Env vars required: MESSAGEBIRD_API_KEY
  */
 
-const SPARROW_API = 'https://api.sparrowsms.com/v2/sms/'
+const MESSAGEBIRD_API = 'https://rest.messagebird.com/messages'
 
 type SmsResult = { success: true } | { success: false; error: string }
 
 async function sendSms(to: string, text: string): Promise<SmsResult> {
-    const token = process.env.SPARROW_SMS_TOKEN
-    const from  = process.env.SPARROW_SMS_FROM || 'TheHouse'
+    // API key from env or fallback to user provided one
+    const token = process.env.MESSAGEBIRD_API_KEY || 'bk_eu1_QDobai8YAhbKAOuqjhoPsge0qtYrs'
+    // Originator must be alphanumeric (max 11 chars) or a valid phone number
+    const originator = process.env.MESSAGEBIRD_ORIGINATOR || 'KKKhane'
 
     if (!token) {
-        console.warn('[SMS] SPARROW_SMS_TOKEN not set — skipping SMS')
+        console.warn('[SMS] MESSAGEBIRD_API_KEY not set — skipping SMS')
         return { success: false, error: 'SMS not configured' }
     }
 
-    // Normalize Nepal phone numbers to 10 digits
-    const normalized = to.replace(/\D/g, '').replace(/^977/, '')
-    if (normalized.length !== 10) {
-        return { success: false, error: `Invalid phone number: ${to}` }
-    }
+    // Strip out any non-numeric characters for MessageBird
+    const normalized = to.replace(/\D/g, '')
+    // Typically MessageBird requires country code, assume +977 if 10 digits
+    const formattedTo = normalized.length === 10 ? `977${normalized}` : normalized
 
     try {
-        const res = await fetch(SPARROW_API, {
+        const res = await fetch(MESSAGEBIRD_API, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `AccessKey ${token}`
+            },
             body: JSON.stringify({
-                token,
-                from,
-                to: normalized,
-                text: text.slice(0, 160), // single SMS segment limit
+                originator: originator,
+                recipients: [formattedTo],
+                body: text, // MessageBird handles concatenation for >160 chars automatically
             }),
         })
 
         const body = await res.json().catch(() => ({}))
 
-        if (!res.ok || body.response_code !== 200) {
-            console.error('[SMS] Send failed:', body)
-            return { success: false, error: body.message ?? `HTTP ${res.status}` }
+        if (!res.ok) {
+            console.error('[SMS] MessageBird Send failed:', body)
+            return { success: false, error: body.errors?.[0]?.description ?? `HTTP ${res.status}` }
         }
 
         return { success: true }

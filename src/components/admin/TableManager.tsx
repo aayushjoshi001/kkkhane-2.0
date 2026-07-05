@@ -34,23 +34,17 @@ export default function TableManager({
     // QR Preview State
     const [previewTable, setPreviewTable] = useState<Table | null>(null)
     const [iframeLoaded, setIframeLoaded] = useState(false)
-    const [preloadedTokens, setPreloadedTokens] = useState<Set<string>>(new Set())
+    const [preloadedTokens, setPreloadedTokens] = useState<Set<string>>(() => {
+        const next = new Set<string>()
+        initialTables.slice(0, 2).forEach(t => next.add(t.qr_token))
+        return next
+    })
     const { confirm } = useConfirmStore()
 
     // Use the actual browser origin so QR codes encode the live URL, not localhost
     const [baseUrl, setBaseUrl] = useState(appUrl)
+    // eslint-disable-next-line
     useEffect(() => { setBaseUrl(window.location.origin) }, [])
-
-    // Eagerly preload the first 2 tables on mount so they are instantly ready
-    useEffect(() => {
-        if (initialTables.length > 0) {
-            setPreloadedTokens(prev => {
-                const next = new Set(prev)
-                initialTables.slice(0, 2).forEach(t => next.add(t.qr_token))
-                return next
-            })
-        }
-    }, [initialTables])
 
     const openPreview = useCallback((table: Table) => {
         setIframeLoaded(false)

@@ -25,7 +25,7 @@ export default async function ProfilePage() {
     const email = authUser?.email || ''
 
     return (
-        <div className="space-y-6 pb-24">
+        <div className="space-y-6 pb-24 max-w-5xl mx-auto w-full">
             <PremiumPageHeader 
                 title="My Profile" 
                 description="Manage your personal information and preferences"
@@ -33,7 +33,7 @@ export default async function ProfilePage() {
                 color="orange"
             />
             
-            <div className="max-w-2xl -mt-12 relative z-20">
+            <div className="-mt-12 relative z-20 w-full">
                 <ProfileForm user={dbUser} email={email} />
             </div>
         </div>

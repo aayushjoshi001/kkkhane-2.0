@@ -38,7 +38,7 @@ export default function WaiterTabs({
     }
 
     const topStats = isValidElement(floorStatsElement)
-        ? cloneElement(floorStatsElement as React.ReactElement<any>, { onStatClick: handleStatClick })
+        ? cloneElement(floorStatsElement as React.ReactElement<{ onStatClick?: (key: string) => void }>, { onStatClick: handleStatClick })
         : floorStatsElement
 
     return (

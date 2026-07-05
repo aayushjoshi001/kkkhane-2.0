@@ -47,6 +47,7 @@ export interface Restaurant {
     vat_number: string | null
     slogan: string | null
     telephone: string | null
+    business_type: string | null
     latitude: number | null
     longitude: number | null
     payment_qr_url: string | null
@@ -80,6 +81,9 @@ export interface User {
     department_id: string | null
     full_name: string
     avatar_url: string | null
+    phone: string | null
+    emergency_contact: string | null
+    address: string | null
     role_id: number
     is_active: boolean
     created_at: string

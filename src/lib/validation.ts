@@ -13,7 +13,16 @@ import { z } from 'zod'
 
 const UUID = z.string().uuid('Invalid UUID format')
 const EMAIL = z.string().email('Invalid email address').max(255)
-const PHONE = z.string().regex(/^\+?[\d\s\-()]{7,}$/, 'Invalid phone format')
+
+// Exported raw patterns — shared with client-side inline validation (e.g.
+// OnboardingCreateClient.tsx) so both sides check the exact same rules
+// instead of maintaining duplicate regexes that can drift apart.
+export const PHONE_REGEX = /^\+?[\d\s\-()]{7,}$/
+export const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+export const PAN_REGEX = /^\d{9}$/
+export const VAT_REGEX = /^\d{9}$/
+
+const PHONE = z.string().regex(PHONE_REGEX, 'Invalid phone format')
 const POSITIVE_INT = z.number().int().positive('Must be a positive integer')
 const POSITIVE_DECIMAL = z.number().positive('Must be a positive number')
 const URL_STRING = z.string().url('Invalid URL').max(2048)
@@ -173,7 +182,7 @@ export const CreateSessionSchema = z.object({
 export const CreateTenantSchema = z.object({
   restaurantName: z.string().min(2).max(255),
   restaurantSlug: z.string().min(2).max(100)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug must be lowercase alphanumeric with hyphens'),
+    .regex(SLUG_REGEX, 'Slug must be lowercase alphanumeric with hyphens'),
   ownerFullName: z.string().min(2).max(255),
   ownerEmail: EMAIL,
   ownerPassword: z.string().min(8, 'Password must be 8+ characters').max(128),
@@ -197,15 +206,29 @@ export const UpdateOwnerContactSchema = z.object({
 
 // Public self-service signup — extends CreateTenantSchema with Nepal business fields
 export const PublicSignupSchema = CreateTenantSchema.extend({
-  panNumber:       z.string().regex(/^\d{9}$/, 'PAN must be 9 digits').optional().or(z.literal('')),
+  panNumber:       z.string().regex(PAN_REGEX, 'PAN must be 9 digits').optional().or(z.literal('')),
   vatRegistered:   z.boolean().optional().default(false),
-  vatNumber:       z.string().regex(/^\d{9}$/, 'VAT number must be 9 digits').optional().or(z.literal('')),
+  vatNumber:       z.string().regex(VAT_REGEX, 'VAT number must be 9 digits').optional().or(z.literal('')),
   slogan:          z.string().max(120).optional().or(z.literal('')),
   restaurantEmail: z.string().email('Invalid email').optional().or(z.literal('')),
   telephone:       z.string().max(20).optional().or(z.literal('')),
   latitude:        z.number().optional(),
   longitude:       z.number().optional(),
 })
+
+// The authenticated onboarding/create form collects only restaurant/business
+// fields — the owner's name/email/password were already collected at signup —
+// so this reuses PublicSignupSchema's field validation minus the account fields,
+// plus businessType (which PublicSignupSchema has no concept of) and a rule
+// requiring an actual VAT number once "VAT Registered" is checked.
+export const OnboardingRestaurantSchema = PublicSignupSchema
+  .omit({ ownerFullName: true, ownerEmail: true, ownerPassword: true })
+  .extend({ businessType: z.string().max(50).optional() })
+  .superRefine((data, ctx) => {
+    if (data.vatRegistered && !data.vatNumber) {
+      ctx.addIssue({ code: 'custom', path: ['vatNumber'], message: 'VAT number is required when VAT registered is checked' })
+    }
+  })
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // LOGIN & AUTH

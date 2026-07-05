@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser, getOptionalUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/ratelimit'
 
@@ -27,18 +27,30 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: rateLimitError }, { status: 429 })
         }
 
-        // Auth required
-        let user: Awaited<ReturnType<typeof getCurrentUser>>
-        try {
-            user = await getCurrentUser()
-        } catch {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        }
-
         const formData = await req.formData()
         const file = formData.get('file') as File | null
         const type = formData.get('type') as string | null
         const folder = (formData.get('folder') as string | null) || 'homepage'
+
+        // Avatars are user-owned, not tenant data — allow uploading one before a
+        // restaurant exists yet (e.g. mid-onboarding). Every other folder keeps
+        // the original restaurant-scoped auth requirement unchanged.
+        const isAvatarUpload = folder === 'avatars'
+
+        let user: Awaited<ReturnType<typeof getCurrentUser>>
+        if (isAvatarUpload) {
+            const optionalUser = await getOptionalUser()
+            if (!optionalUser) {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+            }
+            user = optionalUser
+        } else {
+            try {
+                user = await getCurrentUser()
+            } catch {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+            }
+        }
 
         if (!file || file.size === 0) {
             return NextResponse.json({ error: 'No file provided' }, { status: 400 })
@@ -75,7 +87,9 @@ export async function POST(req: NextRequest) {
         const defaultExt = type === 'image' ? 'jpg' : type === 'audio' ? 'mp3' : 'mp4'
         const ext = file.name.split('.').pop()?.toLowerCase() || defaultExt
         const safeFolder = folder.replace(/[^a-zA-Z0-9_-]/g, '')
-        const path = `${safeFolder}/${user.restaurantId}/${Date.now()}.${ext}`
+        const path = isAvatarUpload
+            ? `${safeFolder}/${user.id}/${Date.now()}.${ext}`
+            : `${safeFolder}/${user.restaurantId}/${Date.now()}.${ext}`
 
         // Fall back to a sane content type when the browser reports none (common for HEIC)
         const extMime: Record<string, string> = {

@@ -58,7 +58,7 @@ export default function CategoryNav({
                             }`}
                         >
                             {cat?.image_url ? (
-                                <Image src={cat.image_url} alt="" width={18} height={18} className="w-4.5 h-4.5 rounded-full object-cover shrink-0" />
+                                <Image src={cat.image_url} alt={cat.name} width={18} height={18} className="w-4.5 h-4.5 rounded-full object-cover shrink-0" />
                             ) : cat?.emoji ? (
                                 <span className="text-[10px]">{cat.emoji}</span>
                             ) : null}

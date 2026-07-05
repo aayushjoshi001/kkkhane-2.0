@@ -1,10 +1,14 @@
 // lib/provisioning.ts
 // Single, shared path for bringing a new restaurant into existence.
-// Both the public signup flow (src/app/signup/actions.ts) and the
-// authenticated onboarding flow (src/app/(onboarding)/onboarding/create) call
-// provisionRestaurant() so a restaurant is *never* born without the rows the
-// rest of the app assumes exist: a users row, settings, a starter menu, and
-// physical tables with QR tokens (so the /t/[qr_token] customer flow resolves).
+// Currently only the authenticated onboarding flow
+// (src/app/(onboarding)/onboarding/create/actions.ts) calls this — signup
+// (src/app/signup/actions.ts) only creates the auth user and signs them in,
+// then hands off to /onboarding to collect restaurant details. Kept as a
+// standalone, reusable function in case a future direct signup-with-restaurant
+// flow needs it too. Wherever it's called from, provisionRestaurant() ensures
+// a restaurant is *never* born without the rows the rest of the app assumes
+// exist: a users row, settings, a starter menu, and physical tables with QR
+// tokens (so the /t/[qr_token] customer flow resolves).
 //
 // Atomicity: inserts run sequentially via the service-role admin client; if any
 // step fails we roll back the restaurant (cascades to its child rows) following

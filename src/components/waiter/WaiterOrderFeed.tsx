@@ -1,5 +1,7 @@
 'use client'
 
+import { useWindowVirtualizer } from '@tanstack/react-virtual'
+
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
@@ -234,6 +236,15 @@ export default function WaiterOrderFeed({ initialOrders, restaurantId, userId, s
         })
     }, [visibleOrders, userId])
 
+    const totalReadyItems = visibleOrders.reduce((sum, o) => sum + readyCountForUser(o, userId), 0)
+
+    const parentRef = useRef<HTMLDivElement>(null)
+    const virtualizer = useWindowVirtualizer({
+        count: sortedOrders.length,
+        estimateSize: () => 300,
+        overscan: 3,
+    })
+
     if (visibleOrders.length === 0) {
         return (
             <FeedSection icon={Package} title="Live Orders">
@@ -244,8 +255,6 @@ export default function WaiterOrderFeed({ initialOrders, restaurantId, userId, s
         )
     }
 
-    const totalReadyItems = visibleOrders.reduce((sum, o) => sum + readyCountForUser(o, userId), 0)
-
     return (
         <FeedSection
             icon={Package}
@@ -254,27 +263,47 @@ export default function WaiterOrderFeed({ initialOrders, restaurantId, userId, s
             tone="neutral"
             action={totalReadyItems > 0 ? <Badge tone="success" dot>{totalReadyItems} item{totalReadyItems > 1 ? 's' : ''} ready</Badge> : undefined}
         >
-            <div className="grid gap-3">
-                {sortedOrders.map((order) => (
-                    <WaiterOrderCard
-                        key={order.id}
-                        order={order}
-                        userId={userId}
-                        staffNames={staffNames}
-                        money={money}
-                        now={now}
-                        claiming={claimingId === order.id}
-                        serving={servingId === order.id}
-                        cashProcessing={cashProcessingId === order.id}
-                        busy={!!servingId || !!cashProcessingId}
-                        onClaim={handleClaim}
-                        onRelease={handleRelease}
-                        onClaimItems={handleClaimItems}
-                        onReleaseItems={handleReleaseItems}
-                        onServeItems={handleServeItems}
-                        onCashAndDeliver={handleCashAndDeliver}
-                    />
-                ))}
+            <div ref={parentRef}>
+                <div 
+                    style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }} 
+                >
+                    {virtualizer.getVirtualItems().map((virtualItem) => {
+                        const order = sortedOrders[virtualItem.index]
+                        return (
+                            <div
+                                key={order.id}
+                                data-index={virtualItem.index}
+                                ref={virtualizer.measureElement}
+                                style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    width: '100%',
+                                    transform: `translateY(${virtualItem.start}px)`,
+                                    paddingBottom: '12px'
+                                }}
+                            >
+                                <WaiterOrderCard
+                                    order={order}
+                                    userId={userId}
+                                    staffNames={staffNames}
+                                    money={money}
+                                    now={now}
+                                    claiming={claimingId === order.id}
+                                    serving={servingId === order.id}
+                                    cashProcessing={cashProcessingId === order.id}
+                                    busy={!!servingId || !!cashProcessingId}
+                                    onClaim={handleClaim}
+                                    onRelease={handleRelease}
+                                    onClaimItems={handleClaimItems}
+                                    onReleaseItems={handleReleaseItems}
+                                    onServeItems={handleServeItems}
+                                    onCashAndDeliver={handleCashAndDeliver}
+                                />
+                            </div>
+                        )
+                    })}
+                </div>
             </div>
         </FeedSection>
     )
@@ -352,7 +381,7 @@ function WaiterOrderCard({
             return next
         })
         prevReadyIdsRef.current = currentIds
-    }, [readyKey])
+    }, [readyKey, readyItems])
 
     const toggle = (id: string) => setSelected(prev => {
         const next = new Set(prev)
@@ -448,7 +477,7 @@ function WaiterOrderCard({
                             loading={claiming}
                             icon={Footprints}
                         >
-                            I'm serving selected ({selectedUnclaimed.length})
+                            I&apos;m serving selected ({selectedUnclaimed.length})
                         </Button>
                     )}
 

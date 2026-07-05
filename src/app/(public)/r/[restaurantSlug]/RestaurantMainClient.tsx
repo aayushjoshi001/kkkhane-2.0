@@ -4,7 +4,8 @@ import { useState } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import PhysicalMenuGallery from '@/components/customer/PhysicalMenuGallery'
-import { UtensilsCrossed, ArrowRight, Loader2, ShoppingBag } from 'lucide-react'
+import { UtensilsCrossed, ArrowRight, Loader2, ShoppingBag, User } from 'lucide-react'
+import Link from 'next/link'
 
 interface RestaurantMainClientProps {
     restaurant: {
@@ -99,8 +100,17 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
                     className="w-full flex items-center justify-center gap-2 py-3 bg-white border border-gray-200 text-gray-800 rounded-xl font-semibold shadow-sm hover:bg-gray-50 transition"
                 >
                     <ShoppingBag size={18} />
-                    Order Takeout / Pickup
+                    Order for Pickup
                 </button>
+
+                {/* Profile Link */}
+                <Link
+                    href={`/r/${restaurantSlug}/profile`}
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl font-semibold shadow-sm hover:bg-black transition"
+                >
+                    <User size={18} />
+                    My Profile & Loyalty Points
+                </Link>
             </div>
         </div>
     )

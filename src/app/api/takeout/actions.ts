@@ -2,6 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { sendOrderReadySms } from '@/lib/sms'
 import type { CartItem, TakeoutOrder } from '@/types/database'
 import { checkAndAlertLowStock } from '@/app/(admin)/admin/ingredients/actions'
 import { requireRole } from '@/lib/auth'
@@ -56,6 +57,21 @@ export async function createDeliveryOrder(
         modifiers: (i.modifiers || []).map((m) => ({ modifier_id: m.modifierId })),
     }))
 
+    // Auto-link loyalty account if phone matches
+    let finalLoyaltyId = input.loyaltyMemberId || null
+    if (!finalLoyaltyId && input.customerPhone) {
+        const { data: member } = await supabase
+            .from('loyalty_members')
+            .select('id')
+            .eq('restaurant_id', input.restaurantId)
+            .eq('phone', input.customerPhone.trim())
+            .single()
+            
+        if (member) {
+            finalLoyaltyId = member.id
+        }
+    }
+
     const { data, error } = await supabase.rpc('place_delivery_order', {
         p_restaurant_id: input.restaurantId,
         p_items: payload,
@@ -65,7 +81,7 @@ export async function createDeliveryOrder(
         p_customer_email: input.customerEmail || null,
         p_customer_note: input.customerNote || null,
         p_promo_code: input.promoCode || null,
-        p_loyalty_member_id: input.loyaltyMemberId || null,
+        p_loyalty_member_id: finalLoyaltyId,
         p_client_request_id: input.clientRequestId || null,
     })
 
@@ -107,6 +123,21 @@ export async function createTakeoutOrder(
         modifiers: (i.modifiers || []).map((m) => ({ modifier_id: m.modifierId })),
     }))
 
+    // Auto-link loyalty account if phone matches
+    let finalLoyaltyId = input.loyaltyMemberId || null
+    if (!finalLoyaltyId && input.customerPhone) {
+        const { data: member } = await supabase
+            .from('loyalty_members')
+            .select('id')
+            .eq('restaurant_id', input.restaurantId)
+            .eq('phone', input.customerPhone.trim())
+            .single()
+            
+        if (member) {
+            finalLoyaltyId = member.id
+        }
+    }
+
     const { data, error } = await supabase.rpc('place_takeout_order', {
         p_restaurant_id: input.restaurantId,
         p_items: payload,
@@ -116,7 +147,7 @@ export async function createTakeoutOrder(
         p_pickup_time: input.pickupTime,
         p_customer_note: input.customerNote || null,
         p_promo_code: input.promoCode || null,
-        p_loyalty_member_id: input.loyaltyMemberId || null,
+        p_loyalty_member_id: finalLoyaltyId,
         p_client_request_id: input.clientRequestId || null,
     })
 
@@ -189,13 +220,28 @@ export async function updateTakeoutStatus(
     if (orderStatus === 'ready') updateData.ready_at = now
     if (orderStatus === 'delivered') updateData.delivered_at = now
 
-    const { error } = await supabase
+    const { data: currentOrder, error } = await supabase
         .from('orders')
         .update(updateData)
         .eq('id', orderId)
         .in('order_type', ['takeout', 'delivery'])
+        .select('customer_phone, restaurant_id')
+        .single()
 
     if (error) return { error: 'Failed to update status.' }
+
+    // Send "Order Ready" SMS for takeout/delivery
+    if (orderStatus === 'ready' && currentOrder?.customer_phone) {
+        const { data: restaurant } = await supabase
+            .from('restaurants')
+            .select('name')
+            .eq('id', currentOrder.restaurant_id)
+            .single()
+            
+        if (restaurant?.name) {
+            void sendOrderReadySms(currentOrder.customer_phone, orderId, restaurant.name)
+        }
+    }
 
     revalidatePath('/takeout')
     revalidatePath('/waiter')

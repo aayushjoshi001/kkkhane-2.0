@@ -2,15 +2,22 @@
 
 import { useState, useRef } from 'react'
 import { updateProfile } from '@/lib/actions/profile'
-import { User } from '@/types/database'
-import { Save, Loader2, Camera, X } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { Save, Loader2, Camera, X, Shield, Mail, Calendar, Hash, Key, User as UserIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
+import type { User } from '@/types/database'
 
-export default function ProfileForm({ user, email }: { user: any, email: string }) {
+type ProfileUser = User & {
+    roles?: { name: string } | null;
+    departments?: { name: string } | null;
+}
+
+export default function ProfileForm({ user, email }: { user: ProfileUser, email: string }) {
     const [isSaving, setIsSaving] = useState(false)
     const [isUploading, setIsUploading] = useState(false)
     const [avatarUrl, setAvatarUrl] = useState<string>(user.avatar_url || '')
     const [fullName, setFullName] = useState(user.full_name)
+    const [resettingPassword, setResettingPassword] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const roleLabel = (user.roles?.name || 'admin').replace(/_/g, ' ')
@@ -65,15 +72,29 @@ export default function ProfileForm({ user, email }: { user: any, email: string 
             } else {
                 toast.success('Profile updated successfully')
             }
-        } catch {
-            toast.error('Something went wrong')
+        } catch (error: any) {
+            toast.error(error.message || 'Failed to update profile')
         } finally {
             setIsSaving(false)
         }
     }
 
+    const handleResetPassword = async () => {
+        setResettingPassword(true)
+        const supabase = createClient()
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: `${window.location.origin}/admin/reset-password`,
+        })
+        if (error) {
+            toast.error('Failed to send password reset email')
+        } else {
+            toast.success('Password reset email sent!')
+        }
+        setResettingPassword(false)
+    }
+
     return (
-        <form onSubmit={handleSubmit} className="bg-surface border border-hairline rounded-[var(--r-xl)] shadow-sm overflow-hidden">
+        <form onSubmit={handleSubmit} className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden w-full">
             <div className="p-6 md:p-8 space-y-8">
                 
                 {/* Avatar Section */}
@@ -127,7 +148,7 @@ export default function ProfileForm({ user, email }: { user: any, email: string 
                 {/* Info Section */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                        <label className="block text-sm font-bold text-ink">Full Name <span className="text-brand-500">*</span></label>
+                        <label className="text-sm font-bold text-ink flex items-center gap-1.5"><UserIcon size={14} className="text-ink-subtle"/> Full Name <span className="text-brand-500">*</span></label>
                         <input
                             type="text"
                             value={fullName}
@@ -139,7 +160,7 @@ export default function ProfileForm({ user, email }: { user: any, email: string 
                     </div>
 
                     <div className="space-y-2">
-                        <label className="block text-sm font-bold text-ink">Email Address</label>
+                        <label className="text-sm font-bold text-ink flex items-center gap-1.5"><Mail size={14} className="text-ink-subtle"/> Email Address</label>
                         <input
                             type="email"
                             value={email}
@@ -149,22 +170,21 @@ export default function ProfileForm({ user, email }: { user: any, email: string 
                     </div>
 
                     <div className="space-y-2">
-                        <label className="block text-sm font-bold text-ink">Role</label>
-                        <input
-                            type="text"
-                            value={roleLabel.charAt(0).toUpperCase() + roleLabel.slice(1)}
-                            disabled
-                            className="w-full h-11 px-4 bg-surface-muted/50 border border-hairline rounded-[var(--r-md)] text-ink-subtle font-bold cursor-not-allowed uppercase text-xs tracking-wider"
-                        />
+                        <label className="text-sm font-bold text-ink flex items-center gap-1.5"><Shield size={14} className="text-ink-subtle"/> Role</label>
+                        <div className="w-full h-11 px-4 bg-surface-muted/50 border border-hairline rounded-[var(--r-md)] flex items-center">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-brand-50 text-brand-700 border border-brand-100">
+                                {roleLabel.charAt(0).toUpperCase() + roleLabel.slice(1)}
+                            </span>
+                        </div>
                     </div>
 
                     <div className="space-y-2">
-                        <label className="block text-sm font-bold text-ink">Department</label>
+                        <label className="text-sm font-bold text-ink flex items-center gap-1.5"><Hash size={14} className="text-ink-subtle"/> System ID</label>
                         <input
                             type="text"
-                            value={user.departments?.name || 'Unassigned'}
+                            value={user.id}
                             disabled
-                            className="w-full h-11 px-4 bg-surface-muted/50 border border-hairline rounded-[var(--r-md)] text-ink-subtle font-bold cursor-not-allowed text-sm"
+                            className="w-full h-11 px-4 bg-surface-muted/50 border border-hairline rounded-[var(--r-md)] text-ink-subtle font-mono font-bold cursor-not-allowed text-xs"
                         />
                     </div>
 
@@ -180,7 +200,17 @@ export default function ProfileForm({ user, email }: { user: any, email: string 
                     </div>
 
                     <div className="space-y-2">
-                        <label className="block text-sm font-bold text-ink">Member Since</label>
+                        <label className="text-sm font-bold text-ink flex items-center gap-1.5">Department</label>
+                        <input
+                            type="text"
+                            value={user.departments?.name || 'Unassigned'}
+                            disabled
+                            className="w-full h-11 px-4 bg-surface-muted/50 border border-hairline rounded-[var(--r-md)] text-ink-subtle font-bold cursor-not-allowed text-sm"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-sm font-bold text-ink flex items-center gap-1.5"><Calendar size={14} className="text-ink-subtle"/> Member Since</label>
                         <input
                             type="text"
                             value={new Date(user.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
@@ -188,6 +218,24 @@ export default function ProfileForm({ user, email }: { user: any, email: string 
                             className="w-full h-11 px-4 bg-surface-muted/50 border border-hairline rounded-[var(--r-md)] text-ink-subtle font-bold cursor-not-allowed text-sm"
                         />
                     </div>
+                </div>
+
+                <hr className="border-hairline" />
+
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div>
+                        <h4 className="text-sm font-bold text-ink flex items-center gap-1.5"><Key size={14} className="text-ink-subtle"/> Security</h4>
+                        <p className="text-xs text-ink-muted mt-1">Need to change your password? We will email you a secure reset link.</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleResetPassword}
+                        disabled={resettingPassword}
+                        className="px-4 py-2 text-sm font-bold text-ink hover:text-brand-600 bg-surface border border-hairline rounded-[var(--r-md)] hover:bg-brand-50 transition-colors focus-ring disabled:opacity-50 flex items-center gap-2"
+                    >
+                        {resettingPassword ? <Loader2 size={14} className="animate-spin" /> : null}
+                        Reset Password
+                    </button>
                 </div>
 
                 <div className="text-xs text-ink-muted">

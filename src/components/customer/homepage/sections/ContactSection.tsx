@@ -1,15 +1,14 @@
 'use client'
 import { HomepageConfig } from '@/types/database'
 import { MapPin, Phone, Mail, Star } from 'lucide-react'
+import dynamic from 'next/dynamic'
 
-/** Builds an embeddable Google Maps URL from a plain address when no explicit embed is given. */
-function mapSrc(contact: NonNullable<HomepageConfig['contact']>): string | null {
-    if (contact.map_embed_url) return contact.map_embed_url
-    if (contact.map_address) {
-        return `https://www.google.com/maps?q=${encodeURIComponent(contact.map_address)}&output=embed`
-    }
-    return null
-}
+const OpenStreetMap = dynamic(() => import('./OpenStreetMap'), {
+    ssr: false,
+    loading: () => <div className="min-h-[260px] bg-gray-200 animate-pulse rounded-2xl w-full h-full" />
+})
+
+
 
 export default function ContactSection({
     contact,
@@ -19,8 +18,7 @@ export default function ContactSection({
     primary?: string
 }) {
     const c = contact || {}
-    const src = mapSrc(c)
-    const hasContactInfo = c.phone || c.email || c.map_address || c.review_link || src
+    const hasContactInfo = c.phone || c.email || c.map_address || c.review_link || c.map_embed_url
 
     if (c.enabled === false || !hasContactInfo) return null
 
@@ -30,16 +28,9 @@ export default function ContactSection({
                 <h2 className="text-3xl font-bold text-center mb-12 text-gray-900">Visit Us</h2>
                 <div className="grid md:grid-cols-2 gap-8 items-stretch">
                     {/* Map */}
-                    {src && (
-                        <div className="rounded-2xl overflow-hidden shadow-sm min-h-[260px] bg-gray-200">
-                            <iframe
-                                src={src}
-                                title="Map"
-                                className="w-full h-full min-h-[260px] border-0"
-                                loading="lazy"
-                                referrerPolicy="no-referrer-when-downgrade"
-                                allowFullScreen
-                            />
+                    {(c.map_address || c.map_embed_url) && (
+                        <div className="rounded-2xl overflow-hidden shadow-sm min-h-[260px] bg-gray-200 relative z-10 flex">
+                            <OpenStreetMap address={c.map_address} embedUrl={c.map_embed_url} />
                         </div>
                     )}
 

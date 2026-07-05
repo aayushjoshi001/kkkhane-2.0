@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+import { NepaliInput } from '@/components/ui'
 import Image from 'next/image'
 import { Plus, Edit2, Trash2, GripVertical, Check, X, Tag, Loader2, Image as ImageIcon, Globe, Upload, Link, Search } from 'lucide-react'
 import type { MenuCategory, MenuItem, Ingredient } from '@/types/database'
@@ -290,7 +291,7 @@ export default function MenuManager({
                 setItems(items.map(i => i.id === editingItem.id ? { 
                     ...i, 
                     ...payload, 
-                    variations: variationsPayload as any[] 
+                    variations: variationsPayload as MenuItem['variations'] 
                 } as MenuItem : i))
                 toast.success('Item updated')
             } else {
@@ -508,7 +509,7 @@ export default function MenuManager({
                                         <Tag size={28} className="text-ink-subtle" />
                                     </div>
                                     <p className="text-ink font-bold text-base">No categories yet</p>
-                                    <p className="text-ink-subtle text-sm mt-1 max-w-sm">Create categories like "Starters" or "Mains" to organize your menu items.</p>
+                                    <p className="text-ink-subtle text-sm mt-1 max-w-sm">Create categories like &quot;Starters&quot; or &quot;Mains&quot; to organize your menu items.</p>
                                 </li>
                             )}
                         </ul>
@@ -660,10 +661,9 @@ export default function MenuManager({
                         <div className="p-6 space-y-5">
                             <div>
                                 <label className="block text-small font-bold text-ink mb-1.5">Name</label>
-                                <input
-                                    type="text"
+                                <NepaliInput
                                     value={categoryName}
-                                    onChange={e => setCategoryName(e.target.value)}
+                                    onChange={val => setCategoryName(val)}
                                     className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                     placeholder="e.g. Starters"
                                 />
@@ -741,10 +741,9 @@ export default function MenuManager({
                         <div className="p-6 space-y-5 overflow-y-auto">
                             <div>
                                 <label className="block text-small font-bold text-ink mb-1.5">Item Name *</label>
-                                <input
-                                    type="text"
+                                <NepaliInput
                                     value={itemFormData.name ?? ''}
-                                    onChange={e => setItemFormData({ ...itemFormData, name: e.target.value })}
+                                    onChange={val => setItemFormData({ ...itemFormData, name: val })}
                                     className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                     placeholder="e.g. Classic Cheeseburger"
                                 />

@@ -41,11 +41,12 @@ export default function TranslationModal({
     const [nepaliDesc, setNepaliDesc] = useState(initial(descEntityType))
     const [saving, setSaving] = useState(false)
 
-    useEffect(() => {
+    const [prevEntityId, setPrevEntityId] = useState(entityId)
+    if (entityId !== prevEntityId) {
+        setPrevEntityId(entityId)
         setNepaliName(initial(nameEntityType))
         setNepaliDesc(initial(descEntityType))
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [entityId])
+    }
 
     const handleSave = async () => {
         setSaving(true)
