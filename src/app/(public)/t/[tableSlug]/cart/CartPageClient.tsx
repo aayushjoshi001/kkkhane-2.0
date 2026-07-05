@@ -147,7 +147,7 @@ export default function CartPageClient({ params }: { params: { tableSlug: string
         } else if (res.orderId) {
             toast.success("Order placed successfully!")
             playVoice('customer_order_placed')
-            useActiveOrders.getState().addActiveOrder({ id: res.orderId, type: 'dine_in', slug })
+            useActiveOrders.getState().addActiveOrder({ id: res.orderId, type: 'dine_in', slug, sessionToken: sessionId || undefined })
             clearCart()
             router.push(`/t/${slug}/order/${res.orderId}`)
         }

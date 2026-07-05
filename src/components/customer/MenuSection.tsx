@@ -50,8 +50,8 @@ export default function MenuSection({
     useEffect(() => {
         if (observerRef.current) observerRef.current.disconnect()
 
-        // Sticky header (56px) + banner (40px) + search (52px) + category nav (44px) = ~192px
-        const SCROLL_OFFSET = 200
+        // Sticky header (148px) + search bar overlap (18px) + category nav (36px) = ~202px
+        const SCROLL_OFFSET = 202
 
         observerRef.current = new IntersectionObserver(
             (entries) => {
@@ -113,7 +113,7 @@ export default function MenuSection({
                 />
             )}
 
-            <div className="pt-4 pb-12 space-y-8">
+            <div className="pt-1 pb-12 space-y-8">
                 {/* "All" sentinel — invisible element for scroll-spy when scrolled to very top */}
                 <div id="category-section-all" data-category-id="all" className="h-0" />
 
@@ -186,11 +186,9 @@ function ItemGrid({ items, comboItems, menuItems, sessionId, restaurantSlug, res
     restaurantId?: string
     layout?: 'grid' | 'list'
 }) {
-    // If layout is 'list', use simple vertical flex.
-    // Otherwise on mobile: flex row horizontal scroll; on desktop: regular grid.
     const containerCls = layout === 'list'
         ? 'flex flex-col gap-3'
-        : 'flex overflow-x-auto gap-3 pb-4 scrollbar-none snap-x snap-mandatory sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:gap-4 -mx-4 px-4 sm:mx-0 sm:px-0'
+        : 'flex overflow-x-auto gap-4 pb-6 scrollbar-none snap-x snap-mandatory -mx-4 px-6 scroll-pl-6 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:gap-6 sm:mx-0 sm:px-0'
 
     return (
         <div className={containerCls} style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
@@ -199,7 +197,7 @@ function ItemGrid({ items, comboItems, menuItems, sessionId, restaurantSlug, res
                     key={item.id}
                     className={layout === 'list'
                         ? 'w-full'
-                        : 'w-[calc((100vw-32px-12px)/2.25)] sm:w-auto shrink-0 snap-start h-full'
+                        : 'w-[calc(100vw-76px)] sm:w-auto shrink-0 snap-start h-full'
                     }
                 >
                     <MenuItemCard

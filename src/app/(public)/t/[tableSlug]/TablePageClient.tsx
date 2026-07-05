@@ -11,7 +11,7 @@ import CartSummary from '@/components/customer/CartSummary'
 import Logo from '@/components/shared/Logo'
 import PhysicalMenuGallery from '@/components/customer/PhysicalMenuGallery'
 import { TranslationProvider } from '@/lib/contexts/TranslationContext'
-import { UtensilsCrossed, RefreshCw, Bell, Check, Loader2, Home, X, ShoppingBag, ChefHat, Search } from 'lucide-react'
+import { UtensilsCrossed, RefreshCw, Bell, Check, Loader2, Home, X, ShoppingBag, ChefHat, Search, CreditCard } from 'lucide-react'
 import { useCartStore } from '@/lib/stores/cart'
 import { requestSessionOpen } from '@/app/api/service-requests/actions'
 import ActiveOrderPill from '@/components/customer/ActiveOrderPill'
@@ -64,17 +64,20 @@ function PromoBanner() {
     }, [])
 
     return (
-        <div className="h-10 overflow-hidden relative flex items-center justify-center border-t border-gray-50 shadow-sm shrink-0">
+        <div className="h-16 relative w-full overflow-hidden flex items-center justify-center">
             {PROMOS.map((p, idx) => (
                 <div
                     key={p.id}
-                    className={`absolute inset-0 flex items-center justify-center text-[11px] font-extrabold px-4 text-center transition-all duration-700 ${
+                    className={`absolute inset-0 flex flex-col items-center justify-center px-6 text-center transition-all duration-700 ${
                         idx === current
                             ? 'opacity-100 translate-y-0 scale-100'
                             : 'opacity-0 -translate-y-4 scale-95 pointer-events-none'
-                    } bg-gradient-to-r ${p.bg} ${p.textCol}`}
+                    }`}
                 >
-                    {p.text}
+                    <span className="text-[10px] text-orange-300 uppercase tracking-widest font-black mb-1 drop-shadow-sm">Featured Offer</span>
+                    <p className="text-white text-xs font-black drop-shadow-md leading-snug max-w-[280px] uppercase tracking-wide">
+                        {p.text}
+                    </p>
                 </div>
             ))}
         </div>
@@ -123,7 +126,7 @@ export default function TablePageClient({
     const cartCount = totalItems ? totalItems() : 0
 
     const allOrders = useHydratedStore(useActiveOrders, (s) => s.orders) || []
-    const currentTableOrders = allOrders.filter(o => o.slug === tableData.qr_token && o.type === 'dine_in')
+    const currentTableOrders = allOrders.filter(o => o.slug === tableData.qr_token && o.type === 'dine_in' && (!o.sessionToken || o.sessionToken === liveSessionToken))
 
     const checkIpStatus = async () => {
         setVerifyingIp(true)
@@ -213,50 +216,57 @@ export default function TablePageClient({
     const showWaiterGate = waiterSessionEnabled && !hasSession
 
     const menuContent = (onBackToHome: (() => void) | null) => (
-        <div className="min-h-screen bg-gray-50 pb-28">
+        <div className="min-h-screen bg-gray-50 pb-20">
             {/* Sticky header — branded and curved bottom matching wireframe */}
-            <header className="bg-[#FB6303] text-white rounded-b-[36px] sticky top-0 z-20 pb-8 pt-3 relative shadow-md flex flex-col gap-3">
-                <div className="max-w-2xl mx-auto w-full px-4 flex items-center justify-between gap-3 h-14">
+            <header className="relative bg-[#FB6303] text-white rounded-b-[36px] sticky top-0 z-40 pb-6 pt-2 shadow-md flex flex-col gap-2">
+                {/* Background image overlay container below the brand row (starts at top-[48px]) */}
+                <div className="absolute inset-x-0 bottom-0 top-[48px] rounded-b-[36px] overflow-hidden z-0">
+                    {/* Background image overlay for the advertisement portion */}
+                    <div 
+                        className="absolute inset-0 bg-cover bg-center filter brightness-[0.55] scale-105"
+                        style={{ backgroundImage: `url('https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=600&auto=format&fit=crop')` }}
+                    />
+                    <div className="absolute inset-0 bg-[#FB6303]/15 mix-blend-multiply" />
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/20 to-black/60" />
+                </div>
+
+                <div className="max-w-2xl mx-auto w-full px-4 flex items-center justify-between gap-3 h-10 relative z-10">
                     {/* Left side: Restaurant logo + Restaurant name */}
-                    <div className="flex items-center gap-2.5 shrink-0">
-                        {onBackToHome && (
-                            <button
-                                onClick={onBackToHome}
-                                aria-label="Back to homepage"
-                                title="Back to homepage"
-                                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center shrink-0 transition active:scale-95 border border-white/10"
-                            >
-                                <Home size={14} className="text-white" />
-                            </button>
-                        )}
+                    <div className="flex items-center gap-2 shrink-0">
                         {logoUrl ? (
-                            <div className="relative w-9 h-9 rounded-full overflow-hidden bg-white shrink-0 border border-white/25 shadow-sm">
-                                <Image src={logoUrl} alt={restaurantName} fill className="object-cover" sizes="36px" />
+                            <div className="relative w-8 h-8 rounded-full overflow-hidden bg-white shrink-0 border border-white/25 shadow-sm">
+                                <Image src={logoUrl} alt={restaurantName} fill className="object-cover" sizes="32px" />
                             </div>
                         ) : (
-                            <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center shrink-0 border border-white/25 shadow-sm">
-                                <UtensilsCrossed size={15} className="text-white" />
+                            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center shrink-0 border border-white/25 shadow-sm">
+                                <UtensilsCrossed size={14} className="text-white" />
                             </div>
                         )}
                         <div className="flex flex-col">
-                            <span className="text-[9px] text-white/70 uppercase font-black tracking-wide leading-none">Restaurant</span>
-                            <span className="text-sm font-black tracking-tight truncate max-w-[110px] leading-tight">
+                            <span className="text-[8px] text-white/70 uppercase font-black tracking-wide leading-none">Restaurant</span>
+                            <span className="text-xs font-black tracking-tight truncate max-w-[120px] leading-tight">
                                 {restaurantName}
                             </span>
                         </div>
                     </div>
 
                     {/* Right side: platform logo */}
-                    <div className="flex flex-col items-end gap-0.5 shrink-0 pr-1">
-                        <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center shrink-0 border border-white/20">
-                            <Logo className="h-4 text-white filter brightness-0 invert" />
+                    <div className="flex items-center shrink-0 pr-1">
+                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shrink-0 border-2 border-white overflow-hidden relative shadow-sm">
+                            <Image 
+                                src="/brand/kkkhane-k-logo.jpg" 
+                                alt="kkkhane" 
+                                fill 
+                                className="object-cover scale-[1.45]" 
+                                sizes="32px"
+                                priority 
+                            />
                         </div>
-                        <span className="text-[7.5px] text-white/50 font-black uppercase tracking-widest leading-none">kkkhane</span>
                     </div>
                 </div>
                 
                 {/* Advertisement Bar content */}
-                <div className="w-full text-center pb-2">
+                <div className="w-full text-center pb-1 relative z-10">
                     <PromoBanner />
                 </div>
 
@@ -271,7 +281,7 @@ export default function TablePageClient({
                             placeholder="SEARCH FOR ITEM..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="block w-full pl-10 pr-10 py-3 text-[11px] border-0 rounded-full bg-[#FFEAE0] text-[#7A3300] placeholder-[#D68E65] font-extrabold focus:outline-none focus:ring-2 focus:ring-orange-300 focus:bg-white transition-all text-center uppercase tracking-wider"
+                            className="block w-full pl-10 pr-10 py-2.5 text-[11px] border-0 rounded-full bg-[#FFEAE0] text-[#7A3300] placeholder-[#D68E65] font-extrabold focus:outline-none focus:ring-2 focus:ring-orange-300 focus:bg-white transition-all text-center uppercase tracking-wider"
                         />
                         {searchQuery && (
                             <button
@@ -285,7 +295,7 @@ export default function TablePageClient({
                 </div>
             </header>
 
-            <main className="max-w-2xl mx-auto px-4 pt-4">
+            <main className="max-w-2xl mx-auto px-4 pt-0">
                 {/* Waiter-managed mode: blurred fullscreen gate shown when there's no
                     active session. Dismissable so the guest can browse view-only. */}
                 {showWaiterGate && !popupDismissed && (
@@ -369,7 +379,7 @@ export default function TablePageClient({
                 {showWaiterGate && popupDismissed && (
                     <button
                         onClick={() => setPopupDismissed(false)}
-                        className="fixed bottom-24 right-4 z-40 flex items-center gap-2 bg-[#FB6303] text-white text-sm font-black pl-4 pr-5 py-3 rounded-full shadow-lg shadow-[#FB6303]/30 active:scale-95 transition animate-scale-in"
+                        className="fixed bottom-16 right-4 z-40 flex items-center gap-2 bg-[#FB6303] text-white text-sm font-black pl-4 pr-5 py-3 rounded-full shadow-lg shadow-[#FB6303]/30 active:scale-95 transition animate-scale-in"
                     >
                         {requestSent
                             ? <><Check size={16} className="stroke-[3px]" /> Waiter notified</>
@@ -409,7 +419,7 @@ export default function TablePageClient({
 
             {/* Fixed Bottom Navigation Bar */}
             <div 
-                className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-100 shadow-[0_-4px_12px_rgba(0,0,0,0.03)] px-4 py-2 flex items-center justify-around h-16"
+                className="fixed bottom-0 left-0 right-0 z-40 bg-[#FB6303] text-white shadow-[0_-4px_16px_rgba(0,0,0,0.1)] px-4 py-1 flex items-center justify-around h-12 border-t border-orange-600/30"
                 style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
             >
                 {/* Home */}
@@ -417,10 +427,10 @@ export default function TablePageClient({
                     onClick={() => {
                         window.scrollTo({ top: 0, behavior: 'smooth' })
                     }}
-                    className="flex flex-col items-center justify-center text-gray-500 hover:text-[var(--color-primary)] transition active:scale-95 w-16"
+                    className="flex flex-col items-center justify-center text-white/80 hover:text-white transition active:scale-95 w-16"
                 >
-                    <Home size={18} className="stroke-[2.5px]" />
-                    <span className="text-[10px] font-extrabold mt-1">Home</span>
+                    <Home size={18} className="stroke-[2.5px] text-white" />
+                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Home</span>
                 </button>
 
                 {/* Orders */}
@@ -433,36 +443,34 @@ export default function TablePageClient({
                             toast.error("No active orders placed yet")
                         }
                     }}
-                    className="flex flex-col items-center justify-center text-gray-500 hover:text-[var(--color-primary)] transition active:scale-95 w-16"
+                    className="flex flex-col items-center justify-center text-white/80 hover:text-white transition active:scale-95 w-16"
                 >
-                    <ChefHat size={18} className="stroke-[2.5px]" />
-                    <span className="text-[10px] font-extrabold mt-1">Orders</span>
+                    <ChefHat size={18} className="stroke-[2.5px] text-white" />
+                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Orders</span>
                 </button>
 
                 {/* Cart */}
                 <Link
                     href={`/t/${tableData.qr_token}/cart${isWaiter ? '?w=1' : ''}`}
-                    className="flex flex-col items-center justify-center text-gray-500 hover:text-[var(--color-primary)] transition active:scale-95 w-16 relative"
+                    className="flex flex-col items-center justify-center text-white/80 hover:text-white transition active:scale-95 w-16 relative"
                 >
                     {cartCount > 0 && (
-                        <span className="absolute -top-1.5 right-3 bg-[#FB6303] text-white text-[9px] font-black rounded-full h-[18px] min-w-[18px] px-1 flex items-center justify-center ring-2 ring-white">
+                        <span className="absolute -top-1.5 right-3 bg-white text-[#FB6303] text-[9px] font-black rounded-full h-[18px] min-w-[18px] px-1 flex items-center justify-center ring-2 ring-[#FB6303]">
                             {cartCount}
                         </span>
                     )}
-                    <ShoppingBag size={18} className="stroke-[2.5px]" />
-                    <span className="text-[10px] font-extrabold mt-1">Cart</span>
+                    <ShoppingBag size={18} className="stroke-[2.5px] text-white" />
+                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Cart</span>
                 </Link>
 
-                {/* Call Waiter */}
-                <button
-                    onClick={() => setIsServiceOpen(prev => !prev)}
-                    className={`flex flex-col items-center justify-center transition active:scale-95 w-16 ${
-                        isServiceOpen ? 'text-[var(--color-primary)] font-black' : 'text-gray-500 hover:text-[var(--color-primary)]'
-                    }`}
+                {/* Payment */}
+                <Link
+                    href={`/t/${tableData.qr_token}/checkout`}
+                    className="flex flex-col items-center justify-center text-white/80 hover:text-white transition active:scale-95 w-16"
                 >
-                    <Bell size={18} className="stroke-[2.5px]" />
-                    <span className="text-[10px] font-extrabold mt-1">Call Waiter</span>
-                </button>
+                    <CreditCard size={18} className="stroke-[2.5px] text-white" />
+                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Pay</span>
+                </Link>
             </div>
         </div>
     )

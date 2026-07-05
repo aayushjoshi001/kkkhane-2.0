@@ -9,6 +9,7 @@ export interface ActiveOrder {
     type: 'dine_in' | 'takeout'
     slug: string        // table qr_token (dine-in) or restaurant slug (takeout)
     placedAt: number
+    sessionToken?: string
 }
 
 interface ActiveOrdersState {

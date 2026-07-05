@@ -61,6 +61,16 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
 
     const hasModifiers = (item.modifier_groups?.length ?? 0) > 0
     const hasVariations = (item.variations?.length ?? 0) > 0
+    const isVeg = item.tags?.some(t => ['veg', 'vegetarian', 'vegan'].includes(t.toLowerCase()))
+    
+    // Format price range if there are variations with different prices
+    let priceDisplay = money(item.price)
+    if (hasVariations && item.variations && item.variations.length > 0) {
+        const prices = item.variations.map(v => v.price)
+        const minP = Math.min(...prices)
+        const maxP = Math.max(...prices)
+        priceDisplay = minP !== maxP ? `${money(minP)} - ${maxP}` : money(minP)
+    }
     // The cart stores a separate line per (menuItemId + modifiers), so there can
     // be several lines for one menu item. The badge must show the combined count.
     const matchingItems = items.filter((i) => i.menuItemId === item.id)
@@ -134,71 +144,77 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
 
     return (
         <>
-        <div className={`group relative bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm transition-all duration-200 hover:shadow-md flex flex-row w-full h-24 p-2 gap-2.5 items-center ${!item.is_available ? 'opacity-70' : ''}`}>
-            {/* Image */}
-            <div className="relative w-20 h-20 rounded-xl bg-gray-100 overflow-hidden shrink-0">
+        <div style={{ boxShadow: '0 6px 20px -4px rgba(255,122,46,0.45), 0 2px 8px -2px rgba(0,0,0,0.18)' }} className={`group relative bg-[#FF7A2E] rounded-[32px] hover:shadow-[0_12px_32px_-4px_rgba(255,122,46,0.65),0_4px_12px_-2px_rgba(0,0,0,0.22)] hover:brightness-105 active:scale-[0.97] active:shadow-md transition-all duration-300 ease-out flex flex-col w-full p-3 pt-3.5 pb-3 gap-2.5 ${!item.is_available ? 'opacity-70' : ''}`}>
+            {/* Top: Dish name with Veg/Non-Veg Logo (Starts from Left Corner) */}
+            <div className="flex items-center gap-1.5 px-1.5 w-full justify-start text-left">
+                <div className={`w-3.5 h-3.5 border-2 ${isVeg ? 'border-emerald-600' : 'border-red-700'} flex items-center justify-center p-0.5 shrink-0 bg-white rounded-xs`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${isVeg ? 'bg-emerald-600' : 'bg-red-700'}`} />
+                </div>
+                <h3 className="font-black text-[11px] text-white leading-tight uppercase line-clamp-1 truncate text-left drop-shadow-sm">
+                    {displayName}
+                </h3>
+            </div>
+
+            {/* Middle: Centered Wide Image Container */}
+            <div className="relative w-full aspect-[16/10] rounded-[20px] bg-black/5 overflow-hidden shrink-0 shadow-sm border border-white/10 z-10">
                 {item.image_url ? (
                     <Image
                         src={item.image_url}
                         alt={displayName}
                         fill
-                        className="object-cover group-hover:scale-105 transition-transform duration-500"
-                        sizes="80px"
+                        className="object-cover group-hover:scale-[1.03] transition-transform duration-500"
+                        sizes="200px"
                     />
                 ) : (
-                    <div className="absolute inset-0 flex items-center justify-center"
-                         style={{ background: 'linear-gradient(135deg, #f5f0eb 0%, #ede8e0 100%)' }}>
-                        <span className="text-2xl opacity-20">🍽️</span>
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/10">
+                        <span className="text-xl opacity-20">🍽️</span>
                     </div>
                 )}
 
                 {/* Sold out overlay */}
                 {!item.is_available && (
                     <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
-                        <span className="bg-white text-gray-600 font-semibold px-2 py-0.5 rounded text-[10px] border border-gray-200 shadow-xs">
+                        <span className="bg-white text-gray-600 font-bold px-1.5 py-0.5 rounded text-[8px] border border-gray-205 shadow-xs">
                             Sold Out
                         </span>
                     </div>
                 )}
             </div>
 
-            {/* Body */}
-            <div className="flex flex-col flex-1 h-full justify-between min-w-0 py-0.5 pr-8 relative">
-                <div className="flex flex-col gap-0.5">
-                    <h3 className="font-bold text-[13px] text-gray-900 leading-snug line-clamp-2">
-                        {displayName}
-                    </h3>
-                    <span className="font-extrabold text-[12px] text-[#FB6303] tabular-nums mt-0.5">
-                        {hasVariations && item.variations!.length > 0
-                            ? `${money(Math.min(...item.variations!.map(v => v.price)))}`
-                            : money(item.price)
-                        }
-                    </span>
-                </div>
+            {/* Bottom Row: Price and Horizontal Quantity Controls */}
+            <div className="flex items-center justify-between w-full px-1.5 mt-0.5 gap-2 z-20">
+                {/* Left: Price */}
+                <span className="font-black text-[13px] text-white tabular-nums text-left leading-none drop-shadow-sm">
+                    {priceDisplay}
+                </span>
 
-                {/* Cart controls */}
-                <div className="absolute bottom-0.5 right-0 z-10">
+                {/* Right: Quantity controls horizontal block */}
+                <div className="shrink-0 flex items-center justify-end">
                     {(!isTakeout && !sessionId) ? null : (quantity === 0 || hasModifiers || hasVariations) ? (
                         <button
                             onClick={handleAdd}
                             disabled={!item.is_available}
-                            className="w-7 h-7 bg-[#FB6303] rounded-lg flex items-center justify-center text-white active:scale-90 transition disabled:opacity-40"
+                            className="bg-white text-[#FF7A2E] px-3.5 py-1.5 rounded-full flex items-center justify-center font-black active:scale-95 transition-all shadow-sm text-[10px] tracking-wider uppercase leading-none min-w-[56px] text-center hover:bg-orange-50"
                             aria-label={`Add ${displayName} to cart`}
                         >
-                            <Plus size={14} strokeWidth={3} />
+                            Add to cart
                         </button>
                     ) : (
-                        <div className="flex items-center bg-gray-50 border border-gray-150 rounded-lg p-0.5 h-7 gap-1">
-                            <button onClick={handleRemove}
-                                    aria-label={`Remove one ${displayName}`}
-                                    className="w-5 h-5 flex items-center justify-center rounded bg-white shadow-xs text-gray-600 active:scale-95 transition">
-                                <Minus size={11} strokeWidth={3} />
+                        <div className="bg-white rounded-full flex flex-row items-center gap-2 p-1 px-1.5 shadow-sm h-7">
+                            <button 
+                                onClick={handleRemove}
+                                aria-label={`Remove one ${displayName}`}
+                                className="w-5 h-5 rounded-full bg-orange-100 hover:bg-orange-200 flex items-center justify-center text-[#FF7A2E] active:scale-90 transition"
+                            >
+                                <Minus size={9} strokeWidth={4.5} />
                             </button>
-                            <span className="font-bold text-xs text-gray-950 w-4 text-center tabular-nums">{quantity}</span>
-                            <button onClick={handleAdd}
-                                    aria-label={`Add one ${displayName}`}
-                                    className="w-5 h-5 flex items-center justify-center rounded bg-[#FB6303] text-white active:scale-95 transition">
-                                <Plus size={11} strokeWidth={3} />
+                            <span className="text-[11px] font-black leading-none tabular-nums text-[#FF7A2E] min-w-[12px] text-center my-0.5">{quantity}</span>
+                            <button 
+                                onClick={handleAdd}
+                                aria-label={`Add one ${displayName}`}
+                                className="w-5 h-5 rounded-full bg-orange-100 hover:bg-orange-200 flex items-center justify-center text-[#FF7A2E] active:scale-90 transition"
+                            >
+                                <Plus size={9} strokeWidth={4.5} />
                             </button>
                         </div>
                     )}

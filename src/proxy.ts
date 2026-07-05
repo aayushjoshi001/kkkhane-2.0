@@ -45,6 +45,7 @@ function getRequestIp(request: NextRequest): string {
 
 export async function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl
+    console.log(`[PROXY_LOG] Path: ${pathname}`);
 
     // Rate-limit public QR/table pages to prevent DoS.
     // Wrapped in try/catch so a transient Redis failure never 500s a customer.
@@ -55,6 +56,7 @@ export async function proxy(request: NextRequest) {
                 const ip = getRequestIp(request)
                 const { success } = await limiter.limit(ip)
                 if (!success) {
+                    console.log(`[PROXY_LOG] Rate limited: ${pathname}`);
                     return new NextResponse('Too many requests. Please slow down.', {
                         status: 429,
                         headers: { 'Content-Type': 'text/plain', 'Retry-After': '60' },
@@ -69,17 +71,23 @@ export async function proxy(request: NextRequest) {
     // Always refresh the Supabase session cookie — this is required by @supabase/ssr
     // to keep the access token valid across server components and API routes.
     const { user, supabaseResponse, supabase } = await updateSession(request)
+    console.log(`[PROXY_LOG] Auth user: ${user ? user.email : 'null'}`);
 
     // Find whether this path needs protection
     const rule = ROUTE_RULES.find(r => r.pattern.test(pathname))
+    console.log(`[PROXY_LOG] Rule matched: ${rule ? JSON.stringify(rule.allowedRoles) : 'none'}`);
 
     // Public route — return the response with refreshed cookies and nothing else
-    if (!rule) return supabaseResponse
+    if (!rule) {
+        console.log(`[PROXY_LOG] Public route, passing through: ${pathname}`);
+        return supabaseResponse
+    }
 
     // ── Not authenticated ───────────────────────────────────────────────────────
     if (!user) {
         const loginUrl = new URL('/login', request.url)
         loginUrl.searchParams.set('redirect', pathname)
+        console.log(`[PROXY_LOG] Not authenticated, redirecting to: ${loginUrl.toString()}`);
         const response = NextResponse.redirect(loginUrl)
         // Copy over any cookie mutations from updateSession
         supabaseResponse.cookies.getAll().forEach(({ name, value, ...opts }) => {
@@ -95,6 +103,7 @@ export async function proxy(request: NextRequest) {
         // (004_jwt_claims_hook.sql). Unlike decoding the raw cookie, a tampered
         // token is rejected here instead of being trusted.
         const { data: claimsData } = await supabase.auth.getClaims()
+
         const claims = claimsData?.claims as { app_role?: unknown } | undefined
         // "unauthenticated" is the literal sentinel custom_access_token_hook embeds
         // for a signed-in user with no restaurant yet (e.g. mid-onboarding). It's a
@@ -120,6 +129,7 @@ export async function proxy(request: NextRequest) {
         }
     }
 
+    console.log(`[PROXY_LOG] Letting request pass through: ${pathname}`);
     return supabaseResponse
 }
 
