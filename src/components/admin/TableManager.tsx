@@ -539,11 +539,64 @@ export default function TableManager({
                             </div>
                         </div>
 
-                        {/* Loading state */}
+                        {/* Loading state / Skeleton UI */}
                         {!iframeLoaded && previewTable && (
-                            <div className="absolute inset-0 top-[60px] flex flex-col items-center justify-center gap-3 bg-white z-0">
-                                <Loader2 size={24} className="animate-spin text-gray-400" />
-                                <p className="text-xs text-gray-400">Loading menu…</p>
+                            <div className="absolute inset-0 top-[60px] bg-gray-50 z-0 overflow-hidden flex flex-col pointer-events-none">
+                                {/* Skeleton Header (matches customer UI) */}
+                                <div className="relative bg-[#FB6303] text-white rounded-b-[36px] pb-6 pt-2 h-[120px] shadow-md flex flex-col shrink-0 overflow-hidden">
+                                    <div className="absolute inset-x-0 bottom-0 top-[48px] rounded-b-[36px] bg-black/20" />
+                                    <div className="w-full px-4 flex items-center justify-between gap-3 h-10 mt-2 relative z-10">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 rounded-full bg-white/25 animate-pulse" />
+                                            <div className="flex flex-col gap-1.5">
+                                                <div className="w-10 h-2 bg-white/20 rounded animate-pulse" />
+                                                <div className="w-24 h-3 bg-white/30 rounded animate-pulse" />
+                                            </div>
+                                        </div>
+                                        <div className="w-8 h-8 rounded-full bg-white/20 animate-pulse" />
+                                    </div>
+                                    <div className="mt-8 px-4 flex justify-between items-center relative z-10">
+                                        <div className="flex gap-2">
+                                            <div className="w-16 h-6 bg-white/20 rounded-full animate-pulse" />
+                                            <div className="w-16 h-6 bg-white/20 rounded-full animate-pulse" />
+                                        </div>
+                                    </div>
+                                </div>
+                                {/* Skeleton Content */}
+                                <div className="flex-1 p-4 space-y-4">
+                                    {/* Search Bar Skeleton */}
+                                    <div className="w-full h-11 bg-white rounded-xl shadow-sm border border-gray-100 flex items-center px-4 animate-pulse">
+                                        <div className="w-4 h-4 bg-gray-200 rounded-full" />
+                                        <div className="ml-3 w-32 h-3 bg-gray-200 rounded" />
+                                    </div>
+                                    {/* Categories Skeleton */}
+                                    <div className="flex gap-3 mt-4 overflow-hidden">
+                                        <div className="w-16 h-20 bg-white rounded-xl shadow-sm animate-pulse shrink-0" />
+                                        <div className="w-16 h-20 bg-white rounded-xl shadow-sm animate-pulse shrink-0" />
+                                        <div className="w-16 h-20 bg-white rounded-xl shadow-sm animate-pulse shrink-0" />
+                                        <div className="w-16 h-20 bg-white rounded-xl shadow-sm animate-pulse shrink-0" />
+                                    </div>
+                                    {/* Menu Items Skeleton */}
+                                    <div className="mt-6 space-y-3">
+                                        <div className="w-24 h-4 bg-gray-200 rounded animate-pulse mb-4" />
+                                        <div className="w-full h-[104px] bg-white rounded-xl shadow-sm flex items-center p-3 animate-pulse">
+                                            <div className="flex-1 space-y-2.5">
+                                                <div className="w-3/4 h-3.5 bg-gray-200 rounded" />
+                                                <div className="w-1/2 h-2.5 bg-gray-100 rounded" />
+                                                <div className="w-16 h-4 bg-gray-200 rounded mt-3" />
+                                            </div>
+                                            <div className="w-[80px] h-[80px] bg-gray-100 rounded-lg ml-3" />
+                                        </div>
+                                        <div className="w-full h-[104px] bg-white rounded-xl shadow-sm flex items-center p-3 animate-pulse">
+                                            <div className="flex-1 space-y-2.5">
+                                                <div className="w-2/3 h-3.5 bg-gray-200 rounded" />
+                                                <div className="w-1/3 h-2.5 bg-gray-100 rounded" />
+                                                <div className="w-16 h-4 bg-gray-200 rounded mt-3" />
+                                            </div>
+                                            <div className="w-[80px] h-[80px] bg-gray-100 rounded-lg ml-3" />
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         )}
 
