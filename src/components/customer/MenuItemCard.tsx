@@ -134,7 +134,7 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
 
     return (
         <>
-        <div className={`group relative bg-white rounded-[var(--border-radius)] overflow-hidden border border-gray-100 shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 flex flex-col w-full ${!item.is_available ? 'opacity-70' : ''}`}>
+        <div className={`group relative bg-white rounded-[var(--border-radius)] overflow-hidden border border-gray-100 shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 flex flex-col w-full h-full ${!item.is_available ? 'opacity-70' : ''}`}>
             {/* Image */}
             <div className="relative w-full aspect-[4/3] bg-gray-100 overflow-hidden shrink-0">
                 {item.image_url ? (

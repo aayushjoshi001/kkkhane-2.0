@@ -33,7 +33,7 @@ export default function CategoryNav({
     }
 
     return (
-        <div className="bg-white/95 backdrop-blur-md border-b border-gray-100/80 sticky top-[148px] z-10">
+        <div className="bg-white border-b border-gray-100 sticky top-[148px] z-30">
             <div
                 ref={scrollRef}
                 className="flex overflow-x-auto gap-1.5 px-4 py-2.5"

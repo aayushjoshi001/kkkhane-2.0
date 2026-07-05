@@ -121,7 +121,8 @@ export default function TablePageClient({
     const totalItems = useHydratedStore(useCartStore, (s) => s.totalItems)
     const cartCount = totalItems ? totalItems() : 0
 
-    const orders = useHydratedStore(useActiveOrders, (s) => s.orders) || []
+    const allOrders = useHydratedStore(useActiveOrders, (s) => s.orders) || []
+    const currentTableOrders = allOrders.filter(o => o.slug === tableData.qr_token && o.type === 'dine_in')
 
     const checkIpStatus = async () => {
         setVerifyingIp(true)
@@ -212,7 +213,6 @@ export default function TablePageClient({
 
     const menuContent = (onBackToHome: (() => void) | null) => (
         <div className="min-h-screen bg-gray-50 pb-28">
-            <ActiveOrderPill />
             {/* Sticky header — compact, restaurant-branded */}
             <header className="bg-white border-b border-gray-100 sticky top-0 z-20">
                 <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
@@ -390,7 +390,7 @@ export default function TablePageClient({
                 {/* Orders */}
                 <button
                     onClick={() => {
-                        const activeOrder = orders && orders.length > 0 ? orders[orders.length - 1] : null
+                        const activeOrder = currentTableOrders && currentTableOrders.length > 0 ? currentTableOrders[currentTableOrders.length - 1] : null
                         if (activeOrder) {
                             window.location.href = `/t/${tableData.qr_token}/order/${activeOrder.id}`
                         } else {
@@ -409,7 +409,7 @@ export default function TablePageClient({
                     className="flex flex-col items-center justify-center text-gray-500 hover:text-[var(--color-primary)] transition active:scale-95 w-16 relative"
                 >
                     {cartCount > 0 && (
-                        <span className="absolute -top-1.5 right-3.5 bg-[#FB6303] text-white text-[9px] font-black rounded-full h-4.5 min-w-[18px] px-1 flex items-center justify-center ring-2 ring-white">
+                        <span className="absolute -top-1.5 right-3 bg-[#FB6303] text-white text-[9px] font-black rounded-full h-[18px] min-w-[18px] px-1 flex items-center justify-center ring-2 ring-white">
                             {cartCount}
                         </span>
                     )}

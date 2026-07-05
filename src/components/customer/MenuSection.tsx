@@ -101,7 +101,7 @@ export default function MenuSection({
 
     return (
         <>
-            <div className="sticky top-[96px] z-40 bg-gray-50/80 backdrop-blur-md pb-2 px-4 md:px-0">
+            <div className="sticky top-[96px] z-40 bg-gray-50 pb-2 px-4 md:px-0">
                 <div className="relative max-w-3xl mx-auto mt-2">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <Search className="h-4 w-4 text-gray-400" />
@@ -218,7 +218,7 @@ function ItemGrid({ items, comboItems, menuItems, sessionId, restaurantSlug, res
                     key={item.id}
                     className={layout === 'list'
                         ? 'w-full'
-                        : 'w-[calc((100vw-32px-12px)/2.45)] sm:w-auto shrink-0 snap-start'
+                        : 'w-[calc((100vw-32px-12px)/2.25)] sm:w-auto shrink-0 snap-start h-full'
                     }
                 >
                     <MenuItemCard
