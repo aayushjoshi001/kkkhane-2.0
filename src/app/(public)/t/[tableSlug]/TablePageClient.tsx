@@ -11,7 +11,7 @@ import CartSummary from '@/components/customer/CartSummary'
 import Logo from '@/components/shared/Logo'
 import PhysicalMenuGallery from '@/components/customer/PhysicalMenuGallery'
 import { TranslationProvider } from '@/lib/contexts/TranslationContext'
-import { UtensilsCrossed, RefreshCw, Bell, Check, Loader2, Home, X, ShoppingBag, ChefHat } from 'lucide-react'
+import { UtensilsCrossed, RefreshCw, Bell, Check, Loader2, Home, X, ShoppingBag, ChefHat, Search } from 'lucide-react'
 import { useCartStore } from '@/lib/stores/cart'
 import { requestSessionOpen } from '@/app/api/service-requests/actions'
 import ActiveOrderPill from '@/components/customer/ActiveOrderPill'
@@ -115,6 +115,7 @@ export default function TablePageClient({
     const [verifyingIp, setVerifyingIp] = useState(false)
     const [currentIp, setCurrentIp] = useState<string>('')
     const [isServiceOpen, setIsServiceOpen] = useState(false)
+    const [searchQuery, setSearchQuery] = useState('')
     const searchParams = useSearchParams()
     const isWaiter = searchParams?.get('w') === '1'
 
@@ -213,42 +214,75 @@ export default function TablePageClient({
 
     const menuContent = (onBackToHome: (() => void) | null) => (
         <div className="min-h-screen bg-gray-50 pb-28">
-            {/* Sticky header — compact, restaurant-branded */}
-            <header className="bg-white border-b border-gray-100 sticky top-0 z-20">
-                <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
-                    {/* Left side: Restaurant logo (in circle format) + optional back button */}
+            {/* Sticky header — branded and curved bottom matching wireframe */}
+            <header className="bg-[#FB6303] text-white rounded-b-[36px] sticky top-0 z-20 pb-8 pt-3 relative shadow-md flex flex-col gap-3">
+                <div className="max-w-2xl mx-auto w-full px-4 flex items-center justify-between gap-3 h-14">
+                    {/* Left side: Restaurant logo + Restaurant name */}
                     <div className="flex items-center gap-2.5 shrink-0">
                         {onBackToHome && (
                             <button
                                 onClick={onBackToHome}
                                 aria-label="Back to homepage"
                                 title="Back to homepage"
-                                className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center shrink-0 transition active:scale-95"
+                                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center shrink-0 transition active:scale-95 border border-white/10"
                             >
-                                <Home size={14} className="text-[var(--color-secondary)]" />
+                                <Home size={14} className="text-white" />
                             </button>
                         )}
                         {logoUrl ? (
-                            <div className="relative w-8 h-8 rounded-full overflow-hidden bg-gray-100 shrink-0 border border-gray-100 shadow-sm">
-                                <Image src={logoUrl} alt={restaurantName} fill className="object-cover" sizes="32px" />
+                            <div className="relative w-9 h-9 rounded-full overflow-hidden bg-white shrink-0 border border-white/25 shadow-sm">
+                                <Image src={logoUrl} alt={restaurantName} fill className="object-cover" sizes="36px" />
                             </div>
                         ) : (
-                            <div className="w-8 h-8 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center shrink-0 border border-gray-100 shadow-sm">
-                                <UtensilsCrossed size={14} className="text-[var(--color-primary)]" />
+                            <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center shrink-0 border border-white/25 shadow-sm">
+                                <UtensilsCrossed size={15} className="text-white" />
                             </div>
                         )}
-                        <span className="text-sm font-bold text-gray-800 truncate max-w-[100px] md:max-w-[150px]">
-                            {restaurantName}
-                        </span>
+                        <div className="flex flex-col">
+                            <span className="text-[9px] text-white/70 uppercase font-black tracking-wide leading-none">Restaurant</span>
+                            <span className="text-sm font-black tracking-tight truncate max-w-[110px] leading-tight">
+                                {restaurantName}
+                            </span>
+                        </div>
                     </div>
-
 
                     {/* Right side: platform logo */}
-                    <div className="flex items-center shrink-0 pr-2">
-                        <Logo className="h-5" />
+                    <div className="flex flex-col items-end gap-0.5 shrink-0 pr-1">
+                        <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center shrink-0 border border-white/20">
+                            <Logo className="h-4 text-white filter brightness-0 invert" />
+                        </div>
+                        <span className="text-[7.5px] text-white/50 font-black uppercase tracking-widest leading-none">kkkhane</span>
                     </div>
                 </div>
-                <PromoBanner />
+                
+                {/* Advertisement Bar content */}
+                <div className="w-full text-center pb-2">
+                    <PromoBanner />
+                </div>
+
+                {/* Overlapping Pill Search Bar at bottom curve */}
+                <div className="absolute left-1/2 -translate-x-1/2 bottom-0 translate-y-1/2 w-[85%] max-w-md z-30">
+                    <div className="relative shadow-md rounded-full overflow-hidden">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <Search className="h-3.5 w-3.5 text-[#FB6303]" />
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="SEARCH FOR ITEM..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="block w-full pl-10 pr-10 py-3 text-[11px] border-0 rounded-full bg-[#FFEAE0] text-[#7A3300] placeholder-[#D68E65] font-extrabold focus:outline-none focus:ring-2 focus:ring-orange-300 focus:bg-white transition-all text-center uppercase tracking-wider"
+                        />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery('')}
+                                className="absolute inset-y-0 right-0 pr-4 flex items-center text-[#FB6303] hover:text-orange-700"
+                            >
+                                <X className="h-4 w-4 stroke-[3px]" />
+                            </button>
+                        )}
+                    </div>
+                </div>
             </header>
 
             <main className="max-w-2xl mx-auto px-4 pt-4">
@@ -351,6 +385,8 @@ export default function TablePageClient({
                     restaurantSlug={tableData.qr_token}
                     restaurantId={tableData.restaurant_id}
                     layout={menuLayout}
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
                 />
 
                 <PhysicalMenuGallery

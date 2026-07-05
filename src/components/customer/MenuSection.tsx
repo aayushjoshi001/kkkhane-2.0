@@ -16,6 +16,8 @@ export default function MenuSection({
     restaurantSlug,
     restaurantId,
     layout = 'grid',
+    searchQuery = '',
+    setSearchQuery = () => {},
 }: {
     categories: MenuCategory[]
     items: MenuItem[]
@@ -24,10 +26,11 @@ export default function MenuSection({
     restaurantSlug: string
     restaurantId?: string
     layout?: 'grid' | 'list'
+    searchQuery?: string
+    setSearchQuery?: (val: string) => void
 }) {
     const { t } = useTranslation()
     const [activeCategory, setActiveCategory] = useState('all')
-    const [searchQuery, setSearchQuery] = useState('')
     const observerRef = useRef<IntersectionObserver | null>(null)
     // Track whether a programmatic scroll is in progress to suppress spy updates
     const isScrollingRef = useRef(false)
@@ -101,28 +104,6 @@ export default function MenuSection({
 
     return (
         <>
-            <div className="sticky top-[96px] z-40 bg-gray-50 pb-2 px-4 md:px-0">
-                <div className="relative max-w-3xl mx-auto mt-2">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Search className="h-4 w-4 text-gray-400" />
-                    </div>
-                    <input
-                        type="text"
-                        placeholder="Search menu items..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="block w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-xl leading-5 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary sm:text-sm transition-all"
-                    />
-                    {searchQuery && (
-                        <button
-                            onClick={() => setSearchQuery('')}
-                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-                        >
-                            <X className="h-4 w-4" />
-                        </button>
-                    )}
-                </div>
-            </div>
 
             {!searchQuery && (
                 <CategoryNav
