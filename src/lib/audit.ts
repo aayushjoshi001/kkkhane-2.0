@@ -16,6 +16,7 @@ export type AuditAction =
     | 'menu_item_toggled'
     | 'menu_item_price_changed'
     | 'staff_invited'
+    | 'staff_invite_accepted'
     | 'staff_removed'
     | 'shift_corrected'
     | 'report_generated'

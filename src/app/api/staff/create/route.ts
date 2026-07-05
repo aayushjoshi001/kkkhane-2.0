@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { CreateStaffSchema } from '@/lib/validation'
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { TIER_LIMITS, type Tier } from '@/lib/tiers'
 
 export async function POST(req: NextRequest) {
     try {
@@ -73,14 +74,8 @@ export async function POST(req: NextRequest) {
         }
 
         // Check subscription limits
-        const tierLimits: Record<string, number> = {
-            free: 3,
-            basic: 10,
-            pro: 50,
-            enterprise: 999,
-        }
-
-        const maxStaff = tierLimits[restaurant.subscription_tier] || 3
+        const tier = (restaurant.subscription_tier || 'free') as Tier
+        const maxStaff = TIER_LIMITS[tier]?.max_staff ?? TIER_LIMITS.free.max_staff
 
         // Count existing staff (excluding customers)
         const { count: staffCount } = await supabase

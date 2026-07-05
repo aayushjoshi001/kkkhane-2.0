@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Image from 'next/image'
-import { Shield, ChefHat, Users, User, Check, AlertTriangle, Loader2, Pencil, Trash2, Eye, EyeOff, Banknote, Search, KeyRound, Copy, Link2 } from 'lucide-react'
-import { updateStaffRoleAction, toggleStaffStatusAction, updateStaffNameAction, resetStaffPasswordAction, deleteStaffAction, createStaffPinAction } from '@/app/(admin)/admin/staff/actions'
+import { Shield, ChefHat, Users, User, Check, AlertTriangle, Loader2, Pencil, Trash2, Eye, EyeOff, Banknote, Search, Mail, X, RotateCw } from 'lucide-react'
+import { updateStaffRoleAction, toggleStaffStatusAction, updateStaffNameAction, resetStaffPasswordAction, deleteStaffAction } from '@/app/(admin)/admin/staff/actions'
 import { createDepartmentAction, updateDepartmentAction, deleteDepartmentAction, updateStaffDepartmentAction } from '@/app/(admin)/admin/staff/department-actions'
-import { PIN_ELIGIBLE_ROLE_IDS, isPinEligibleRole } from '@/lib/staffPin'
+import { createInvitationAction, revokeInvitationAction, resendInvitationAction } from '@/app/(admin)/admin/staff/invite-actions'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
 
@@ -36,27 +36,43 @@ export type Department = {
     description: string | null
 }
 
+export type Invitation = {
+    id: string
+    email: string
+    role_id: number
+    status: 'pending' | 'accepted' | 'revoked' | 'expired'
+    expires_at: string
+    created_at: string
+    // Supabase can return arrays for joins depending on the query shape
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    roles: any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    invited_by: any
+}
+
 export default function StaffManager({
     initialStaff,
     roles,
     departments: initialDepartments,
+    invitations: initialInvitations,
     currentUserRole,
     currentUserId,
     restaurantId,
-    restaurantSlug,
 }: {
     initialStaff: StaffMember[]
     roles: Role[]
     departments: Department[]
+    invitations: Invitation[]
     currentUserRole: string
     currentUserId: string
     restaurantId: string
-    restaurantSlug: string
 }) {
     const [staff, setStaff] = useState<StaffMember[]>(initialStaff)
     const [departments, setDepartments] = useState<Department[]>(initialDepartments)
-    const [activeTab, setActiveTab] = useState<'staff' | 'departments'>('staff')
+    const [invitations, setInvitations] = useState<Invitation[]>(initialInvitations)
+    const [activeTab, setActiveTab] = useState<'staff' | 'departments' | 'invitations'>('staff')
     const [submittingId, setSubmittingId] = useState<string | null>(null)
+    const [invitingId, setInvitingId] = useState<string | null>(null)
     const { confirm } = useConfirmStore()
 
     const [searchQuery, setSearchQuery] = useState('')
@@ -77,7 +93,6 @@ export default function StaffManager({
 
     const [createModal, setCreateModal] = useState({
         isOpen: false,
-        mode: 'pin' as 'pin' | 'email',
         fullName: '',
         email: '',
         password: '',
@@ -85,8 +100,13 @@ export default function StaffManager({
         roleId: 4, // Default to waiter
         isCreating: false
     })
-    // Set once a PIN account is created — shown in place of the form until "Done".
-    const [pinResult, setPinResult] = useState<{ pin: string; fullName: string } | null>(null)
+
+    const [inviteModal, setInviteModal] = useState({
+        isOpen: false,
+        email: '',
+        roleId: 4, // Default to waiter
+        isInviting: false
+    })
 
     const [editModal, setEditModal] = useState<{
         isOpen: boolean
@@ -206,7 +226,6 @@ export default function StaffManager({
             toast.success(data.message || 'Staff member created successfully')
             setCreateModal({
                 isOpen: false,
-                mode: 'pin',
                 fullName: '',
                 email: '',
                 password: '',
@@ -222,40 +241,65 @@ export default function StaffManager({
         }
     }
 
-    const handleCreateStaffPin = async () => {
-        if (!createModal.fullName.trim()) {
-            toast.error('Please enter a name')
-            return
-        }
-
-        setCreateModal(prev => ({ ...prev, isCreating: true }))
-        const res = await createStaffPinAction({ fullName: createModal.fullName, roleId: createModal.roleId })
-        setCreateModal(prev => ({ ...prev, isCreating: false }))
-
-        if (!res.success || !res.pin) {
-            toast.error(res.error || 'Failed to create staff member')
-            return
-        }
-
-        if (res.staff) setStaff(prev => [res.staff as StaffMember, ...prev])
-        setPinResult({ pin: res.pin, fullName: createModal.fullName.trim() })
-    }
-
     const closeCreateModal = () => {
-        setCreateModal({ isOpen: false, mode: 'pin', fullName: '', email: '', password: '', phone: '', roleId: 4, isCreating: false })
-        setPinResult(null)
+        setCreateModal({ isOpen: false, fullName: '', email: '', password: '', phone: '', roleId: 4, isCreating: false })
     }
 
-    // Computed post-mount (needs window.location.origin) — avoids an SSR/client mismatch.
-    const [terminalLink, setTerminalLink] = useState('')
-    useEffect(() => {
-        if (restaurantSlug) setTerminalLink(`${window.location.origin}/login?r=${restaurantSlug}`)
-    }, [restaurantSlug])
+    const handleSendInvite = async () => {
+        if (!inviteModal.email.trim()) {
+            toast.error('Please enter an email address')
+            return
+        }
 
-    const handleCopyTerminalLink = () => {
-        if (!terminalLink) return
-        navigator.clipboard.writeText(terminalLink)
-        toast.success('Staff terminal link copied')
+        setInviteModal(prev => ({ ...prev, isInviting: true }))
+        const res = await createInvitationAction({ email: inviteModal.email.trim(), roleId: inviteModal.roleId })
+        setInviteModal(prev => ({ ...prev, isInviting: false }))
+
+        if (!res.success) {
+            toast.error(res.error || 'Failed to send invitation')
+            return
+        }
+
+        if (res.invitation) {
+            setInvitations(prev => {
+                const withoutOld = prev.filter(i => i.id !== res.invitation!.id)
+                return [res.invitation as Invitation, ...withoutOld]
+            })
+        }
+        toast.success(`Invitation sent to ${inviteModal.email.trim()}`)
+        setInviteModal({ isOpen: false, email: '', roleId: 4, isInviting: false })
+    }
+
+    const handleRevokeInvite = async (invitation: Invitation) => {
+        const ok = await confirm({
+            title: 'Revoke Invitation?',
+            message: `The invite link sent to ${invitation.email} will stop working.`,
+            confirmText: 'Revoke',
+            isDestructive: true,
+        })
+        if (!ok) return
+
+        setInvitingId(invitation.id)
+        const res = await revokeInvitationAction(invitation.id)
+        if (res.success) {
+            setInvitations(prev => prev.map(i => i.id === invitation.id ? { ...i, status: 'revoked' } : i))
+            toast.success('Invitation revoked')
+        } else {
+            toast.error(res.error || 'Failed to revoke invitation')
+        }
+        setInvitingId(null)
+    }
+
+    const handleResendInvite = async (invitation: Invitation) => {
+        setInvitingId(invitation.id)
+        const res = await resendInvitationAction(invitation.id)
+        if (res.success && res.invitation) {
+            setInvitations(prev => prev.map(i => i.id === invitation.id ? (res.invitation as Invitation) : i))
+            toast.success(`Invitation resent to ${invitation.email}`)
+        } else {
+            toast.error(res.error || 'Failed to resend invitation')
+        }
+        setInvitingId(null)
     }
 
     const openEditModal = (user: StaffMember) => {
@@ -396,8 +440,11 @@ export default function StaffManager({
 
     // Business Logic: Only super_admin can assign super_admin
     const availableRoles = roles.filter(r => r.name !== 'customer' && (currentUserRole === 'super_admin' || r.name !== 'super_admin'))
-    // PIN login only makes sense for POS roles (waiter/kitchen/cashier) — never managers/super admins.
-    const pinEligibleRoles = availableRoles.filter(r => (PIN_ELIGIBLE_ROLE_IDS as readonly number[]).includes(r.id))
+
+    const formatInviteStatus = (invitation: Invitation) => {
+        if (invitation.status === 'pending' && new Date(invitation.expires_at) < new Date()) return 'expired'
+        return invitation.status
+    }
 
     return (
         <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden">
@@ -407,18 +454,15 @@ export default function StaffManager({
                     <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-1.5">Manage accounts, roles, and departments</p>
                 </div>
                 <div className="flex items-center gap-3 flex-wrap justify-end">
-                    {activeTab === 'staff' ? (
+                    {activeTab === 'staff' && (
                         <>
-                            {restaurantSlug && (
-                                <button
-                                    onClick={handleCopyTerminalLink}
-                                    title="Copy the link staff use to sign in with their name + PIN on a shared device"
-                                    className="px-4 py-2.5 text-xs font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors flex items-center gap-2 shrink-0 focus-ring"
-                                >
-                                    <Link2 size={16} />
-                                    <span className="hidden sm:inline">Staff Terminal Link</span>
-                                </button>
-                            )}
+                            <button
+                                onClick={() => setInviteModal(prev => ({ ...prev, isOpen: true }))}
+                                className="px-4 py-2.5 text-xs font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors flex items-center gap-2 shrink-0 focus-ring"
+                            >
+                                <Mail size={16} />
+                                <span className="hidden sm:inline">Invite via Email</span>
+                            </button>
                             <button
                                 onClick={() => setCreateModal(prev => ({ ...prev, isOpen: true }))}
                                 className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 shrink-0 focus-ring"
@@ -427,7 +471,8 @@ export default function StaffManager({
                                 Add Staff
                             </button>
                         </>
-                    ) : (
+                    )}
+                    {activeTab === 'departments' && (
                         <button
                             onClick={() => setDepartmentModal({ isOpen: true, department: null, name: '', description: '', saving: false })}
                             className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 shrink-0 focus-ring"
@@ -449,9 +494,15 @@ export default function StaffManager({
                 </button>
                 <button
                     onClick={() => setActiveTab('departments')}
-                    className={`py-3.5 px-1 text-sm font-bold border-b-2 transition-colors ${activeTab === 'departments' ? 'border-brand-500 text-brand-600' : 'border-transparent text-ink-subtle hover:text-ink'}`}
+                    className={`py-3.5 px-1 mr-6 text-sm font-bold border-b-2 transition-colors ${activeTab === 'departments' ? 'border-brand-500 text-brand-600' : 'border-transparent text-ink-subtle hover:text-ink'}`}
                 >
                     Departments ({departments.length})
+                </button>
+                <button
+                    onClick={() => setActiveTab('invitations')}
+                    className={`py-3.5 px-1 text-sm font-bold border-b-2 transition-colors ${activeTab === 'invitations' ? 'border-brand-500 text-brand-600' : 'border-transparent text-ink-subtle hover:text-ink'}`}
+                >
+                    Invitations ({invitations.filter(i => formatInviteStatus(i) === 'pending').length})
                 </button>
             </div>
 
@@ -677,6 +728,88 @@ export default function StaffManager({
                 </div>
             )}
 
+            {activeTab === 'invitations' && (
+                <div className="divide-y divide-hairline">
+                    {invitations.length === 0 ? (
+                        <div className="p-12 text-center">
+                            <div className="w-16 h-16 rounded-full bg-surface-muted border border-hairline flex items-center justify-center mx-auto mb-4">
+                                <Mail size={24} className="text-ink-subtle" />
+                            </div>
+                            <h4 className="text-lg font-extrabold text-ink mb-2">No Invitations Yet</h4>
+                            <p className="text-sm font-medium text-ink-subtle max-w-md mx-auto mb-6">Invite someone by email — they&apos;ll get a link to set their own password and join as staff.</p>
+                            <button
+                                onClick={() => setInviteModal(prev => ({ ...prev, isOpen: true }))}
+                                className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] transition-all"
+                            >
+                                <Mail size={16} /> Invite via Email
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left whitespace-nowrap">
+                                <thead>
+                                    <tr className="bg-surface-muted border-b border-hairline text-[11px] font-bold text-ink-subtle uppercase tracking-wider">
+                                        <th className="px-6 py-4">Email</th>
+                                        <th className="px-6 py-4">Role</th>
+                                        <th className="px-6 py-4">Status</th>
+                                        <th className="px-6 py-4">Expires</th>
+                                        <th className="px-6 py-4 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-hairline">
+                                    {invitations.map(invitation => {
+                                        const status = formatInviteStatus(invitation)
+                                        const roleObj = Array.isArray(invitation.roles) ? invitation.roles[0] : invitation.roles
+                                        const statusStyle = status === 'pending'
+                                            ? 'bg-brand-50 text-brand-700 border-brand-100'
+                                            : status === 'accepted'
+                                                ? 'bg-success-bg/20 text-success-fg border-success-bg'
+                                                : 'bg-danger-bg/20 text-danger-fg border-danger-bg'
+
+                                        return (
+                                            <tr key={invitation.id} className="hover:bg-surface-muted/30 transition-colors">
+                                                <td className="px-6 py-4 font-extrabold text-ink">{invitation.email}</td>
+                                                <td className="px-6 py-4">
+                                                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface border border-hairline text-xs font-bold text-ink shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
+                                                        {getRoleIcon(roleObj?.name || '')}
+                                                        {formatRoleName(roleObj?.name || 'Unknown')}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${statusStyle}`}>
+                                                        {status}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm font-bold text-ink-subtle">
+                                                    {new Date(invitation.expires_at).toLocaleDateString()}
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        {status === 'pending' && (
+                                                            <button disabled={invitingId === invitation.id} onClick={() => handleRevokeInvite(invitation)} className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-danger-fg px-3 py-2 rounded-[var(--r-md)] hover:bg-danger-bg/20 transition-colors focus-ring">
+                                                                <X size={14} /> Revoke
+                                                            </button>
+                                                        )}
+                                                        {(status === 'expired' || status === 'revoked') && (
+                                                            <button disabled={invitingId === invitation.id} onClick={() => handleResendInvite(invitation)} className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-brand-600 px-3 py-2 rounded-[var(--r-md)] hover:bg-brand-50 transition-colors focus-ring">
+                                                                {invitingId === invitation.id ? <Loader2 size={14} className="animate-spin" /> : <RotateCw size={14} />} Resend
+                                                            </button>
+                                                        )}
+                                                        {status === 'accepted' && (
+                                                            <span className="text-sm text-ink-muted font-bold px-3 py-1.5">—</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Edit Staff Modal */}
             {editModal.isOpen && editModal.user && (
                 <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -847,172 +980,150 @@ export default function StaffManager({
             {createModal.isOpen && (
                 <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        {pinResult ? (
-                            // ── PIN success panel ──
-                            <div className="p-8 text-center">
-                                <div className="mx-auto w-16 h-16 rounded-full bg-success-bg/20 border border-success-bg flex items-center justify-center mb-6 animate-in zoom-in-50 duration-300">
-                                    <Check size={32} className="text-success-fg" strokeWidth={3} />
-                                </div>
-                                <h3 className="text-h2 font-extrabold text-ink">{pinResult.fullName} is all set!</h3>
-                                <p className="text-sm font-medium text-ink-subtle mt-2 mb-8 leading-relaxed px-4">
-                                    Share this PIN with them — they&apos;ll tap their name on the staff terminal and enter it to sign in.
-                                </p>
-                                <div className="flex justify-center gap-3 mb-8">
-                                    {pinResult.pin.split('').map((digit, i) => (
-                                        <div key={i} className="w-14 h-16 rounded-[var(--r-md)] bg-surface-muted/50 border-2 border-hairline flex items-center justify-center text-3xl font-black text-ink tabular-nums shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
-                                            {digit}
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="flex gap-3">
-                                    <button
-                                        onClick={() => { navigator.clipboard.writeText(pinResult.pin); toast.success('PIN copied') }}
-                                        className="flex-1 py-3 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] hover:bg-surface-muted transition-colors flex items-center justify-center gap-2 shadow-sm focus-ring"
-                                    >
-                                        <Copy size={16} /> Copy PIN
-                                    </button>
-                                    <button
-                                        onClick={closeCreateModal}
-                                        className="flex-1 py-3 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] transition-all hover:-translate-y-0.5 active:translate-y-0 focus-ring"
-                                    >
-                                        Done
-                                    </button>
-                                </div>
+                        <div className="p-6 pb-0">
+                            <h3 className="text-h3 font-extrabold text-ink mb-1.5">Create Staff Account</h3>
+                            <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-6">Add a new staff member to your restaurant</p>
+                        </div>
+
+                        <div className="px-6 pb-6 space-y-5">
+                            <div>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Full Name *</label>
+                                <input
+                                    type="text"
+                                    value={createModal.fullName}
+                                    onChange={(e) => setCreateModal(prev => ({ ...prev, fullName: e.target.value }))}
+                                    placeholder="John Doe"
+                                    disabled={createModal.isCreating}
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
+                                />
                             </div>
-                        ) : (
-                            <>
-                                <div className="p-6 pb-0">
-                                    <h3 className="text-h3 font-extrabold text-ink mb-1.5">Create Staff Account</h3>
-                                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-6">Add a new staff member to your restaurant</p>
 
-                                    {/* Login method toggle */}
-                                    <div className="grid grid-cols-2 gap-1 p-1 bg-surface-muted/50 rounded-[var(--r-md)] border border-hairline mb-6 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
-                                        <button
-                                            type="button"
-                                            onClick={() => setCreateModal(prev => ({ ...prev, mode: 'pin', roleId: isPinEligibleRole(prev.roleId) ? prev.roleId : 4 }))}
-                                            className={`py-2 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-2 focus-ring ${createModal.mode === 'pin' ? 'bg-surface text-ink shadow-[0_2px_8px_rgba(0,0,0,0.08)]' : 'text-ink-subtle hover:text-ink hover:bg-surface/50'}`}
-                                        >
-                                            <KeyRound size={14} /> Quick PIN
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setCreateModal(prev => ({ ...prev, mode: 'email' }))}
-                                            className={`py-2 rounded-md text-xs font-bold transition-all focus-ring ${createModal.mode === 'email' ? 'bg-surface text-ink shadow-[0_2px_8px_rgba(0,0,0,0.08)]' : 'text-ink-subtle hover:text-ink hover:bg-surface/50'}`}
-                                        >
-                                            Email &amp; Password
-                                        </button>
-                                    </div>
-                                </div>
+                            <div>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Email Address *</label>
+                                <input
+                                    type="email"
+                                    value={createModal.email}
+                                    onChange={(e) => setCreateModal(prev => ({ ...prev, email: e.target.value }))}
+                                    placeholder="john@example.com"
+                                    disabled={createModal.isCreating}
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
+                                />
+                            </div>
 
-                                <div className="px-6 pb-6 space-y-5">
-                                    <div>
-                                        <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Full Name *</label>
-                                        <input
-                                            type="text"
-                                            value={createModal.fullName}
-                                            onChange={(e) => setCreateModal(prev => ({ ...prev, fullName: e.target.value }))}
-                                            placeholder="John Doe"
-                                            disabled={createModal.isCreating}
-                                            className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
-                                        />
-                                    </div>
+                            <div>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Password *</label>
+                                <input
+                                    type="password"
+                                    value={createModal.password}
+                                    onChange={(e) => setCreateModal(prev => ({ ...prev, password: e.target.value }))}
+                                    placeholder="At least 8 characters"
+                                    disabled={createModal.isCreating}
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
+                                />
+                            </div>
 
-                                    {createModal.mode === 'pin' ? (
-                                        <>
-                                            <div>
-                                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Role</label>
-                                                <select
-                                                    value={createModal.roleId}
-                                                    onChange={(e) => setCreateModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
-                                                    disabled={createModal.isCreating}
-                                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
-                                                >
-                                                    {pinEligibleRoles.map(role => (
-                                                        <option key={role.id} value={role.id}>{formatRoleName(role.name)}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                            <div className="p-4 bg-brand-50 border border-brand-100 rounded-[var(--r-md)] text-[11px] font-medium text-brand-700 flex items-start gap-3 leading-relaxed shadow-[inset_0_2px_4px_rgba(251,99,3,0.03)]">
-                                                <KeyRound size={16} className="shrink-0 mt-0.5 text-brand-600" />
-                                                A random 4-digit PIN will be generated after you create the account. Staff sign in by tapping their name on the shared terminal and entering it — no email or password needed.
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <div>
-                                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Email Address *</label>
-                                                <input
-                                                    type="email"
-                                                    value={createModal.email}
-                                                    onChange={(e) => setCreateModal(prev => ({ ...prev, email: e.target.value }))}
-                                                    placeholder="john@example.com"
-                                                    disabled={createModal.isCreating}
-                                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
-                                                />
-                                            </div>
+                            <div>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Phone Number</label>
+                                <input
+                                    type="tel"
+                                    value={createModal.phone}
+                                    onChange={(e) => setCreateModal(prev => ({ ...prev, phone: e.target.value }))}
+                                    placeholder="123-456-7890"
+                                    disabled={createModal.isCreating}
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
+                                />
+                            </div>
 
-                                            <div>
-                                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Password *</label>
-                                                <input
-                                                    type="password"
-                                                    value={createModal.password}
-                                                    onChange={(e) => setCreateModal(prev => ({ ...prev, password: e.target.value }))}
-                                                    placeholder="At least 8 characters"
-                                                    disabled={createModal.isCreating}
-                                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
-                                                />
-                                            </div>
+                            <div>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Initial Role</label>
+                                <select
+                                    value={createModal.roleId}
+                                    onChange={(e) => setCreateModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
+                                    disabled={createModal.isCreating}
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
+                                >
+                                    {availableRoles.map(role => (
+                                        <option key={role.id} value={role.id}>{formatRoleName(role.name)}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
 
-                                            <div>
-                                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Phone Number</label>
-                                                <input
-                                                    type="tel"
-                                                    value={createModal.phone}
-                                                    onChange={(e) => setCreateModal(prev => ({ ...prev, phone: e.target.value }))}
-                                                    placeholder="123-456-7890"
-                                                    disabled={createModal.isCreating}
-                                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
-                                                />
-                                            </div>
+                        <div className="px-6 py-5 bg-surface-muted/30 border-t border-hairline flex justify-end gap-3">
+                            <button
+                                onClick={closeCreateModal}
+                                disabled={createModal.isCreating}
+                                className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors disabled:opacity-50 focus-ring"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleCreateStaff}
+                                disabled={createModal.isCreating}
+                                className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 flex items-center gap-2 focus-ring"
+                            >
+                                {createModal.isCreating ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                                Create Staff
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
-                                            <div>
-                                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Initial Role</label>
-                                                <select
-                                                    value={createModal.roleId}
-                                                    onChange={(e) => setCreateModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
-                                                    disabled={createModal.isCreating}
-                                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
-                                                >
-                                                    {availableRoles.map(role => (
-                                                        <option key={role.id} value={role.id}>{formatRoleName(role.name)}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
+            {/* Invite Staff Modal */}
+            {inviteModal.isOpen && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="p-6 pb-0">
+                            <h3 className="text-h3 font-extrabold text-ink mb-1.5">Invite via Email</h3>
+                            <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-6">They&apos;ll get a link to set their own password</p>
+                        </div>
 
-                                <div className="px-6 py-5 bg-surface-muted/30 border-t border-hairline flex justify-end gap-3">
-                                    <button
-                                        onClick={closeCreateModal}
-                                        disabled={createModal.isCreating}
-                                        className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors disabled:opacity-50 focus-ring"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        onClick={createModal.mode === 'pin' ? handleCreateStaffPin : handleCreateStaff}
-                                        disabled={createModal.isCreating}
-                                        className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 flex items-center gap-2 focus-ring"
-                                    >
-                                        {createModal.isCreating
-                                            ? <Loader2 size={16} className="animate-spin" />
-                                            : createModal.mode === 'pin' ? <KeyRound size={16} /> : <Check size={16} />}
-                                        {createModal.mode === 'pin' ? 'Generate PIN & Create' : 'Create Staff'}
-                                    </button>
-                                </div>
-                            </>
-                        )}
+                        <div className="px-6 pb-6 space-y-5">
+                            <div>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Email Address *</label>
+                                <input
+                                    type="email"
+                                    value={inviteModal.email}
+                                    onChange={(e) => setInviteModal(prev => ({ ...prev, email: e.target.value }))}
+                                    placeholder="john@example.com"
+                                    disabled={inviteModal.isInviting}
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Role</label>
+                                <select
+                                    value={inviteModal.roleId}
+                                    onChange={(e) => setInviteModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
+                                    disabled={inviteModal.isInviting}
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
+                                >
+                                    {availableRoles.map(role => (
+                                        <option key={role.id} value={role.id}>{formatRoleName(role.name)}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="px-6 py-5 bg-surface-muted/30 border-t border-hairline flex justify-end gap-3">
+                            <button
+                                onClick={() => setInviteModal({ isOpen: false, email: '', roleId: 4, isInviting: false })}
+                                disabled={inviteModal.isInviting}
+                                className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors disabled:opacity-50 focus-ring"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSendInvite}
+                                disabled={inviteModal.isInviting}
+                                className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 flex items-center gap-2 focus-ring"
+                            >
+                                {inviteModal.isInviting ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
+                                Send Invite
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

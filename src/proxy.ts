@@ -48,7 +48,7 @@ export async function proxy(request: NextRequest) {
 
     // Rate-limit public QR/table pages to prevent DoS.
     // Wrapped in try/catch so a transient Redis failure never 500s a customer.
-    if (/^\/t\//.test(pathname) || /^\/takeout\//.test(pathname)) {
+    if (/^\/t\//.test(pathname) || /^\/takeout\//.test(pathname) || /^\/invite\//.test(pathname)) {
         const limiter = getQrLimiter()
         if (limiter) {
             try {

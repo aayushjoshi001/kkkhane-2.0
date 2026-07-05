@@ -292,37 +292,32 @@ export async function sendPaymentReceiptEmail(
 
 export async function sendStaffInviteEmail(
     staffEmail: string,
-    staffName: string,
     restaurantName: string,
-    tempPassword: string,
-    loginUrl: string
+    roleName: string,
+    inviteUrl: string,
+    expiresInDays: number
 ) {
+    const formattedRole = roleName.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+
     const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;margin:0;padding:24px">
 <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden">
   <div style="background:#1B263B;padding:20px 24px">
     <h1 style="margin:0;color:#fff;font-size:18px">You've been invited to ${restaurantName}</h1>
   </div>
   <div style="padding:24px">
-    <p style="margin:0 0 16px;color:#374151">Hi ${staffName},</p>
+    <p style="margin:0 0 16px;color:#374151">Hi there,</p>
     <p style="margin:0 0 16px;color:#374151;font-size:14px">
-      You've been added as a staff member at <strong>${restaurantName}</strong>. Use the credentials below to log in.
+      You've been invited to join <strong>${restaurantName}</strong> as <strong>${formattedRole}</strong>. Click below to set your password and get started.
     </p>
-    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:16px 0">
-      <p style="margin:0 0 8px;font-size:12px;color:#6b7280;text-transform:uppercase;font-weight:600;letter-spacing:0.05em">Your Login Credentials</p>
-      <p style="margin:0 0 6px;font-size:14px;color:#111827"><strong>Email:</strong> ${staffEmail}</p>
-      <p style="margin:0;font-size:14px;color:#111827"><strong>Temporary Password:</strong> <code style="background:#fff;border:1px solid #d1d5db;border-radius:4px;padding:2px 8px;font-family:monospace;font-size:15px;letter-spacing:0.05em">${tempPassword}</code></p>
-    </div>
-    <p style="margin:0 0 16px;font-size:13px;color:#6b7280">
-      Please log in and change your password immediately. This temporary password will work until you update it.
-    </p>
-    <a href="${loginUrl}" style="display:inline-block;background:#FB6303;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Log In Now →</a>
-    <p style="margin:20px 0 0;font-size:12px;color:#9ca3af">If you did not expect this invitation, please ignore this email.</p>
+    <a href="${inviteUrl}" style="display:inline-block;background:#FB6303;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Accept Invitation &amp; Set Password →</a>
+    <p style="margin:20px 0 0;font-size:13px;color:#6b7280">This invite link expires in ${expiresInDays} day${expiresInDays !== 1 ? 's' : ''}.</p>
+    <p style="margin:8px 0 0;font-size:12px;color:#9ca3af">If you did not expect this invitation, please ignore this email.</p>
   </div>
 </div></body></html>`
 
     return sendEmail({
         to: staffEmail,
-        subject: `You've been invited to ${restaurantName} — Login credentials inside`,
+        subject: `You've been invited to ${restaurantName}`,
         html,
     })
 }

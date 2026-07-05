@@ -19,13 +19,6 @@ export default async function StaffManagementPage() {
 
     const currentUserRole = (currentUserData?.roles as unknown as { name: string } | null)?.name || ''
 
-    // Restaurant slug — used to build the shareable "Staff Terminal" login link
-    const { data: restaurant } = await adminSupabase
-        .from('restaurants')
-        .select('slug')
-        .eq('id', restaurantId)
-        .single()
-
     // 2. Fetch all roles available
     const { data: roles } = await adminSupabase
         .from('roles')
@@ -64,6 +57,13 @@ export default async function StaffManagementPage() {
         .eq('restaurant_id', restaurantId)
         .order('name', { ascending: true })
 
+    // 5. Fetch invitations (pending + recent history)
+    const { data: invitations } = await adminSupabase
+        .from('invitations')
+        .select('id, email, role_id, status, expires_at, created_at, roles(id, name, description), invited_by(id, full_name)')
+        .eq('restaurant_id', restaurantId)
+        .order('created_at', { ascending: false })
+
     return (
         <div className="space-y-6">
             <PremiumPageHeader 
@@ -77,10 +77,10 @@ export default async function StaffManagementPage() {
                 initialStaff={staffMembers || []}
                 roles={roles || []}
                 departments={departments || []}
+                invitations={invitations || []}
                 currentUserRole={currentUserRole}
                 currentUserId={userId}
                 restaurantId={restaurantId}
-                restaurantSlug={restaurant?.slug || ''}
             />
         </div>
     )

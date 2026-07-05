@@ -22,8 +22,6 @@ export default function IdleTimeout({ timeoutMs = 60000 }: IdleTimeoutProps) {
             // Auto-lock the POS terminal
             await supabase.auth.signOut()
             router.refresh()
-            // Push to login. If it's a staff terminal, LoginScreen will automatically 
-            // read localStorage and mount the Staff PIN Grid.
             router.push('/login?message=auto_locked')
         }, timeoutMs)
     }
