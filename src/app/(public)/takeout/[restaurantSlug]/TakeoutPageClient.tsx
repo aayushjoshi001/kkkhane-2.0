@@ -6,12 +6,13 @@ import Logo from '@/components/shared/Logo'
 import TakeoutForm from '@/components/customer/TakeoutForm'
 import ActiveOrderPill from '@/components/customer/ActiveOrderPill'
 import { useCartStore } from '@/lib/stores/cart'
-import { ShoppingBag } from 'lucide-react'
+import { ShoppingBag, UserCircle } from 'lucide-react'
 import { TranslationProvider, useTranslation } from '@/lib/contexts/TranslationContext'
 import { FeatureProvider, useCurrency } from '@/lib/contexts/FeatureContext'
 import type { Settings, MenuItem } from '@/types/database'
 import LanguageSwitcher from '@/components/customer/LanguageSwitcher'
 import MenuItemCard from '@/components/customer/MenuItemCard'
+import CustomerProfileSheet from '@/components/customer/CustomerProfileSheet'
 
 interface Category { id: string; name: string; sort_order: number }
 interface Restaurant { id: string; name: string; slug: string; description: string | null; logo_url: string | null }
@@ -44,6 +45,7 @@ function TakeoutMenu({ restaurant, categories, menuItems, comboItems }: {
     const money = useCurrency()
     const [activeCategory, setActiveCategory] = useState(categories[0]?.id || '')
     const [showCheckout, setShowCheckout] = useState(false)
+    const [showProfile, setShowProfile] = useState(false)
     const items = useCartStore(s => s.items)
     const totalAmount = useCartStore(s => s.totalAmount)
 
@@ -75,6 +77,12 @@ function TakeoutMenu({ restaurant, categories, menuItems, comboItems }: {
                         <p className="text-xs text-gray-500">Takeout Order</p>
                     </div>
                     <LanguageSwitcher />
+                    <button 
+                        onClick={() => setShowProfile(true)}
+                        className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors"
+                    >
+                        <UserCircle size={24} />
+                    </button>
                     {items.length > 0 && (
                         <button onClick={() => setShowCheckout(true)}
                             className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium">
@@ -85,6 +93,12 @@ function TakeoutMenu({ restaurant, categories, menuItems, comboItems }: {
                     )}
                 </div>
             </header>
+
+            <CustomerProfileSheet 
+                isOpen={showProfile} 
+                onClose={() => setShowProfile(false)} 
+                restaurantId={restaurant.id}
+            />
 
             {/* Category Tabs */}
             <div className="bg-white border-b border-gray-100 sticky top-[73px] z-10">

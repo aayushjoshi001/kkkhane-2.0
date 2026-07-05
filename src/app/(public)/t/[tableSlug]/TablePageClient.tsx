@@ -11,7 +11,7 @@ import CartSummary from '@/components/customer/CartSummary'
 import Logo from '@/components/shared/Logo'
 import PhysicalMenuGallery from '@/components/customer/PhysicalMenuGallery'
 import { TranslationProvider } from '@/lib/contexts/TranslationContext'
-import { UtensilsCrossed, RefreshCw, Bell, Check, Loader2, Home, X, ShoppingBag, ChefHat, Search, CreditCard } from 'lucide-react'
+import { UtensilsCrossed, RefreshCw, Bell, Check, Loader2, Home, X, ShoppingBag, ChefHat, Search, CreditCard, UserCircle } from 'lucide-react'
 import { useCartStore } from '@/lib/stores/cart'
 import { requestSessionOpen } from '@/app/api/service-requests/actions'
 import ActiveOrderPill from '@/components/customer/ActiveOrderPill'
@@ -19,6 +19,7 @@ import ServiceRequestPanel from '@/components/customer/ServiceRequestPanel'
 import { useActiveOrders } from '@/lib/stores/activeOrders'
 import { useHydratedStore } from '@/lib/stores/useHydratedStore'
 import { toast } from 'react-hot-toast'
+import CustomerProfileSheet from '@/components/customer/CustomerProfileSheet'
 
 interface TablePageClientProps {
     tableData: {
@@ -118,6 +119,7 @@ export default function TablePageClient({
     const [verifyingIp, setVerifyingIp] = useState(false)
     const [currentIp, setCurrentIp] = useState<string>('')
     const [isServiceOpen, setIsServiceOpen] = useState(false)
+    const [showProfile, setShowProfile] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
     const searchParams = useSearchParams()
     const isWaiter = searchParams?.get('w') === '1'
@@ -250,8 +252,14 @@ export default function TablePageClient({
                         </div>
                     </div>
 
-                    {/* Right side: platform logo */}
-                    <div className="flex items-center shrink-0 pr-1">
+                    {/* Right side: profile button and platform logo */}
+                    <div className="flex items-center gap-3 shrink-0 pr-1">
+                        <button 
+                            onClick={() => setShowProfile(true)}
+                            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center shrink-0 border border-white/25 shadow-sm transition-colors"
+                        >
+                            <UserCircle size={18} className="text-white" />
+                        </button>
                         <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shrink-0 border-2 border-white overflow-hidden relative shadow-sm">
                             <Image 
                                 src="/brand/kkkhane-k-logo.jpg" 
@@ -373,6 +381,12 @@ export default function TablePageClient({
                         </div>
                     </div>
                 )}
+
+                <CustomerProfileSheet 
+                    isOpen={showProfile} 
+                    onClose={() => setShowProfile(false)} 
+                    restaurantId={tableData.restaurant_id}
+                />
 
                 {/* Floating re-summon button — shown after the guest dismisses the
                     waiter gate but still has no session. */}
