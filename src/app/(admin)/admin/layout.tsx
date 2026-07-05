@@ -26,12 +26,15 @@ export default async function AdminLayout({ children }: { children: ReactNode })
 
     const isSuperAdmin = roleNameRaw === 'super_admin'
 
+    const adminSupabase = await createAdminClient()
+    const { data: dbUser } = await adminSupabase.from('users').select('avatar_url').eq('id', currentUser.id).single()
+    const userAvatar = dbUser?.avatar_url || undefined
+
     // Fetch restaurant name + currency features for the manager sidebar/app —
     // only needed for manager role (super_admin operates across tenants).
     let restaurantName: string | undefined
     let features: Awaited<ReturnType<typeof getRestaurantFeatures>> = null
     if (!isSuperAdmin && currentUser.restaurantId) {
-        const adminSupabase = await createAdminClient()
         const [{ data }, restaurantFeatures] = await Promise.all([
             adminSupabase
                 .from('restaurants')
@@ -49,7 +52,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
             <SidebarProvider>
                 <div className="min-h-screen bg-canvas flex">
                     <SessionSync userId={currentUser.id} />
-                    {isSuperAdmin ? <SuperAdminSidebar /> : <AdminSidebar userRole={roleNameRaw} restaurantName={restaurantName} />}
+                    {isSuperAdmin ? <SuperAdminSidebar userRole={roleNameRaw} userAvatar={userAvatar} /> : <AdminSidebar userRole={roleNameRaw} restaurantName={restaurantName} userAvatar={userAvatar} />}
                     {!isSuperAdmin && currentUser.restaurantId && (
                         <AdminOrderNotifier restaurantId={currentUser.restaurantId} />
                     )}

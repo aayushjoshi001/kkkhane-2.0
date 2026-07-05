@@ -19,10 +19,11 @@ function cn(...inputs: ClassValue[]) {
 
 const BASE = '/admin/super-admin'
 
-export default function SuperAdminSidebar() {
+export default function SuperAdminSidebar({ userRole = 'super_admin', userAvatar }: { userRole?: string; userAvatar?: string }) {
     const pathname = usePathname()
     const router = useRouter()
     const { isOpen, isCollapsed, closeMobile } = useSidebar()
+    const [imgError, setImgError] = useState(false)
 
     const handleSignOut = () => signOutAndRedirect(router)
 
@@ -87,19 +88,59 @@ export default function SuperAdminSidebar() {
                 <div className="h-4" />
             </nav>
 
-            {/* Footer */}
-            <div className={cn("p-4 shrink-0", isCollapsed ? "flex justify-center" : "")}>
-                <button
-                    onClick={handleSignOut}
-                    title={isCollapsed ? "Sign Out" : undefined}
-                    className={cn(
-                        "flex items-center text-sm font-bold transition-all focus-ring",
-                        isCollapsed ? "justify-center p-3 rounded-[var(--r-md)] text-ink-subtle hover:text-danger-fg hover:bg-danger-bg" : "w-full gap-3 px-4 py-3 text-ink-subtle hover:text-danger-fg hover:bg-danger-bg rounded-[var(--r-md)]"
+            {/* Footer Profile & Sign Out */}
+            <div className={cn("p-4 shrink-0 border-t border-hairline", isCollapsed && "p-2 flex flex-col gap-2 items-center")}>
+                <Link href="/admin/super-admin/profile" className={cn(
+                    "flex items-center rounded-2xl transition-all duration-300 group cursor-pointer",
+                    isCollapsed ? "flex-col p-2 gap-2" : "gap-3 p-2",
+                    "hover:bg-surface-muted"
+                )}>
+                    {/* User Avatar */}
+                    <div className={cn("rounded-xl overflow-hidden shrink-0 border border-hairline relative", isCollapsed ? "w-8 h-8" : "w-9 h-9")}>
+                        {imgError ? (
+                            <div className="w-full h-full bg-brand-500 flex items-center justify-center text-white font-bold text-xs">
+                                {userRole.charAt(0).toUpperCase()}
+                            </div>
+                        ) : (
+                            <img 
+                                src={userAvatar || `https://api.dicebear.com/9.x/notionists/svg?seed=superadmin&backgroundColor=fb6303`}
+                                alt="Admin avatar" 
+                                className="w-full h-full object-cover"
+                                onError={() => setImgError(true)}
+                            />
+                        )}
+                    </div>
+                    
+                    {!isCollapsed && (
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold truncate capitalize text-ink">
+                                {userRole.replace(/_/g, ' ')}
+                            </p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="relative flex h-1.5 w-1.5">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                                </span>
+                                <p className="text-[11px] font-medium truncate text-ink-muted">
+                                    System Online
+                                </p>
+                            </div>
+                        </div>
                     )}
-                >
-                    <LogOut size={18} className="shrink-0" />
-                    {!isCollapsed && "Sign Out"}
-                </button>
+
+                    <div className={cn(
+                        "flex items-center transition-opacity", 
+                        isCollapsed ? "flex-col opacity-100" : "opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                    )}>
+                        <button 
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleSignOut(); }}
+                            className="p-1.5 rounded-xl transition-all text-ink-subtle hover:text-danger-fg hover:bg-danger-bg"
+                            title="Sign Out"
+                        >
+                            <LogOut size={16} />
+                        </button>
+                    </div>
+                </Link>
             </div>
         </div>
     )
