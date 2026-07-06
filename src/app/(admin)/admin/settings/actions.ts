@@ -19,6 +19,7 @@ export async function updateRestaurantSettingsAction(restaurantId: string, updat
         payment_qr_url: updates.payment_qr_url,
         payment_qr_label: updates.payment_qr_label,
         allowed_ips: updates.allowed_ips,
+        business_type: updates.business_type,
     }
 
     // Strip undefined values

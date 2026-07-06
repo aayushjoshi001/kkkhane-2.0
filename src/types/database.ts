@@ -290,6 +290,11 @@ export interface Settings {
         loyaltyEnabled: boolean
         promosEnabled: boolean
         takeoutEnabled: boolean
+        // Whether the dine-in/table/QR ordering pathway is offered at all.
+        // false for delivery-only operations (Cloud Kitchen) — hides Table
+        // Layout nav, the "select your table" customer entry point, and
+        // session/waiter dine-in UI. See lib/businessMode.ts.
+        dineInEnabled: boolean
         multiLanguageEnabled: boolean
         serviceRequestsEnabled: boolean
         splitBillingEnabled: boolean

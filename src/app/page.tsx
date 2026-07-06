@@ -22,7 +22,7 @@ const faqs = [
     { q: "What are the features of kkkhane?", a: "It provides robust features including Order Management, Inventory Tracking, Accounting, Digital QR Menu, and Real-Time Reporting." },
     { q: "Can I use the kkkhane software for free?", a: "Yes, we offer a completely free tier with essential tools for small businesses." },
     { q: "How secure is my restaurant data?", a: "We use top-tier cloud encryption and role-based access control to ensure complete security." },
-    { q: "Is kkkhane Nepal available in Android and iOS also?", a: "Yes, you can access our platform on any device with a modern web browser." },
+    { q: "Is kkkhane Nepal available on mobile devices?", a: "Yes, you can access our platform on any device with a modern web browser." },
     { q: "Do you offer a QR code menu feature?", a: "Absolutely. Our digital QR menus allow contactless ordering seamlessly." },
 ]
 
@@ -314,8 +314,8 @@ export default async function Home() {
                             <h3 className="text-2xl font-extrabold text-white mb-2">Pro Business</h3>
                             <p className="text-gray-400 font-medium mb-6">Everything you need to run and scale a growing restaurant.</p>
                             <div className="mb-8 flex items-end gap-2">
-                                <span className="text-5xl font-black text-white">Rs. 1,200</span>
-                                <span className="text-gray-400 font-medium mb-2">/month</span>
+                                <span className="text-5xl font-black text-white">Rs. 14,400</span>
+                                <span className="text-gray-400 font-medium mb-2">/year</span>
                             </div>
                             <ul className="space-y-4 mb-10 flex-1">
                                 {['Unlimited Staff & Roles', 'Unlimited Menu Items', 'Kitchen Display System (KDS)', 'Advanced Analytics & Reports', 'Priority 24/7 Support'].map((f, i) => (

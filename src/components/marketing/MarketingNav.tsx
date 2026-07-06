@@ -20,7 +20,7 @@ const FEATURE_LINKS = [
 
 const FEATURE_SIDE = [
     { title: 'Real-Time Sales Report', desc: 'Monitor live sales and profit analytics.', icon: Clock, href: '/features/analytics' },
-    { title: 'Mobile & Web App', desc: 'Works on iOS, Android, or Web.', icon: Globe, href: '/features/apps' },
+    { title: 'Responsive Web App', desc: 'Works seamlessly on any web browser.', icon: Globe, href: '/features/apps' },
     { title: 'Refer & Earn', desc: 'Refer others, earn free Premium', icon: Gift, href: '/features/refer-earn' },
 ]
 

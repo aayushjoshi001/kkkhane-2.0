@@ -130,7 +130,7 @@ export default function ContactPage() {
                     </div>
                     <div className="w-full h-[450px] rounded-[2.5rem] overflow-hidden shadow-2xl border-8 border-gray-50 relative group">
                         <iframe 
-                            src="https://maps.google.com/maps?q=Kathmandu,+Nepal&t=&z=13&ie=UTF8&iwloc=&output=embed" 
+                            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d113032.64621376918!2d85.2506553888373!3d27.708942726359302!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x39eb198a307baabf%3A0xb5137c1bf18db1ea!2sKathmandu%2044600%2C%20Nepal!5e0!3m2!1sen!2sus!4v1716301234567!5m2!1sen!2sus" 
                             width="100%" 
                             height="100%" 
                             style={{ border: 0 }} 

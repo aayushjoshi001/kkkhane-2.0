@@ -8,6 +8,7 @@ import { updateFeaturesAction } from '@/lib/features'
 import { toast } from 'react-hot-toast'
 import type { Settings, BusinessHours, DayHours } from '@/types/database'
 import { unlockAudio, setCustomNotificationSound, playNewOrder } from '@/lib/audio'
+import { ONBOARDING_BUSINESS_TYPES, getBusinessMode } from '@/lib/businessMode'
 
 type RestaurantSettings = {
     id: string
@@ -24,6 +25,7 @@ type RestaurantSettings = {
     payment_qr_url: string | null
     payment_qr_label: string | null
     allowed_ips: string | null
+    business_type: string | null
 }
 
 type Features = Settings['features_v2']
@@ -76,6 +78,7 @@ export default function SettingsManager({
         phoneOtpEnabled: false,
         bsDateEnabled: false,
         feedbackEnabled: true,
+        dineInEnabled: true,
     })
     const [taxRateStr, setTaxRateStr] = useState((initialRestaurant.tax_rate ?? 13).toString())
     const [businessHours, setBusinessHours] = useState<BusinessHours>(() => buildBusinessHours(initialBusinessHours))
@@ -192,6 +195,7 @@ export default function SettingsManager({
                 payment_qr_url: formData.payment_qr_url,
                 payment_qr_label: formData.payment_qr_label,
                 allowed_ips: formData.allowed_ips,
+                business_type: formData.business_type,
             }),
             updateFeaturesAction(formData.id, {
                 defaultTaxRate: finalTaxRate,
@@ -298,6 +302,31 @@ export default function SettingsManager({
                                 disabled={!canEdit || isSubmitting}
                                 className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
                             />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                <Store size={14} className="text-brand-500" />
+                                Business Type
+                            </label>
+                            <select
+                                name="business_type"
+                                value={formData.business_type || ''}
+                                onChange={handleChange}
+                                disabled={!canEdit || isSubmitting}
+                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
+                            >
+                                {ONBOARDING_BUSINESS_TYPES.map(type => (
+                                    <option key={type} value={type}>{type}</option>
+                                ))}
+                            </select>
+                            {getBusinessMode(formData.business_type) !== getBusinessMode(initialRestaurant.business_type) && (
+                                <p className="mt-2 text-[11px] font-bold text-amber-600">
+                                    Changing this won&apos;t automatically update dine-in/takeout defaults below — adjust those directly if needed.
+                                </p>
+                            )}
                         </div>
                     </div>
 

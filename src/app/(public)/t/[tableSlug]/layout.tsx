@@ -1,7 +1,7 @@
 import { ReactNode } from 'react'
 import { createAdminClient } from '@/lib/supabase/server'
-import { getRestaurantFeatures } from '@/lib/features'
-import { FeatureProvider } from '@/lib/contexts/FeatureContext'
+import { getRestaurantFeatures, getRestaurantMode } from '@/lib/features'
+import { FeatureProvider, BusinessModeProvider } from '@/lib/contexts/FeatureContext'
 
 export default async function TableLayout({
     children,
@@ -23,10 +23,15 @@ export default async function TableLayout({
     const features = tableData?.restaurant_id
         ? await getRestaurantFeatures(tableData.restaurant_id)
         : null
+    const mode = tableData?.restaurant_id
+        ? await getRestaurantMode(tableData.restaurant_id)
+        : 'dine_in' as const
 
     return (
         <FeatureProvider features={features}>
+        <BusinessModeProvider mode={mode}>
             {children}
+        </BusinessModeProvider>
         </FeatureProvider>
     )
 }

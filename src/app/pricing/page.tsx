@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import { CheckCircle2, ArrowRight, HelpCircle } from 'lucide-react'
 import { MarketingNav, MarketingFooter, MarketingButton, Eyebrow } from '@/components/marketing'
 import Link from 'next/link'
@@ -69,7 +68,6 @@ const FAQS = [
 ]
 
 export default function PricingPage() {
-    const [billingCycle, setBillingCycle] = useState<'yearly' | 'monthly'>('yearly')
     const { currencySymbol } = useFeatures()
 
     return (
@@ -83,40 +81,19 @@ export default function PricingPage() {
 
                 <div className="max-w-[1000px] mx-auto text-center relative z-10">
                     <div className="mb-6 inline-flex justify-center"><Eyebrow tone="brand">Transparent Pricing</Eyebrow></div>
-                    <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-gray-900 mb-6">
-                        Plans that scale with your <span className="text-[var(--color-primary)]">Restaurant</span>
-                    </h1>
-                    <p className="text-lg md:text-xl text-gray-500 max-w-2xl mx-auto font-medium">
-                        No credit card required for the free trial. No hidden fees. Upgrade anytime, or cancel whenever you want.
-                    </p>
+                    <div className="text-center mt-12 max-w-3xl mx-auto">
+                        <h2 className="text-5xl md:text-6xl font-extrabold tracking-tight text-gray-900 mb-6">
+                            Simple, transparent pricing
+                        </h2>
+                        <p className="text-xl text-gray-500 font-medium leading-relaxed max-w-2xl mx-auto">
+                            No hidden fees, no hardware lock-in. Choose the plan that fits your growth.
+                        </p>
+                    </div>
                 </div>
             </section>
 
             {/* Pricing Section */}
             <section className="py-16 px-4 max-w-[1200px] mx-auto relative z-20 -mt-8">
-                {/* Billing Toggle */}
-                <div className="flex justify-center mb-16">
-                    <div className="bg-gray-100 p-1.5 rounded-full inline-flex relative border border-gray-200">
-                        {/* Toggle Pill Background */}
-                        <div
-                            className={`absolute top-1.5 bottom-1.5 w-32 rounded-full transition-transform duration-300 ease-in-out ${billingCycle === 'yearly' ? 'bg-[var(--color-primary)] translate-x-32' : 'bg-white shadow-sm translate-x-0'}`}
-                        />
-                        <button
-                            onClick={() => setBillingCycle('monthly')}
-                            className={`relative z-10 w-32 py-2.5 rounded-full font-bold text-sm transition-colors ${billingCycle === 'monthly' ? 'text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
-                        >
-                            Monthly
-                        </button>
-                        <button
-                            onClick={() => setBillingCycle('yearly')}
-                            className={`relative z-10 w-32 py-2.5 rounded-full font-bold text-sm transition-colors ${billingCycle === 'yearly' ? 'text-white' : 'text-gray-500 hover:text-gray-900'}`}
-                        >
-                            Yearly
-                            <span className={`absolute -top-3 -right-2 z-20 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-sm border border-white transition-colors ${billingCycle === 'yearly' ? 'bg-green-500 text-white' : 'bg-green-100 text-green-700'}`}>Save 20%</span>
-                        </button>
-                    </div>
-                </div>
-
                 {/* Pricing Cards */}
                 <div className="grid md:grid-cols-3 lg:grid-cols-3 gap-6 items-stretch pt-8 pb-8">
                     {PRICING_PLANS.map((plan) => (
@@ -141,10 +118,10 @@ export default function PricingPage() {
                                 <div className="flex items-baseline gap-1">
                                     <span className="text-gray-500 font-bold">{currencySymbol}</span>
                                     <span className="text-4xl font-black text-gray-900 tracking-tight">
-                                        {plan.price === 'Custom' || plan.price === '0' ? plan.price : (billingCycle === 'yearly' ? plan.price : Math.round(parseInt(plan.price.replace(/,/g, '')) / 12).toLocaleString())}
+                                        {plan.price}
                                     </span>
                                 </div>
-                                {plan.price !== 'Custom' && <span className="text-sm font-medium text-gray-500">/{billingCycle === 'yearly' ? 'year' : 'month'}</span>}
+                                {plan.price !== 'Custom' && plan.price !== '0' && <span className="text-sm font-medium text-gray-500">/year</span>}
                             </div>
 
                             <MarketingButton

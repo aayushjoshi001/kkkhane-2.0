@@ -8,8 +8,9 @@ import { CommandHint } from '@/components/ui/CommandHint'
 import CommandPaletteMount from '@/components/ui/CommandPaletteMount'
 import { requireRoleWithOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
-import { getRestaurantFeatures } from '@/lib/features'
-import { FeatureProvider } from '@/lib/contexts/FeatureContext'
+import { getRestaurantFeatures, getRestaurantMode } from '@/lib/features'
+import { FeatureProvider, BusinessModeProvider } from '@/lib/contexts/FeatureContext'
+import type { BusinessMode } from '@/lib/businessMode'
 import { SidebarProvider } from '@/lib/contexts/SidebarContext'
 import SidebarToggle from '@/components/admin/SidebarToggle'
 
@@ -34,21 +35,25 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     // only needed for manager role (super_admin operates across tenants).
     let restaurantName: string | undefined
     let features: Awaited<ReturnType<typeof getRestaurantFeatures>> = null
+    let mode: BusinessMode = 'dine_in'
     if (!isSuperAdmin && currentUser.restaurantId) {
-        const [{ data }, restaurantFeatures] = await Promise.all([
+        const [{ data }, restaurantFeatures, restaurantMode] = await Promise.all([
             adminSupabase
                 .from('restaurants')
                 .select('name')
                 .eq('id', currentUser.restaurantId)
                 .single(),
             getRestaurantFeatures(currentUser.restaurantId),
+            getRestaurantMode(currentUser.restaurantId),
         ])
         restaurantName = data?.name || undefined
         features = restaurantFeatures
+        mode = restaurantMode
     }
 
     return (
         <FeatureProvider features={features}>
+        <BusinessModeProvider mode={mode}>
             <SidebarProvider>
                 <div className="min-h-screen bg-canvas flex">
                     <SessionSync userId={currentUser.id} />
@@ -82,6 +87,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
                     </main>
                 </div>
             </SidebarProvider>
+        </BusinessModeProvider>
         </FeatureProvider>
     )
 }

@@ -26,6 +26,7 @@ import {
     DEFAULT_FEATURES_V1,
     buildFeaturesV2,
 } from '@/lib/tiers'
+import { getBusinessMode } from '@/lib/businessMode'
 
 const MANAGER_ROLE_ID = 2 // roles: 1=super_admin 2=manager 3=kitchen 4=waiter 5=customer
 const DEFAULT_TABLE_COUNT = 6
@@ -91,9 +92,11 @@ const SAMPLE_MENU: Array<{ category: string; items: Array<{ name: string; descri
 export async function provisionRestaurant(input: ProvisionInput): Promise<ProvisionResult> {
     const supabase = await createAdminClient()
     const tier: Tier = input.tier ?? 'free'
+    const mode = getBusinessMode(input.businessType)
     const limits = TIER_LIMITS[tier]
     const seed = input.seedSample !== false
-    const tableCount = input.tableCount ?? DEFAULT_TABLE_COUNT
+    // Delivery-only operations (Cloud Kitchen) have no dining room — seed zero tables.
+    const tableCount = mode === 'delivery_only' ? 0 : (input.tableCount ?? DEFAULT_TABLE_COUNT)
 
     // Guard: slug must be unique (callers also check, but keep the invariant here).
     const { data: existingSlug } = await supabase
@@ -154,7 +157,7 @@ export async function provisionRestaurant(input: ProvisionInput): Promise<Provis
             restaurant_id: rid,
             theme: DEFAULT_THEME,
             features: DEFAULT_FEATURES_V1,
-            features_v2: buildFeaturesV2(tier),
+            features_v2: buildFeaturesV2(tier, mode),
             business_hours: null,
         })
         if (settingsError) throw new Error(settingsError.message)
@@ -216,11 +219,15 @@ async function seedStarterData(
     // Generate qr_token in JS — the DB default uses encode(...,'base64url'), which
     // this Postgres version rejects ("unrecognized encoding: base64url"). Node's
     // base64url is fine; this matches how addTableAction supplies the token.
-    const tableRows = Array.from({ length: tableCount }, (_, i) => ({
-        restaurant_id: restaurantId,
-        label: `T${i + 1}`,
-        qr_token: randomBytes(18).toString('base64url'),
-    }))
-    const { error: tableError } = await supabase.from('tables').insert(tableRows)
-    if (tableError) throw new Error(`Seed tables failed: ${tableError.message}`)
+    // tableCount is 0 for delivery-only restaurants — skip the insert entirely
+    // rather than calling .insert([]) on an empty array.
+    if (tableCount > 0) {
+        const tableRows = Array.from({ length: tableCount }, (_, i) => ({
+            restaurant_id: restaurantId,
+            label: `T${i + 1}`,
+            qr_token: randomBytes(18).toString('base64url'),
+        }))
+        const { error: tableError } = await supabase.from('tables').insert(tableRows)
+        if (tableError) throw new Error(`Seed tables failed: ${tableError.message}`)
+    }
 }

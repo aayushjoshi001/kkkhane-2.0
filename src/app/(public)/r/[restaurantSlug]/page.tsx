@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import RestaurantMainClient from './RestaurantMainClient'
+import { getRestaurantFeatures } from '@/lib/features'
 
 import type { Metadata } from 'next'
 
@@ -59,11 +60,14 @@ export default async function RestaurantMainPage(props: {
         .eq('is_active', true)
         .order('label', { ascending: true })
 
+    const features = await getRestaurantFeatures(restaurant.id)
+
     return (
-        <RestaurantMainClient 
+        <RestaurantMainClient
             restaurant={restaurant}
             tables={tables || []}
             restaurantSlug={params.restaurantSlug}
+            dineInEnabled={features?.dineInEnabled ?? true}
         />
     )
 }

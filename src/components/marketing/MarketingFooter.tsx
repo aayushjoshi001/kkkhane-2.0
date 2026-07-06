@@ -1,10 +1,8 @@
 import Link from 'next/link'
 import Logo from '@/components/shared/Logo'
-import AppleLogo from '@/components/shared/AppleLogo'
-import ComingSoonButton from '@/components/shared/ComingSoonButton'
 import CopyrightYear from '@/components/shared/CopyrightYear'
 import {
-    Phone, MapPin, Play, QrCode,
+    Phone, MapPin,
     Facebook, Instagram, Youtube, Twitter,
 } from 'lucide-react'
 
@@ -76,28 +74,6 @@ export default function MarketingFooter() {
                         </ul>
                     </div>
 
-                    <div>
-                        <h4 className="mb-6 text-lg font-bold text-gray-900">Download our App</h4>
-                        <div className="mb-6 inline-block rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-                            <QrCode size={80} className="text-gray-800" />
-                        </div>
-                        <div className="flex flex-col gap-3">
-                            <ComingSoonButton feature="The Google Play app" className="flex items-center gap-3 rounded-xl bg-black px-4 py-2.5 text-white shadow-md transition-colors hover:bg-gray-800">
-                                <Play size={24} className="fill-current" />
-                                <span className="text-left">
-                                    <span className="block text-[10px] font-bold uppercase text-gray-400">Get it on</span>
-                                    <span className="block text-sm font-bold leading-tight">Google Play</span>
-                                </span>
-                            </ComingSoonButton>
-                            <ComingSoonButton feature="The App Store app" className="flex items-center gap-3 rounded-xl bg-black px-4 py-2.5 text-white shadow-md transition-colors hover:bg-gray-800">
-                                <AppleLogo size={24} />
-                                <span className="text-left">
-                                    <span className="block text-[10px] font-bold uppercase text-gray-400">Download on the</span>
-                                    <span className="block text-sm font-bold leading-tight">App Store</span>
-                                </span>
-                            </ComingSoonButton>
-                        </div>
-                    </div>
                 </div>
 
                 {/* Contact band */}

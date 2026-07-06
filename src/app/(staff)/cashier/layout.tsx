@@ -4,8 +4,8 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { verifyClientIp } from '@/lib/ip-check'
 import { redirect } from 'next/navigation'
 import WaiterLayoutClient from '@/components/waiter/WaiterLayoutClient'
-import { getRestaurantFeatures } from '@/lib/features'
-import { FeatureProvider } from '@/lib/contexts/FeatureContext'
+import { getRestaurantFeatures, getRestaurantMode } from '@/lib/features'
+import { FeatureProvider, BusinessModeProvider } from '@/lib/contexts/FeatureContext'
 import SessionSync from '@/components/shared/SessionSync'
 
 export default async function CashierLayout({ children }: { children: ReactNode }) {
@@ -18,16 +18,18 @@ export default async function CashierLayout({ children }: { children: ReactNode 
     }
     const adminSupabase = await createAdminClient()
 
-    const [{ data: user }, { data: restaurant }, features] = await Promise.all([
+    const [{ data: user }, { data: restaurant }, features, mode] = await Promise.all([
         adminSupabase.from('users').select('full_name').eq('id', userId).single(),
         adminSupabase.from('restaurants').select('name').eq('id', restaurantId).single(),
         getRestaurantFeatures(restaurantId),
+        getRestaurantMode(restaurantId),
     ])
 
     const notificationSoundUrl = (features as Record<string, unknown> | null)?.notificationSoundUrl as string | null | undefined
 
     return (
         <FeatureProvider features={features}>
+        <BusinessModeProvider mode={mode}>
             <SessionSync userId={userId} />
             <WaiterLayoutClient
                 restaurantName={restaurant?.name || undefined}
@@ -38,6 +40,7 @@ export default async function CashierLayout({ children }: { children: ReactNode 
             >
                 {children}
             </WaiterLayoutClient>
+        </BusinessModeProvider>
         </FeatureProvider>
     )
 }

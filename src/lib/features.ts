@@ -3,6 +3,7 @@
 import { unstable_cache } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/server'
 import type { Settings, Restaurant } from '@/types/database'
+import { getBusinessMode, type BusinessMode } from '@/lib/businessMode'
 
 /**
  * Fetch features_v2 flags for a restaurant.
@@ -20,6 +21,24 @@ export const getRestaurantFeatures = unstable_cache(
         return data?.features_v2 ?? null
     },
     ['restaurant-features'],
+    { revalidate: 30 }
+)
+
+/**
+ * Fetch the restaurant's operational mode (derived from business_type).
+ * Cached for 30 seconds — same rationale as getRestaurantFeatures.
+ */
+export const getRestaurantMode = unstable_cache(
+    async (restaurantId: string): Promise<BusinessMode> => {
+        const supabase = await createAdminClient()
+        const { data } = await supabase
+            .from('restaurants')
+            .select('business_type')
+            .eq('id', restaurantId)
+            .single()
+        return getBusinessMode(data?.business_type)
+    },
+    ['restaurant-mode'],
     { revalidate: 30 }
 )
 

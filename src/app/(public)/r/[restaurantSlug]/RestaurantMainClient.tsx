@@ -20,9 +20,10 @@ interface RestaurantMainClientProps {
         qr_token: string
     }[]
     restaurantSlug: string
+    dineInEnabled: boolean
 }
 
-export default function RestaurantMainClient({ restaurant, tables, restaurantSlug }: RestaurantMainClientProps) {
+export default function RestaurantMainClient({ restaurant, tables, restaurantSlug, dineInEnabled }: RestaurantMainClientProps) {
     const [selectedTableId, setSelectedTableId] = useState('')
     const [loading, setLoading] = useState(false)
     const router = useRouter()
@@ -54,54 +55,71 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
                 )}
                 <h1 className="text-2xl font-bold text-gray-900">{restaurant.name}</h1>
                 <p className="text-gray-500 mt-2 text-sm max-w-sm">
-                    Welcome! Please select your table to start ordering, or browse our menu below.
+                    {dineInEnabled
+                        ? 'Welcome! Please select your table to start ordering, or browse our menu below.'
+                        : 'Welcome! Order online for pickup or delivery.'}
                 </p>
             </div>
 
             <div className="w-full max-w-md space-y-4">
-                {/* Session Request Card */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                    <h2 className="text-lg font-semibold text-gray-900 mb-4">Are you seated here?</h2>
-                    
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1.5">Select your Table</label>
-                            <select
-                                value={selectedTableId}
-                                onChange={(e) => setSelectedTableId(e.target.value)}
-                                className="w-full px-4 py-3 border border-gray-300 rounded-xl bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
-                            >
-                                <option value="" disabled>Choose table number...</option>
-                                {tables.map(t => (
-                                    <option key={t.id} value={t.id}>Table {t.label}</option>
-                                ))}
-                            </select>
-                        </div>
+                {/* Delivery-only/counter-service restaurants: pickup is the primary CTA */}
+                {!dineInEnabled && (
+                    <button
+                        onClick={() => router.push(`/takeout/${restaurantSlug}`)}
+                        className="w-full flex items-center justify-center gap-2 py-3 bg-primary text-white rounded-xl font-semibold hover:opacity-90 transition"
+                    >
+                        <ShoppingBag size={18} />
+                        Order for Pickup
+                    </button>
+                )}
 
-                        <button
-                            onClick={handleStartOrdering}
-                            disabled={!selectedTableId || loading}
-                            className="w-full flex items-center justify-center gap-2 py-3 bg-primary text-white rounded-xl font-semibold hover:opacity-90 transition disabled:opacity-50"
-                        >
-                            {loading ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
-                            {loading ? 'Opening menu...' : 'Start Ordering'}
-                        </button>
+                {/* Session Request Card */}
+                {dineInEnabled && tables.length > 0 && (
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                        <h2 className="text-lg font-semibold text-gray-900 mb-4">Are you seated here?</h2>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Select your Table</label>
+                                <select
+                                    value={selectedTableId}
+                                    onChange={(e) => setSelectedTableId(e.target.value)}
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
+                                >
+                                    <option value="" disabled>Choose table number...</option>
+                                    {tables.map(t => (
+                                        <option key={t.id} value={t.id}>Table {t.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <button
+                                onClick={handleStartOrdering}
+                                disabled={!selectedTableId || loading}
+                                className="w-full flex items-center justify-center gap-2 py-3 bg-primary text-white rounded-xl font-semibold hover:opacity-90 transition disabled:opacity-50"
+                            >
+                                {loading ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
+                                {loading ? 'Opening menu...' : 'Start Ordering'}
+                            </button>
+                        </div>
                     </div>
-                </div>
+                )}
 
                 {/* Physical Menu Gallery */}
                 {restaurant.physical_menu_urls && restaurant.physical_menu_urls.length > 0 && (
                     <PhysicalMenuGallery images={restaurant.physical_menu_urls} restaurantName={restaurant.name} />
                 )}
 
-                {/* Takeout / pickup self-order entry point */}
-                <button
-                    onClick={() => router.push(`/takeout/${restaurantSlug}`)}
-                    className="w-full flex items-center justify-center gap-2 py-3 bg-white border border-gray-200 text-gray-800 rounded-xl font-semibold shadow-sm hover:bg-gray-50 transition"
-                >
-                    <ShoppingBag size={18} />
-                    Order for Pickup
-                </button>
+                {/* Takeout / pickup self-order entry point (secondary when dine-in is available) */}
+                {dineInEnabled && (
+                    <button
+                        onClick={() => router.push(`/takeout/${restaurantSlug}`)}
+                        className="w-full flex items-center justify-center gap-2 py-3 bg-white border border-gray-200 text-gray-800 rounded-xl font-semibold shadow-sm hover:bg-gray-50 transition"
+                    >
+                        <ShoppingBag size={18} />
+                        Order for Pickup
+                    </button>
+                )}
 
                 {/* Profile Link */}
                 <Link

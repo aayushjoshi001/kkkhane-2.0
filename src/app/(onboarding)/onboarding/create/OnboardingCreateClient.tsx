@@ -9,6 +9,7 @@ import dynamic from 'next/dynamic'
 import 'leaflet/dist/leaflet.css'
 import { fixLeafletDefaultIcon } from '@/lib/leafletIcons'
 import { SLUG_REGEX, PAN_REGEX, VAT_REGEX, PHONE_REGEX } from '@/lib/validation'
+import { ONBOARDING_BUSINESS_TYPES, getBusinessMode } from '@/lib/businessMode'
 
 // Dynamically import Map to prevent SSR issues
 const MapContainer = dynamic(() => import('react-leaflet').then(mod => mod.MapContainer), { ssr: false })
@@ -17,7 +18,14 @@ const Marker = dynamic(() => import('react-leaflet').then(mod => mod.Marker), { 
 const MapClickHandler = dynamic(() => import('@/components/shared/MapClickHandler'), { ssr: false })
 const MapUpdater = dynamic(() => import('@/components/shared/MapUpdater'), { ssr: false })
 
-const TYPES = ['FastFood', 'Fine Dining', 'Cafe', 'Bar', 'Cloud Kitchen', 'Resort/Hotel', 'Bakery', 'Restaurant']
+const TYPES = ONBOARDING_BUSINESS_TYPES
+
+const MODE_HELPER_TEXT: Record<ReturnType<typeof getBusinessMode>, string> = {
+    dine_in: 'Full dine-in setup — tables, QR codes, and waiter flows enabled.',
+    counter_service: 'Quick counter service — pickup-first, streamlined ordering.',
+    bar_service: 'Bar/tab service — split billing and flexible pricing enabled.',
+    delivery_only: 'Delivery/pickup-only — no dine-in tables will be created.',
+}
 
 export default function OnboardingCreateClient() {
     const router = useRouter()
@@ -358,6 +366,7 @@ export default function OnboardingCreateClient() {
                                         </button>
                                     ))}
                                 </div>
+                                <p className="text-xs text-gray-500 mt-2">{MODE_HELPER_TEXT[getBusinessMode(selectedType)]}</p>
                             </div>
                         </div>
                     </section>

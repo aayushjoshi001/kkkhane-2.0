@@ -3,6 +3,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import type { Settings } from '@/types/database'
 import { formatCurrency } from '@/lib/utils'
+import type { BusinessMode } from '@/lib/businessMode'
 
 type Features = Settings['features_v2']
 
@@ -10,6 +11,7 @@ const defaultFeatures: Features = {
     loyaltyEnabled: false,
     promosEnabled: true,
     takeoutEnabled: false,
+    dineInEnabled: true,
     multiLanguageEnabled: false,
     serviceRequestsEnabled: true,
     splitBillingEnabled: true,
@@ -64,4 +66,24 @@ export function useCurrency(): (amount: number) => string {
         () => (amount: number) => formatCurrency(amount, currency, currencySymbol),
         [currency, currencySymbol],
     )
+}
+
+/**
+ * The restaurant's operational mode (dine_in/counter_service/bar_service/
+ * delivery_only), derived from business_type — see lib/businessMode.ts.
+ * Kept as a separate context from Features so existing useFeatures()/
+ * useFeatureEnabled() call sites are unaffected.
+ */
+const BusinessModeContext = createContext<BusinessMode>('dine_in')
+
+export function BusinessModeProvider({ mode, children }: { mode: BusinessMode; children: ReactNode }) {
+    return (
+        <BusinessModeContext.Provider value={mode}>
+            {children}
+        </BusinessModeContext.Provider>
+    )
+}
+
+export function useBusinessMode(): BusinessMode {
+    return useContext(BusinessModeContext)
 }
