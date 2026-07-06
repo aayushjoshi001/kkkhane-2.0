@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ChevronLeft, MapPin, Store, Globe, FileText, Phone, Upload, X, Loader2, Check } from 'lucide-react'
 import { createOnboardingRestaurant, setOnboardingLogo, checkSlugAvailability } from './actions'
 import { createClient } from '@/lib/supabase/client'
+import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import 'leaflet/dist/leaflet.css'
 import { fixLeafletDefaultIcon } from '@/lib/leafletIcons'
@@ -300,10 +301,9 @@ export default function OnboardingCreateClient() {
                             <div className="sm:col-span-2">
                                 <label className={labelClasses}>Restaurant Logo <span className="text-gray-400 font-normal">(optional)</span></label>
                                 <div className="flex items-center gap-4">
-                                    <div className="w-20 h-20 rounded-xl border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
+                                    <div className="w-20 h-20 rounded-xl border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0 relative">
                                         {logoPreviewUrl ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img src={logoPreviewUrl} alt="Logo preview" className="w-full h-full object-contain p-1" />
+                                            <Image src={logoPreviewUrl} alt="Logo preview" fill sizes="80px" className="object-contain p-1" />
                                         ) : (
                                             <Store size={28} className="text-gray-300" />
                                         )}

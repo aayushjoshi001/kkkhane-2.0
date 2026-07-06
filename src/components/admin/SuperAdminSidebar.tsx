@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import {
     LayoutDashboard, Building2, UtensilsCrossed, ShoppingBag, CreditCard, Truck,
     Users, Clock, DollarSign, Heart, Tag, Package, Grid3X3, FileText,
@@ -103,10 +104,12 @@ export default function SuperAdminSidebar({ userRole = 'super_admin', userAvatar
                                 {userRole.charAt(0).toUpperCase()}
                             </div>
                         ) : (
-                            <img 
+                            <Image 
                                 src={userAvatar || `https://api.dicebear.com/9.x/notionists/svg?seed=superadmin&backgroundColor=fb6303`}
                                 alt="Admin avatar" 
-                                className="w-full h-full object-cover"
+                                fill
+                                sizes="36px"
+                                className="object-cover"
                                 onError={() => setImgError(true)}
                             />
                         )}

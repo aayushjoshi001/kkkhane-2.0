@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import {
     Users, UtensilsCrossed, Settings, LogOut, BarChart3, Palette, Grid3X3,
     TrendingUp, ShoppingBag, Tag, Heart, DollarSign, Package,
@@ -151,10 +152,12 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                                 {roleLabel.charAt(0).toUpperCase()}
                             </div>
                         ) : (
-                            <img 
+                            <Image 
                                 src={avatarUrl} 
                                 alt="User avatar" 
-                                className="w-full h-full object-cover"
+                                fill
+                                sizes="40px"
+                                className="object-cover"
                                 onError={() => setImgError(true)}
                             />
                         )}

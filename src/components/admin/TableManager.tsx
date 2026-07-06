@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { QrCode, Plus, Edit2, Trash2, Check, X, Loader2, Download, Smartphone } from 'lucide-react'
+import NextImage from 'next/image'
 import type { Table } from '@/types/database'
 import { QRCodeCanvas } from 'qrcode.react'
 import { addTableAction, updateTableAction, deleteTableAction } from '@/app/(admin)/admin/tables/actions'
@@ -394,11 +395,15 @@ export default function TableManager({
                                             >
                                                 Powered by KKKHANEY
                                             </span>
-                                            <img
-                                                src={QR_LOGO_SRC}
-                                                alt="Logo"
-                                                className="w-4 h-4 rounded-full bg-white object-cover border-[1.5px] border-white shrink-0 shadow-sm"
-                                            />
+                                            <div className="relative w-4 h-4 rounded-full border-[1.5px] border-white shrink-0 shadow-sm overflow-hidden bg-white">
+                                                <NextImage
+                                                    src={QR_LOGO_SRC}
+                                                    alt="Logo"
+                                                    fill
+                                                    sizes="16px"
+                                                    className="object-cover"
+                                                />
+                                            </div>
                                         </div>
 
                                     </div>

@@ -7,6 +7,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import type { TakeoutOrder } from '@/types/database'
+import Image from 'next/image'
 
 const STATUS_COLORS: Record<string, string> = {
     placed: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -168,11 +169,15 @@ export default function TakeoutDashboard({ initialOrders, restaurantSlug, restau
                                     >
                                         Powered by KKKHANEY
                                     </span>
-                                    <img
-                                        src="/icons/kkkhane.png?v=2"
-                                        alt="Logo"
-                                        className="w-5 h-5 rounded-full bg-white object-cover border-[1.5px] border-white shrink-0 shadow-sm"
-                                    />
+                                    <div className="relative w-5 h-5 rounded-full border-[1.5px] border-white shrink-0 shadow-sm overflow-hidden bg-white">
+                                        <Image
+                                            src="/icons/kkkhane.png?v=2"
+                                            alt="Logo"
+                                            fill
+                                            sizes="20px"
+                                            className="object-cover"
+                                        />
+                                    </div>
                                 </div>
                             </div>
                             <button

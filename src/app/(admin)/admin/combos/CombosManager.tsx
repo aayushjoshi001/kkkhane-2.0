@@ -1,12 +1,13 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Plus, Trash2, Edit2, ToggleLeft, ToggleRight, Sparkles, AlertCircle, Info, ShoppingBag, Upload, Link as LinkIcon, Image as ImageIcon, Loader2, X } from 'lucide-react'
+import { Plus, Trash2, Edit2, Sparkles, AlertCircle, Info, ShoppingBag, Upload, Link as LinkIcon, Image as ImageIcon, Loader2, X } from 'lucide-react'
 import type { MenuItem, MenuCategory } from '@/types/database'
 import { createClient } from '@/lib/supabase/client'
 import { addComboAction, updateComboAction, deleteComboAction } from './actions'
 import toast from 'react-hot-toast'
 import { useCurrency, useFeatures } from '@/lib/contexts/FeatureContext'
+import Image from 'next/image'
 
 // Monotonic counter for unique upload paths — avoids crypto.randomUUID (unavailable
 // on non-HTTPS LAN origins) and Date.now/Math.random (flagged by react-hooks/purity).
@@ -413,8 +414,7 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                                         />
                                         {form.image_url ? (
                                             <div className="relative rounded-[var(--r-md)] overflow-hidden border border-hairline bg-surface-muted shadow-inner group/img" style={{ height: 160 }}>
-                                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                <img src={form.image_url} alt="Combo preview" className="w-full h-full object-cover" />
+                                                <Image src={form.image_url} alt="Combo preview" fill sizes="400px" className="object-cover" />
                                                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-sm">
                                                     <button type="button" onClick={() => imageInputRef.current?.click()} className="bg-surface text-ink text-xs font-bold px-4 py-2 rounded-[var(--r-md)] shadow-sm flex items-center gap-1.5 hover:-translate-y-0.5 transition-transform">
                                                         <Upload size={14} /> Change
@@ -445,8 +445,7 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                                         />
                                         {form.image_url && (
                                             <div className="relative rounded-[var(--r-md)] overflow-hidden border border-hairline bg-surface-muted shadow-inner" style={{ height: 140 }}>
-                                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                <img src={form.image_url} alt="Combo preview" className="w-full h-full object-cover" onError={e => (e.currentTarget.style.display = 'none')} />
+                                                <Image src={form.image_url} alt="Combo preview" fill sizes="400px" className="object-cover" />
                                             </div>
                                         )}
                                     </div>
@@ -595,12 +594,15 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
                                                 {combo.image_url ? (
-                                                    // eslint-disable-next-line @next/next/no-img-element
-                                                    <img
-                                                        src={combo.image_url}
-                                                        alt={combo.name}
-                                                        className="w-12 h-12 rounded-[var(--r-md)] object-cover shrink-0 shadow-sm border border-hairline"
-                                                    />
+                                                    <div className="relative w-12 h-12 rounded-[var(--r-md)] overflow-hidden shrink-0 shadow-sm border border-hairline">
+                                                        <Image
+                                                            src={combo.image_url}
+                                                            alt={combo.name}
+                                                            fill
+                                                            sizes="96px"
+                                                            className="object-cover"
+                                                        />
+                                                    </div>
                                                 ) : (
                                                     <div className="w-12 h-12 rounded-[var(--r-md)] bg-surface-muted border border-hairline shrink-0 flex items-center justify-center text-lg shadow-sm">
                                                         📦

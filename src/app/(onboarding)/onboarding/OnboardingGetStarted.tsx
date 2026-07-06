@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Store, MoreHorizontal, Settings, LogOut, ChevronLeft, Camera, X, Loader2, Check } from 'lucide-react'
+import Image from 'next/image'
 import { signOutAndRedirect } from '@/lib/auth/signOut'
 import { updateOnboardingProfile } from './actions'
 import { toast } from 'react-hot-toast'
@@ -104,10 +105,9 @@ export default function OnboardingGetStarted({
                 <h3 className="text-sm font-bold text-gray-900 mb-3">Your Profile</h3>
                 <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex items-center justify-between relative">
                     <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-brand-50 text-brand-700 font-black flex items-center justify-center text-lg uppercase tracking-wider overflow-hidden">
+                        <div className="w-12 h-12 rounded-xl bg-brand-50 text-brand-700 font-black flex items-center justify-center text-lg uppercase tracking-wider overflow-hidden relative">
                             {avatarUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={avatarUrl} alt={userName} className="w-full h-full object-cover" />
+                                <Image src={avatarUrl} alt={userName} fill sizes="48px" className="object-cover" />
                             ) : initials}
                         </div>
                         <div>
@@ -128,10 +128,9 @@ export default function OnboardingGetStarted({
                         <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 p-2 z-20 animate-in fade-in zoom-in-95 duration-200">
                             <div className="p-3 border-b border-gray-100 mb-2">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-lg bg-brand-50 text-brand-700 font-black flex items-center justify-center overflow-hidden">
+                                    <div className="w-10 h-10 rounded-lg bg-brand-50 text-brand-700 font-black flex items-center justify-center overflow-hidden relative">
                                         {avatarUrl ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img src={avatarUrl} alt={userName} className="w-full h-full object-cover" />
+                                            <Image src={avatarUrl} alt={userName} fill sizes="40px" className="object-cover" />
                                         ) : initials}
                                     </div>
                                     <div>
@@ -195,8 +194,7 @@ export default function OnboardingGetStarted({
                                         {isUploading ? (
                                             <Loader2 size={22} className="animate-spin text-gray-400" />
                                         ) : avatarUrl ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img src={avatarUrl} alt="Profile avatar" className="w-full h-full object-cover" />
+                                            <Image src={avatarUrl} alt="Profile avatar" fill sizes="80px" className="object-cover" />
                                         ) : (
                                             <span className="text-xl font-black text-brand-700 uppercase">{initials}</span>
                                         )}

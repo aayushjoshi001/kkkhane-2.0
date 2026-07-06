@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import Image from 'next/image'
 import { updateProfile } from '@/lib/actions/profile'
 import { createClient } from '@/lib/supabase/client'
 import { Save, Loader2, Camera, X, Shield, Mail, Calendar, Hash, Key, User as UserIcon } from 'lucide-react'
@@ -106,7 +107,7 @@ export default function ProfileForm({ user, email }: { user: ProfileUser, email:
                                     <Loader2 size={24} className="animate-spin text-ink-subtle" />
                                 </div>
                             ) : (
-                                <img src={displayAvatar} alt="Profile avatar" className="w-full h-full object-cover" />
+                                <Image src={displayAvatar} alt="Profile avatar" fill sizes="96px" className="object-cover" />
                             )}
                         </div>
                         
