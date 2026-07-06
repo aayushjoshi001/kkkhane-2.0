@@ -34,11 +34,6 @@ export default function TableManager({
     // QR Preview State
     const [previewTable, setPreviewTable] = useState<Table | null>(null)
     const [iframeLoaded, setIframeLoaded] = useState(false)
-    const [preloadedTokens, setPreloadedTokens] = useState<Set<string>>(() => {
-        const next = new Set<string>()
-        initialTables.slice(0, 2).forEach(t => next.add(t.qr_token))
-        return next
-    })
     const { confirm } = useConfirmStore()
 
     // Use the actual browser origin so QR codes encode the live URL, not localhost
@@ -335,8 +330,6 @@ export default function TableManager({
                             <div 
                                 key={table.id} 
                                 className="border border-hairline rounded-card overflow-hidden hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-all group flex flex-col bg-surface shadow-sm"
-                                onMouseEnter={() => setPreloadedTokens(prev => new Set(prev).add(table.qr_token))}
-                                onTouchStart={() => setPreloadedTokens(prev => new Set(prev).add(table.qr_token))}
                             >
                                 <div className="p-5 border-b border-hairline flex justify-between items-center bg-surface-muted/30">
                                     <div>
@@ -594,23 +587,18 @@ export default function TableManager({
                             </div>
                         )}
 
-                        {/* Iframes — map over preloadedTokens + active token so they mount once and stay mounted */}
+                        {/* Iframe for active preview only */}
                         <div className="flex-1 relative bg-white z-10">
-                            {Array.from(new Set([...preloadedTokens, previewTable?.qr_token].filter(Boolean) as string[])).map(token => {
-                                const isActive = previewTable?.qr_token === token
-                                return (
-                                    <iframe
-                                        key={token}
-                                        src={`/t/${token}`}
-                                        className={`absolute inset-0 w-full h-full border-none bg-white transition-opacity duration-200 ${isActive ? 'opacity-100 pointer-events-auto z-10' : 'opacity-0 pointer-events-none z-0'}`}
-                                        title={`Customer menu preview`}
-                                        onLoad={() => {
-                                            if (isActive) setIframeLoaded(true)
-                                        }}
-                                        loading="eager"
-                                    />
-                                )
-                            })}
+                            {previewTable?.qr_token && (
+                                <iframe
+                                    key={previewTable.qr_token}
+                                    src={`/t/${previewTable.qr_token}`}
+                                    className="absolute inset-0 w-full h-full border-none bg-white z-10 pointer-events-auto"
+                                    title="Customer menu preview"
+                                    onLoad={() => setIframeLoaded(true)}
+                                    loading="eager"
+                                />
+                            )}
                         </div>
                     </div>
 

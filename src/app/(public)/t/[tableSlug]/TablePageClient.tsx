@@ -504,7 +504,7 @@ export default function TablePageClient({
         >
           <RecommendationsProvider pairings={pairings}>
             <HomepageGate
-                restaurantId={tableData.restaurant_id}
+                initialHomepageConfig={initialHomepageConfig}
                 onProceed={() => setShowMenu(true)}
             >
                 {({ backToHome }) => (
