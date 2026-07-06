@@ -286,7 +286,7 @@ export default async function Home() {
                         <p className="text-xl text-gray-500 font-medium">No hidden fees, no hardware lock-in. Choose the plan that fits your growth.</p>
                     </div>
 
-                    <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                    <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
                         {/* Free Tier */}
                         <div className="bg-white rounded-[2.5rem] p-10 border border-gray-200 hover:border-gray-300 transition-all hover:shadow-xl flex flex-col">
                             <h3 className="text-2xl font-extrabold text-gray-900 mb-2">Free Starter</h3>
@@ -295,7 +295,7 @@ export default async function Home() {
                                 <span className="text-5xl font-black text-gray-900">Free</span>
                             </div>
                             <ul className="space-y-4 mb-10 flex-1">
-                                {['Up to 1 Staff Member', 'Max 20 Menu Items', 'Basic POS Features', 'Standard Email Support'].map((f, i) => (
+                                {['Up to 1 Staff Member (Owner)', 'Max 20 Menu Items', 'Basic POS Features', 'Standard Email Support'].map((f, i) => (
                                     <li key={i} className="flex items-center gap-3 font-medium text-gray-700">
                                         <CheckCircle className="text-brand-500 shrink-0" size={20} />
                                         {f}
@@ -303,12 +303,12 @@ export default async function Home() {
                                 ))}
                             </ul>
                             <Link href="/signup" className="w-full text-center bg-gray-50 text-gray-900 font-bold py-4 rounded-2xl border border-gray-200 hover:bg-gray-100 transition-colors">
-                                Get Started
+                                Start for Free
                             </Link>
                         </div>
 
                         {/* Pro Tier */}
-                        <div className="bg-gray-900 rounded-[2.5rem] p-10 border border-gray-800 hover:border-gray-700 transition-all hover:shadow-2xl shadow-xl shadow-gray-900/20 relative flex flex-col overflow-hidden">
+                        <div className="bg-gray-900 rounded-[2.5rem] p-10 border border-gray-800 hover:border-gray-700 transition-all hover:shadow-2xl shadow-xl shadow-gray-900/20 relative flex flex-col overflow-hidden transform md:scale-105 z-10">
                             <div className="absolute top-0 right-0 w-64 h-64 bg-brand-500 opacity-20 blur-[80px] rounded-full pointer-events-none" />
                             <div className="absolute top-6 right-8 bg-brand-500 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">Most Popular</div>
                             <h3 className="text-2xl font-extrabold text-white mb-2">Pro Business</h3>
@@ -327,6 +327,26 @@ export default async function Home() {
                             </ul>
                             <Link href="/signup" className="w-full text-center bg-brand-500 text-white font-extrabold py-4 rounded-2xl hover:bg-brand-400 transition-colors shadow-lg shadow-brand-500/20">
                                 Start 14-Day Free Trial
+                            </Link>
+                        </div>
+
+                        {/* Enterprise Tier */}
+                        <div className="bg-white rounded-[2.5rem] p-10 border border-gray-200 hover:border-gray-300 transition-all hover:shadow-xl flex flex-col">
+                            <h3 className="text-2xl font-extrabold text-gray-900 mb-2">Enterprise</h3>
+                            <p className="text-gray-500 font-medium mb-6">Tailored solutions for franchises and large chains.</p>
+                            <div className="mb-8 flex items-end gap-2">
+                                <span className="text-5xl font-black text-gray-900">Custom</span>
+                            </div>
+                            <ul className="space-y-4 mb-10 flex-1">
+                                {['Multi-Location Management', 'Custom POS Hardware', 'Dedicated Account Manager', 'On-site Training & Setup', 'Custom Feature Dev'].map((f, i) => (
+                                    <li key={i} className="flex items-center gap-3 font-medium text-gray-700">
+                                        <CheckCircle className="text-brand-500 shrink-0" size={20} />
+                                        {f}
+                                    </li>
+                                ))}
+                            </ul>
+                            <Link href="mailto:enterprise@kkkhane.com" className="w-full text-center bg-gray-50 text-gray-900 font-bold py-4 rounded-2xl border border-gray-200 hover:bg-gray-100 transition-colors">
+                                Contact Sales
                             </Link>
                         </div>
                     </div>
