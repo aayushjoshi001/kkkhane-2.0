@@ -16,9 +16,9 @@ export default async function AdminPricingPage() {
 
     return (
         <div className="space-y-6">
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                <h1 className="text-2xl font-bold text-gray-900">Dynamic Pricing</h1>
-                <p className="text-gray-500 mt-1">Schedule time-, day- and date-based price changes for items, categories or the whole menu.</p>
+            <div className="bg-surface p-6 rounded-xl border border-hairline-strong shadow-sm">
+                <h1 className="text-2xl font-bold text-ink">Dynamic Pricing</h1>
+                <p className="text-ink-subtle mt-1">Schedule time-, day- and date-based price changes for items, categories or the whole menu.</p>
             </div>
             <PricingRulesManager
                 initialRules={rules || []}

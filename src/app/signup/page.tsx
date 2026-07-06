@@ -18,8 +18,8 @@ export default async function SignupPage() {
                 <AuthHero heightClassName="h-full" />
             </div>
             
-            <div className="flex-1 w-full relative z-10 flex flex-col bg-transparent md:bg-white rounded-t-[2rem] md:rounded-none -mt-6 md:mt-0 overflow-hidden">
-                <div className="flex-1 w-full bg-white md:bg-transparent rounded-t-[2rem] md:rounded-none overflow-y-auto no-scrollbar relative">
+            <div className="flex-1 w-full relative z-10 flex flex-col bg-transparent md:bg-surface rounded-t-[2rem] md:rounded-none -mt-6 md:mt-0 overflow-hidden">
+                <div className="flex-1 w-full bg-surface md:bg-transparent rounded-t-[2rem] md:rounded-none overflow-y-auto no-scrollbar relative">
                     <div className="min-h-full w-full flex flex-col px-6 sm:px-10 pt-4 pb-12">
                         <div className="w-full max-w-[500px] mx-auto my-auto flex flex-col items-center">
                             <SignupForm />

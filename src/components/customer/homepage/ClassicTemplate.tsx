@@ -12,7 +12,7 @@ export default function ClassicTemplate({ config, onMenuClick }: { config: Homep
                 <div className="relative text-center text-white z-10 animate-fade-up max-w-3xl flex flex-col items-center">
                     <h1 className="text-5xl md:text-[80px] leading-[1.1] font-serif mb-6 drop-shadow-md">{config.hero_title}</h1>
                     <p className="text-xl md:text-2xl mb-10 text-white/90 font-light">{config.hero_subtitle}</p>
-                    <button onClick={onMenuClick} className="h-12 px-10 border border-white/30 bg-white/10 backdrop-blur-md rounded-card hover:bg-white hover:text-ink transition-colors duration-300 font-semibold text-sm focus-ring shadow-lg">
+                    <button onClick={onMenuClick} className="h-12 px-10 border border-white/30 bg-surface/10 backdrop-blur-md rounded-card hover:bg-surface hover:text-ink transition-colors duration-300 font-semibold text-sm focus-ring shadow-lg">
                         {config.hero_cta_text}
                     </button>
                 </div>

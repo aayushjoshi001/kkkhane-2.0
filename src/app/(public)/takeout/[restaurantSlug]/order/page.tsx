@@ -29,11 +29,11 @@ export default function TakeoutOrderRedirectPage() {
     }, [orders, restaurantSlug, router])
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+        <div className="min-h-screen bg-surface-muted flex flex-col items-center justify-center p-4">
             <div className="text-center">
-                <Loader2 className="w-10 h-10 text-gray-400 animate-spin mx-auto mb-4" />
-                <h2 className="text-lg font-semibold text-gray-900 mb-1">Locating your order...</h2>
-                <p className="text-sm text-gray-500">Redirecting you shortly.</p>
+                <Loader2 className="w-10 h-10 text-ink-subtle animate-spin mx-auto mb-4" />
+                <h2 className="text-lg font-semibold text-ink mb-1">Locating your order...</h2>
+                <p className="text-sm text-ink-subtle">Redirecting you shortly.</p>
             </div>
         </div>
     )

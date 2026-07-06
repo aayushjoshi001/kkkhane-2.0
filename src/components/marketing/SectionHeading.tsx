@@ -38,7 +38,7 @@ export default function SectionHeading({
             <h2
                 className={cn(
                     'text-3xl font-extrabold tracking-tight sm:text-4xl',
-                    dark ? 'text-white' : 'text-gray-900',
+                    dark ? 'text-white' : 'text-ink',
                 )}
             >
                 {title}
@@ -47,7 +47,7 @@ export default function SectionHeading({
                 <p
                     className={cn(
                         'mt-4 text-lg font-medium leading-relaxed',
-                        dark ? 'text-gray-300' : 'text-gray-500',
+                        dark ? 'text-gray-300' : 'text-ink-subtle',
                     )}
                 >
                     {subtitle}

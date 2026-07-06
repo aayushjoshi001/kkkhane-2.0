@@ -39,9 +39,9 @@ export default function FeedbackPrompt({ orderId }: { orderId: string }) {
     }
 
     return (
-        <div className="mt-6 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-            <h3 className="font-bold text-gray-900 text-base mb-1">How was your experience?</h3>
-            <p className="text-gray-500 text-sm mb-4">Rate your meal and leave a comment.</p>
+        <div className="mt-6 bg-surface border border-hairline-strong rounded-2xl p-5 shadow-sm">
+            <h3 className="font-bold text-ink text-base mb-1">How was your experience?</h3>
+            <p className="text-ink-subtle text-sm mb-4">Rate your meal and leave a comment.</p>
 
             {/* Star selector */}
             <div className="flex gap-1 mb-4">
@@ -72,14 +72,14 @@ export default function FeedbackPrompt({ orderId }: { orderId: string }) {
                 onChange={(e) => setComment(e.target.value.slice(0, 500))}
                 placeholder="Any comments? (optional)"
                 rows={3}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300 mb-3"
+                className="w-full border border-hairline-strong rounded-xl px-3 py-2 text-sm text-ink-muted resize-none focus:outline-none focus:ring-2 focus:ring-orange-300 mb-3"
             />
-            <div className="text-right text-xs text-gray-400 -mt-2 mb-3">{comment.length}/500</div>
+            <div className="text-right text-xs text-ink-subtle -mt-2 mb-3">{comment.length}/500</div>
 
             <button
                 onClick={handleSubmit}
                 disabled={loading || rating === 0}
-                className="w-full py-2.5 px-4 bg-[#FB6303] text-white font-semibold rounded-xl hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                className="w-full py-2.5 px-4 bg-brand-500 text-white font-semibold rounded-xl hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed text-sm"
             >
                 {loading ? 'Submitting…' : 'Submit Feedback'}
             </button>

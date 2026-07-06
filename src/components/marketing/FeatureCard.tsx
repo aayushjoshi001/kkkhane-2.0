@@ -29,7 +29,7 @@ export default function FeatureCard({
     return (
         <div
             className={cn(
-                'group rounded-3xl border border-gray-100 bg-white p-8 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl',
+                'group rounded-3xl border border-hairline bg-surface p-8 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl',
                 align === 'center' ? 'text-center' : 'text-left',
                 className,
             )}
@@ -45,8 +45,8 @@ export default function FeatureCard({
                 </div>
             )}
             {icon && !illustration && <div className="mb-4">{icon}</div>}
-            <h3 className="mb-3 text-xl font-bold text-gray-900">{title}</h3>
-            {desc && <p className="text-sm font-medium leading-relaxed text-gray-500">{desc}</p>}
+            <h3 className="mb-3 text-xl font-bold text-ink">{title}</h3>
+            {desc && <p className="text-sm font-medium leading-relaxed text-ink-subtle">{desc}</p>}
         </div>
     )
 }

@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 
 const OpenStreetMap = dynamic(() => import('./OpenStreetMap'), {
     ssr: false,
-    loading: () => <div className="min-h-[260px] bg-gray-200 animate-pulse rounded-2xl w-full h-full" />
+    loading: () => <div className="min-h-[260px] bg-surface-muted animate-pulse rounded-2xl w-full h-full" />
 })
 
 
@@ -23,13 +23,13 @@ export default function ContactSection({
     if (c.enabled === false || !hasContactInfo) return null
 
     return (
-        <section className="py-16 md:py-24 px-4 bg-gray-50">
+        <section className="py-16 md:py-24 px-4 bg-surface-muted">
             <div className="max-w-6xl mx-auto">
-                <h2 className="text-3xl font-bold text-center mb-12 text-gray-900">Visit Us</h2>
+                <h2 className="text-3xl font-bold text-center mb-12 text-ink">Visit Us</h2>
                 <div className="grid md:grid-cols-2 gap-8 items-stretch">
                     {/* Map */}
                     {(c.map_address || c.map_embed_url) && (
-                        <div className="rounded-2xl overflow-hidden shadow-sm min-h-[260px] bg-gray-200 relative z-10 flex">
+                        <div className="rounded-2xl overflow-hidden shadow-sm min-h-[260px] bg-surface-muted relative z-10 flex">
                             <OpenStreetMap address={c.map_address} embedUrl={c.map_embed_url} />
                         </div>
                     )}
@@ -41,20 +41,20 @@ export default function ContactSection({
                                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.map_address)}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex items-start gap-3 text-gray-700 hover:text-gray-900"
+                                className="flex items-start gap-3 text-ink-muted hover:text-ink"
                             >
                                 <MapPin size={22} style={{ color: primary }} className="shrink-0 mt-0.5" />
                                 <span>{c.map_address}</span>
                             </a>
                         )}
                         {c.phone && (
-                            <a href={`tel:${c.phone}`} className="flex items-center gap-3 text-gray-700 hover:text-gray-900">
+                            <a href={`tel:${c.phone}`} className="flex items-center gap-3 text-ink-muted hover:text-ink">
                                 <Phone size={22} style={{ color: primary }} className="shrink-0" />
                                 <span>{c.phone}</span>
                             </a>
                         )}
                         {c.email && (
-                            <a href={`mailto:${c.email}`} className="flex items-center gap-3 text-gray-700 hover:text-gray-900">
+                            <a href={`mailto:${c.email}`} className="flex items-center gap-3 text-ink-muted hover:text-ink">
                                 <Mail size={22} style={{ color: primary }} className="shrink-0" />
                                 <span>{c.email}</span>
                             </a>

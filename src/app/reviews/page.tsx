@@ -24,25 +24,25 @@ function renderText(text: string) {
     return {
         __html: text.replace(
             /<highlight>(.*?)<\/highlight>/g,
-            '<span class="rounded bg-pink-100 px-1.5 py-0.5 font-bold text-gray-900 shadow-sm">$1</span>',
+            '<span class="rounded bg-pink-100 px-1.5 py-0.5 font-bold text-ink shadow-sm">$1</span>',
         ),
     }
 }
 
 export default function ReviewsPage() {
     return (
-        <div className="min-h-screen bg-white text-gray-900">
+        <div className="min-h-screen bg-surface text-ink">
             <MarketingNav />
 
             {/* Hero */}
-            <section className="relative overflow-hidden bg-white pb-14 pt-36 text-center">
+            <section className="relative overflow-hidden bg-surface pb-14 pt-36 text-center">
                 <div className="pointer-events-none absolute left-1/2 top-1/2 h-[700px] w-[700px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--color-primary)]/5 blur-[120px]" />
                 <div className="relative mx-auto max-w-3xl px-4 sm:px-6">
                     <Eyebrow tone="purple">Loved across Nepal</Eyebrow>
-                    <h1 className="mt-6 text-5xl font-extrabold tracking-tight text-gray-900 md:text-6xl">
+                    <h1 className="mt-6 text-5xl font-extrabold tracking-tight text-ink md:text-6xl">
                         Hear from Our <span className="text-[var(--color-primary)]">Happy Users</span>
                     </h1>
-                    <p className="mx-auto mt-6 max-w-2xl text-xl font-medium leading-relaxed text-gray-500">
+                    <p className="mx-auto mt-6 max-w-2xl text-xl font-medium leading-relaxed text-ink-subtle">
                         Stories, feedback, and experiences shared by businesses growing with kkkhane.
                     </p>
                 </div>
@@ -52,9 +52,9 @@ export default function ReviewsPage() {
             <Section tone="white" size="md" className="pt-0">
                 <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                     {STATS.map((s) => (
-                        <div key={s.label} className="rounded-3xl border border-gray-100 bg-white p-8 text-center shadow-sm">
-                            <p className="text-3xl font-extrabold text-gray-900 md:text-4xl">{s.value}</p>
-                            <p className="mt-1 text-sm font-medium text-gray-500">{s.label}</p>
+                        <div key={s.label} className="rounded-3xl border border-hairline bg-surface p-8 text-center shadow-sm">
+                            <p className="text-3xl font-extrabold text-ink md:text-4xl">{s.value}</p>
+                            <p className="mt-1 text-sm font-medium text-ink-subtle">{s.label}</p>
                         </div>
                     ))}
                 </div>
@@ -69,15 +69,15 @@ export default function ReviewsPage() {
                 />
                 <div className="columns-1 gap-6 md:columns-2 lg:columns-3">
                     {REVIEWS.map((r, i) => (
-                        <div key={i} className="mb-6 break-inside-avoid rounded-3xl border border-gray-100 bg-white p-8 shadow-sm transition-shadow hover:shadow-lg">
+                        <div key={i} className="mb-6 break-inside-avoid rounded-3xl border border-hairline bg-surface p-8 shadow-sm transition-shadow hover:shadow-lg">
                             <div className="mb-6 flex items-start justify-between">
                                 <div className="flex items-center gap-4">
-                                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 text-lg font-bold uppercase text-gray-700">
+                                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 text-lg font-bold uppercase text-ink-muted">
                                         {r.name.substring(0, 2)}
                                     </div>
                                     <div>
-                                        <h5 className="font-bold text-gray-900">{r.name}</h5>
-                                        <p className="text-xs text-gray-500">{r.role}</p>
+                                        <h5 className="font-bold text-ink">{r.name}</h5>
+                                        <p className="text-xs text-ink-subtle">{r.role}</p>
                                     </div>
                                 </div>
                                 <Globe size={20} className="text-blue-500" />
@@ -85,7 +85,7 @@ export default function ReviewsPage() {
                             <div className="mb-4 flex gap-1 text-amber-400">
                                 {[...Array(5)].map((_, idx) => <Star key={idx} size={16} fill="currentColor" />)}
                             </div>
-                            <p className="font-medium leading-relaxed text-gray-600" dangerouslySetInnerHTML={renderText(r.text)} />
+                            <p className="font-medium leading-relaxed text-ink-muted" dangerouslySetInnerHTML={renderText(r.text)} />
                         </div>
                     ))}
                 </div>

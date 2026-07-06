@@ -115,7 +115,7 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
                 onClick={() => onChange(!checked)}
                 className={`relative w-12 h-6 rounded-full transition-colors border ${checked ? 'bg-brand-500 border-brand-500' : 'bg-surface-muted border-hairline'}`}
             >
-                <span className={`absolute top-[1px] left-[1px] w-[20px] h-[20px] bg-white rounded-full shadow-[0_2px_4px_rgba(0,0,0,0.1)] transition-transform ${checked ? 'translate-x-6' : ''}`} />
+                <span className={`absolute top-[1px] left-[1px] w-[20px] h-[20px] bg-surface rounded-full shadow-[0_2px_4px_rgba(0,0,0,0.1)] transition-transform ${checked ? 'translate-x-6' : ''}`} />
             </button>
         </label>
     )
@@ -321,7 +321,7 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                                         {config.logo_url ? (
                                             <div className="flex flex-col items-center">
                                                 <div className="relative group">
-                                                    <Image src={config.logo_url} alt="Logo" width={240} height={100} className="h-28 w-auto object-contain drop-shadow-md bg-white p-4 rounded-xl border border-hairline" />
+                                                    <Image src={config.logo_url} alt="Logo" width={240} height={100} className="h-28 w-auto object-contain drop-shadow-md bg-surface p-4 rounded-xl border border-hairline" />
                                                     <button onClick={() => patchAndSave({ logo_url: null })} className="absolute -top-3 -right-3 w-8 h-8 bg-danger-bg text-danger-fg rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-md border-2 border-white">
                                                         <X size={14} />
                                                     </button>
@@ -503,7 +503,7 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                                                 <button
                                                     type="button"
                                                     onClick={() => patch({ features: features.filter((_, i) => i !== idx) })}
-                                                    className="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center bg-white border border-hairline text-ink-subtle hover:text-danger-fg hover:border-danger-fg/30 shadow-sm transition-all"
+                                                    className="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center bg-surface border border-hairline text-ink-subtle hover:text-danger-fg hover:border-danger-fg/30 shadow-sm transition-all"
                                                 >
                                                     <Trash2 size={14} />
                                                 </button>
@@ -696,7 +696,7 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                             <div className="w-3 h-3 rounded-full bg-amber-400"></div>
                             <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
                         </div>
-                        <div className="flex-1 bg-white/50 border border-hairline rounded-full h-7 flex items-center justify-center text-[10px] font-bold text-ink-subtle tracking-wide font-mono">
+                        <div className="flex-1 bg-surface/50 border border-hairline rounded-full h-7 flex items-center justify-center text-[10px] font-bold text-ink-subtle tracking-wide font-mono">
                             Preview
                         </div>
                         <button onClick={() => setIsPreviewOpen(true)} className="text-brand-500 hover:text-brand-600 transition-colors p-1" title="Full Screen">
@@ -722,9 +722,9 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                         <div className="flex items-center justify-between px-6 py-4 bg-ink text-white border-b border-white/10 shrink-0">
                             <div className="flex items-center gap-3">
                                 <span className="font-black text-lg">Desktop Preview</span>
-                                <span className="text-[10px] font-bold text-white/50 uppercase tracking-widest bg-white/10 px-2.5 py-1 rounded-full">{config.template} template</span>
+                                <span className="text-[10px] font-bold text-white/50 uppercase tracking-widest bg-surface/10 px-2.5 py-1 rounded-full">{config.template} template</span>
                             </div>
-                            <button onClick={() => setIsPreviewOpen(false)} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/70 hover:text-white hover:bg-white/20 transition-all">
+                            <button onClick={() => setIsPreviewOpen(false)} className="w-8 h-8 rounded-full bg-surface/10 flex items-center justify-center text-white/70 hover:text-white hover:bg-surface/20 transition-all">
                                 <X size={16} />
                             </button>
                         </div>

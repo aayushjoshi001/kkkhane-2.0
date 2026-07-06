@@ -16,32 +16,32 @@ export default function InvoiceBanner({
     vatRegistered,
 }: InvoiceBannerProps) {
     return (
-        <div className="mt-6 bg-white rounded-[var(--border-radius)] shadow-sm border border-gray-100 p-5 space-y-3">
-            <div className="flex items-center gap-2 text-gray-800">
+        <div className="mt-6 bg-surface rounded-[var(--border-radius)] shadow-sm border border-hairline p-5 space-y-3">
+            <div className="flex items-center gap-2 text-ink">
                 <FileText size={18} className="text-[var(--color-primary)]" />
                 <h3 className="font-semibold">Tax Invoice</h3>
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
-                    <span className="text-gray-500">Invoice #</span>
-                    <p className="font-mono font-bold text-gray-900">{invoiceNumber}</p>
+                    <span className="text-ink-subtle">Invoice #</span>
+                    <p className="font-mono font-bold text-ink">{invoiceNumber}</p>
                 </div>
 
                 {panNumber && (
                     <div>
-                        <span className="text-gray-500 flex items-center gap-1">
+                        <span className="text-ink-subtle flex items-center gap-1">
                             <Building size={12} />
                             PAN
                         </span>
-                        <p className="font-mono font-bold text-gray-900">{panNumber}</p>
+                        <p className="font-mono font-bold text-ink">{panNumber}</p>
                     </div>
                 )}
 
                 {restaurantName && (
                     <div className="col-span-2">
-                        <span className="text-gray-500">Issued by</span>
-                        <p className="font-medium text-gray-800">{restaurantName}</p>
+                        <span className="text-ink-subtle">Issued by</span>
+                        <p className="font-medium text-ink">{restaurantName}</p>
                     </div>
                 )}
             </div>
@@ -53,7 +53,7 @@ export default function InvoiceBanner({
                 </div>
             )}
 
-            <p className="text-xs text-gray-400 pt-1">
+            <p className="text-xs text-ink-subtle pt-1">
                 This is an IRD-compliant tax invoice. Keep for your records.
             </p>
         </div>

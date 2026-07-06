@@ -108,41 +108,41 @@ export default function PaymentPageClient({
     }
 
     return (
-        <div className="min-h-screen bg-[#FFF8F3] pb-36 text-[#1A1006]">
+        <div className="min-h-screen bg-surface pb-36 text-ink">
             {/* Header */}
-            <header className="bg-[#FFF8F3] px-4 py-4 border-b border-[#EDD9C8] sticky top-0 z-20 flex items-center gap-3">
+            <header className="bg-surface px-4 py-4 border-b border-hairline sticky top-0 z-20 flex items-center gap-3">
                 <button
                     onClick={() => router.push(`/t/${tableSlug}/order/${orderId}`)}
-                    className="p-2 -ml-2 text-[#8C6A50] rounded-full active:bg-[#FFF0E6]"
+                    className="p-2 -ml-2 text-ink-subtle rounded-full active:bg-surface-muted"
                 >
                     <ArrowLeft size={20} />
                 </button>
-                <h1 className="text-xl font-black text-[#1A1006]">Payment options</h1>
+                <h1 className="text-xl font-black text-ink">Payment options</h1>
             </header>
 
             <main className="max-w-xl mx-auto px-4 mt-6">
                 {/* Order Summary Card */}
-                <div className="bg-white rounded-2xl shadow-sm border border-[#EDD9C8] overflow-hidden mb-6" style={{ boxShadow: "0 2px 12px rgba(232,93,4,0.04)" }}>
-                    <div className="p-4 border-b border-[#EDD9C8] bg-[#FFF0E6]/30">
-                        <h2 className="font-black text-sm text-[#1A1006] uppercase tracking-wider">Order Summary</h2>
+                <div className="bg-surface rounded-2xl shadow-sm border border-hairline overflow-hidden mb-6" style={{ boxShadow: "0 2px 12px rgba(232,93,4,0.04)" }}>
+                    <div className="p-4 border-b border-hairline bg-surface-muted/30">
+                        <h2 className="font-black text-sm text-ink uppercase tracking-wider">Order Summary</h2>
                     </div>
 
                     <ul className="divide-y divide-[#F5EDE6]">
                         {order.order_items?.map((item: any) => {
                             const modTotal = (item.order_item_modifiers || []).reduce((s: number, m: any) => s + Number(m.price_adjustment || 0), 0)
                             return (
-                                <li key={item.id} className="p-4 flex gap-4 bg-white justify-between">
+                                <li key={item.id} className="p-4 flex gap-4 bg-surface justify-between">
                                     <div className="flex-1">
-                                        <h3 className="font-bold text-sm text-[#1A1006]">
+                                        <h3 className="font-bold text-sm text-ink">
                                             {item.quantity}× {item.menu_items?.name || 'Item'}
                                         </h3>
                                         {item.order_item_modifiers && item.order_item_modifiers.length > 0 && (
-                                            <p className="text-xs text-[#8C6A50] font-semibold mt-0.5">
+                                            <p className="text-xs text-ink-subtle font-semibold mt-0.5">
                                                 {item.order_item_modifiers.map((m: any) => m.modifier_name).join(', ')}
                                             </p>
                                         )}
                                     </div>
-                                    <span className="font-black text-[#FB6303] text-sm shrink-0">
+                                    <span className="font-black text-brand-500 text-sm shrink-0">
                                         {money((item.unit_price + modTotal) * item.quantity)}
                                     </span>
                                 </li>
@@ -153,7 +153,7 @@ export default function PaymentPageClient({
 
                 {/* Promo Code Input */}
                 {restaurantId && features?.promosEnabled !== false && (
-                    <div className="bg-white rounded-2xl shadow-sm border border-[#EDD9C8] p-4 mb-6" style={{ boxShadow: "0 2px 12px rgba(232,93,4,0.04)" }}>
+                    <div className="bg-surface rounded-2xl shadow-sm border border-hairline p-4 mb-6" style={{ boxShadow: "0 2px 12px rgba(232,93,4,0.04)" }}>
                         <PromoCodeInput
                             restaurantId={restaurantId}
                             subtotal={subtotal}
@@ -166,7 +166,7 @@ export default function PaymentPageClient({
 
                 {/* Loyalty Panel */}
                 {restaurantId && features?.loyaltyEnabled && (
-                    <div className="bg-white rounded-2xl shadow-sm border border-[#EDD9C8] p-4 mb-6" style={{ boxShadow: "0 2px 12px rgba(232,93,4,0.04)" }}>
+                    <div className="bg-surface rounded-2xl shadow-sm border border-hairline p-4 mb-6" style={{ boxShadow: "0 2px 12px rgba(232,93,4,0.04)" }}>
                         <LoyaltyPanel
                             restaurantId={restaurantId}
                             onMemberSet={handleMemberSet}
@@ -177,10 +177,10 @@ export default function PaymentPageClient({
                 )}
 
                 {/* Bill Breakdown Card */}
-                <div className="bg-white rounded-2xl shadow-sm border border-[#EDD9C8] p-4 mb-6" style={{ boxShadow: "0 2px 12px rgba(232,93,4,0.04)" }}>
-                    <h3 className="font-black text-xs uppercase tracking-wider text-[#8C6A50] mb-3">Bill Breakdown</h3>
+                <div className="bg-surface rounded-2xl shadow-sm border border-hairline p-4 mb-6" style={{ boxShadow: "0 2px 12px rgba(232,93,4,0.04)" }}>
+                    <h3 className="font-black text-xs uppercase tracking-wider text-ink-subtle mb-3">Bill Breakdown</h3>
                     <div className="space-y-2">
-                        <div className="flex justify-between text-xs text-[#8C6A50] font-semibold">
+                        <div className="flex justify-between text-xs text-ink-subtle font-semibold">
                             <span>Subtotal</span>
                             <span>{money(subtotal)}</span>
                         </div>
@@ -190,11 +190,11 @@ export default function PaymentPageClient({
                                 <span>-{money(discount)}</span>
                             </div>
                         )}
-                        <div className="flex justify-between items-center pt-2.5 border-t border-[#F5EDE6]">
-                            <span className="text-[#1A1006] font-black text-sm uppercase tracking-wider">Total to pay</span>
-                            <span className="text-xl font-black text-[#FB6303] tabular-nums">
+                        <div className="flex justify-between items-center pt-2.5 border-t border-hairline">
+                            <span className="text-ink font-black text-sm uppercase tracking-wider">Total to pay</span>
+                            <span className="text-xl font-black text-brand-500 tabular-nums">
                                 {isUpdating ? (
-                                    <Loader2 size={18} className="animate-spin inline text-[#FB6303]" />
+                                    <Loader2 size={18} className="animate-spin inline text-brand-500" />
                                 ) : (
                                     money(total)
                                 )}
@@ -228,7 +228,7 @@ export default function PaymentPageClient({
                             <div className="flex gap-2">
                                 <button
                                     onClick={() => setShowSplit(true)}
-                                    className="w-full border-2 border-[#FB6303] text-[#FB6303] hover:bg-[#FFF0E6] font-black rounded-2xl py-3.5 text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-sm"
+                                    className="w-full border-2 border-brand-500 text-brand-500 hover:bg-surface-muted font-black rounded-2xl py-3.5 text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-sm"
                                 >
                                     Split Bill Options
                                 </button>

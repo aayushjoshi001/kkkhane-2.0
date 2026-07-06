@@ -5,6 +5,7 @@ import type { Viewport } from 'next'
 import { createAdminClient } from '@/lib/supabase/server'
 import { unstable_cache } from 'next/cache'
 import PwaInstallPrompt from '@/components/shared/PwaInstallPrompt'
+import PwaUpdatePrompt from '@/components/shared/PwaUpdatePrompt'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' })
@@ -117,6 +118,7 @@ export default async function RootLayout({
       `}>
         {children}
         <PwaInstallPrompt />
+        <PwaUpdatePrompt />
         {/* Global Overlays */}
         <Toaster
           position="top-center"

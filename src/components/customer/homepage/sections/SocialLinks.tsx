@@ -72,7 +72,7 @@ export default function SocialLinks({
                     rel="noopener noreferrer"
                     aria-label={LABELS[platform]}
                     title={LABELS[platform]}
-                    className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 transition"
+                    className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-surface/10 hover:bg-surface/20 transition"
                 >
                     <svg viewBox="0 0 24 24" fill="currentColor" className={iconClassName}>
                         {ICONS[platform]}

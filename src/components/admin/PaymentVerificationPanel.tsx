@@ -36,7 +36,7 @@ function methodLabel(method: string) {
         case 'esewa': return { label: 'eSewa', icon: <ScanLine size={14} className="text-green-600" />, bg: 'bg-green-50 text-green-700' }
         case 'khalti': return { label: 'Khalti', icon: <ScanLine size={14} className="text-purple-600" />, bg: 'bg-purple-50 text-purple-700' }
         case 'fonepay': return { label: 'FonePay', icon: <ScanLine size={14} className="text-red-600" />, bg: 'bg-red-50 text-red-700' }
-        default: return { label: method, icon: null, bg: 'bg-gray-100 text-gray-600' }
+        default: return { label: method, icon: null, bg: 'bg-surface-muted text-ink-muted' }
     }
 }
 

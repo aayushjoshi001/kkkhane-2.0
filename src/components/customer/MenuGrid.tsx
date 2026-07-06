@@ -27,7 +27,7 @@ export default function MenuGrid({ items, sessionId, restaurantSlug, restaurantI
             ))}
 
             {filteredItems.length === 0 && (
-                <div className="col-span-full text-center py-12 text-gray-500">
+                <div className="col-span-full text-center py-12 text-ink-subtle">
                     No items found in this category.
                 </div>
             )}

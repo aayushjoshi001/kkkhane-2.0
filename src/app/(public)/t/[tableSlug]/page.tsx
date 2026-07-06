@@ -11,8 +11,12 @@ import { getHomepageConfig } from '@/lib/homepage'
 
 import type { Metadata } from 'next'
 
+// `runtime = 'edge'` is incompatible with on-demand ISR (generateStaticParams
+// below) in this Next.js version, and this page transitively imports
+// getOrCreateActiveSession from @/lib/sessions, which uses Node's `crypto` —
+// not Edge-compatible either way. ISR still serves cache hits from Vercel's
+// Edge Network regardless of which runtime rendered them.
 export const revalidate = 600
-export const runtime = 'edge'
 
 export function generateStaticParams() {
     return []

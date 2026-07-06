@@ -20,7 +20,7 @@ interface LoyaltyPanelProps {
 
 const TIER_COLORS: Record<string, string> = {
     bronze: 'bg-amber-100 text-amber-800',
-    silver: 'bg-gray-100 text-gray-700',
+    silver: 'bg-surface-muted text-ink-muted',
     gold: 'bg-yellow-100 text-yellow-800',
     platinum: 'bg-purple-100 text-purple-800',
 }
@@ -98,7 +98,7 @@ export default function LoyaltyPanel({
 
     // If member is already linked
     if (activeMember) {
-        const tierClass = TIER_COLORS[activeMember.tier] || 'bg-gray-100 text-gray-700'
+        const tierClass = TIER_COLORS[activeMember.tier] || 'bg-surface-muted text-ink-muted'
         const canRedeem = config && activeMember.points_balance >= (config.redemption_threshold || Infinity)
 
         return (
@@ -118,7 +118,7 @@ export default function LoyaltyPanel({
                             </span>
                         </div>
                     </div>
-                    <button onClick={handleRemove} className="text-xs text-gray-500 hover:text-gray-700">
+                    <button onClick={handleRemove} className="text-xs text-ink-subtle hover:text-ink-muted">
                         Remove
                     </button>
                 </div>
@@ -151,7 +151,7 @@ export default function LoyaltyPanel({
     return (
         <div className="space-y-3">
             <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-700">Loyalty Rewards</label>
+                <label className="text-sm font-medium text-ink-muted">Loyalty Rewards</label>
                 <button
                     onClick={() => {
                         setMode(mode === 'lookup' ? 'signup' : 'lookup')
@@ -170,7 +170,7 @@ export default function LoyaltyPanel({
                         setPhone(e.target.value)
                     }}
                     placeholder="Phone number"
-                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className="flex-1 rounded-lg border border-hairline-strong px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     disabled={loading}
                 />
                 {mode === 'lookup' && (
@@ -191,14 +191,14 @@ export default function LoyaltyPanel({
                         value={displayName}
                         onChange={(e) => setDisplayName(e.target.value)}
                         placeholder="Name (optional)"
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        className="w-full rounded-lg border border-hairline-strong px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
                     <input
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="Email (optional)"
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        className="w-full rounded-lg border border-hairline-strong px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
                     <button
                         onClick={handleSignup}

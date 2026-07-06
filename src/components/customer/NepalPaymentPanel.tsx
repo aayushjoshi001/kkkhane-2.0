@@ -52,7 +52,7 @@ export default function NepalPaymentPanel({
 
     const providerKey = provider?.toLowerCase() ?? ''
     const providerLabel = PROVIDER_LABELS[providerKey] ?? provider ?? 'QR'
-    const providerColor = PROVIDER_COLORS[providerKey] ?? { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200' }
+    const providerColor = PROVIDER_COLORS[providerKey] ?? { bg: 'bg-surface-muted', text: 'text-ink-muted', border: 'border-hairline-strong' }
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
@@ -106,10 +106,10 @@ export default function NepalPaymentPanel({
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
                     <CheckCircle size={32} className="text-green-600" />
                 </div>
-                <h3 className="font-semibold text-gray-900 text-lg">
+                <h3 className="font-semibold text-ink text-lg">
                     {mode === 'cash' ? 'Waiter Notified!' : 'Payment Submitted!'}
                 </h3>
-                <p className="text-gray-500 text-sm mt-2 max-w-xs mx-auto">
+                <p className="text-ink-subtle text-sm mt-2 max-w-xs mx-auto">
                     {mode === 'cash'
                         ? 'Your waiter will come to collect payment shortly.'
                         : 'Staff will verify your payment and confirm shortly.'}
@@ -127,7 +127,7 @@ export default function NepalPaymentPanel({
                     className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 text-sm font-medium transition-colors ${
                         mode === 'qr'
                             ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-primary)]'
-                            : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                            : 'border-hairline-strong text-ink-subtle hover:border-hairline-strong'
                     }`}
                 >
                     <ScanLine size={16} />
@@ -138,7 +138,7 @@ export default function NepalPaymentPanel({
                     className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 text-sm font-medium transition-colors ${
                         mode === 'cash'
                             ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-primary)]'
-                            : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                            : 'border-hairline-strong text-ink-subtle hover:border-hairline-strong'
                     }`}
                 >
                     <Banknote size={16} />
@@ -154,10 +154,10 @@ export default function NepalPaymentPanel({
                             <p className={`text-sm font-semibold mb-1 ${providerColor.text}`}>
                                 Scan &amp; Pay with {providerLabel}
                             </p>
-                            <p className="text-2xl font-bold text-gray-900 mb-3">
+                            <p className="text-2xl font-bold text-ink mb-3">
                                 {money(totalAmount)}
                             </p>
-                            <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                            <div className="bg-surface p-3 rounded-xl border border-hairline-strong shadow-sm">
                                 <Image
                                     src={qrUrl}
                                     alt={`${providerLabel} Payment QR Code`}
@@ -166,14 +166,14 @@ export default function NepalPaymentPanel({
                                     className="w-48 h-48 object-contain"
                                 />
                             </div>
-                            <p className="text-xs text-gray-400 mt-2 text-center">
+                            <p className="text-xs text-ink-subtle mt-2 text-center">
                                 Open {providerLabel} app → Scan QR → Enter exact amount → Pay
                             </p>
                         </div>
                     ) : (
-                        <div className="bg-gray-50 rounded-xl p-6 flex flex-col items-center text-center border border-gray-200">
+                        <div className="bg-surface-muted rounded-xl p-6 flex flex-col items-center text-center border border-hairline-strong">
                             <ScanLine size={40} className="text-gray-300 mb-2" />
-                            <p className="text-sm text-gray-500">
+                            <p className="text-sm text-ink-subtle">
                                 QR code not set up yet. Ask staff for payment details.
                             </p>
                         </div>
@@ -181,11 +181,11 @@ export default function NepalPaymentPanel({
 
                     {/* After-payment confirmation */}
                     <div className="space-y-3">
-                        <p className="text-sm font-semibold text-gray-700">After paying, confirm below:</p>
+                        <p className="text-sm font-semibold text-ink-muted">After paying, confirm below:</p>
 
                         {/* Phone */}
                         <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                            <label className="block text-xs font-medium text-ink-muted mb-1">
                                 Registered phone number <span className="text-red-500">*</span>
                             </label>
                             <input
@@ -193,13 +193,13 @@ export default function NepalPaymentPanel({
                                 value={phone}
                                 onChange={(e) => setPhone(e.target.value)}
                                 placeholder="98XXXXXXXX"
-                                className="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                                className="w-full border border-hairline-strong rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
                             />
                         </div>
 
                         {/* Screenshot — required for QR */}
                         <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                            <label className="block text-xs font-medium text-ink-muted mb-1">
                                 Payment screenshot <span className="text-red-500">*</span>
                             </label>
                             {previewUrl ? (
@@ -209,7 +209,7 @@ export default function NepalPaymentPanel({
                                         alt="Payment screenshot"
                                         width={150}
                                         height={112}
-                                        className="h-28 w-auto rounded-lg object-cover border border-gray-200"
+                                        className="h-28 w-auto rounded-lg object-cover border border-hairline-strong"
                                     />
                                     <button
                                         type="button"
@@ -220,9 +220,9 @@ export default function NepalPaymentPanel({
                                     </button>
                                 </div>
                             ) : (
-                                <label className="flex items-center gap-2 border border-dashed border-gray-300 rounded-lg p-3 cursor-pointer hover:bg-gray-50 transition">
-                                    <Camera size={18} className="text-gray-400" />
-                                    <span className="text-sm text-gray-500">Tap to upload screenshot</span>
+                                <label className="flex items-center gap-2 border border-dashed border-hairline-strong rounded-lg p-3 cursor-pointer hover:bg-surface-muted transition">
+                                    <Camera size={18} className="text-ink-subtle" />
+                                    <span className="text-sm text-ink-subtle">Tap to upload screenshot</span>
                                     <input
                                         type="file"
                                         accept="image/*"
@@ -250,8 +250,8 @@ export default function NepalPaymentPanel({
                     </div>
 
                     <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">
-                            Upload receipt <span className="text-gray-400">(optional)</span>
+                        <label className="block text-xs font-medium text-ink-muted mb-1">
+                            Upload receipt <span className="text-ink-subtle">(optional)</span>
                         </label>
                         {previewUrl ? (
                             <div className="relative inline-block">
@@ -260,7 +260,7 @@ export default function NepalPaymentPanel({
                                     alt="Receipt"
                                     width={150}
                                     height={112}
-                                    className="h-28 w-auto rounded-lg object-cover border border-gray-200"
+                                    className="h-28 w-auto rounded-lg object-cover border border-hairline-strong"
                                 />
                                 <button
                                     type="button"
@@ -271,9 +271,9 @@ export default function NepalPaymentPanel({
                                 </button>
                             </div>
                         ) : (
-                            <label className="flex items-center gap-2 border border-dashed border-gray-300 rounded-lg p-3 cursor-pointer hover:bg-gray-50 transition">
-                                <Upload size={18} className="text-gray-400" />
-                                <span className="text-sm text-gray-500">Tap to upload proof</span>
+                            <label className="flex items-center gap-2 border border-dashed border-hairline-strong rounded-lg p-3 cursor-pointer hover:bg-surface-muted transition">
+                                <Upload size={18} className="text-ink-subtle" />
+                                <span className="text-sm text-ink-subtle">Tap to upload proof</span>
                                 <input
                                     type="file"
                                     accept="image/*"

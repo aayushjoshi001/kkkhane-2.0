@@ -29,7 +29,7 @@ interface SaasMetrics {
 }
 
 const TIER_COLORS: Record<string, string> = {
-    free:       'bg-gray-100 text-gray-700 border-gray-200',
+    free:       'bg-surface-muted text-ink-muted border-hairline-strong',
     basic:      'bg-blue-100 text-blue-700 border-blue-200',
     pro:        'bg-purple-100 text-purple-700 border-purple-200',
     enterprise: 'bg-amber-100 text-amber-700 border-amber-200',
@@ -282,13 +282,13 @@ export default function SuperAdminDashboard({
             </div>
 
             {/* Tier Breakdown */}
-            <div className="bg-white rounded-[24px] shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-gray-100 p-6 animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                <h3 className="font-bold text-gray-900 text-[1.15rem] mb-4">Subscription Distribution</h3>
+            <div className="bg-surface rounded-[24px] shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-hairline p-6 animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                <h3 className="font-bold text-ink text-[1.15rem] mb-4">Subscription Distribution</h3>
                 <div className="flex gap-3 flex-wrap">
                     {Object.entries(metrics.tierBreakdown).map(([tier, count]) => (
-                        <div key={tier} className={`px-4 py-2 rounded-xl text-[13px] font-bold border shadow-sm flex items-center gap-2 ${TIER_COLORS[tier] || 'bg-gray-100 text-gray-700'}`}>
+                        <div key={tier} className={`px-4 py-2 rounded-xl text-[13px] font-bold border shadow-sm flex items-center gap-2 ${TIER_COLORS[tier] || 'bg-surface-muted text-ink-muted'}`}>
                             <span className="capitalize">{tier}</span>
-                            <span className="bg-white/50 px-1.5 py-0.5 rounded-md tabular-nums">{count}</span>
+                            <span className="bg-surface/50 px-1.5 py-0.5 rounded-md tabular-nums">{count}</span>
                         </div>
                     ))}
                 </div>
@@ -296,7 +296,7 @@ export default function SuperAdminDashboard({
 
             {/* Expiring Soon Banner */}
             {expiringSoon.length > 0 && (
-                <div className="bg-white rounded-[24px] border border-amber-200 shadow-[0_8px_30px_rgb(245,158,11,0.06)] overflow-hidden relative group animate-fade-up" style={{ animationDelay: '0.15s' }}>
+                <div className="bg-surface rounded-[24px] border border-amber-200 shadow-[0_8px_30px_rgb(245,158,11,0.06)] overflow-hidden relative group animate-fade-up" style={{ animationDelay: '0.15s' }}>
                     <div className="absolute top-0 left-0 w-1 h-full bg-amber-500" />
                     <div className="p-6 flex items-start gap-3">
                         <AlertTriangle size={24} className="text-amber-500 shrink-0 mt-0.5 animate-pulse" />
@@ -305,7 +305,7 @@ export default function SuperAdminDashboard({
                             <ul className="mt-2 space-y-2">
                                 {expiringSoon.map(r => (
                                     <li key={r.id} className="flex items-center justify-between text-sm">
-                                        <span className="font-medium text-gray-700">
+                                        <span className="font-medium text-ink-muted">
                                             <strong>{r.name}</strong>
                                         </span>
                                         <span className="text-[13px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md border border-amber-100">
@@ -320,11 +320,11 @@ export default function SuperAdminDashboard({
             )}
 
             {/* Restaurant List */}
-            <div className="bg-white rounded-[24px] shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-gray-100 overflow-hidden animate-fade-up" style={{ animationDelay: '0.3s' }}>
-                <div className="px-6 py-5 border-b border-gray-50 bg-gray-50/50 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="bg-surface rounded-[24px] shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-hairline overflow-hidden animate-fade-up" style={{ animationDelay: '0.3s' }}>
+                <div className="px-6 py-5 border-b border-gray-50 bg-surface-muted/50 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div>
-                        <h2 className="text-[1.15rem] font-bold text-gray-900">All Restaurants</h2>
-                        <p className="text-[13px] text-gray-500 mt-0.5">Manage tenants, tiers, and suspension</p>
+                        <h2 className="text-[1.15rem] font-bold text-ink">All Restaurants</h2>
+                        <p className="text-[13px] text-ink-subtle mt-0.5">Manage tenants, tiers, and suspension</p>
                     </div>
                     <button
                         onClick={() => setIsCreateModalOpen(true)}
@@ -336,22 +336,22 @@ export default function SuperAdminDashboard({
                 </div>
 
                 {/* Filters */}
-                <div className="px-5 py-3 border-b border-gray-100 flex flex-col sm:flex-row gap-3 bg-white">
+                <div className="px-5 py-3 border-b border-hairline flex flex-col sm:flex-row gap-3 bg-surface">
                     <div className="relative flex-1">
-                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
                         <input
                             type="text"
                             placeholder="Search by name or owner email..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                            className="w-full pl-9 pr-3 py-2 rounded-xl border border-hairline-strong text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                         />
                     </div>
                     <div className="flex gap-3">
                         <select
                             value={tierFilter}
                             onChange={(e) => setTierFilter(e.target.value as any)}
-                            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 w-full sm:w-auto"
+                            className="rounded-xl border border-hairline-strong bg-surface px-3 py-2 text-sm text-ink-muted outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 w-full sm:w-auto"
                         >
                             <option value="all">All Tiers</option>
                             <option value="free">Free</option>
@@ -362,7 +362,7 @@ export default function SuperAdminDashboard({
                         <select
                             value={statusFilter}
                             onChange={(e) => setStatusFilter(e.target.value as any)}
-                            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 w-full sm:w-auto"
+                            className="rounded-xl border border-hairline-strong bg-surface px-3 py-2 text-sm text-ink-muted outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 w-full sm:w-auto"
                         >
                             <option value="all">All Status</option>
                             <option value="active">Active</option>
@@ -375,13 +375,13 @@ export default function SuperAdminDashboard({
                     {filteredItems.map((restaurant) => (
                         <div
                             key={restaurant.id}
-                            className={`group p-4 md:p-6 flex flex-col md:flex-row md:items-center gap-4 transition-colors hover:bg-gray-50/50 ${
+                            className={`group p-4 md:p-6 flex flex-col md:flex-row md:items-center gap-4 transition-colors hover:bg-surface-muted/50 ${
                                 restaurant.is_suspended ? 'bg-red-50/30 hover:bg-red-50/50' : ''
                             }`}
                         >
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                    <h4 className="font-semibold text-gray-900 truncate">{restaurant.name}</h4>
+                                    <h4 className="font-semibold text-ink truncate">{restaurant.name}</h4>
                                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${TIER_COLORS[restaurant.subscription_tier] || TIER_COLORS.free}`}>
                                         {(restaurant.subscription_tier || 'free').toUpperCase()}
                                     </span>
@@ -391,7 +391,7 @@ export default function SuperAdminDashboard({
                                         </span>
                                     )}
                                 </div>
-                                <p className="text-sm text-gray-500 mt-1">
+                                <p className="text-sm text-ink-subtle mt-1">
                                     {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                                     {restaurant.users?.email || 'No owner'} •
                                     Staff: {restaurant.max_staff} • 
@@ -438,14 +438,14 @@ export default function SuperAdminDashboard({
                                         value={restaurant.subscription_tier || 'free'}
                                         onChange={(e) => handleTierChange(restaurant.id, e.target.value as 'free' | 'basic' | 'pro' | 'enterprise')}
                                         disabled={loading === restaurant.id}
-                                        className="appearance-none bg-white border border-gray-300 rounded-lg px-3 py-2 pr-8 text-sm font-medium disabled:opacity-50"
+                                        className="appearance-none bg-surface border border-hairline-strong rounded-lg px-3 py-2 pr-8 text-sm font-medium disabled:opacity-50"
                                     >
                                         <option value="free">Free</option>
                                         <option value="basic">Basic</option>
                                         <option value="pro">Pro</option>
                                         <option value="enterprise">Enterprise</option>
                                     </select>
-                                    <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                    <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" />
                                 </div>
 
                                 {/* Suspend/Reactivate */}
@@ -472,7 +472,7 @@ export default function SuperAdminDashboard({
                 </div>
 
                 {filteredItems.length === 0 && (
-                    <div className="p-12 text-center text-gray-400">
+                    <div className="p-12 text-center text-ink-subtle">
                         <Building2 size={40} className="mx-auto mb-3" />
                         <p>No restaurants registered yet</p>
                     </div>
@@ -481,15 +481,15 @@ export default function SuperAdminDashboard({
 
             {manageOwnerModal.isOpen && manageOwnerModal.restaurant && (
                 <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl border border-gray-200 overflow-hidden">
-                        <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-5">
+                    <div className="w-full max-w-md rounded-3xl bg-surface shadow-2xl border border-hairline-strong overflow-hidden">
+                        <div className="flex items-start justify-between gap-4 border-b border-hairline px-6 py-5">
                             <div>
-                                <h3 className="text-xl font-semibold text-gray-900">Manage Owner</h3>
-                                <p className="mt-1 text-sm text-gray-500">{manageOwnerModal.restaurant.name}</p>
+                                <h3 className="text-xl font-semibold text-ink">Manage Owner</h3>
+                                <p className="mt-1 text-sm text-ink-subtle">{manageOwnerModal.restaurant.name}</p>
                             </div>
                             <button
                                 onClick={() => setManageOwnerModal({ isOpen: false, restaurant: null, action: 'password' })}
-                                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                                className="rounded-lg p-2 text-ink-subtle transition hover:bg-surface-muted hover:text-ink-muted"
                                 aria-label="Close manage owner modal"
                             >
                                 <X size={18} />
@@ -497,13 +497,13 @@ export default function SuperAdminDashboard({
                         </div>
 
                         <div className="space-y-6 px-6 py-6">
-                            <div className="flex gap-3 border-b border-gray-100 pb-4">
+                            <div className="flex gap-3 border-b border-hairline pb-4">
                                 <button
                                     onClick={() => setManageOwnerModal(prev => ({ ...prev, action: 'password' }))}
                                     className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition ${
                                         manageOwnerModal.action === 'password'
                                             ? 'bg-primary text-white'
-                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                            : 'bg-surface-muted text-ink-muted hover:bg-surface-muted'
                                     }`}
                                 >
                                     Reset Password
@@ -513,7 +513,7 @@ export default function SuperAdminDashboard({
                                     className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition ${
                                         manageOwnerModal.action === 'contact'
                                             ? 'bg-primary text-white'
-                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                            : 'bg-surface-muted text-ink-muted hover:bg-surface-muted'
                                     }`}
                                 >
                                     Update Contact
@@ -541,22 +541,22 @@ export default function SuperAdminDashboard({
                             {manageOwnerModal.action === 'contact' && (
                                 <div className="space-y-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Owner Email</label>
+                                        <label className="block text-sm font-medium text-ink-muted mb-1.5">Owner Email</label>
                                         <input
                                             type="email"
                                             value={manageOwnerModal.email || ''}
                                             onChange={(e) => setManageOwnerModal(prev => ({ ...prev, email: e.target.value }))}
-                                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                            className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone Number</label>
+                                        <label className="block text-sm font-medium text-ink-muted mb-1.5">Phone Number</label>
                                         <input
                                             type="tel"
                                             value={manageOwnerModal.phone || ''}
                                             onChange={(e) => setManageOwnerModal(prev => ({ ...prev, phone: e.target.value }))}
                                             placeholder="+977-98XXXXXXXX"
-                                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                            className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                                         />
                                     </div>
                                     <button
@@ -571,10 +571,10 @@ export default function SuperAdminDashboard({
                             )}
                         </div>
 
-                        <div className="border-t border-gray-100 bg-gray-50/70 px-6 py-4">
+                        <div className="border-t border-hairline bg-surface-muted/70 px-6 py-4">
                             <button
                                 onClick={() => setManageOwnerModal({ isOpen: false, restaurant: null, action: 'password' })}
-                                className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                                className="w-full rounded-xl border border-hairline-strong bg-surface px-4 py-2.5 text-sm font-medium text-ink-muted transition hover:bg-surface-muted"
                             >
                                 Close
                             </button>
@@ -585,11 +585,11 @@ export default function SuperAdminDashboard({
 
             {isCreateModalOpen && (
                 <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="w-full max-w-3xl rounded-3xl bg-white shadow-2xl border border-gray-200 overflow-hidden">
-                        <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-5">
+                    <div className="w-full max-w-3xl rounded-3xl bg-surface shadow-2xl border border-hairline-strong overflow-hidden">
+                        <div className="flex items-start justify-between gap-4 border-b border-hairline px-6 py-5">
                             <div>
-                                <h3 className="text-xl font-semibold text-gray-900">Add Client</h3>
-                                <p className="mt-1 text-sm text-gray-500">Create a new restaurant tenant, provision the manager account, and seed the default settings in one flow.</p>
+                                <h3 className="text-xl font-semibold text-ink">Add Client</h3>
+                                <p className="mt-1 text-sm text-ink-subtle">Create a new restaurant tenant, provision the manager account, and seed the default settings in one flow.</p>
                             </div>
                             <button
                                 onClick={() => {
@@ -597,7 +597,7 @@ export default function SuperAdminDashboard({
                                         setIsCreateModalOpen(false)
                                     }
                                 }}
-                                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                                className="rounded-lg p-2 text-ink-subtle transition hover:bg-surface-muted hover:text-ink-muted"
                                 aria-label="Close add client modal"
                             >
                                 <X size={18} />
@@ -605,8 +605,8 @@ export default function SuperAdminDashboard({
                         </div>
 
                         <div className="grid gap-6 px-6 py-6 md:grid-cols-2">
-                            <div className="space-y-4 rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
-                                <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                            <div className="space-y-4 rounded-2xl border border-hairline-strong bg-surface shadow-sm p-4">
+                                <div className="flex items-center gap-2 text-sm font-semibold text-ink">
                                     <Store size={16} className="text-primary" />
                                     Restaurant Profile
                                 </div>
@@ -616,7 +616,7 @@ export default function SuperAdminDashboard({
                                         value={createForm.restaurantName}
                                         onChange={(e) => handleCreateFormChange('restaurantName', e.target.value)}
                                         placeholder="Hotel Himalaya"
-                                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                        className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                                     />
                                 </Field>
 
@@ -625,7 +625,7 @@ export default function SuperAdminDashboard({
                                         value={createForm.restaurantSlug}
                                         onChange={(e) => handleCreateFormChange('restaurantSlug', e.target.value)}
                                         placeholder="hotel-himalaya"
-                                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                        className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                                     />
                                 </Field>
 
@@ -634,7 +634,7 @@ export default function SuperAdminDashboard({
                                         value={createForm.contactPhone}
                                         onChange={(e) => handleCreateFormChange('contactPhone', e.target.value)}
                                         placeholder="+977-98XXXXXXXX"
-                                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                        className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                                     />
                                 </Field>
 
@@ -644,7 +644,7 @@ export default function SuperAdminDashboard({
                                         onChange={(e) => handleCreateFormChange('address', e.target.value)}
                                         placeholder="Kathmandu, Nepal"
                                         rows={3}
-                                        className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                        className="w-full resize-none rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                                     />
                                 </Field>
 
@@ -652,7 +652,7 @@ export default function SuperAdminDashboard({
                                     <select
                                         value={createForm.subscriptionTier}
                                         onChange={(e) => handleCreateFormChange('subscriptionTier', e.target.value)}
-                                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                        className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                                     >
                                         <option value="free">Free</option>
                                         <option value="basic">Basic</option>
@@ -662,8 +662,8 @@ export default function SuperAdminDashboard({
                                 </Field>
                             </div>
 
-                            <div className="space-y-4 rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
-                                <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                            <div className="space-y-4 rounded-2xl border border-hairline-strong bg-surface shadow-sm p-4">
+                                <div className="flex items-center gap-2 text-sm font-semibold text-ink">
                                     <UserRound size={16} className="text-primary" />
                                     Owner Account
                                 </div>
@@ -673,7 +673,7 @@ export default function SuperAdminDashboard({
                                         value={createForm.ownerFullName}
                                         onChange={(e) => handleCreateFormChange('ownerFullName', e.target.value)}
                                         placeholder="Aarav Shrestha"
-                                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                        className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                                     />
                                 </Field>
 
@@ -683,7 +683,7 @@ export default function SuperAdminDashboard({
                                         value={createForm.ownerEmail}
                                         onChange={(e) => handleCreateFormChange('ownerEmail', e.target.value)}
                                         placeholder="owner@hotelhimalaya.com"
-                                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                        className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                                     />
                                 </Field>
 
@@ -693,18 +693,18 @@ export default function SuperAdminDashboard({
                                         value={createForm.ownerPassword}
                                         onChange={(e) => handleCreateFormChange('ownerPassword', e.target.value)}
                                         placeholder="Minimum 8 characters"
-                                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                        className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                                     />
                                 </Field>
 
-                                <div className="rounded-2xl border border-orange-200 bg-orange-50/50 p-4 text-sm text-orange-900">
+                                <div className="rounded-2xl border border-brand-200 bg-brand-50/50 p-4 text-sm text-orange-900">
                                     This creates the auth account, links the owner as the manager, and seeds default theme, tax, currency, and feature flags.
                                 </div>
                             </div>
                         </div>
 
-                        <div className="flex flex-col-reverse gap-3 border-t border-gray-100 bg-white px-6 py-4 md:flex-row md:items-center md:justify-between">
-                            <p className="text-xs text-gray-500">The new owner can sign in immediately with the email and temporary password above.</p>
+                        <div className="flex flex-col-reverse gap-3 border-t border-hairline bg-surface px-6 py-4 md:flex-row md:items-center md:justify-between">
+                            <p className="text-xs text-ink-subtle">The new owner can sign in immediately with the email and temporary password above.</p>
                             <div className="flex items-center gap-3">
                                 <button
                                     onClick={() => {
@@ -713,7 +713,7 @@ export default function SuperAdminDashboard({
                                             setIsCreateModalOpen(false)
                                         }
                                     }}
-                                    className="rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                                    className="rounded-xl border border-hairline-strong bg-surface px-4 py-2.5 text-sm font-medium text-ink-muted transition hover:bg-surface-muted"
                                     disabled={isCreatingTenant}
                                 >
                                     Cancel
@@ -735,19 +735,19 @@ export default function SuperAdminDashboard({
             {/* Record Payment Modal */}
             {paymentModal.isOpen && paymentModal.restaurant && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-                        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                    <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md">
+                        <div className="p-6 border-b border-hairline flex items-center justify-between">
                             <div>
-                                <h2 className="text-lg font-extrabold text-gray-900">Record Subscription Payment</h2>
-                                <p className="text-sm text-gray-500 mt-0.5">{paymentModal.restaurant.name}</p>
+                                <h2 className="text-lg font-extrabold text-ink">Record Subscription Payment</h2>
+                                <p className="text-sm text-ink-subtle mt-0.5">{paymentModal.restaurant.name}</p>
                             </div>
-                            <button onClick={() => setPaymentModal({ isOpen: false, restaurant: null })} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+                            <button onClick={() => setPaymentModal({ isOpen: false, restaurant: null })} className="p-2 text-ink-subtle hover:text-ink-muted rounded-lg hover:bg-surface-muted">
                                 <X size={20} />
                             </button>
                         </div>
                         <div className="p-6 space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Amount (Rs.)</label>
+                                <label className="block text-sm font-medium text-ink-muted mb-1.5">Amount (Rs.)</label>
                                 <input
                                     type="number"
                                     min="0"
@@ -755,15 +755,15 @@ export default function SuperAdminDashboard({
                                     placeholder="e.g. 1999"
                                     value={paymentForm.amount}
                                     onChange={e => setPaymentForm(p => ({ ...p, amount: e.target.value }))}
-                                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                                    className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Payment Method</label>
+                                <label className="block text-sm font-medium text-ink-muted mb-1.5">Payment Method</label>
                                 <select
                                     value={paymentForm.method}
                                     onChange={e => setPaymentForm(p => ({ ...p, method: e.target.value }))}
-                                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                                    className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                                 >
                                     <option value="cash">Cash</option>
                                     <option value="esewa">eSewa</option>
@@ -773,30 +773,30 @@ export default function SuperAdminDashboard({
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Reference / Transaction ID</label>
+                                <label className="block text-sm font-medium text-ink-muted mb-1.5">Reference / Transaction ID</label>
                                 <input
                                     type="text"
                                     placeholder="Optional — transaction code"
                                     value={paymentForm.reference}
                                     onChange={e => setPaymentForm(p => ({ ...p, reference: e.target.value }))}
-                                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                                    className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
+                                <label className="block text-sm font-medium text-ink-muted mb-1.5">Notes</label>
                                 <input
                                     type="text"
                                     placeholder="Optional"
                                     value={paymentForm.notes}
                                     onChange={e => setPaymentForm(p => ({ ...p, notes: e.target.value }))}
-                                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                                    className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                                 />
                             </div>
                         </div>
-                        <div className="p-6 border-t border-gray-100 flex gap-3">
+                        <div className="p-6 border-t border-hairline flex gap-3">
                             <button
                                 onClick={() => setPaymentModal({ isOpen: false, restaurant: null })}
-                                className="flex-1 py-2.5 rounded-xl border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+                                className="flex-1 py-2.5 rounded-xl border border-hairline-strong text-sm font-medium text-ink-muted hover:bg-surface-muted transition"
                             >
                                 Cancel
                             </button>
@@ -827,8 +827,8 @@ function Field({
 }) {
     return (
         <label className="block space-y-1.5">
-            <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <span className="text-gray-400">{icon}</span>
+            <span className="flex items-center gap-2 text-sm font-medium text-ink-muted">
+                <span className="text-ink-subtle">{icon}</span>
                 {label}
             </span>
             {children}
@@ -858,7 +858,7 @@ function MetricCard({
     const c = colors[color] || colors.indigo
 
     return (
-        <div className="group relative bg-white rounded-[24px] p-6 border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1 overflow-hidden">
+        <div className="group relative bg-surface rounded-[24px] p-6 border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1 overflow-hidden">
             <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${c.split(' ')[0]} ${c.split(' ')[1]} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
             
             <div className="flex flex-col h-full justify-between">
@@ -866,8 +866,8 @@ function MetricCard({
                     <Icon size={24} />
                 </div>
                 <div>
-                    <h3 className="text-gray-500 text-[13px] font-semibold uppercase tracking-wider mb-1">{label}</h3>
-                    <p className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight tabular-nums truncate">
+                    <h3 className="text-ink-subtle text-[13px] font-semibold uppercase tracking-wider mb-1">{label}</h3>
+                    <p className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight tabular-nums truncate">
                         {typeof value === 'number' ? value.toLocaleString() : value}
                     </p>
                 </div>

@@ -8,8 +8,11 @@ import type { Metadata } from 'next'
 // ISR: this public landing page (restaurant info + table/QR list) changes rarely.
 // Serve cached HTML and revalidate every 10 min as a safety net; table edits trigger
 // immediate on-demand revalidation from admin/tables/actions.ts.
+// Note: `runtime = 'edge'` is incompatible with on-demand ISR (generateStaticParams
+// below) in this Next.js version — Node runtime here, but ISR still serves cached
+// hits from Vercel's Edge Network regardless, so the customer-facing latency for
+// the common (cache-hit) case is unaffected.
 export const revalidate = 600
-export const runtime = 'edge'
 
 // Slugs are tenant-defined and unbounded, so we prerender none at build time and let
 // each slug be generated + cached on first request (on-demand ISR). Without this,

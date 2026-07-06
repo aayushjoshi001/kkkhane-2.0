@@ -9,28 +9,28 @@ export default function PendingVerificationPage() {
                 <Clock className="w-10 h-10" />
             </div>
             
-            <h1 className="text-3xl font-bold text-gray-900 mb-4">Payment Verification Pending</h1>
-            <p className="text-lg text-gray-600 mb-8">
+            <h1 className="text-3xl font-bold text-ink mb-4">Payment Verification Pending</h1>
+            <p className="text-lg text-ink-muted mb-8">
                 We have received your payment reference code. Our team is currently reviewing it. Your subscription will be activated automatically once verified.
             </p>
 
-            <Card className="p-6 bg-gray-50 border-gray-200 text-left max-w-lg mx-auto mb-10">
-                <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Card className="p-6 bg-surface-muted border-hairline-strong text-left max-w-lg mx-auto mb-10">
+                <h3 className="font-semibold text-ink mb-4 flex items-center gap-2">
                     <AlertCircle className="w-5 h-5 text-brand-500" />
                     What happens next?
                 </h3>
                 <ul className="space-y-4">
                     <li className="flex items-start gap-3">
-                        <CheckCircle2 className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
-                        <span className="text-gray-600">Verification typically takes less than 15 minutes during standard business hours.</span>
+                        <CheckCircle2 className="w-5 h-5 text-ink-subtle shrink-0 mt-0.5" />
+                        <span className="text-ink-muted">Verification typically takes less than 15 minutes during standard business hours.</span>
                     </li>
                     <li className="flex items-start gap-3">
-                        <CheckCircle2 className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
-                        <span className="text-gray-600">You will regain full access to your dashboard and POS instantly after approval.</span>
+                        <CheckCircle2 className="w-5 h-5 text-ink-subtle shrink-0 mt-0.5" />
+                        <span className="text-ink-muted">You will regain full access to your dashboard and POS instantly after approval.</span>
                     </li>
                     <li className="flex items-start gap-3">
-                        <CheckCircle2 className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
-                        <span className="text-gray-600">If you experience delays, please contact our support team.</span>
+                        <CheckCircle2 className="w-5 h-5 text-ink-subtle shrink-0 mt-0.5" />
+                        <span className="text-ink-muted">If you experience delays, please contact our support team.</span>
                     </li>
                 </ul>
             </Card>

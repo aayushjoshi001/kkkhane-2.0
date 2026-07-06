@@ -34,7 +34,7 @@ export default function CategoryNav({
     }
  
     return (
-        <div className="bg-gray-50 sticky top-[112px] z-30 shadow-sm -mx-4 mt-[-36px] pt-[66px] pb-1 px-0">
+        <div className="bg-surface-muted sticky top-[112px] z-30 shadow-sm -mx-4 mt-[-36px] pt-[66px] pb-1 px-0">
             <div
                 ref={scrollRef}
                 className="flex overflow-x-auto gap-1 px-4"
@@ -54,7 +54,7 @@ export default function CategoryNav({
                             } ${
                                 isActive
                                     ? 'bg-[var(--color-primary)] text-white shadow-sm shadow-[var(--color-primary)]/20'
-                                    : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50 active:scale-95'
+                                    : 'text-ink-subtle hover:text-ink hover:bg-surface-muted/50 active:scale-95'
                             }`}
                         >
                             {cat?.image_url ? (

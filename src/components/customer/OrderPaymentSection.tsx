@@ -54,22 +54,22 @@ export default function OrderPaymentSection({
     }
 
     return (
-        <div className="mt-6 bg-white rounded-[var(--border-radius)] shadow-sm border border-gray-100 overflow-hidden">
+        <div className="mt-6 bg-surface rounded-[var(--border-radius)] shadow-sm border border-hairline overflow-hidden">
             <button
                 onClick={() => setIsExpanded(!isExpanded)}
                 className="w-full px-4 py-4 flex items-center justify-between bg-gradient-to-r from-green-50 to-emerald-50 border-b border-green-100"
             >
                 <div className="flex items-center gap-2">
                     <CreditCard size={20} className="text-green-600" />
-                    <span className="font-semibold text-gray-900">Pay Now</span>
+                    <span className="font-semibold text-ink">Pay Now</span>
                     <span className="text-sm text-green-600 font-medium">
                         {money(totalAmount)}
                     </span>
                 </div>
                 {isExpanded ? (
-                    <ChevronUp size={18} className="text-gray-400" />
+                    <ChevronUp size={18} className="text-ink-subtle" />
                 ) : (
-                    <ChevronDown size={18} className="text-gray-400" />
+                    <ChevronDown size={18} className="text-ink-subtle" />
                 )}
             </button>
 

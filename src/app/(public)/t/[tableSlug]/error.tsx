@@ -17,8 +17,8 @@ export default function CustomerError({
             <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6">
                 <AlertCircle size={40} />
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-3">Oops! Something went wrong.</h2>
-            <p className="text-gray-500 max-w-sm mx-auto mb-8">
+            <h2 className="text-2xl font-bold text-ink mb-3">Oops! Something went wrong.</h2>
+            <p className="text-ink-subtle max-w-sm mx-auto mb-8">
                 We couldn&apos;t load this part of the menu. Please try refreshing.
             </p>
             <button

@@ -30,7 +30,7 @@ export default function WaiterOrdersTabs({
                         className={`relative flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-extrabold transition-all active:scale-95 w-full ${
                             filter === 'dine-in'
                                 ? 'bg-[var(--color-primary)] text-white shadow-sm'
-                                : 'bg-white border border-hairline text-gray-500 hover:bg-gray-50 hover:text-gray-700 shadow-sm'
+                                : 'bg-surface border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink-muted shadow-sm'
                         }`}
                     >
                         <Utensils size={14} />
@@ -53,7 +53,7 @@ export default function WaiterOrdersTabs({
                         className={`relative flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-extrabold transition-all active:scale-95 w-full ${
                             filter === 'takeaway'
                                 ? 'bg-[var(--color-primary)] text-white shadow-sm'
-                                : 'bg-white border border-hairline text-gray-500 hover:bg-gray-50 hover:text-gray-700 shadow-sm'
+                                : 'bg-surface border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink-muted shadow-sm'
                         }`}
                     >
                         <ShoppingBag size={14} />

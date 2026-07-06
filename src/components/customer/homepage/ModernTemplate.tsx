@@ -14,7 +14,7 @@ export default function ModernTemplate({ config, onMenuClick }: { config: Homepa
                 <div className="relative h-full flex flex-col items-center justify-center text-center px-4 z-10 animate-fade-up">
                     <h1 className="text-display text-white mb-6 drop-shadow-lg">{config.hero_title}</h1>
                     <p className="text-h2 text-white/90 mb-10 max-w-2xl font-normal">{config.hero_subtitle}</p>
-                    <button onClick={onMenuClick} className="inline-flex items-center gap-3 px-8 h-12 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-pill text-sm font-semibold hover:bg-white hover:text-ink transition-[background-color,color,transform] duration-300 hover:-translate-y-0.5 focus-ring shadow-lg">
+                    <button onClick={onMenuClick} className="inline-flex items-center gap-3 px-8 h-12 bg-surface/10 backdrop-blur-md border border-white/20 text-white rounded-pill text-sm font-semibold hover:bg-surface hover:text-ink transition-[background-color,color,transform] duration-300 hover:-translate-y-0.5 focus-ring shadow-lg">
                         {config.hero_cta_text} <span className="text-lg leading-none">→</span>
                     </button>
                 </div>
@@ -64,7 +64,7 @@ export default function ModernTemplate({ config, onMenuClick }: { config: Homepa
                             <h2 className="text-display">{config.cta.headline}</h2>
                             <p className="text-h3 font-normal opacity-90">{config.cta.description}</p>
                         </div>
-                        <button onClick={onMenuClick} className="inline-flex items-center justify-center h-12 px-8 bg-white text-ink rounded-card font-semibold transition-transform duration-150 hover:-translate-y-0.5 focus-ring shadow-sm" style={{ color: config.theme_primary }}>
+                        <button onClick={onMenuClick} className="inline-flex items-center justify-center h-12 px-8 bg-surface text-ink rounded-card font-semibold transition-transform duration-150 hover:-translate-y-0.5 focus-ring shadow-sm" style={{ color: config.theme_primary }}>
                             {config.cta.button_text}
                         </button>
                     </div>

@@ -447,10 +447,10 @@ export default function StaffManager({
         switch (roleName) {
             case 'super_admin': return <Shield size={16} className="text-purple-500" />
             case 'manager': return <Users size={16} className="text-blue-500" />
-            case 'kitchen': return <ChefHat size={16} className="text-orange-500" />
+            case 'kitchen': return <ChefHat size={16} className="text-brand-500" />
             case 'waiter': return <User size={16} className="text-green-500" />
             case 'cashier': return <Banknote size={16} className="text-emerald-500" />
-            default: return <User size={16} className="text-gray-500" />
+            default: return <User size={16} className="text-ink-subtle" />
         }
     }
 
@@ -1074,7 +1074,7 @@ export default function StaffManager({
                             </div>
 
                             <div>
-                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Department <span className="text-gray-400 font-normal normal-case">(optional)</span></label>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Department <span className="text-ink-subtle font-normal normal-case">(optional)</span></label>
                                 <select
                                     value={createModal.departmentId}
                                     onChange={(e) => setCreateModal(prev => ({ ...prev, departmentId: e.target.value }))}
@@ -1147,7 +1147,7 @@ export default function StaffManager({
                             </div>
 
                             <div>
-                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Department <span className="text-gray-400 font-normal normal-case">(optional)</span></label>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Department <span className="text-ink-subtle font-normal normal-case">(optional)</span></label>
                                 <select
                                     value={inviteModal.departmentId}
                                     onChange={(e) => setInviteModal(prev => ({ ...prev, departmentId: e.target.value }))}

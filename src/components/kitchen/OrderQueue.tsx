@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useVirtualizer, useWindowVirtualizer } from '@tanstack/react-virtual'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { playNewOrder } from '@/lib/audio'
 import { toast } from 'react-hot-toast'
@@ -116,11 +117,11 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
                     const isDelivery = order.order_type === 'delivery'
                     const sourceLabel = isTakeout ? 'Takeaway' : isDelivery ? 'Delivery' : (tbl ? `Table ${tbl}` : 'Order')
                     toast.custom((t) => (
-                        <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-white shadow-xl rounded-2xl px-4 py-3 flex items-start gap-3 border-2 border-amber-300`}>
+                        <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-surface shadow-xl rounded-2xl px-4 py-3 flex items-start gap-3 border-2 border-amber-300`}>
                             <span className="text-xl mt-0.5">🔔</span>
                             <div>
                                 <p className="font-bold text-sm text-amber-700">New Order!</p>
-                                <p className="text-xs text-gray-500 mt-0.5">{sourceLabel} · {money(order.total_amount)}</p>
+                                <p className="text-xs text-ink-subtle mt-0.5">{sourceLabel} · {money(order.total_amount)}</p>
                             </div>
                         </div>
                     ), { duration: 6000, position: 'top-right' })
@@ -151,11 +152,11 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
                 const isDelivery = fresh.order_type === 'delivery'
                 const sourceLabel = isTakeout ? 'Takeaway' : isDelivery ? 'Delivery' : (tbl ? `Table ${tbl}` : 'Order')
                 toast.custom((t) => (
-                    <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-white shadow-xl rounded-2xl px-4 py-3 flex items-start gap-3 border-2 border-amber-300`}>
+                    <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-surface shadow-xl rounded-2xl px-4 py-3 flex items-start gap-3 border-2 border-amber-300`}>
                         <span className="text-xl mt-0.5">ðŸ””</span>
                         <div>
                             <p className="font-bold text-sm text-amber-700">New Order!</p>
-                            <p className="text-xs text-gray-500 mt-0.5">{sourceLabel} Â· {money(fresh.total_amount)}</p>
+                            <p className="text-xs text-ink-subtle mt-0.5">{sourceLabel} Â· {money(fresh.total_amount)}</p>
                         </div>
                     </div>
                 ), { duration: 6000, position: 'top-right' })
@@ -237,7 +238,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     return (
         <div className="h-full flex flex-col bg-[#FBF7F3]">
             {/* Mobile: tab bar */}
-            <div className="lg:hidden shrink-0 bg-white border-b border-gray-100 px-2 sm:px-4">
+            <div className="lg:hidden shrink-0 bg-surface border-b border-hairline px-2 sm:px-4">
                 <div className="max-w-2xl mx-auto grid grid-cols-3">
                     {(Object.keys(TAB_META) as TabKey[]).map(key => {
                         const meta = TAB_META[key]
@@ -287,36 +288,76 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
                     const Icon = meta.icon
                     const list = sections[key]
                     return (
-                        <div key={key} className="flex-1 min-w-0 flex flex-col">
-                            <div className="flex items-center gap-2 pb-3 mb-1 border-b-2" style={{ borderColor: meta.border }}>
-                                <Icon size={16} style={{ color: meta.accent }} />
-                                <h3 className="font-bold text-gray-800 text-sm">{meta.label}</h3>
-                                {list.length > 0 && (
-                                    <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full text-white" style={{ background: meta.accent }}>
-                                        {list.length}
-                                    </span>
-                                )}
-                            </div>
-                            <div className="flex-1 overflow-y-auto space-y-3 pr-1 pt-2" style={{ scrollbarWidth: 'thin' }}>
-                                {list.map(section => renderTicket(section, key))}
-                                {list.length === 0 && (
-                                    <div className="pt-16">
-                                        <EmptyState icon={Icon} title={emptyTitle(key)} />
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )
-                })}
+                            <VirtualColumn
+                                key={key}
+                                tabKey={key}
+                                meta={meta}
+                                list={list}
+                                renderTicket={(section) => renderTicket(section, key)}
+                                emptyTitle={emptyTitle(key)}
+                            />
+                        )
+                    })}
+                </div>
             </div>
-        </div>
-    )
-}
-
+        )
+    }
+    
+    function VirtualColumn({ tabKey, meta, list, renderTicket, emptyTitle }: { tabKey: TabKey, meta: any, list: Section[], renderTicket: (s: Section) => React.ReactNode, emptyTitle: string }) {
+        const Icon = meta.icon
+        const parentRef = useRef<HTMLDivElement>(null)
+        const virtualizer = useVirtualizer({
+            count: list.length,
+            getScrollElement: () => parentRef.current,
+            estimateSize: () => 200,
+            overscan: 3,
+        })
+    
+        return (
+            <div className="flex-1 min-w-0 flex flex-col">
+                <div className="flex items-center gap-2 pb-3 mb-1 border-b-2" style={{ borderColor: meta.border }}>
+                    <Icon size={16} style={{ color: meta.accent }} />
+                    <h3 className="font-bold text-ink text-sm">{meta.label}</h3>
+                    {list.length > 0 && (
+                        <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full text-white" style={{ background: meta.accent }}>
+                            {list.length}
+                        </span>
+                    )}
+                </div>
+                <div ref={parentRef} className="flex-1 overflow-y-auto pr-1 pt-2" style={{ scrollbarWidth: 'thin' }}>
+                    {list.length === 0 ? (
+                        <div className="pt-16">
+                            <EmptyState icon={Icon} title={emptyTitle} />
+                        </div>
+                    ) : (
+                        <div style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+                            {virtualizer.getVirtualItems().map((vRow) => (
+                                <div
+                                    key={list[vRow.index].order.id}
+                                    data-index={vRow.index}
+                                    ref={virtualizer.measureElement}
+                                    style={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        width: '100%',
+                                        transform: `translateY(${vRow.start}px)`,
+                                        paddingBottom: '12px'
+                                    }}
+                                >
+                                    {renderTicket(list[vRow.index])}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        )
+    }
 function itemStatusPill(status: string) {
-    if (status === 'preparing') return { label: 'Cookingâ€¦', cls: 'text-[#FB6303]' }
+    if (status === 'preparing') return { label: 'Cookingâ€¦', cls: 'text-brand-500' }
     if (status === 'ready')     return { label: 'Ready', cls: 'text-emerald-600' }
-    return { label: 'Pending', cls: 'text-gray-400' }
+    return { label: 'Pending', cls: 'text-ink-subtle' }
 }
 
 function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffNames, collapsed, onToggle, onApply }: {
@@ -383,13 +424,13 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
     const waitedMin = Math.floor((now - new Date(order.placed_at).getTime()) / 60000)
 
     return (
-        <div className="bg-white rounded-2xl shadow-sm overflow-hidden" style={{ borderLeft: `4px solid ${meta.accent}` }}>
+        <div className="bg-surface rounded-2xl shadow-sm overflow-hidden" style={{ borderLeft: `4px solid ${meta.accent}` }}>
             {/* Header */}
             <button onClick={onToggle} className="w-full text-left px-4 pt-3.5 pb-3">
                 <div className="flex items-center gap-2 flex-wrap pr-6 relative">
-                    <span className="font-extrabold text-gray-900">#{order.id.slice(0, 4).toUpperCase()}</span>
+                    <span className="font-extrabold text-ink">#{order.id.slice(0, 4).toUpperCase()}</span>
                     <span className="text-[11px] font-bold text-white px-2 py-0.5 rounded-full" style={{ background: '#FB6303' }}>{space}</span>
-                    <span className="text-[11px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{items.length} dish{items.length > 1 ? 'es' : ''}</span>
+                    <span className="text-[11px] font-semibold text-ink-subtle bg-surface-muted px-2 py-0.5 rounded-full">{items.length} dish{items.length > 1 ? 'es' : ''}</span>
                     {chefLabel && (
                         <span className="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
                             <ChefHat size={11} /> {chefLabel}
@@ -397,7 +438,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
                     )}
                     <ChevronDown size={18} className={`absolute right-0 top-0.5 text-gray-300 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
                 </div>
-                <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-gray-400 font-medium">
+                <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-ink-subtle font-medium">
                     <Clock size={11} />
                     {tab === 'queue' ? `waiting ${waitedMin}m` : timeAgo(order.placed_at)}
                     {!isCooking && selIds.length > 0 && <span className="ml-1" style={{ color: meta.accent }}>Â· {selIds.length} selected</span>}
@@ -408,9 +449,9 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
                 <div className="px-4 pb-4">
                     {/* Select-all + action (New/Queue) */}
                     {!isCooking && items.length > 0 && (
-                        <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-100">
+                        <div className="flex items-center justify-between mb-2 pb-2 border-b border-hairline">
                             {items.length > 1 ? (
-                                <button onClick={toggleAll} className="flex items-center gap-2 text-xs font-bold text-gray-500">
+                                <button onClick={toggleAll} className="flex items-center gap-2 text-xs font-bold text-ink-subtle">
                                     {allSel ? <CheckSquare size={16} style={{ color: meta.accent }} /> : <Square size={16} className="text-gray-300" />}
                                     Select All Dishes
                                 </button>
@@ -433,18 +474,18 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
                                 <div
                                     key={item.id}
                                     onClick={canSelect ? () => toggle(item.id) : undefined}
-                                    className={`flex items-center gap-3 py-2 rounded-lg px-1 ${canSelect ? 'cursor-pointer' : 'opacity-70'} ${isSel ? 'bg-orange-50/60' : ''}`}
+                                    className={`flex items-center gap-3 py-2 rounded-lg px-1 ${canSelect ? 'cursor-pointer' : 'opacity-70'} ${isSel ? 'bg-brand-50/60' : ''}`}
                                 >
                                     {canSelect ? (
                                         isSel ? <CheckSquare size={18} style={{ color: meta.accent }} className="shrink-0" /> : <Square size={18} className="text-gray-300 shrink-0" />
                                     ) : (
-                                        <span className="w-[18px] h-[18px] rounded border border-gray-200 shrink-0" />
+                                        <span className="w-[18px] h-[18px] rounded border border-hairline-strong shrink-0" />
                                     )}
                                     <div className="flex-1 min-w-0">
-                                        <p className="font-semibold text-gray-900 text-sm leading-tight truncate">{item.menu_items?.name}</p>
-                                        <p className="text-[11px] text-gray-400">Ã—{item.quantity}{lineTotal > 0 ? ` Â· ${money(lineTotal)}` : ''}{item.special_request ? ` Â· ${item.special_request}` : ''}</p>
+                                        <p className="font-semibold text-ink text-sm leading-tight truncate">{item.menu_items?.name}</p>
+                                        <p className="text-[11px] text-ink-subtle">Ã—{item.quantity}{lineTotal > 0 ? ` Â· ${money(lineTotal)}` : ''}{item.special_request ? ` Â· ${item.special_request}` : ''}</p>
                                         {item.menu_items?.is_combo && (
-                                            <div className="mt-0.5 pl-2 border-l-2 border-gray-100 text-[10px] text-gray-400 space-y-0.5">
+                                            <div className="mt-0.5 pl-2 border-l-2 border-hairline text-[10px] text-ink-subtle space-y-0.5">
                                                 {comboItems.filter(c => c.combo_id === item.menu_item_id).map(c => (
                                                     <div key={c.id}>â€¢ {c.quantity * item.quantity}Ã— {c.menu_items?.name || 'Item'}</div>
                                                 ))}
@@ -476,7 +517,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
                                 <Check size={16} /> Mark Ready{selIds.length ? ` (${selIds.length})` : ''}
                             </button>
                         ) : (
-                            <p className="mt-3 text-center text-xs text-gray-400">Another chef is on these dishes</p>
+                            <p className="mt-3 text-center text-xs text-ink-subtle">Another chef is on these dishes</p>
                         )
                     )}
                 </div>

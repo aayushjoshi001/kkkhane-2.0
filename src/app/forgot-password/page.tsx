@@ -13,16 +13,16 @@ export default function ForgotPasswordPage() {
     const [state, formAction, isPending] = useActionState(forgotPasswordAction, initialState)
     const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
 
-    const inputClasses = "h-[52px] w-full rounded-[14px] border border-gray-200 bg-white pl-12 pr-4 text-[15px] outline-none text-gray-900 placeholder:text-gray-400 focus:border-[#ff5a00] focus:ring-1 focus:ring-[#ff5a00] transition-all"
-    const labelClasses = "text-[13px] font-semibold text-gray-900 flex gap-1 mb-1.5"
+    const inputClasses = "h-[52px] w-full rounded-[14px] border border-hairline-strong bg-surface pl-12 pr-4 text-[15px] outline-none text-ink placeholder:text-ink-subtle focus:border-[#ff5a00] focus:ring-1 focus:ring-[#ff5a00] transition-all"
+    const labelClasses = "text-[13px] font-semibold text-ink flex gap-1 mb-1.5"
 
     return (
         <div className="h-[100dvh] w-full flex flex-col md:flex-row bg-[#ff6b00] overflow-hidden">
             <div className="w-full md:w-[45%] lg:w-[40%] h-[35vh] md:h-full flex-shrink-0">
                 <AuthHero heightClassName="h-full" />
             </div>
-            <div className="flex-1 w-full flex flex-col justify-start md:justify-center items-center px-0 md:px-8 -mt-6 md:mt-0 relative z-10 bg-transparent md:bg-white rounded-t-[2rem] md:rounded-none overflow-hidden">
-                <div className="w-full h-full bg-white md:bg-transparent px-6 sm:px-10 pt-8 pb-12 flex flex-col items-center justify-start md:justify-center overflow-y-auto no-scrollbar relative">
+            <div className="flex-1 w-full flex flex-col justify-start md:justify-center items-center px-0 md:px-8 -mt-6 md:mt-0 relative z-10 bg-transparent md:bg-surface rounded-t-[2rem] md:rounded-none overflow-hidden">
+                <div className="w-full h-full bg-surface md:bg-transparent px-6 sm:px-10 pt-8 pb-12 flex flex-col items-center justify-start md:justify-center overflow-y-auto no-scrollbar relative">
                     <div className="w-full max-w-[420px] mx-auto pb-10">
                         {/* Mobile Sheet Handle */}
                         <div className="w-12 h-1.5 rounded-full bg-[#ff6b00] mb-8 md:hidden shrink-0 mx-auto" />
@@ -32,20 +32,20 @@ export default function ForgotPasswordPage() {
                                 <div className="inline-flex items-center justify-center w-20 h-20 rounded-[20px] bg-green-50 border border-green-100 mb-6 text-green-500 shadow-sm">
                                     <CheckCircle2 size={40} />
                                 </div>
-                                <h1 className="text-[1.75rem] font-bold text-gray-900 mb-2">Check your inbox</h1>
-                                <p className="text-[15px] text-gray-500 mb-10 leading-relaxed max-w-sm">
+                                <h1 className="text-[1.75rem] font-bold text-ink mb-2">Check your inbox</h1>
+                                <p className="text-[15px] text-ink-subtle mb-10 leading-relaxed max-w-sm">
                                     If an account exists for that email, we sent a password reset link. It expires in 1 hour.
                                 </p>
                                 <Link href="/login"
-                                      className="inline-flex items-center justify-center gap-2 w-full bg-gray-900 hover:bg-gray-800 text-white h-[52px] rounded-[14px] text-[16px] font-semibold shadow-lg shadow-gray-900/25 transition-all">
+                                      className="inline-flex items-center justify-center gap-2 w-full bg-ink hover:bg-gray-800 text-white h-[52px] rounded-[14px] text-[16px] font-semibold shadow-lg shadow-gray-900/25 transition-all">
                                     <ArrowLeft size={18} /> Back to Log In
                                 </Link>
                             </div>
                         ) : (
                             <>
                                 <div className="w-full text-left mb-8">
-                                    <h1 className="text-[1.75rem] font-bold text-gray-900 mb-2">Reset Password</h1>
-                                    <p className="text-[15px] text-gray-500 font-normal">Enter your email and we'll send a reset link.</p>
+                                    <h1 className="text-[1.75rem] font-bold text-ink mb-2">Reset Password</h1>
+                                    <p className="text-[15px] text-ink-subtle font-normal">Enter your email and we'll send a reset link.</p>
                                 </div>
 
                                 <form action={formAction} className="w-full flex flex-col gap-5">
@@ -99,7 +99,7 @@ export default function ForgotPasswordPage() {
 
                                 <div className="mt-8 text-center">
                                     <Link href="/login"
-                                          className="inline-flex items-center gap-2 text-[15px] font-semibold text-gray-500 hover:text-gray-900 transition">
+                                          className="inline-flex items-center gap-2 text-[15px] font-semibold text-ink-subtle hover:text-ink transition">
                                         <ArrowLeft size={16} /> Back to Log In
                                     </Link>
                                 </div>

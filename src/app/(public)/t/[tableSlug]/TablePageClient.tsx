@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import HomepageGate from '@/components/customer/HomepageGate'
 import type { MenuItem, MenuCategory, HomepageConfig } from '@/types/database'
 import MenuSection from '@/components/customer/MenuSection'
@@ -187,6 +188,8 @@ export default function TablePageClient({
     }
 
     // Fetch the active session for this table via a qr_token-gated server endpoint.
+    // Used once as a fallback for a session that opened before the realtime
+    // subscription below connects — not polled.
     const fetchActiveSession = async () => {
         try {
             const res = await fetch(
@@ -200,19 +203,37 @@ export default function TablePageClient({
                 return true
             }
         } catch {
-            // Transient network error — the polling interval will retry.
+            // Transient network error — harmless, the realtime subscription is the
+            // real detection path; this is just a catch-up for the connect window.
         }
         return false
     }
 
-    // Waiter-managed mode only: poll every 3s while no session is detected, so the
-    // page enables ordering within ~3s of a waiter opening the session (no refresh).
-    // In self-service mode the session always arrives via props, so this never runs.
+    // Waiter-managed mode only: a waiter opens the table session from their own
+    // device, so this customer's page has to find out some other way. Subscribe
+    // to the sessions row for this table instead of polling. The realtime
+    // payload never carries session_token — anon's column grant on `sessions`
+    // deliberately excludes it (RLS filters rows, not columns, so the real
+    // secret is only ever delivered via the qr_token-gated /api/session/active
+    // route below). Realtime here is just the "something changed, go check"
+    // signal. In self-service mode the session always arrives via props, so
+    // this never runs.
     useEffect(() => {
         if (!waiterSessionEnabled || hasSession) return
+
+        const supabase = createClient()
         fetchActiveSession()
-        const timer = setInterval(fetchActiveSession, 3000)
-        return () => clearInterval(timer)
+
+        const channel = supabase
+            .channel(`table-session:${tableData.id}`)
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'sessions', filter: `table_id=eq.${tableData.id}` },
+                () => { fetchActiveSession() }
+            )
+            .subscribe()
+
+        return () => { supabase.removeChannel(channel) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tableData.id, hasSession, waiterSessionEnabled])
 
@@ -225,9 +246,9 @@ export default function TablePageClient({
     const showWaiterGate = waiterSessionEnabled && !hasSession
 
     const menuContent = (onBackToHome: (() => void) | null) => (
-        <div className="min-h-screen bg-gray-50 pb-20">
+        <div className="min-h-screen bg-surface-muted pb-20">
             {/* Sticky header — branded and curved bottom matching wireframe */}
-            <header className="relative bg-[#FB6303] text-white rounded-b-[36px] sticky top-0 z-40 pb-6 pt-2 shadow-md flex flex-col gap-2">
+            <header className="relative bg-brand-500 text-white rounded-b-[36px] sticky top-0 z-40 pb-6 pt-2 shadow-md flex flex-col gap-2">
                 {/* Background image overlay container below the brand row (starts at top-[48px]) */}
                 <div className="absolute inset-x-0 bottom-0 top-[48px] rounded-b-[36px] overflow-hidden z-0">
                     {/* Background image overlay for the advertisement portion */}
@@ -235,7 +256,7 @@ export default function TablePageClient({
                         className="absolute inset-0 bg-cover bg-center filter brightness-[0.55] scale-105"
                         style={{ backgroundImage: `url('https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=600&auto=format&fit=crop')` }}
                     />
-                    <div className="absolute inset-0 bg-[#FB6303]/15 mix-blend-multiply" />
+                    <div className="absolute inset-0 bg-brand-500/15 mix-blend-multiply" />
                     <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/20 to-black/60" />
                 </div>
 
@@ -243,11 +264,11 @@ export default function TablePageClient({
                     {/* Left side: Restaurant logo + Restaurant name */}
                     <div className="flex items-center gap-2 shrink-0">
                         {logoUrl ? (
-                            <div className="relative w-8 h-8 rounded-full overflow-hidden bg-white shrink-0 border border-white/25 shadow-sm">
+                            <div className="relative w-8 h-8 rounded-full overflow-hidden bg-surface shrink-0 border border-white/25 shadow-sm">
                                 <Image src={logoUrl} alt={restaurantName} fill className="object-cover" sizes="32px" />
                             </div>
                         ) : (
-                            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center shrink-0 border border-white/25 shadow-sm">
+                            <div className="w-8 h-8 rounded-full bg-surface/10 flex items-center justify-center shrink-0 border border-white/25 shadow-sm">
                                 <UtensilsCrossed size={14} className="text-white" />
                             </div>
                         )}
@@ -263,11 +284,11 @@ export default function TablePageClient({
                     <div className="flex items-center gap-3 shrink-0 pr-1">
                         <button 
                             onClick={() => setShowProfile(true)}
-                            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center shrink-0 border border-white/25 shadow-sm transition-colors"
+                            className="w-8 h-8 rounded-full bg-surface/10 hover:bg-surface/20 flex items-center justify-center shrink-0 border border-white/25 shadow-sm transition-colors"
                         >
                             <UserCircle size={18} className="text-white" />
                         </button>
-                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shrink-0 border-2 border-white overflow-hidden relative shadow-sm">
+                        <div className="w-8 h-8 rounded-full bg-surface flex items-center justify-center shrink-0 border-2 border-white overflow-hidden relative shadow-sm">
                             <Image 
                                 src="/brand/kkkhane-k-logo.jpg" 
                                 alt="kkkhane" 
@@ -289,19 +310,19 @@ export default function TablePageClient({
                 <div className="absolute left-1/2 -translate-x-1/2 bottom-0 translate-y-1/2 w-[85%] max-w-md z-30">
                     <div className="relative shadow-md rounded-full overflow-hidden">
                         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <Search className="h-3.5 w-3.5 text-[#FB6303]" />
+                            <Search className="h-3.5 w-3.5 text-brand-500" />
                         </div>
                         <input
                             type="text"
                             placeholder="SEARCH FOR ITEM..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="block w-full pl-10 pr-10 py-2.5 text-[11px] border-0 rounded-full bg-[#FFEAE0] text-[#7A3300] placeholder-[#D68E65] font-extrabold focus:outline-none focus:ring-2 focus:ring-orange-300 focus:bg-white transition-all text-center uppercase tracking-wider"
+                            className="block w-full pl-10 pr-10 py-2.5 text-[11px] border-0 rounded-full bg-[#FFEAE0] text-[#7A3300] placeholder-[#D68E65] font-extrabold focus:outline-none focus:ring-2 focus:ring-orange-300 focus:bg-surface transition-all text-center uppercase tracking-wider"
                         />
                         {searchQuery && (
                             <button
                                 onClick={() => setSearchQuery('')}
-                                className="absolute inset-y-0 right-0 pr-4 flex items-center text-[#FB6303] hover:text-orange-700"
+                                className="absolute inset-y-0 right-0 pr-4 flex items-center text-brand-500 hover:text-orange-700"
                             >
                                 <X className="h-4 w-4 stroke-[3px]" />
                             </button>
@@ -314,31 +335,31 @@ export default function TablePageClient({
                 {/* Waiter-managed mode: blurred fullscreen gate shown when there's no
                     active session. Dismissable so the guest can browse view-only. */}
                 {showWaiterGate && !popupDismissed && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1A1006]/40 backdrop-blur-md animate-fade-in">
-                        <div className="relative bg-white p-6 rounded-3xl max-w-sm w-full border border-[#EDD9C8] shadow-2xl text-center flex flex-col items-center animate-scale-in">
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/40 backdrop-blur-md animate-fade-in">
+                        <div className="relative bg-surface p-6 rounded-3xl max-w-sm w-full border border-hairline shadow-2xl text-center flex flex-col items-center animate-scale-in">
                             <button
                                 onClick={() => setPopupDismissed(true)}
                                 aria-label="Dismiss and browse the menu"
-                                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-[#F7F0E8] hover:bg-[#EDD9C8] flex items-center justify-center text-[#8C6A50] transition active:scale-95"
+                                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-[#F7F0E8] hover:bg-[#EDD9C8] flex items-center justify-center text-ink-subtle transition active:scale-95"
                             >
                                 <X size={16} />
                             </button>
                             {logoUrl ? (
-                                <div className="relative w-16 h-16 rounded-full overflow-hidden bg-white border border-[#EDD9C8] mb-4 shadow-sm">
+                                <div className="relative w-16 h-16 rounded-full overflow-hidden bg-surface border border-hairline mb-4 shadow-sm">
                                     <Image src={logoUrl} alt={restaurantName} fill className="object-cover" sizes="64px" />
                                 </div>
                             ) : (
-                                <div className="w-16 h-16 rounded-full bg-[#FFF0E6] flex items-center justify-center mb-4 border border-[#EDD9C8] shadow-sm">
-                                    <UtensilsCrossed size={28} className="text-[#FB6303]" />
+                                <div className="w-16 h-16 rounded-full bg-surface-muted flex items-center justify-center mb-4 border border-hairline shadow-sm">
+                                    <UtensilsCrossed size={28} className="text-brand-500" />
                                 </div>
                             )}
-                            <h2 className="font-black text-[#1A1006] text-lg mb-2">Welcome to {restaurantName}!</h2>
-                            <p className="text-[#8C6A50] text-sm font-semibold mb-6 leading-relaxed">
+                            <h2 className="font-black text-ink text-lg mb-2">Welcome to {restaurantName}!</h2>
+                            <p className="text-ink-subtle text-sm font-semibold mb-6 leading-relaxed">
                                 Your waiter will open a session for Table {tableData.label} so you can place orders.
                             </p>
                             {!selfOrderRequestEnabled ? (
                                 <p className="text-[#C4A882] text-[11px] font-bold flex items-center justify-center gap-1">
-                                    <RefreshCw size={10} className="animate-spin text-[#FB6303]" />
+                                    <RefreshCw size={10} className="animate-spin text-brand-500" />
                                     Waiting for your waiter to open the table...
                                 </p>
                             ) : requestSent ? (
@@ -359,13 +380,13 @@ export default function TablePageClient({
                                             if (res.success || res.error?.includes('already')) setRequestSent(true)
                                         }}
                                         disabled={requestLoading}
-                                        className="w-full flex items-center justify-center gap-2 text-sm font-black bg-[#FB6303] text-white py-3.5 rounded-2xl active:scale-95 transition disabled:opacity-60 shadow-md shadow-[#FB6303]/15"
+                                        className="w-full flex items-center justify-center gap-2 text-sm font-black bg-brand-500 text-white py-3.5 rounded-2xl active:scale-95 transition disabled:opacity-60 shadow-md shadow-[#FB6303]/15"
                                     >
                                         {requestLoading ? <Loader2 size={16} className="animate-spin" /> : <Bell size={16} />}
                                         Ring for Service
                                     </button>
                                     <p className="text-[#C4A882] text-[11px] font-bold flex items-center justify-center gap-1">
-                                        <RefreshCw size={10} className="animate-spin text-[#FB6303]" />
+                                        <RefreshCw size={10} className="animate-spin text-brand-500" />
                                         Waiting for session to open...
                                     </p>
                                 </div>
@@ -374,11 +395,11 @@ export default function TablePageClient({
                             {/* Takeout / pickup escape hatch — lets a guest who scanned
                                 the table QR self-order for pickup instead of waiting. */}
                             {restaurantSlug && (
-                                <div className="w-full mt-5 pt-5 border-t border-[#EDD9C8]">
+                                <div className="w-full mt-5 pt-5 border-t border-hairline">
                                     <p className="text-[#C4A882] text-[11px] font-bold mb-3">Not dining in?</p>
                                     <Link
                                         href={`/takeout/${restaurantSlug}`}
-                                        className="w-full flex items-center justify-center gap-2 text-sm font-black bg-white text-[#FB6303] border-2 border-[#FB6303] py-3.5 rounded-2xl active:scale-95 transition"
+                                        className="w-full flex items-center justify-center gap-2 text-sm font-black bg-surface text-brand-500 border-2 border-brand-500 py-3.5 rounded-2xl active:scale-95 transition"
                                     >
                                         <ShoppingBag size={16} />
                                         Order Takeout / Pickup
@@ -400,7 +421,7 @@ export default function TablePageClient({
                 {showWaiterGate && popupDismissed && (
                     <button
                         onClick={() => setPopupDismissed(false)}
-                        className="fixed bottom-16 right-4 z-40 flex items-center gap-2 bg-[#FB6303] text-white text-sm font-black pl-4 pr-5 py-3 rounded-full shadow-lg shadow-[#FB6303]/30 active:scale-95 transition animate-scale-in"
+                        className="fixed bottom-16 right-4 z-40 flex items-center gap-2 bg-brand-500 text-white text-sm font-black pl-4 pr-5 py-3 rounded-full shadow-lg shadow-[#FB6303]/30 active:scale-95 transition animate-scale-in"
                     >
                         {requestSent
                             ? <><Check size={16} className="stroke-[3px]" /> Waiter notified</>
@@ -440,7 +461,7 @@ export default function TablePageClient({
 
             {/* Fixed Bottom Navigation Bar */}
             <div 
-                className="fixed bottom-0 left-0 right-0 z-40 bg-[#FB6303] text-white shadow-[0_-4px_16px_rgba(0,0,0,0.1)] px-4 py-1 flex items-center justify-around h-12 border-t border-orange-600/30"
+                className="fixed bottom-0 left-0 right-0 z-40 bg-brand-500 text-white shadow-[0_-4px_16px_rgba(0,0,0,0.1)] px-4 py-1 flex items-center justify-around h-12 border-t border-orange-600/30"
                 style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
             >
                 {/* Home */}
@@ -476,7 +497,7 @@ export default function TablePageClient({
                     className="flex flex-col items-center justify-center text-white/80 hover:text-white transition active:scale-95 w-16 relative"
                 >
                     {cartCount > 0 && (
-                        <span className="absolute -top-1.5 right-3 bg-white text-[#FB6303] text-[9px] font-black rounded-full h-[18px] min-w-[18px] px-1 flex items-center justify-center ring-2 ring-[#FB6303]">
+                        <span className="absolute -top-1.5 right-3 bg-surface text-brand-500 text-[9px] font-black rounded-full h-[18px] min-w-[18px] px-1 flex items-center justify-center ring-2 ring-[#FB6303]">
                             {cartCount}
                         </span>
                     )}

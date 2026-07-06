@@ -115,12 +115,12 @@ export default async function FeatureSlugPage({ params }: { params: Promise<{ sl
 
     if (!feature) {
         return (
-            <div className="min-h-screen bg-[#FAFAF8] text-gray-900 font-sans">
+            <div className="min-h-screen bg-[#FAFAF8] text-ink font-sans">
                 <MarketingNav />
                 <div className="flex min-h-[70vh] flex-col items-center justify-center px-4 pt-20 text-center">
-                    <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-white shadow-sm border border-gray-100 text-4xl">🔍</div>
-                    <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-gray-900">Feature Not Found</h1>
-                    <p className="mb-8 max-w-md font-medium text-gray-500">
+                    <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-surface shadow-sm border border-hairline text-4xl">🔍</div>
+                    <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-ink">Feature Not Found</h1>
+                    <p className="mb-8 max-w-md font-medium text-ink-subtle">
                         We couldn&apos;t find the specific feature you&apos;re looking for.
                     </p>
                     <MarketingButton href="/">Back to Home</MarketingButton>
@@ -131,30 +131,30 @@ export default async function FeatureSlugPage({ params }: { params: Promise<{ sl
     }
 
     return (
-        <div className="min-h-screen bg-[#FAFAF8] text-gray-900 font-sans">
+        <div className="min-h-screen bg-[#FAFAF8] text-ink font-sans">
             <MarketingNav />
 
             <main className="pb-24 pt-32">
                 <div className="mx-auto max-w-5xl px-4 sm:px-6">
-                    <div className="relative overflow-hidden rounded-[2.5rem] border border-gray-100 bg-white shadow-2xl">
+                    <div className="relative overflow-hidden rounded-[2.5rem] border border-hairline bg-surface shadow-2xl">
                         {/* Decorative Backgrounds */}
                         <div className="pointer-events-none absolute right-0 top-0 h-96 w-96 rounded-full bg-gradient-to-bl from-purple-50/80 to-transparent blur-3xl" />
                         <div className="pointer-events-none absolute left-0 bottom-0 h-96 w-96 rounded-full bg-gradient-to-tr from-blue-50/80 to-transparent blur-3xl" />
 
                         <div className="relative z-10 p-8 sm:p-12 md:p-16 grid md:grid-cols-[1fr_400px] gap-12 items-center">
                             <div>
-                                <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-gray-100 bg-gray-50 text-3xl shadow-sm">
+                                <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-hairline bg-surface-muted text-3xl shadow-sm">
                                     {feature.icon}
                                 </div>
 
                                 <div className="mb-4"><Eyebrow tone="brand">Features</Eyebrow></div>
-                                <h1 className="mb-4 text-4xl font-extrabold tracking-tight text-gray-900 md:text-5xl leading-[1.1]">
+                                <h1 className="mb-4 text-4xl font-extrabold tracking-tight text-ink md:text-5xl leading-[1.1]">
                                     {feature.title}
                                 </h1>
                                 <p className="mb-8 text-xl font-bold text-[var(--color-primary)]">
                                     {feature.subtitle}
                                 </p>
-                                <p className="mb-10 text-lg font-medium leading-relaxed text-gray-600">
+                                <p className="mb-10 text-lg font-medium leading-relaxed text-ink-muted">
                                     {feature.description}
                                 </p>
 
@@ -168,11 +168,11 @@ export default async function FeatureSlugPage({ params }: { params: Promise<{ sl
                                 </div>
                             </div>
 
-                            <div className="bg-gray-50 rounded-3xl p-8 border border-gray-100 shadow-inner h-full flex flex-col justify-center">
-                                <h3 className="mb-6 text-xl font-extrabold text-gray-900">Key Capabilities</h3>
+                            <div className="bg-surface-muted rounded-3xl p-8 border border-hairline shadow-inner h-full flex flex-col justify-center">
+                                <h3 className="mb-6 text-xl font-extrabold text-ink">Key Capabilities</h3>
                                 <ul className="space-y-5">
                                     {feature.benefits.map((item, i) => (
-                                        <li key={i} className="flex items-start gap-4 font-medium text-gray-700">
+                                        <li key={i} className="flex items-start gap-4 font-medium text-ink-muted">
                                             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-100 mt-0.5">
                                                 <CheckCircle size={14} className="text-green-600" strokeWidth={3} />
                                             </div>

@@ -84,7 +84,7 @@ export default async function OrderPage(props: {
     const tableInfo = tableResult?.data as { label: string } | null
 
     return (
-        <div className="min-h-screen bg-[#FFF8F3] pb-12 text-[#1A1006]">
+        <div className="min-h-screen bg-surface pb-12 text-ink">
             <main className="max-w-xl mx-auto">
                 <OrderTracker
                     orderId={params.orderId}
@@ -110,7 +110,7 @@ export default async function OrderPage(props: {
                                     href={`/t/${params.tableSlug}/order/${params.orderId}/receipt`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 text-xs font-bold text-[#8C6A50] border border-[#EDD9C8] bg-white rounded-xl px-4 py-2.5 hover:bg-gray-50 active:scale-95 transition shadow-sm"
+                                    className="inline-flex items-center gap-1.5 text-xs font-bold text-ink-subtle border border-hairline bg-surface rounded-xl px-4 py-2.5 hover:bg-surface-muted active:scale-95 transition shadow-sm"
                                 >
                                     🖨️ Print / Download Receipt
                                 </a>
@@ -123,7 +123,7 @@ export default async function OrderPage(props: {
                         <Link href={`/t/${params.tableSlug}`} className="inline-block text-[var(--color-primary)] font-bold text-xs hover:underline">
                             ← Back to Menu
                         </Link>
-                        <p className="text-xs text-[#8C6A50] font-semibold">Need help? Ask a waiter for assistance.</p>
+                        <p className="text-xs text-ink-subtle font-semibold">Need help? Ask a waiter for assistance.</p>
                     </div>
                 </div>
             </main>

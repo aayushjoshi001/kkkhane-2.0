@@ -40,7 +40,7 @@ export function NepaliInput({ value, onChange, defaultIsNepali = false, classNam
                 className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors flex items-center justify-center
                     ${isNepali 
                         ? 'bg-brand-100 text-brand-600 hover:bg-brand-200' 
-                        : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+                        : 'text-ink-subtle hover:bg-surface-muted hover:text-ink-muted'
                     }`}
                 title={isNepali ? "Typing in Nepali (Devanagari)" : "Typing in English"}
             >

@@ -54,18 +54,18 @@ const STORIES = [
 
 export default function CustomerStoriesPage() {
     return (
-        <div className="min-h-screen bg-white text-gray-900">
+        <div className="min-h-screen bg-surface text-ink">
             <MarketingNav />
 
             {/* Hero */}
-            <section className="relative overflow-hidden bg-white pb-14 pt-36 text-center">
+            <section className="relative overflow-hidden bg-surface pb-14 pt-36 text-center">
                 <div className="pointer-events-none absolute left-1/2 top-1/2 h-[700px] w-[700px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500/5 blur-[120px]" />
                 <div className="relative mx-auto max-w-3xl px-4 sm:px-6">
                     <Eyebrow tone="brand">Customer Stories</Eyebrow>
-                    <h1 className="mt-6 text-5xl font-extrabold tracking-tight text-gray-900 md:text-6xl">
+                    <h1 className="mt-6 text-5xl font-extrabold tracking-tight text-ink md:text-6xl">
                         Restaurants growing with <span className="text-[var(--color-primary)]">kkkhane</span>
                     </h1>
-                    <p className="mx-auto mt-6 max-w-2xl text-xl font-medium leading-relaxed text-gray-500">
+                    <p className="mx-auto mt-6 max-w-2xl text-xl font-medium leading-relaxed text-ink-subtle">
                         See how real restaurants across Nepal run smoother, waste less, and serve faster.
                     </p>
                 </div>
@@ -75,29 +75,29 @@ export default function CustomerStoriesPage() {
             <Section tone="band">
                 <div className="grid gap-8 md:grid-cols-2">
                     {STORIES.map((s) => (
-                        <article key={s.name} className="flex flex-col overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+                        <article key={s.name} className="flex flex-col overflow-hidden rounded-3xl border border-hairline bg-surface shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
                             <div className={`flex items-center gap-4 bg-gradient-to-br ${s.gradient} p-8`}>
-                                <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white bg-white/70 text-3xl shadow-sm">{s.emoji}</div>
+                                <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white bg-surface/70 text-3xl shadow-sm">{s.emoji}</div>
                                 <div>
-                                    <h3 className="text-2xl font-extrabold text-gray-900">{s.name}</h3>
-                                    <p className="text-sm font-medium text-gray-500">{s.location}</p>
+                                    <h3 className="text-2xl font-extrabold text-ink">{s.name}</h3>
+                                    <p className="text-sm font-medium text-ink-subtle">{s.location}</p>
                                 </div>
                             </div>
                             <div className="flex flex-1 flex-col p-8">
                                 <div className="mb-6 flex items-center gap-6">
                                     <div>
                                         <p className="text-3xl font-extrabold text-[var(--color-primary)]">{s.metric}</p>
-                                        <p className="text-xs font-bold uppercase tracking-wide text-gray-400">{s.metricLabel}</p>
+                                        <p className="text-xs font-bold uppercase tracking-wide text-ink-subtle">{s.metricLabel}</p>
                                     </div>
                                 </div>
-                                <div className="mb-6 space-y-3 text-sm font-medium leading-relaxed text-gray-600">
-                                    <p><span className="font-bold text-gray-900">Challenge:</span> {s.challenge}</p>
-                                    <p><span className="font-bold text-gray-900">Result:</span> {s.result}</p>
+                                <div className="mb-6 space-y-3 text-sm font-medium leading-relaxed text-ink-muted">
+                                    <p><span className="font-bold text-ink">Challenge:</span> {s.challenge}</p>
+                                    <p><span className="font-bold text-ink">Result:</span> {s.result}</p>
                                 </div>
-                                <blockquote className="mt-auto rounded-2xl border border-gray-100 bg-[#FAFAF8] p-6">
+                                <blockquote className="mt-auto rounded-2xl border border-hairline bg-[#FAFAF8] p-6">
                                     <Quote size={20} className="mb-2 text-[var(--color-primary)]" />
-                                    <p className="font-medium italic leading-relaxed text-gray-700">&ldquo;{s.quote}&rdquo;</p>
-                                    <p className="mt-3 text-xs font-bold text-gray-900">— {s.person}</p>
+                                    <p className="font-medium italic leading-relaxed text-ink-muted">&ldquo;{s.quote}&rdquo;</p>
+                                    <p className="mt-3 text-xs font-bold text-ink">— {s.person}</p>
                                 </blockquote>
                             </div>
                         </article>

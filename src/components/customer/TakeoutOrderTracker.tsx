@@ -45,11 +45,11 @@ function CountdownDisplay({ time, isDelivery }: { time: string; isDelivery: bool
 
     return (
         <div className="text-center animate-fade-in">
-            <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">
+            <p className="text-xs text-ink-subtle font-bold uppercase tracking-wider">
                 {isDelivery ? 'Estimated Delivery in' : 'Estimated Pickup in'}
             </p>
-            <p className="text-3xl font-black text-gray-900 mt-1">{label}</p>
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-3xl font-black text-ink mt-1">{label}</p>
+            <p className="text-xs text-ink-subtle mt-1">
                 around {new Date(time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </p>
         </div>
@@ -117,8 +117,8 @@ export default function TakeoutOrderTracker({ orderId, initialOrder, restaurantS
                 <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <span className="text-3xl text-red-600">✕</span>
                 </div>
-                <h2 className="text-xl font-bold text-gray-900 mb-2">Order Cancelled</h2>
-                <p className="text-gray-500 mb-6">
+                <h2 className="text-xl font-bold text-ink mb-2">Order Cancelled</h2>
+                <p className="text-ink-subtle mb-6">
                     Order #{orderId.slice(0, 8).toUpperCase()} has been cancelled.
                 </p>
                 <Link
@@ -134,9 +134,9 @@ export default function TakeoutOrderTracker({ orderId, initialOrder, restaurantS
     return (
         <div className="space-y-5 max-w-xl mx-auto px-4 py-6">
             {/* Order number */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-center">
-                <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Order Reference</p>
-                <p className="text-xl font-mono font-black text-gray-900 mt-1">
+            <div className="bg-surface rounded-2xl shadow-sm border border-hairline p-5 text-center">
+                <p className="text-xs text-ink-subtle font-bold uppercase tracking-wider">Order Reference</p>
+                <p className="text-xl font-mono font-black text-ink mt-1">
                     #{orderId.slice(0, 8).toUpperCase()}
                 </p>
             </div>
@@ -158,14 +158,14 @@ export default function TakeoutOrderTracker({ orderId, initialOrder, restaurantS
 
             {/* Countdown */}
             {order.status !== 'picked_up' && (
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                <div className="bg-surface rounded-2xl shadow-sm border border-hairline p-5">
                     <CountdownDisplay time={order.pickup_time} isDelivery={isDelivery} />
                 </div>
             )}
 
             {/* Status stepper */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Tracking</h3>
+            <div className="bg-surface rounded-2xl shadow-sm border border-hairline p-5">
+                <h3 className="text-xs font-bold text-ink-subtle uppercase tracking-wider mb-4">Tracking</h3>
                 <div className="space-y-4">
                     {steps.map((step, idx) => {
                         const isComplete = currentStep >= idx
@@ -175,12 +175,12 @@ export default function TakeoutOrderTracker({ orderId, initialOrder, restaurantS
                                 <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors ${
                                     isComplete
                                         ? 'bg-green-55 text-green-600 bg-green-50'
-                                        : 'bg-gray-100 text-gray-400'
+                                        : 'bg-surface-muted text-ink-subtle'
                                 } ${isCurrent ? 'ring-2 ring-green-500 ring-offset-2' : ''}`}>
                                     {step.icon}
                                 </div>
                                 <div className="flex-1">
-                                    <p className={`text-xs font-bold ${isComplete ? 'text-gray-900' : 'text-gray-400'}`}>
+                                    <p className={`text-xs font-bold ${isComplete ? 'text-ink' : 'text-ink-subtle'}`}>
                                         {step.label}
                                     </p>
                                     {isCurrent && step.status === 'ready_for_pickup' && (
@@ -210,21 +210,21 @@ export default function TakeoutOrderTracker({ orderId, initialOrder, restaurantS
             )}
 
             {/* Order items */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Items</h3>
+            <div className="bg-surface rounded-2xl shadow-sm border border-hairline p-5">
+                <h3 className="text-xs font-bold text-ink-subtle uppercase tracking-wider mb-3">Items</h3>
                 <ul className="divide-y divide-gray-100">
                     {items.map((item, idx) => (
                         <li key={idx} className="py-2 flex justify-between text-xs">
-                            <span className="text-gray-700">{item.quantity}× {item.name}</span>
-                            <span className="font-bold text-gray-900">
+                            <span className="text-ink-muted">{item.quantity}× {item.name}</span>
+                            <span className="font-bold text-ink">
                                 {money((item.unit_price || item.price || 0) * item.quantity)}
                             </span>
                         </li>
                     ))}
                 </ul>
 
-                <div className="mt-3 pt-3 border-t border-gray-100 space-y-1.5 text-xs">
-                    <div className="flex justify-between text-gray-500">
+                <div className="mt-3 pt-3 border-t border-hairline space-y-1.5 text-xs">
+                    <div className="flex justify-between text-ink-subtle">
                         <span>Subtotal</span>
                         <span>{money(order.subtotal_amount)}</span>
                     </div>
@@ -235,44 +235,44 @@ export default function TakeoutOrderTracker({ orderId, initialOrder, restaurantS
                         </div>
                     )}
                     {order.tax_amount > 0 && (
-                        <div className="flex justify-between text-gray-500">
+                        <div className="flex justify-between text-ink-subtle">
                             <span>Tax</span>
                             <span>{money(order.tax_amount)}</span>
                         </div>
                     )}
-                    <div className="flex justify-between items-center pt-2.5 border-t border-gray-100">
+                    <div className="flex justify-between items-center pt-2.5 border-t border-hairline">
                         <span className="font-bold text-gray-750">Total</span>
-                        <span className="text-base font-extrabold text-gray-900">{money(order.total_amount)}</span>
+                        <span className="text-base font-extrabold text-ink">{money(order.total_amount)}</span>
                     </div>
                 </div>
             </div>
 
             {/* Customer details */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
+            <div className="bg-surface rounded-2xl shadow-sm border border-hairline p-5">
+                <h3 className="text-xs font-bold text-ink-subtle uppercase tracking-wider mb-3">
                     {isDelivery ? 'Delivery Details' : 'Pickup Details'}
                 </h3>
                 <div className="space-y-2 text-xs">
-                    <div className="flex items-center gap-2 text-gray-600">
-                        <Phone size={13} className="text-gray-400" />
+                    <div className="flex items-center gap-2 text-ink-muted">
+                        <Phone size={13} className="text-ink-subtle" />
                         <span className="font-mono">{order.customer_phone}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-gray-600">
-                        <Clock size={13} className="text-gray-400" />
+                    <div className="flex items-center gap-2 text-ink-muted">
+                        <Clock size={13} className="text-ink-subtle" />
                         <span>
                             {isDelivery ? 'Deliver around: ' : 'Pickup around: '}
                             {new Date(order.pickup_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                     </div>
                     {isDelivery && (order as any).delivery_address && (
-                        <div className="flex items-start gap-2 text-gray-600">
-                            <MapPin size={13} className="mt-0.5 text-gray-400 shrink-0" />
+                        <div className="flex items-start gap-2 text-ink-muted">
+                            <MapPin size={13} className="mt-0.5 text-ink-subtle shrink-0" />
                             <span>{(order as any).delivery_address}</span>
                         </div>
                     )}
                     {order.customer_note && (
-                        <div className="flex items-start gap-2 text-gray-600 bg-gray-50 p-2 rounded-lg">
-                            <span className="font-bold text-[10px] text-gray-400 shrink-0 uppercase mt-0.5">Note:</span>
+                        <div className="flex items-start gap-2 text-ink-muted bg-surface-muted p-2 rounded-lg">
+                            <span className="font-bold text-[10px] text-ink-subtle shrink-0 uppercase mt-0.5">Note:</span>
                             <span className="italic">{order.customer_note}</span>
                         </div>
                     )}

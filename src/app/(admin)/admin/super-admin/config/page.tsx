@@ -72,7 +72,7 @@ const FEATURE_LABELS: Record<string, string> = {
 }
 
 const TIER_STYLE: Record<string, string> = {
-    free: 'bg-gray-50 text-gray-700 border-gray-200',
+    free: 'bg-surface-muted text-ink-muted border-hairline-strong',
     basic: 'bg-blue-50 text-blue-700 border-blue-200',
     pro: 'bg-purple-50 text-purple-700 border-purple-200',
     enterprise: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -102,21 +102,21 @@ export default async function ConfigPage() {
             />
 
             {/* Tier Feature Matrix */}
-            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
+            <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                <div className="px-6 py-5 border-b border-hairline bg-surface-muted/50 flex items-center gap-3">
                     <Shield size={18} className="text-indigo-600" />
                     <div>
-                        <h2 className="font-semibold text-gray-800">Tier Feature Matrix</h2>
-                        <p className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Features unlocked per subscription tier</p>
+                        <h2 className="font-semibold text-ink">Tier Feature Matrix</h2>
+                        <p className="text-[13px] font-semibold text-ink-subtle uppercase tracking-wider mt-1">Features unlocked per subscription tier</p>
                     </div>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                        <thead className="border-b border-gray-100">
+                        <thead className="border-b border-hairline">
                             <tr>
-                                <th className="px-5 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50">Feature</th>
+                                <th className="px-5 py-4 text-left text-xs font-semibold text-ink-subtle uppercase tracking-wide bg-surface-muted">Feature</th>
                                 {tiers.map(tier => (
-                                    <th key={tier} className={`px-5 py-4 text-center text-xs font-bold uppercase tracking-wide border-l border-gray-100 ${TIER_STYLE[tier]}`}>
+                                    <th key={tier} className={`px-5 py-4 text-center text-xs font-bold uppercase tracking-wide border-l border-hairline ${TIER_STYLE[tier]}`}>
                                         {tier}
                                     </th>
                                 ))}
@@ -124,10 +124,10 @@ export default async function ConfigPage() {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {featureKeys.map(key => (
-                                <tr key={key} className="group hover:bg-gray-50/50 transition-colors">
-                                    <td className="px-5 py-3 font-medium text-gray-800">{FEATURE_LABELS[key] || key}</td>
+                                <tr key={key} className="group hover:bg-surface-muted/50 transition-colors">
+                                    <td className="px-5 py-3 font-medium text-ink">{FEATURE_LABELS[key] || key}</td>
                                     {tiers.map(tier => (
-                                        <td key={tier} className="px-5 py-3 text-center border-l border-gray-100">
+                                        <td key={tier} className="px-5 py-3 text-center border-l border-hairline">
                                             {TIER_FEATURES[tier][key]
                                                 ? <CheckCircle size={16} className="text-emerald-500 mx-auto" />
                                                 : <XCircle size={16} className="text-gray-200 mx-auto" />
@@ -142,32 +142,32 @@ export default async function ConfigPage() {
             </div>
 
             {/* Tier Limits */}
-            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
-                    <h2 className="font-semibold text-gray-800">Subscription Limits</h2>
-                    <p className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Maximum staff and menu items per tier</p>
+            <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                <div className="px-6 py-5 border-b border-hairline bg-surface-muted/50">
+                    <h2 className="font-semibold text-ink">Subscription Limits</h2>
+                    <p className="text-[13px] font-semibold text-ink-subtle uppercase tracking-wider mt-1">Maximum staff and menu items per tier</p>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-50/50 border-b border-gray-100">
+                        <thead className="bg-surface-muted/50 border-b border-hairline">
                             <tr>
-                                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Tier</th>
-                                <th className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Max Staff</th>
-                                <th className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Max Menu Items</th>
+                                <th className="px-5 py-3 text-left text-xs font-semibold text-ink-subtle uppercase">Tier</th>
+                                <th className="px-5 py-3 text-right text-xs font-semibold text-ink-subtle uppercase">Max Staff</th>
+                                <th className="px-5 py-3 text-right text-xs font-semibold text-ink-subtle uppercase">Max Menu Items</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {tiers.map(tier => (
-                                <tr key={tier} className="group hover:bg-gray-50/50 transition-colors">
+                                <tr key={tier} className="group hover:bg-surface-muted/50 transition-colors">
                                     <td className="px-5 py-4">
                                         <span className={`px-3 py-1.5 rounded-full text-xs font-bold border ${TIER_STYLE[tier]}`}>
                                             {tier.charAt(0).toUpperCase() + tier.slice(1)}
                                         </span>
                                     </td>
-                                    <td className="px-5 py-4 text-right font-semibold text-gray-900">
+                                    <td className="px-5 py-4 text-right font-semibold text-ink">
                                         {TIER_LIMITS[tier].max_staff === 999 ? 'Unlimited' : TIER_LIMITS[tier].max_staff}
                                     </td>
-                                    <td className="px-5 py-4 text-right font-semibold text-gray-900">
+                                    <td className="px-5 py-4 text-right font-semibold text-ink">
                                         {TIER_LIMITS[tier].max_menu_items === 9999 ? 'Unlimited' : TIER_LIMITS[tier].max_menu_items}
                                     </td>
                                 </tr>
@@ -178,12 +178,12 @@ export default async function ConfigPage() {
             </div>
 
             {/* Platform Defaults */}
-            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
-                    <Settings size={18} className="text-gray-600" />
+            <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                <div className="px-6 py-5 border-b border-hairline bg-surface-muted/50 flex items-center gap-3">
+                    <Settings size={18} className="text-ink-muted" />
                     <div>
-                        <h2 className="font-semibold text-gray-800">Platform Defaults</h2>
-                        <p className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Default settings applied to all new restaurant tenants</p>
+                        <h2 className="font-semibold text-ink">Platform Defaults</h2>
+                        <p className="text-[13px] font-semibold text-ink-subtle uppercase tracking-wider mt-1">Default settings applied to all new restaurant tenants</p>
                     </div>
                 </div>
                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -194,15 +194,15 @@ export default async function ConfigPage() {
                     <DefaultField label="VAT" value={DEFAULT_PLATFORM.vatEnabled ? 'Enabled' : 'Disabled'} note="IRD-registered VAT billing" isBoolean enabled={DEFAULT_PLATFORM.vatEnabled} />
                 </div>
                 <div className="px-6 pb-5">
-                    <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 border border-gray-100">
-                        Platform defaults are set in the codebase (<code className="font-mono bg-gray-100 px-1 rounded text-gray-600">actions.ts → buildDefaultFeaturesV2()</code>). To update defaults, edit the source and redeploy.
+                    <p className="text-xs text-ink-subtle bg-surface-muted rounded-lg p-3 border border-hairline">
+                        Platform defaults are set in the codebase (<code className="font-mono bg-surface-muted px-1 rounded text-ink-muted">actions.ts → buildDefaultFeaturesV2()</code>). To update defaults, edit the source and redeploy.
                     </p>
                 </div>
             </div>
 
             {/* Subscription Payment Methods */}
-            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                <h2 className="font-semibold text-gray-800 mb-4">Accepted Subscription Payment Methods</h2>
+            <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                <h2 className="font-semibold text-ink mb-4">Accepted Subscription Payment Methods</h2>
                 <div className="flex flex-wrap gap-3">
                     {['Cash', 'eSewa', 'Khalti', 'Bank Transfer', 'FonePay'].map(method => (
                         <div key={method} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-sm font-medium text-emerald-700">
@@ -211,7 +211,7 @@ export default async function ConfigPage() {
                         </div>
                     ))}
                 </div>
-                <p className="text-xs text-gray-400 mt-3">Methods available when recording subscription payments via the Restaurants page.</p>
+                <p className="text-xs text-ink-subtle mt-3">Methods available when recording subscription payments via the Restaurants page.</p>
             </div>
         </div>
     )
@@ -231,18 +231,18 @@ function DefaultField({
     enabled?: boolean
 }) {
     return (
-        <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+        <div className="bg-surface-muted rounded-xl p-4 border border-hairline">
             <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</span>
+                <span className="text-xs font-semibold text-ink-subtle uppercase tracking-wide">{label}</span>
                 {isBoolean && (enabled
                     ? <CheckCircle size={14} className="text-emerald-500 shrink-0" />
                     : <XCircle size={14} className="text-gray-300 shrink-0" />
                 )}
             </div>
-            <div className={`text-lg font-extrabold mt-1 ${isBoolean ? (enabled ? 'text-emerald-700' : 'text-gray-400') : 'text-gray-900'}`}>
+            <div className={`text-lg font-extrabold mt-1 ${isBoolean ? (enabled ? 'text-emerald-700' : 'text-ink-subtle') : 'text-ink'}`}>
                 {value}
             </div>
-            <p className="text-xs text-gray-400 mt-0.5">{note}</p>
+            <p className="text-xs text-ink-subtle mt-0.5">{note}</p>
         </div>
     )
 }

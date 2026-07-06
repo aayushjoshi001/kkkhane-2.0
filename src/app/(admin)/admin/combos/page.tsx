@@ -53,9 +53,9 @@ export default async function AdminCombosPage() {
 
     return (
         <div className="space-y-6">
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                <h1 className="text-2xl font-bold text-gray-900">Combo Offers</h1>
-                <p className="text-gray-500 mt-1">Bundle multiple menu items together and sell them at a special package price.</p>
+            <div className="bg-surface p-6 rounded-xl border border-hairline-strong shadow-sm">
+                <h1 className="text-2xl font-bold text-ink">Combo Offers</h1>
+                <p className="text-ink-subtle mt-1">Bundle multiple menu items together and sell them at a special package price.</p>
             </div>
 
             <CombosManager

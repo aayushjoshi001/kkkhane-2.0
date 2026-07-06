@@ -3,7 +3,7 @@
 import { useState } from 'react'
 
 const inputCls =
-    'w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none transition focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20'
+    'w-full h-12 px-4 bg-surface-muted border border-hairline-strong rounded-xl font-medium outline-none transition focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20'
 
 export default function ContactForm() {
     const [formState, setFormState] = useState({ name: '', email: '', message: '', phone: '' })
@@ -26,30 +26,30 @@ export default function ContactForm() {
             )}
             <div className="grid gap-6 sm:grid-cols-2">
                 <div>
-                    <label className="mb-2 block text-sm font-bold text-gray-700">Name</label>
+                    <label className="mb-2 block text-sm font-bold text-ink-muted">Name</label>
                     <input type="text" required value={formState.name}
                         onChange={(e) => setFormState({ ...formState, name: e.target.value })}
                         className={inputCls} placeholder="Your name" />
                 </div>
                 <div>
-                    <label className="mb-2 block text-sm font-bold text-gray-700">Phone (Optional)</label>
+                    <label className="mb-2 block text-sm font-bold text-ink-muted">Phone (Optional)</label>
                     <input type="tel" value={formState.phone}
                         onChange={(e) => setFormState({ ...formState, phone: e.target.value })}
                         className={inputCls} placeholder="+977 98XXXXXXXX" />
                 </div>
             </div>
             <div>
-                <label className="mb-2 block text-sm font-bold text-gray-700">Email</label>
+                <label className="mb-2 block text-sm font-bold text-ink-muted">Email</label>
                 <input type="email" required value={formState.email}
                     onChange={(e) => setFormState({ ...formState, email: e.target.value })}
                     className={inputCls} placeholder="your@email.com" />
             </div>
             <div>
-                <label className="mb-2 block text-sm font-bold text-gray-700">Message</label>
+                <label className="mb-2 block text-sm font-bold text-ink-muted">Message</label>
                 <textarea required value={formState.message}
                     onChange={(e) => setFormState({ ...formState, message: e.target.value })}
                     rows={5}
-                    className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 p-4 font-medium outline-none transition focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                    className="w-full resize-none rounded-xl border border-hairline-strong bg-surface-muted p-4 font-medium outline-none transition focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
                     placeholder="Tell us about your inquiry..." />
             </div>
             <button type="submit"

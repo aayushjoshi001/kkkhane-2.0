@@ -74,7 +74,7 @@ export default function KitchenStats({
                 return (
                     <div key={s.label}
                          className="rounded-card border border-dark-border bg-dark-surface p-3 md:p-4 flex items-center gap-3">
-                        <span className={`grid size-9 place-items-center rounded-[var(--r-md)] shrink-0 ${chip ? '' : 'bg-white/5 text-dark-muted'} ${s.pulse ? 'animate-pulse' : ''}`}
+                        <span className={`grid size-9 place-items-center rounded-[var(--r-md)] shrink-0 ${chip ? '' : 'bg-surface/5 text-dark-muted'} ${s.pulse ? 'animate-pulse' : ''}`}
                               style={chip}>
                             <Icon size={18} />
                         </span>

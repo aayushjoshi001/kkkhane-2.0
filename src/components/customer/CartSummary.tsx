@@ -43,11 +43,11 @@ export default function CartSummary({ sessionId, tableSlug }: { sessionId?: stri
                                 clearCart()
                             }}
                             title="Clear Cart"
-                            className="p-1 hover:bg-white/10 rounded-full text-white/80 hover:text-white transition active:scale-90"
+                            className="p-1 hover:bg-surface/10 rounded-full text-white/80 hover:text-white transition active:scale-90"
                         >
                             <X size={14} className="stroke-[3px]" />
                         </button>
-                        <div className="relative w-8 h-8 rounded-lg overflow-hidden bg-white/20 shrink-0">
+                        <div className="relative w-8 h-8 rounded-lg overflow-hidden bg-surface/20 shrink-0">
                             {lastImageUrl ? (
                                 <Image
                                     src={lastImageUrl}

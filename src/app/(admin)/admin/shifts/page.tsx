@@ -18,9 +18,9 @@ export default async function AdminShiftsPage() {
 
     return (
         <div className="space-y-6">
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                <h1 className="text-2xl font-bold text-gray-900">Staff Shifts</h1>
-                <p className="text-gray-500 mt-1">Monitor active shifts and approve past timecards.</p>
+            <div className="bg-surface p-6 rounded-xl border border-hairline-strong shadow-sm">
+                <h1 className="text-2xl font-bold text-ink">Staff Shifts</h1>
+                <p className="text-ink-subtle mt-1">Monitor active shifts and approve past timecards.</p>
             </div>
             <ShiftsManager activeShifts={active || []} recentShifts={recent || []} />
         </div>

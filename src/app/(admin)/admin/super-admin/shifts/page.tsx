@@ -26,7 +26,7 @@ function formatDuration(clockIn: string, clockOut: string | null): string {
 
 const ROLE_COLORS: Record<string, string> = {
     manager: 'bg-blue-100 text-blue-700',
-    kitchen: 'bg-orange-100 text-orange-700',
+    kitchen: 'bg-brand-100 text-orange-700',
     waiter: 'bg-teal-100 text-teal-700',
     super_admin: 'bg-indigo-100 text-indigo-700',
 }
@@ -52,15 +52,15 @@ export default async function ShiftsPage() {
                     <div className="text-2xl sm:text-3xl font-extrabold text-emerald-700 tabular-nums">{activeShifts.length}</div>
                     <div className="text-xs text-emerald-600 mt-0.5 font-medium">Currently Clocked In</div>
                 </div>
-                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
-                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">{recentShifts.length}</div>
-                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Recent Shifts</div>
+                <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-ink tabular-nums">{recentShifts.length}</div>
+                    <div className="text-[13px] font-semibold text-ink-subtle uppercase tracking-wider mt-1">Recent Shifts</div>
                 </div>
             </div>
 
             {/* Active Shifts */}
             {activeShifts.length > 0 && (
-                <div className="bg-white rounded-2xl border border-emerald-200 shadow-sm overflow-hidden">
+                <div className="bg-surface rounded-2xl border border-emerald-200 shadow-sm overflow-hidden">
                     <div className="px-6 py-4 border-b border-emerald-100 bg-emerald-50/50 flex items-center gap-2">
                         <Clock size={14} className="text-emerald-600" />
                         <h2 className="font-semibold text-emerald-800">Active Shifts ({activeShifts.length})</h2>
@@ -70,12 +70,12 @@ export default async function ShiftsPage() {
             )}
 
             {/* Recent Shifts */}
-            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-                    <h2 className="font-semibold text-gray-800">Recent Shifts</h2>
+            <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                <div className="px-6 py-4 border-b border-hairline bg-surface-muted/50">
+                    <h2 className="font-semibold text-ink">Recent Shifts</h2>
                 </div>
                 {recentShifts.length > 0 ? <ShiftTable shifts={recentShifts} /> : (
-                    <div className="p-12 text-center text-gray-400">
+                    <div className="p-12 text-center text-ink-subtle">
                         <Clock size={32} className="mx-auto mb-2 opacity-40" />
                         <p className="text-sm">No recent shifts</p>
                     </div>
@@ -88,7 +88,7 @@ export default async function ShiftsPage() {
 function ShiftTable({ shifts }: { shifts: Shift[] }) {
     const ROLE_COLORS: Record<string, string> = {
         manager: 'bg-blue-100 text-blue-700',
-        kitchen: 'bg-orange-100 text-orange-700',
+        kitchen: 'bg-brand-100 text-orange-700',
         waiter: 'bg-teal-100 text-teal-700',
         super_admin: 'bg-indigo-100 text-indigo-700',
     }
@@ -96,7 +96,7 @@ function ShiftTable({ shifts }: { shifts: Shift[] }) {
     return (
         <div className="overflow-x-auto">
             <table className="w-full text-sm">
-                <thead className="bg-gray-50/50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
+                <thead className="bg-surface-muted/50 text-xs text-ink-subtle uppercase font-semibold border-b border-hairline">
                     <tr>
                         <th className="px-5 py-3 text-left">Staff</th>
                         <th className="px-5 py-3 text-left">Restaurant</th>
@@ -110,22 +110,22 @@ function ShiftTable({ shifts }: { shifts: Shift[] }) {
                     {shifts.map(s => {
                         const roleName = s.users?.roles?.name || ''
                         return (
-                            <tr key={s.id} className="group hover:bg-gray-50/50 transition-colors">
-                                <td className="px-5 py-3 font-medium text-gray-900">{s.users?.full_name || '—'}</td>
-                                <td className="px-5 py-3 text-gray-600">{s.restaurants?.name || '—'}</td>
+                            <tr key={s.id} className="group hover:bg-surface-muted/50 transition-colors">
+                                <td className="px-5 py-3 font-medium text-ink">{s.users?.full_name || '—'}</td>
+                                <td className="px-5 py-3 text-ink-muted">{s.restaurants?.name || '—'}</td>
                                 <td className="px-5 py-3">
-                                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${ROLE_COLORS[roleName] || 'bg-gray-100 text-gray-600'}`}>
+                                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${ROLE_COLORS[roleName] || 'bg-surface-muted text-ink-muted'}`}>
                                         {roleName.replace('_', ' ') || '—'}
                                     </span>
                                 </td>
-                                <td className="px-5 py-3 text-gray-500 text-xs">{new Date(s.clock_in).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                                <td className="px-5 py-3 text-gray-500 text-xs">
+                                <td className="px-5 py-3 text-ink-subtle text-xs">{new Date(s.clock_in).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                                <td className="px-5 py-3 text-ink-subtle text-xs">
                                     {s.clock_out
                                         ? new Date(s.clock_out).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
                                         : <span className="text-emerald-600 font-semibold">Active</span>
                                     }
                                 </td>
-                                <td className="px-5 py-3 text-gray-600 text-xs font-medium">{formatDuration(s.clock_in, s.clock_out)}</td>
+                                <td className="px-5 py-3 text-ink-muted text-xs font-medium">{formatDuration(s.clock_in, s.clock_out)}</td>
                             </tr>
                         )
                     })}

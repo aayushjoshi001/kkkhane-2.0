@@ -24,9 +24,9 @@ export default function PhysicalMenuGallery({ images, restaurantName }: { images
         <>
             <button
                 onClick={() => setIsOpen(true)}
-                className="flex items-center justify-center gap-2 w-full py-3 mb-6 bg-white border border-gray-200 rounded-xl shadow-sm text-sm font-semibold text-gray-800 hover:bg-gray-50 transition"
+                className="flex items-center justify-center gap-2 w-full py-3 mb-6 bg-surface border border-hairline-strong rounded-xl shadow-sm text-sm font-semibold text-ink hover:bg-surface-muted transition"
             >
-                <BookOpen size={18} className="text-gray-500" />
+                <BookOpen size={18} className="text-ink-subtle" />
                 View Physical Menu
             </button>
 
@@ -59,13 +59,13 @@ export default function PhysicalMenuGallery({ images, restaurantName }: { images
                             <>
                                 <button
                                     onClick={handlePrev}
-                                    className="absolute left-4 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md transition"
+                                    className="absolute left-4 p-3 bg-surface/10 hover:bg-surface/20 rounded-full text-white backdrop-blur-md transition"
                                 >
                                     <ChevronLeft size={24} />
                                 </button>
                                 <button
                                     onClick={handleNext}
-                                    className="absolute right-4 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md transition"
+                                    className="absolute right-4 p-3 bg-surface/10 hover:bg-surface/20 rounded-full text-white backdrop-blur-md transition"
                                 >
                                     <ChevronRight size={24} />
                                 </button>

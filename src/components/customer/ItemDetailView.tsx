@@ -309,10 +309,10 @@ export default function ItemDetailView({
             className="fixed inset-0 z-50 flex items-end justify-center p-0 bg-black/45 backdrop-blur-sm animate-fade-in"
             onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
         >
-            <div className="relative bg-white w-full sm:max-w-md rounded-t-[32px] sm:rounded-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-fade-up">
+            <div className="relative bg-surface w-full sm:max-w-md rounded-t-[32px] sm:rounded-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-fade-up">
                 
                 {/* Header Banner */}
-                <div className="relative w-full h-32 bg-gray-100 shrink-0">
+                <div className="relative w-full h-32 bg-surface-muted shrink-0">
                     {item.image_url ? (
                         <Image
                             src={item.image_url}
@@ -330,17 +330,17 @@ export default function ItemDetailView({
                     {/* Close Button */}
                     <button
                         onClick={onClose}
-                        className="absolute top-4 right-4 w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform z-20"
+                        className="absolute top-4 right-4 w-9 h-9 bg-surface rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform z-20"
                     >
-                        <X size={18} className="text-[#1A1006]" />
+                        <X size={18} className="text-ink" />
                     </button>
                 </div>
 
                 {/* Content Area */}
-                <div className="relative z-10 -mt-6 bg-white rounded-t-[32px] px-4 pt-6 pb-24 overflow-y-auto flex-1 text-[#1A1006] font-sans">
+                <div className="relative z-10 -mt-6 bg-surface rounded-t-[32px] px-4 pt-6 pb-24 overflow-y-auto flex-1 text-ink font-sans">
                     {/* Overlapping thumbnail and details */}
                     <div className="flex gap-4 items-end relative z-20 mb-5">
-                        <div className="relative w-18 h-18 rounded-2xl border-4 border-white bg-white shadow-md overflow-hidden shrink-0">
+                        <div className="relative w-18 h-18 rounded-2xl border-4 border-white bg-surface shadow-md overflow-hidden shrink-0">
                             {item.image_url ? (
                                 <Image
                                     src={item.image_url}
@@ -360,10 +360,10 @@ export default function ItemDetailView({
                                 <span className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded border shrink-0 ${isVeg ? "border-green-600" : "border-red-600"}`}>
                                     <span className={`w-1.5 h-1.5 rounded-full ${isVeg ? "bg-green-600" : "bg-red-600"}`} />
                                 </span>
-                                <h2 className="text-base font-bold text-gray-900 leading-tight truncate">{displayName}</h2>
+                                <h2 className="text-base font-bold text-ink leading-tight truncate">{displayName}</h2>
                             </div>
                             <div className="flex items-center justify-between gap-2 mt-1">
-                                <p className="text-xs text-gray-400 font-semibold">{item.menu_categories?.name || 'Lunch'}</p>
+                                <p className="text-xs text-ink-subtle font-semibold">{item.menu_categories?.name || 'Lunch'}</p>
                                 <span className="text-sm font-black text-[var(--color-primary)]">{displayPriceRange}</span>
                             </div>
                         </div>
@@ -371,7 +371,7 @@ export default function ItemDetailView({
 
                     {/* Description */}
                     {displayDesc && (
-                        <p className="text-xs text-gray-500 font-semibold leading-relaxed mb-6">
+                        <p className="text-xs text-ink-subtle font-semibold leading-relaxed mb-6">
                             {displayDesc}
                         </p>
                     )}
@@ -379,16 +379,16 @@ export default function ItemDetailView({
                     {/* Pairs well with — precomputed order co-occurrence, see refresh_menu_item_pairings() */}
                     {recommendedItems.length > 0 && (
                         <div className="mb-6">
-                            <h3 className="text-sm font-bold text-gray-900 mb-2">Goes well with</h3>
+                            <h3 className="text-sm font-bold text-ink mb-2">Goes well with</h3>
                             <div className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-none" style={{ scrollbarWidth: 'none' }}>
                                 {recommendedItems.map((recItem) => {
                                     const isSimple = (recItem.modifier_groups?.length ?? 0) === 0 && (recItem.variations?.length ?? 0) === 0
                                     return (
                                         <div
                                             key={recItem.id}
-                                            className="shrink-0 w-28 border border-gray-100 rounded-2xl bg-white shadow-sm overflow-hidden"
+                                            className="shrink-0 w-28 border border-hairline rounded-2xl bg-surface shadow-sm overflow-hidden"
                                         >
-                                            <div className="relative w-full h-16 bg-gray-100">
+                                            <div className="relative w-full h-16 bg-surface-muted">
                                                 {recItem.image_url ? (
                                                     <Image
                                                         src={recItem.image_url}
@@ -404,9 +404,9 @@ export default function ItemDetailView({
                                                 )}
                                             </div>
                                             <div className="p-2">
-                                                <p className="text-[11px] font-bold text-gray-900 leading-tight truncate">{recItem.name}</p>
+                                                <p className="text-[11px] font-bold text-ink leading-tight truncate">{recItem.name}</p>
                                                 <div className="flex items-center justify-between mt-1">
-                                                    <span className="text-[10px] font-bold text-gray-500">{money(recItem.price)}</span>
+                                                    <span className="text-[10px] font-bold text-ink-subtle">{money(recItem.price)}</span>
                                                     {isSimple && (
                                                         <button
                                                             onClick={() => handleQuickAdd(recItem)}
@@ -430,13 +430,13 @@ export default function ItemDetailView({
                     {hasVariations && item.variations && item.variations.length > 0 && (
                         <div className="space-y-2 mb-6">
                             <div className="mb-2">
-                                <h3 className="text-sm font-bold text-gray-900">Select Variants</h3>
-                                <p className="text-[11px] text-gray-400 font-medium">
+                                <h3 className="text-sm font-bold text-ink">Select Variants</h3>
+                                <p className="text-[11px] text-ink-subtle font-medium">
                                     Tap to add • Multiple selections allowed
                                 </p>
                             </div>
 
-                            <div className="border border-gray-100 rounded-2xl overflow-hidden divide-y divide-gray-100 bg-white shadow-sm">
+                            <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-gray-100 bg-surface shadow-sm">
                                 {item.variations.filter(v => v.is_available).map((variation) => {
                                     const qty = variationQtys[variation.id] || 0
                                     const isSelected = qty > 0
@@ -457,8 +457,8 @@ export default function ItemDetailView({
                                                 isActive
                                                     ? 'bg-[var(--color-primary)]/5 border-l-4 border-l-[var(--color-primary)]'
                                                     : isSelected
-                                                        ? 'bg-[var(--color-primary)]/5/20 hover:bg-gray-50/50'
-                                                        : 'hover:bg-gray-50/50'
+                                                        ? 'bg-[var(--color-primary)]/5/20 hover:bg-surface-muted/50'
+                                                        : 'hover:bg-surface-muted/50'
                                             }`}
                                         >
                                             <div className="flex-1 min-w-0 flex items-center gap-2.5">
@@ -468,10 +468,10 @@ export default function ItemDetailView({
                                                         alt={variation.name}
                                                         width={40}
                                                         height={40}
-                                                        className="w-10 h-10 rounded-lg object-cover shrink-0 border border-gray-100"
+                                                        className="w-10 h-10 rounded-lg object-cover shrink-0 border border-hairline"
                                                     />
                                                 )}
-                                                <span className={`text-xs font-semibold ${isSelected ? 'text-gray-900 font-bold' : 'text-gray-700'}`}>
+                                                <span className={`text-xs font-semibold ${isSelected ? 'text-ink font-bold' : 'text-ink-muted'}`}>
                                                     {variation.name}
                                                 </span>
                                                 {qty > 0 && (
@@ -482,12 +482,12 @@ export default function ItemDetailView({
                                             </div>
 
                                             <div className="flex items-center gap-3">
-                                                <span className={`text-xs font-bold tabular-nums ${isSelected ? 'text-[var(--color-primary)]' : 'text-gray-950'}`}>
+                                                <span className={`text-xs font-bold tabular-nums ${isSelected ? 'text-[var(--color-primary)]' : 'text-ink'}`}>
                                                     {money(variation.price)}
                                                 </span>
                                                 
                                                 <div className={`w-4.5 h-4.5 rounded border-2 flex items-center justify-center transition-all ${
-                                                    isSelected ? "border-[var(--color-primary)] bg-[var(--color-primary)]" : "border-gray-300"
+                                                    isSelected ? "border-[var(--color-primary)] bg-[var(--color-primary)]" : "border-hairline-strong"
                                                 }`}>
                                                     {isSelected && (
                                                         <Check size={10} className="text-white" strokeWidth={3} />
@@ -512,24 +512,24 @@ export default function ItemDetailView({
                                 return (
                                     <div key={group.id} className="space-y-2">
                                         <div className="mb-2">
-                                            <h3 className="text-sm font-bold text-gray-900">{group.name}</h3>
-                                            <p className="text-[11px] text-gray-400 font-medium">
+                                            <h3 className="text-sm font-bold text-ink">{group.name}</h3>
+                                            <p className="text-[11px] text-ink-subtle font-medium">
                                                 {isRequired ? 'Required' : 'Optional'} • {isRadio ? 'Select any 1 option' : `Select up to ${group.max_selections} options`}
                                             </p>
                                         </div>
 
-                                        <div className="border border-gray-100 rounded-2xl overflow-hidden divide-y divide-gray-100 mb-4 bg-white shadow-sm">
+                                        <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-gray-100 mb-4 bg-surface shadow-sm">
                                             {group.modifiers?.filter((m) => m.is_available).map((mod) => {
                                                 const isSelected = selected.includes(mod.id)
                                                 return (
                                                     <div
                                                         key={mod.id}
                                                         onClick={() => toggleModifier(group.id, mod.id, group.max_selections)}
-                                                        className="flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-gray-50/50 select-none transition-all"
+                                                        className="flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-surface-muted/50 select-none transition-all"
                                                     >
-                                                        <span className="text-xs font-semibold text-gray-700">{mod.name}</span>
+                                                        <span className="text-xs font-semibold text-ink-muted">{mod.name}</span>
                                                         <div className="flex items-center gap-3">
-                                                            <span className="text-xs font-bold text-gray-950">
+                                                            <span className="text-xs font-bold text-ink">
                                                                 {mod.price_adjustment > 0
                                                                     ? `+${money(mod.price_adjustment)}`
                                                                     : 'Free'
@@ -537,15 +537,15 @@ export default function ItemDetailView({
                                                             </span>
                                                             {isRadio ? (
                                                                 <div className={`w-4.5 h-4.5 rounded-full border-2 flex items-center justify-center transition-all ${
-                                                                    isSelected ? "border-[var(--color-primary)] bg-[var(--color-primary)]" : "border-gray-300"
+                                                                    isSelected ? "border-[var(--color-primary)] bg-[var(--color-primary)]" : "border-hairline-strong"
                                                                 }`}>
                                                                     {isSelected && (
-                                                                        <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                                                                        <div className="w-1.5 h-1.5 rounded-full bg-surface" />
                                                                     )}
                                                                 </div>
                                                             ) : (
                                                                 <div className={`w-4.5 h-4.5 rounded border-2 flex items-center justify-center transition-all ${
-                                                                    isSelected ? "border-[var(--color-primary)] bg-[var(--color-primary)]" : "border-gray-300"
+                                                                    isSelected ? "border-[var(--color-primary)] bg-[var(--color-primary)]" : "border-hairline-strong"
                                                                 }`}>
                                                                     {isSelected && (
                                                                         <Check size={10} className="text-white" strokeWidth={3} />
@@ -564,31 +564,31 @@ export default function ItemDetailView({
                     )}
 
                     {/* Cooking request (optional) */}
-                    <div className="border border-gray-100 rounded-2xl p-4 mt-6 bg-white shadow-sm">
-                        <h4 className="text-xs font-bold text-gray-900 mb-1">Add a cooking request (optional)</h4>
-                        <p className="text-[10px] text-gray-400 font-semibold mb-3">Add any special requests or preferences</p>
+                    <div className="border border-hairline rounded-2xl p-4 mt-6 bg-surface shadow-sm">
+                        <h4 className="text-xs font-bold text-ink mb-1">Add a cooking request (optional)</h4>
+                        <p className="text-[10px] text-ink-subtle font-semibold mb-3">Add any special requests or preferences</p>
                         <textarea
                             value={cookingRequest}
                             onChange={(e) => setCookingRequest(e.target.value)}
                             placeholder="e.g., Extra spicy, No onions, Well done..."
-                            className="w-full text-xs bg-gray-50 border border-gray-100 rounded-xl p-3 focus:outline-none focus:border-[var(--color-primary)] min-h-[70px] resize-none placeholder:text-gray-300 font-semibold text-gray-700"
+                            className="w-full text-xs bg-surface-muted border border-hairline rounded-xl p-3 focus:outline-none focus:border-[var(--color-primary)] min-h-[70px] resize-none placeholder:text-gray-300 font-semibold text-ink-muted"
                         />
                     </div>
                 </div>
 
                 {/* Sticky Bottom Panel */}
-                <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 py-4 flex items-center justify-between gap-2 z-30">
+                <div className="absolute bottom-0 left-0 right-0 bg-surface border-t border-hairline px-4 py-4 flex items-center justify-between gap-2 z-30">
                     {/* Quantity selector or Cancel button */}
                     {hasVariations ? (
                         activeVariationId ? (
-                            <div className="flex items-center gap-3 border border-gray-200 rounded-xl px-2.5 py-2 bg-white text-gray-600">
+                            <div className="flex items-center gap-3 border border-hairline-strong rounded-xl px-2.5 py-2 bg-surface text-ink-muted">
                                 <button
                                     onClick={() => setVariationQty(activeVariationId, (variationQtys[activeVariationId] || 0) - 1)}
                                     className="hover:scale-105 active:scale-90 transition"
                                 >
                                     <Minus size={14} strokeWidth={2.5} />
                                 </button>
-                                <span className="text-xs font-black min-w-[14px] text-center tabular-nums text-gray-800">
+                                <span className="text-xs font-black min-w-[14px] text-center tabular-nums text-ink">
                                     {variationQtys[activeVariationId] || 0}
                                 </span>
                                 <button
@@ -602,7 +602,7 @@ export default function ItemDetailView({
                         ) : (
                             <button
                                 onClick={onClose}
-                                className="border border-gray-200 text-gray-500 font-bold px-4 py-2.5 rounded-xl text-xs active:scale-95 transition-all shrink-0"
+                                className="border border-hairline-strong text-ink-subtle font-bold px-4 py-2.5 rounded-xl text-xs active:scale-95 transition-all shrink-0"
                             >
                                 Cancel
                             </button>
@@ -610,7 +610,7 @@ export default function ItemDetailView({
                     ) : (
                         <>
                             {/* Quantity selectors — only for non-variation items */}
-                            <div className="flex items-center gap-3 border border-gray-200 rounded-xl px-2.5 py-2 bg-white text-gray-600">
+                            <div className="flex items-center gap-3 border border-hairline-strong rounded-xl px-2.5 py-2 bg-surface text-ink-muted">
                                 <button
                                     onClick={() => setLocalQty(q => Math.max(1, q - 1))}
                                     disabled={localQty <= 1}
@@ -618,7 +618,7 @@ export default function ItemDetailView({
                                 >
                                     <Minus size={14} strokeWidth={2.5} />
                                 </button>
-                                <span className="text-xs font-black min-w-[14px] text-center tabular-nums text-gray-800">
+                                <span className="text-xs font-black min-w-[14px] text-center tabular-nums text-ink">
                                     {localQty}
                                 </span>
                                 <button
@@ -632,7 +632,7 @@ export default function ItemDetailView({
 
                             <button
                                 onClick={onClose}
-                                className="border border-gray-200 text-gray-500 font-bold px-4 py-2.5 rounded-xl text-xs active:scale-95 transition-all shrink-0"
+                                className="border border-hairline-strong text-ink-subtle font-bold px-4 py-2.5 rounded-xl text-xs active:scale-95 transition-all shrink-0"
                             >
                                 Cancel
                             </button>

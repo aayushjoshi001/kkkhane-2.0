@@ -139,15 +139,15 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
     }, 0)
 
     const firstTag = (item.tags || [])[0]?.toLowerCase()
-    const tagStyle = firstTag ? (TAG_STYLES[firstTag] || { cls: 'bg-white/90 text-gray-700' }) : null
+    const tagStyle = firstTag ? (TAG_STYLES[firstTag] || { cls: 'bg-surface/90 text-ink-muted' }) : null
     const displayAllergens = (item.allergens || []).slice(0, 3)
 
     return (
         <>
-        <div style={{ boxShadow: '0 6px 20px -4px rgba(255,122,46,0.45), 0 2px 8px -2px rgba(0,0,0,0.18)' }} className={`group relative bg-[#FF7A2E] rounded-[32px] hover:shadow-[0_12px_32px_-4px_rgba(255,122,46,0.65),0_4px_12px_-2px_rgba(0,0,0,0.22)] hover:brightness-105 active:scale-[0.97] active:shadow-md transition-all duration-300 ease-out flex flex-col w-full p-3 pt-3.5 pb-3 gap-2.5 ${!item.is_available ? 'opacity-70' : ''}`}>
+        <div style={{ boxShadow: '0 6px 20px -4px rgba(255,122,46,0.45), 0 2px 8px -2px rgba(0,0,0,0.18)' }} className={`group relative bg-brand-500 rounded-[32px] hover:shadow-[0_12px_32px_-4px_rgba(255,122,46,0.65),0_4px_12px_-2px_rgba(0,0,0,0.22)] hover:brightness-105 active:scale-[0.97] active:shadow-md transition-all duration-300 ease-out flex flex-col w-full p-3 pt-3.5 pb-3 gap-2.5 ${!item.is_available ? 'opacity-70' : ''}`}>
             {/* Top: Dish name with Veg/Non-Veg Logo (Starts from Left Corner) */}
             <div className="flex items-center gap-1.5 px-1.5 w-full justify-start text-left">
-                <div className={`w-3.5 h-3.5 border-2 ${isVeg ? 'border-emerald-600' : 'border-red-700'} flex items-center justify-center p-0.5 shrink-0 bg-white rounded-xs`}>
+                <div className={`w-3.5 h-3.5 border-2 ${isVeg ? 'border-emerald-600' : 'border-red-700'} flex items-center justify-center p-0.5 shrink-0 bg-surface rounded-xs`}>
                     <div className={`w-1.5 h-1.5 rounded-full ${isVeg ? 'bg-emerald-600' : 'bg-red-700'}`} />
                 </div>
                 <h3 className="font-black text-[11px] text-white leading-tight uppercase line-clamp-1 truncate text-left drop-shadow-sm">
@@ -173,8 +173,8 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
 
                 {/* Sold out overlay */}
                 {!item.is_available && (
-                    <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
-                        <span className="bg-white text-gray-600 font-bold px-1.5 py-0.5 rounded text-[8px] border border-gray-205 shadow-xs">
+                    <div className="absolute inset-0 bg-surface/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
+                        <span className="bg-surface text-ink-muted font-bold px-1.5 py-0.5 rounded text-[8px] border border-gray-205 shadow-xs">
                             Sold Out
                         </span>
                     </div>
@@ -194,25 +194,25 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
                         <button
                             onClick={handleAdd}
                             disabled={!item.is_available}
-                            className="bg-white text-[#FF7A2E] px-3.5 py-1.5 rounded-full flex items-center justify-center font-black active:scale-95 transition-all shadow-sm text-[10px] tracking-wider uppercase leading-none min-w-[56px] text-center hover:bg-orange-50"
+                            className="bg-surface text-brand-500 px-3.5 py-1.5 rounded-full flex items-center justify-center font-black active:scale-95 transition-all shadow-sm text-[10px] tracking-wider uppercase leading-none min-w-[56px] text-center hover:bg-brand-50"
                             aria-label={`Add ${displayName} to cart`}
                         >
                             Add to cart
                         </button>
                     ) : (
-                        <div className="bg-white rounded-full flex flex-row items-center gap-2 p-1 px-1.5 shadow-sm h-7">
+                        <div className="bg-surface rounded-full flex flex-row items-center gap-2 p-1 px-1.5 shadow-sm h-7">
                             <button 
                                 onClick={handleRemove}
                                 aria-label={`Remove one ${displayName}`}
-                                className="w-5 h-5 rounded-full bg-orange-100 hover:bg-orange-200 flex items-center justify-center text-[#FF7A2E] active:scale-90 transition"
+                                className="w-5 h-5 rounded-full bg-brand-100 hover:bg-brand-200 flex items-center justify-center text-brand-500 active:scale-90 transition"
                             >
                                 <Minus size={9} strokeWidth={4.5} />
                             </button>
-                            <span className="text-[11px] font-black leading-none tabular-nums text-[#FF7A2E] min-w-[12px] text-center my-0.5">{quantity}</span>
+                            <span className="text-[11px] font-black leading-none tabular-nums text-brand-500 min-w-[12px] text-center my-0.5">{quantity}</span>
                             <button 
                                 onClick={handleAdd}
                                 aria-label={`Add one ${displayName}`}
-                                className="w-5 h-5 rounded-full bg-orange-100 hover:bg-orange-200 flex items-center justify-center text-[#FF7A2E] active:scale-90 transition"
+                                className="w-5 h-5 rounded-full bg-brand-100 hover:bg-brand-200 flex items-center justify-center text-brand-500 active:scale-90 transition"
                             >
                                 <Plus size={9} strokeWidth={4.5} />
                             </button>
@@ -227,19 +227,19 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
             <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
                  onClick={(e) => { if (e.target === e.currentTarget) setShowModifiers(false) }}>
                 <div role="dialog" aria-modal="true" aria-label={`Customise ${displayName}`}
-                     className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl max-h-[90vh] flex flex-col shadow-2xl animate-fade-up sm:animate-scale-in">
+                     className="bg-surface w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl max-h-[90vh] flex flex-col shadow-2xl animate-fade-up sm:animate-scale-in">
                     <div className="flex justify-center pt-3 pb-1 sm:hidden">
-                        <div className="w-10 h-1 bg-gray-200 rounded-full" />
+                        <div className="w-10 h-1 bg-surface-muted rounded-full" />
                     </div>
 
-                    <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
+                    <div className="px-5 py-4 border-b border-hairline flex items-start justify-between gap-3">
                         <div>
-                            <h3 className="font-bold text-gray-900 text-base">{displayName}</h3>
-                            <p className="text-xs text-gray-400 mt-0.5">Customise your order</p>
+                            <h3 className="font-bold text-ink text-base">{displayName}</h3>
+                            <p className="text-xs text-ink-subtle mt-0.5">Customise your order</p>
                         </div>
                         <button onClick={() => setShowModifiers(false)}
                                 aria-label="Close"
-                                className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition shrink-0">
+                                className="w-11 h-11 rounded-full bg-surface-muted flex items-center justify-center text-ink-subtle hover:bg-surface-muted transition shrink-0">
                             <X size={17} />
                         </button>
                     </div>
@@ -252,7 +252,7 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
                             return (
                                 <div key={group.id}>
                                     <div className="flex items-center gap-2 mb-3">
-                                        <h4 className="font-semibold text-gray-900 text-sm">{group.name}</h4>
+                                        <h4 className="font-semibold text-ink text-sm">{group.name}</h4>
                                         {isRequired && !isSatisfied && (
                                             <span className="text-[10px] bg-red-50 text-red-600 border border-red-100 px-2 py-0.5 rounded-full font-medium">Required</span>
                                         )}
@@ -261,7 +261,7 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
                                                 <Check size={9} /> Done
                                             </span>
                                         )}
-                                        <span className="text-xs text-gray-400 ml-auto">
+                                        <span className="text-xs text-ink-subtle ml-auto">
                                             {group.max_selections === 1 ? 'Choose 1' : `Up to ${group.max_selections}`}
                                         </span>
                                     </div>
@@ -275,20 +275,20 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
                                                     className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border text-sm transition-all ${
                                                         isSelected
                                                             ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5'
-                                                            : 'border-gray-100 bg-gray-50 hover:bg-gray-100'
+                                                            : 'border-hairline bg-surface-muted hover:bg-surface-muted'
                                                     }`}
                                                 >
                                                     <div className="flex items-center gap-3">
                                                         <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                                                            isSelected ? 'border-[var(--color-primary)] bg-[var(--color-primary)]' : 'border-gray-300'
+                                                            isSelected ? 'border-[var(--color-primary)] bg-[var(--color-primary)]' : 'border-hairline-strong'
                                                         }`}>
                                                             {isSelected && <Check size={10} className="text-white" strokeWidth={3} />}
                                                         </div>
-                                                        <span className={`${isSelected ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                                                        <span className={`${isSelected ? 'font-semibold text-ink' : 'text-ink-muted'}`}>
                                                             {mod.name}
                                                         </span>
                                                     </div>
-                                                    <span className={`text-sm tabular-nums ${isSelected ? 'text-[var(--color-primary)] font-semibold' : 'text-gray-400'}`}>
+                                                    <span className={`text-sm tabular-nums ${isSelected ? 'text-[var(--color-primary)] font-semibold' : 'text-ink-subtle'}`}>
                                                         {mod.price_adjustment > 0 ? `+${money(mod.price_adjustment)}` : mod.price_adjustment < 0 ? money(mod.price_adjustment) : 'Free'}
                                                     </span>
                                                 </button>
@@ -300,7 +300,7 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
                         })}
                     </div>
 
-                    <div className="p-5 border-t border-gray-100">
+                    <div className="p-5 border-t border-hairline">
                         <button
                             onClick={handleConfirmModifiers}
                             className="w-full bg-[var(--color-primary)] text-white py-3.5 rounded-xl font-semibold text-sm active:scale-[0.98] transition-all shadow-lg shadow-[var(--color-primary)]/20"

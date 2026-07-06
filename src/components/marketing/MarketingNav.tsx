@@ -44,42 +44,42 @@ export default function MarketingNav() {
     }, [])
 
     return (
-        <nav className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 bg-white/75 backdrop-blur-md ${scrolled ? 'shadow-md border-b border-gray-200' : 'border-b border-transparent'}`}>
+        <nav className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 bg-surface/75 backdrop-blur-md ${scrolled ? 'shadow-md border-b border-hairline-strong' : 'border-b border-transparent'}`}>
             <div className="mx-auto flex h-20 max-w-[1400px] items-center justify-between px-4 sm:px-6 lg:px-8">
                 <Link href="/" className="flex shrink-0 items-center gap-2">
                     <Logo className="h-8" />
                 </Link>
 
-                <div className="hidden items-center gap-8 text-[15px] font-semibold text-gray-700 lg:flex">
+                <div className="hidden items-center gap-8 text-[15px] font-semibold text-ink-muted lg:flex">
                     {/* Features dropdown */}
                     <div className="group relative flex h-20 items-center">
                         <button className="flex items-center gap-1 transition-colors hover:text-[var(--color-primary)]">
                             Features <ChevronDown size={14} className="transition-transform duration-200 group-hover:-rotate-180" />
                         </button>
-                        <div className="invisible absolute left-1/2 top-[80px] flex w-[800px] -translate-x-1/2 gap-6 rounded-2xl border border-gray-100 bg-white p-6 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:opacity-100">
+                        <div className="invisible absolute left-1/2 top-[80px] flex w-[800px] -translate-x-1/2 gap-6 rounded-2xl border border-hairline bg-surface p-6 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:opacity-100">
                             <div className="grid flex-1 grid-cols-2 gap-4">
                                 {FEATURE_LINKS.map(({ title, desc, icon: Icon, href }) => (
-                                    <Link href={href} key={title} className="flex gap-3 rounded-xl p-3 transition-colors hover:bg-gray-50">
-                                        <Icon className="mt-1 text-gray-500 shrink-0" size={18} />
+                                    <Link href={href} key={title} className="flex gap-3 rounded-xl p-3 transition-colors hover:bg-surface-muted">
+                                        <Icon className="mt-1 text-ink-subtle shrink-0" size={18} />
                                         <div>
-                                            <h4 className="mb-0.5 text-sm font-bold text-gray-900">{title}</h4>
-                                            <p className="text-xs leading-snug text-gray-500">{desc}</p>
+                                            <h4 className="mb-0.5 text-sm font-bold text-ink">{title}</h4>
+                                            <p className="text-xs leading-snug text-ink-subtle">{desc}</p>
                                         </div>
                                     </Link>
                                 ))}
                             </div>
-                            <div className="flex w-[280px] flex-col gap-4 border-l border-gray-100 pl-6">
+                            <div className="flex w-[280px] flex-col gap-4 border-l border-hairline pl-6">
                                 {FEATURE_SIDE.map(({ title, desc, icon: Icon, href }) => (
                                     <Link href={href} key={title} className="flex gap-3 transition-colors hover:text-[var(--color-primary)]">
-                                        <Icon className="mt-0.5 text-gray-400 shrink-0" size={18} />
+                                        <Icon className="mt-0.5 text-ink-subtle shrink-0" size={18} />
                                         <div>
                                             <h4 className="mb-0.5 text-sm font-bold">{title}</h4>
-                                            <p className="text-xs text-gray-500">{desc}</p>
+                                            <p className="text-xs text-ink-subtle">{desc}</p>
                                         </div>
                                     </Link>
                                 ))}
                                 <Link href="/signup" className="mt-auto block rounded-xl bg-gradient-to-br from-indigo-50 to-purple-50 p-4">
-                                    <h4 className="mb-4 pr-10 text-sm font-bold text-gray-900">Digital QR Menu to make your Restaurant smart.</h4>
+                                    <h4 className="mb-4 pr-10 text-sm font-bold text-ink">Digital QR Menu to make your Restaurant smart.</h4>
                                     <span className="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-xs font-bold text-white">Start for free</span>
                                 </Link>
                             </div>
@@ -91,13 +91,13 @@ export default function MarketingNav() {
                         <button className="flex items-center gap-1 transition-colors hover:text-[var(--color-primary)]">
                             Resources <ChevronDown size={14} className="transition-transform duration-200 group-hover:-rotate-180" />
                         </button>
-                        <div className="invisible absolute left-0 top-[80px] w-[300px] rounded-2xl border border-gray-100 bg-white p-3 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:opacity-100">
+                        <div className="invisible absolute left-0 top-[80px] w-[300px] rounded-2xl border border-hairline bg-surface p-3 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:opacity-100">
                             {RESOURCE_LINKS.map(({ title, desc, icon: Icon, href }) => (
-                                <Link href={href} key={title} className="flex gap-3 rounded-xl p-3 transition-colors hover:bg-gray-50">
+                                <Link href={href} key={title} className="flex gap-3 rounded-xl p-3 transition-colors hover:bg-surface-muted">
                                     <Icon className="mt-0.5 text-[var(--color-primary)] shrink-0" size={18} />
                                     <div>
-                                        <h4 className="mb-0.5 text-sm font-bold text-gray-900">{title}</h4>
-                                        <p className="text-xs text-gray-500">{desc}</p>
+                                        <h4 className="mb-0.5 text-sm font-bold text-ink">{title}</h4>
+                                        <p className="text-xs text-ink-subtle">{desc}</p>
                                     </div>
                                 </Link>
                             ))}
@@ -110,7 +110,7 @@ export default function MarketingNav() {
                 </div>
 
                 <div className="flex items-center gap-6">
-                    <Link href="/login" className="hidden font-bold text-gray-700 transition-colors hover:text-[var(--color-primary)] sm:block">
+                    <Link href="/login" className="hidden font-bold text-ink-muted transition-colors hover:text-[var(--color-primary)] sm:block">
                         Login
                     </Link>
                     <Link href="/signup" className="rounded-full bg-[var(--color-primary)] px-6 py-2.5 font-bold text-white shadow-md transition-transform hover:scale-105 hover:shadow-lg">

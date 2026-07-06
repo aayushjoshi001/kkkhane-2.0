@@ -16,9 +16,9 @@ export default async function AdminIngredientsPage() {
 
     return (
         <div className="space-y-6">
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                <h1 className="text-2xl font-bold text-gray-900">Stock</h1>
-                <p className="text-gray-500 mt-1">Track stock levels, costs and movements.</p>
+            <div className="bg-surface p-6 rounded-xl border border-hairline-strong shadow-sm">
+                <h1 className="text-2xl font-bold text-ink">Stock</h1>
+                <p className="text-ink-subtle mt-1">Track stock levels, costs and movements.</p>
             </div>
             <IngredientsManager initialIngredients={ingredients || []} restaurantId={rid} />
         </div>

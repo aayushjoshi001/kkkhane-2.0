@@ -27,7 +27,7 @@ export default function TableChip({ label, size = 'md', dark, className }: Table
         <span
             className={cn(
                 'inline-grid shrink-0 place-items-center rounded-[var(--r-md)] font-bold tabular leading-none',
-                dark ? 'bg-white/10 text-dark-ink' : 'bg-brand-50 text-brand-700',
+                dark ? 'bg-surface/10 text-dark-ink' : 'bg-brand-50 text-brand-700',
                 SIZES[size],
                 className,
             )}

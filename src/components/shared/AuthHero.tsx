@@ -14,15 +14,15 @@ export default function AuthHero({ heightClassName = 'h-64 sm:h-72' }: { heightC
             {/* Back to Home Button */}
             <Link 
                 href="/" 
-                className="absolute top-4 left-4 sm:top-6 sm:left-6 z-20 flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-white/10 hover:bg-white/20 border border-white/20 backdrop-blur-md rounded-full text-white text-xs sm:text-sm font-semibold transition-all hover:-translate-x-1"
+                className="absolute top-4 left-4 sm:top-6 sm:left-6 z-20 flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-surface/10 hover:bg-surface/20 border border-white/20 backdrop-blur-md rounded-full text-white text-xs sm:text-sm font-semibold transition-all hover:-translate-x-1"
             >
                 <ArrowLeft size={16} />
                 <span className="hidden sm:inline">Back to Home</span>
                 <span className="sm:hidden">Home</span>
             </Link>
             {/* Ambient blurred circles */}
-            <div className="absolute -top-12 -right-10 w-56 h-56 rounded-full bg-white/10 blur-2xl" />
-            <div className="absolute -bottom-16 -left-12 w-52 h-52 rounded-full bg-white/10 blur-2xl" />
+            <div className="absolute -top-12 -right-10 w-56 h-56 rounded-full bg-surface/10 blur-2xl" />
+            <div className="absolute -bottom-16 -left-12 w-52 h-52 rounded-full bg-surface/10 blur-2xl" />
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] h-[420px] rounded-full border border-white/10" />
 
             {/* Dot-grid corner ornaments */}
@@ -30,7 +30,7 @@ export default function AuthHero({ heightClassName = 'h-64 sm:h-72' }: { heightC
             <DotGrid className="absolute bottom-5 right-5 sm:bottom-7 sm:right-7" />
 
             <div className="relative z-10 h-full flex flex-col items-center justify-center gap-3 px-4 text-center">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-white shadow-lg flex items-center justify-center p-1.5">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-surface shadow-lg flex items-center justify-center p-1.5">
                     <Image src="/brand/icon.png" alt="KKKhane Logo" width={64} height={64} className="w-full h-full object-contain" />
                 </div>
                 <span className="text-white font-extrabold text-2xl sm:text-3xl tracking-tight">kkkhane</span>
@@ -46,7 +46,7 @@ function DotGrid({ className = '' }: { className?: string }) {
     return (
         <div className={`grid grid-cols-4 gap-1.5 opacity-40 ${className}`}>
             {Array.from({ length: 16 }).map((_, i) => (
-                <span key={i} className="w-1 h-1 rounded-full bg-white" />
+                <span key={i} className="w-1 h-1 rounded-full bg-surface" />
             ))}
         </div>
     )

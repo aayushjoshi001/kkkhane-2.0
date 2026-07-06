@@ -13,10 +13,10 @@ export default function GallerySection({
     if (items.length === 0) return null
 
     return (
-        <section className="py-16 md:py-24 px-4 bg-white">
+        <section className="py-16 md:py-24 px-4 bg-surface">
             <div className="max-w-6xl mx-auto">
                 <div className="text-center mb-12">
-                    <h2 className="text-3xl font-bold text-gray-900">Gallery</h2>
+                    <h2 className="text-3xl font-bold text-ink">Gallery</h2>
                     <div className="w-16 h-1 mx-auto mt-3 rounded-full" style={{ backgroundColor: accent || '#EC4899' }} />
                 </div>
                 <div className="relative overflow-hidden w-full group py-4 flex flex-col justify-center">
@@ -26,7 +26,7 @@ export default function GallerySection({
                             return (
                             <figure
                                 key={idx}
-                                className="relative overflow-hidden rounded-2xl w-64 md:w-80 h-64 md:h-80 shrink-0 bg-gray-100 shadow-md card-hover mr-4 md:mr-6"
+                                className="relative overflow-hidden rounded-2xl w-64 md:w-80 h-64 md:h-80 shrink-0 bg-surface-muted shadow-md card-hover mr-4 md:mr-6"
                             >
                                 {isVideo ? (
                                     <video

@@ -48,8 +48,8 @@ export default async function ReceiptPage(props: {
     const placedAt = order.placed_at ? new Date(order.placed_at) : new Date()
 
     return (
-        <div className="min-h-screen bg-gray-100 py-8 print:bg-white print:py-0">
-            <div className="max-w-xs mx-auto bg-white p-6 shadow print:shadow-none font-mono text-xs text-black">
+        <div className="min-h-screen bg-surface-muted py-8 print:bg-surface print:py-0">
+            <div className="max-w-xs mx-auto bg-surface p-6 shadow print:shadow-none font-mono text-xs text-black">
                 {/* Restaurant header */}
                 <div className="text-center mb-3">
                     <p className="font-bold text-sm">{restaurant?.name ?? 'Restaurant'}</p>
@@ -86,7 +86,7 @@ export default async function ReceiptPage(props: {
                                 <span className="w-16 text-right">{sym}{lineTotal.toFixed(0)}</span>
                             </div>
                             {mods?.map((mod, mi) => (
-                                <div key={mi} className="flex justify-between pl-3 text-gray-500">
+                                <div key={mi} className="flex justify-between pl-3 text-ink-subtle">
                                     <span className="flex-1">+ {mod.modifier_name}</span>
                                     <span className="w-6 text-center">{item.quantity}</span>
                                     <span className="w-16 text-right">{sym}{(mod.price_adjustment * item.quantity).toFixed(0)}</span>
@@ -112,7 +112,7 @@ export default async function ReceiptPage(props: {
 
                 <div className="border-t border-dashed border-gray-400 my-3" />
                 <p className="text-center">Thank you for dining with us!</p>
-                <p className="text-center text-gray-400 text-[10px] mt-1">IRD-compliant tax invoice</p>
+                <p className="text-center text-ink-subtle text-[10px] mt-1">IRD-compliant tax invoice</p>
             </div>
 
             {/* Print / download button — hidden when actually printing */}

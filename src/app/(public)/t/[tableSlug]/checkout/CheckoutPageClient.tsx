@@ -52,12 +52,12 @@ export default function CheckoutPageClient() {
 
     if (items.length === 0) {
         return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+            <div className="min-h-screen bg-surface-muted flex items-center justify-center p-4">
                 <div className="text-center">
-                    <div className="text-gray-400 mb-4 flex justify-center">
+                    <div className="text-ink-subtle mb-4 flex justify-center">
                         <ShoppingBagIcon className="w-16 h-16" />
                     </div>
-                    <h2 className="text-xl font-medium text-gray-900 mb-2">Your cart is empty</h2>
+                    <h2 className="text-xl font-medium text-ink mb-2">Your cart is empty</h2>
                     <button
                         onClick={() => router.back()}
                         className="text-[var(--color-primary)] font-medium"
@@ -112,19 +112,19 @@ export default function CheckoutPageClient() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 pb-32">
+        <div className="min-h-screen bg-surface-muted pb-32">
             {/* Header */}
-            <header className="bg-white px-4 py-4 shadow-sm sticky top-0 z-20 flex items-center gap-3">
-                <button onClick={() => router.back()} className="p-2 -ml-2 text-gray-600 rounded-full active:bg-gray-100">
+            <header className="bg-surface px-4 py-4 shadow-sm sticky top-0 z-20 flex items-center gap-3">
+                <button onClick={() => router.back()} className="p-2 -ml-2 text-ink-muted rounded-full active:bg-surface-muted">
                     <ArrowLeft size={20} />
                 </button>
-                <h1 className="text-xl font-semibold text-gray-900">Checkout</h1>
+                <h1 className="text-xl font-semibold text-ink">Checkout</h1>
             </header>
 
             <main className="max-w-xl mx-auto px-4 mt-6">
-                <div className="bg-white rounded-[var(--border-radius)] shadow-sm border border-gray-100 overflow-hidden mb-6">
-                    <div className="p-4 border-b border-gray-100 bg-gray-50/50">
-                        <h2 className="font-semibold text-gray-700">Order Summary ({totalItems()} items)</h2>
+                <div className="bg-surface rounded-[var(--border-radius)] shadow-sm border border-hairline overflow-hidden mb-6">
+                    <div className="p-4 border-b border-hairline bg-surface-muted/50">
+                        <h2 className="font-semibold text-ink-muted">Order Summary ({totalItems()} items)</h2>
                     </div>
 
                     <ul className="divide-y divide-gray-100">
@@ -132,11 +132,11 @@ export default function CheckoutPageClient() {
                             const key = getCartItemKey(item)
                             const modTotal = (item.modifiers || []).reduce((s, m) => s + m.priceAdjustment, 0)
                             return (
-                            <li key={key} className="p-4 flex gap-4 bg-white">
+                            <li key={key} className="p-4 flex gap-4 bg-surface">
                                 <div className="flex-1">
-                                    <h3 className="font-medium text-gray-900">{item.name}</h3>
+                                    <h3 className="font-medium text-ink">{item.name}</h3>
                                     {item.modifiers && item.modifiers.length > 0 && (
-                                        <p className="text-xs text-gray-500 mt-0.5">
+                                        <p className="text-xs text-ink-subtle mt-0.5">
                                             {item.modifiers.map(m => m.name).join(', ')}
                                         </p>
                                     )}
@@ -146,10 +146,10 @@ export default function CheckoutPageClient() {
                                 </div>
 
                                 <div className="flex flex-col items-end justify-between">
-                                    <div className="flex items-center gap-3 bg-gray-50 rounded-full p-1 border border-gray-200">
+                                    <div className="flex items-center gap-3 bg-surface-muted rounded-full p-1 border border-hairline-strong">
                                         <button
                                             onClick={() => item.quantity === 1 ? removeItem(key) : updateQuantity(key, item.quantity - 1)}
-                                            className="w-8 h-8 flex items-center justify-center rounded-full bg-white shadow-sm text-gray-600 active:bg-gray-100"
+                                            className="w-8 h-8 flex items-center justify-center rounded-full bg-surface shadow-sm text-ink-muted active:bg-surface-muted"
                                         >
                                             {item.quantity === 1 ? <Trash2 size={16} className="text-red-500" /> : <Minus size={16} />}
                                         </button>
@@ -169,21 +169,21 @@ export default function CheckoutPageClient() {
                 </div>
 
                 {/* Note */}
-                <div className="bg-white rounded-[var(--border-radius)] shadow-sm border border-gray-100 p-4 mb-6">
-                    <label htmlFor="note" className="block font-semibold text-gray-700 mb-2">Add a note to kitchen</label>
+                <div className="bg-surface rounded-[var(--border-radius)] shadow-sm border border-hairline p-4 mb-6">
+                    <label htmlFor="note" className="block font-semibold text-ink-muted mb-2">Add a note to kitchen</label>
                     <textarea
                         id="note"
                         rows={2}
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
-                        className="w-full border border-gray-200 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent resize-none"
+                        className="w-full border border-hairline-strong rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent resize-none"
                         placeholder="E.g. No onions, extra spicy..."
                     />
                 </div>
 
                 {/* Promo Code — shown when promos OR loyalty is enabled */}
                 {restaurantId && (features.promosEnabled !== false) && (
-                    <div className="bg-white rounded-[var(--border-radius)] shadow-sm border border-gray-100 p-4 mb-6">
+                    <div className="bg-surface rounded-[var(--border-radius)] shadow-sm border border-hairline p-4 mb-6">
                         <PromoCodeInput
                             restaurantId={restaurantId}
                             subtotal={totalAmount()}
@@ -196,7 +196,7 @@ export default function CheckoutPageClient() {
 
                 {/* Loyalty — gated by feature flag */}
                 {restaurantId && features.loyaltyEnabled && (
-                    <div className="bg-white rounded-[var(--border-radius)] shadow-sm border border-gray-100 p-4 mb-6">
+                    <div className="bg-surface rounded-[var(--border-radius)] shadow-sm border border-hairline p-4 mb-6">
                         <LoyaltyPanel
                             restaurantId={restaurantId}
                             onMemberSet={setLoyaltyMember}
@@ -209,10 +209,10 @@ export default function CheckoutPageClient() {
             </main>
 
             {/* Persistent Bottom Checkout Bar */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 z-50 bg-white border-t border-gray-200">
+            <div className="fixed bottom-0 left-0 right-0 p-4 z-50 bg-surface border-t border-hairline-strong">
                 <div className="max-w-xl mx-auto">
                     <div className="space-y-1 mb-4">
-                        <div className="flex justify-between text-sm text-gray-500">
+                        <div className="flex justify-between text-sm text-ink-subtle">
                             <span>Subtotal</span>
                             <span>{money(totalAmount())}</span>
                         </div>
@@ -228,9 +228,9 @@ export default function CheckoutPageClient() {
                                 <span>-{money(loyaltyDiscount)}</span>
                             </div>
                         )}
-                        <div className="flex justify-between items-center pt-1 border-t border-gray-100">
-                            <span className="text-gray-600 font-medium">Total to pay</span>
-                            <span className="text-2xl font-bold text-gray-900">{money(finalTotal())}</span>
+                        <div className="flex justify-between items-center pt-1 border-t border-hairline">
+                            <span className="text-ink-muted font-medium">Total to pay</span>
+                            <span className="text-2xl font-bold text-ink">{money(finalTotal())}</span>
                         </div>
                     </div>
 
@@ -239,7 +239,7 @@ export default function CheckoutPageClient() {
                             <button
                                 onClick={() => setShowSplit(true)}
                                 disabled={!sessionId}
-                                className="flex-1 border border-gray-300 text-gray-700 font-medium rounded-xl py-3 text-sm hover:bg-gray-50 disabled:opacity-50"
+                                className="flex-1 border border-hairline-strong text-ink-muted font-medium rounded-xl py-3 text-sm hover:bg-surface-muted disabled:opacity-50"
                             >
                                 Split Bill
                             </button>

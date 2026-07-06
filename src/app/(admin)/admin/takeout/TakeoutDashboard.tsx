@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import useSWR from 'swr'
+import { useWindowVirtualizer } from '@tanstack/react-virtual'
 import { updateTakeoutStatusAction } from './actions'
 import { Clock, Phone, User, CheckCircle, XCircle, Search, QrCode, Download, ExternalLink } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
@@ -69,6 +70,13 @@ export default function TakeoutDashboard({ initialOrders, restaurantId, restaura
         return matchesSearch && matchesStatus
     })
 
+    const parentRef = useRef<HTMLDivElement>(null)
+    const virtualizer = useWindowVirtualizer({
+        count: filteredOrders.length,
+        estimateSize: () => 220,
+        overscan: 5,
+    })
+
     async function advance(order: TakeoutOrder) {
         const next = NEXT_STATUS[order.status]
         if (!next) return
@@ -126,7 +134,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantId, restaura
                     {showQr && (
                         <div className="mt-6 pt-6 border-t border-hairline flex flex-col items-center justify-center animate-in fade-in slide-in-from-top-2 duration-300">
                             {/* The Card Preview Container */}
-                            <div id="takeout-qr-card-preview" className="w-[280px] h-[340px] bg-white rounded-xl border border-gray-200 shadow-[0_8px_30px_rgba(0,0,0,0.12)] flex flex-col items-center p-4 pb-12 relative overflow-hidden select-none">
+                            <div id="takeout-qr-card-preview" className="w-[280px] h-[340px] bg-surface rounded-xl border border-hairline-strong shadow-[0_8px_30px_rgba(0,0,0,0.12)] flex flex-col items-center p-4 pb-12 relative overflow-hidden select-none">
                                 
                                 {/* Top Banner */}
                                 <div className="w-full flex items-center justify-center relative my-2 shrink-0">
@@ -137,7 +145,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantId, restaura
                                 </div>
 
                                 {/* QR Code */}
-                                <div className="my-2 shrink-0 bg-white">
+                                <div className="my-2 shrink-0 bg-surface">
                                     <QRCodeSVG
                                         id="takeout-qr-code"
                                         value={takeoutUrl}
@@ -157,7 +165,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantId, restaura
 
                                 {/* Hotel / Restaurant Name */}
                                 <div className="text-center flex-1 flex flex-col justify-center pb-1 min-h-[50px] px-2 overflow-hidden shrink-0 mt-1">
-                                    <p className="font-extrabold text-[15px] text-gray-950 truncate max-w-[240px] leading-tight" title={restaurantName}>
+                                    <p className="font-extrabold text-[15px] text-ink truncate max-w-[240px] leading-tight" title={restaurantName}>
                                         {restaurantName}
                                     </p>
                                 </div>
@@ -170,7 +178,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantId, restaura
                                     >
                                         Powered by KKKHANEY
                                     </span>
-                                    <div className="relative w-5 h-5 rounded-full border-[1.5px] border-white shrink-0 shadow-sm overflow-hidden bg-white">
+                                    <div className="relative w-5 h-5 rounded-full border-[1.5px] border-white shrink-0 shadow-sm overflow-hidden bg-surface">
                                         <Image
                                             src="/icons/kkkhane.png"
                                             alt="Logo"
@@ -217,37 +225,54 @@ export default function TakeoutDashboard({ initialOrders, restaurantId, restaura
                 </select>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4" ref={parentRef}>
                 {filteredOrders.length === 0 && (
                     <div className="bg-surface rounded-card border border-hairline p-10 text-center text-ink-subtle font-bold shadow-sm">
                         No active takeout orders.
                     </div>
                 )}
-            {filteredOrders.map(order => (
-                <div key={order.id} className="bg-surface rounded-card border border-hairline p-5 shadow-sm transition-all hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)]">
-                    <div className="flex items-start justify-between gap-4 mb-4">
-                        <div>
-                            <div className="flex items-center gap-3 mb-1.5">
-                                <div className="flex items-center gap-1.5">
-                                    <User size={16} className="text-ink-subtle" />
-                                    <span className="font-extrabold text-ink text-base">{order.customer_name}</span>
-                                </div>
-                                <span className={`text-[10px] font-bold tracking-wide uppercase px-2.5 py-1 rounded-full border ${STATUS_COLORS[order.status] || ''}`}>
-                                    {order.status.replace('_', ' ')}
-                                </span>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] font-medium text-ink-subtle">
-                                <span className="flex items-center gap-1.5"><Phone size={14} className="opacity-70" />{order.customer_phone}</span>
-                                <span className="flex items-center gap-1.5"><Clock size={14} className="opacity-70" />Pickup: <span className="tabular-nums font-bold text-ink">{new Date(order.pickup_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></span>
-                            </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                            <p className="text-h3 font-extrabold text-ink tabular-nums leading-tight">{money(order.total_amount)}</p>
-                            <p className="text-[11px] font-medium font-mono text-ink-subtle mt-0.5">#{order.id.slice(0, 8).toUpperCase()}</p>
-                        </div>
-                    </div>
-
-                    {/* Items */}
+                
+                {filteredOrders.length > 0 && (
+                    <div style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+                        {virtualizer.getVirtualItems().map((virtualRow) => {
+                            const order = filteredOrders[virtualRow.index]
+                            return (
+                                <div
+                                    key={order.id}
+                                    data-index={virtualRow.index}
+                                    ref={virtualizer.measureElement}
+                                    style={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        width: '100%',
+                                        transform: `translateY(${virtualRow.start}px)`,
+                                    }}
+                                >
+                                    <div className="bg-surface rounded-card border border-hairline p-5 shadow-sm transition-all hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] mb-4">
+                                        <div className="flex items-start justify-between gap-4 mb-4">
+                                            <div>
+                                                <div className="flex items-center gap-3 mb-1.5">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <User size={16} className="text-ink-subtle" />
+                                                        <span className="font-extrabold text-ink text-base">{order.customer_name}</span>
+                                                    </div>
+                                                    <span className={`text-[10px] font-bold tracking-wide uppercase px-2.5 py-1 rounded-full border ${STATUS_COLORS[order.status] || ''}`}>
+                                                        {order.status.replace('_', ' ')}
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] font-medium text-ink-subtle">
+                                                    <span className="flex items-center gap-1.5"><Phone size={14} className="opacity-70" />{order.customer_phone}</span>
+                                                    <span className="flex items-center gap-1.5"><Clock size={14} className="opacity-70" />Pickup: <span className="tabular-nums font-bold text-ink">{new Date(order.pickup_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></span>
+                                                </div>
+                                            </div>
+                                            <div className="text-right shrink-0">
+                                                <p className="text-h3 font-extrabold text-ink tabular-nums leading-tight">{money(order.total_amount)}</p>
+                                                <p className="text-[11px] font-medium font-mono text-ink-subtle mt-0.5">#{order.id.slice(0, 8).toUpperCase()}</p>
+                                            </div>
+                                        </div>
+                    
+                                        {/* Items */}
                     <div className="bg-surface-muted/30 border border-hairline rounded-[var(--r-md)] p-4 mb-4 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
                         <ul className="space-y-2 text-sm text-ink font-medium">
                             {order.items.map((item: any, i: number) => (
@@ -283,7 +308,11 @@ export default function TakeoutDashboard({ initialOrders, restaurantId, restaura
                         )}
                     </div>
                 </div>
-            ))}
+            </div>
+                            )
+                        })}
+                    </div>
+                )}
             </div>
         </div>
     )

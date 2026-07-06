@@ -55,10 +55,10 @@ function TakeoutMenu({ restaurant, categories, menuItems, comboItems }: {
 
     if (showCheckout) {
         return (
-            <div className="min-h-screen bg-gray-50">
+            <div className="min-h-screen bg-surface-muted">
                 <div className="max-w-lg mx-auto px-4 py-8">
                     <button onClick={() => setShowCheckout(false)}
-                        className="text-sm text-gray-500 mb-4 hover:text-gray-900">← Back to menu</button>
+                        className="text-sm text-ink-subtle mb-4 hover:text-ink">← Back to menu</button>
                     <TakeoutForm restaurantId={restaurant.id} restaurantName={restaurant.name} restaurantSlug={restaurant.slug} />
                 </div>
             </div>
@@ -66,26 +66,26 @@ function TakeoutMenu({ restaurant, categories, menuItems, comboItems }: {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-surface-muted">
             <ActiveOrderPill />
             {/* Header */}
-            <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+            <header className="bg-surface border-b border-hairline-strong sticky top-0 z-10">
                 <div className="max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">
                     <Logo className="h-7" />
                     <div className="flex-1">
-                        <h1 className="font-bold text-gray-900">{restaurant.name}</h1>
-                        <p className="text-xs text-gray-500">Takeout Order</p>
+                        <h1 className="font-bold text-ink">{restaurant.name}</h1>
+                        <p className="text-xs text-ink-subtle">Takeout Order</p>
                     </div>
                     <LanguageSwitcher />
                     <button 
                         onClick={() => setShowProfile(true)}
-                        className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors"
+                        className="p-2 text-ink-subtle hover:bg-surface-muted rounded-full transition-colors"
                     >
                         <UserCircle size={24} />
                     </button>
                     {items.length > 0 && (
                         <button onClick={() => setShowCheckout(true)}
-                            className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium">
+                            className="flex items-center gap-2 bg-ink text-white px-4 py-2 rounded-lg text-sm font-medium">
                             <ShoppingBag size={16} />
                             <span>{items.reduce((s, i) => s + i.quantity, 0)}</span>
                             <span>{money(totalAmount())}</span>
@@ -101,14 +101,14 @@ function TakeoutMenu({ restaurant, categories, menuItems, comboItems }: {
             />
 
             {/* Category Tabs */}
-            <div className="bg-white border-b border-gray-100 sticky top-[73px] z-10">
+            <div className="bg-surface border-b border-hairline sticky top-[73px] z-10">
                 <div className="max-w-4xl mx-auto px-4 flex gap-1 overflow-x-auto py-2">
                     {categories.map(c => (
                         <button key={c.id}
                             onClick={() => setActiveCategory(c.id)}
                             className={`px-4 py-2 rounded-full text-sm whitespace-nowrap font-medium transition ${activeCategory === c.id
-                                ? 'bg-gray-900 text-white'
-                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                                ? 'bg-ink text-white'
+                                : 'bg-surface-muted text-ink-muted hover:bg-surface-muted'}`}>
                             {t('category_name', c.id, c.name)}
                         </button>
                     ))}
@@ -134,9 +134,9 @@ function TakeoutMenu({ restaurant, categories, menuItems, comboItems }: {
 
             {/* Floating Cart Bar */}
             {items.length > 0 && (
-                <div className="fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 p-4 md:hidden z-20">
+                <div className="fixed bottom-0 inset-x-0 bg-surface border-t border-hairline-strong p-4 md:hidden z-20">
                     <button onClick={() => setShowCheckout(true)}
-                        className="w-full bg-gray-900 text-white py-3 rounded-xl font-medium flex items-center justify-center gap-2">
+                        className="w-full bg-ink text-white py-3 rounded-xl font-medium flex items-center justify-center gap-2">
                         <ShoppingBag size={18} />
                         Checkout ({items.reduce((s, i) => s + i.quantity, 0)} items) — {money(totalAmount())}
                     </button>

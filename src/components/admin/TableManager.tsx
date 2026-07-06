@@ -358,7 +358,7 @@ export default function TableManager({
 
                                 <div className="p-6 flex flex-col items-center justify-center flex-1 bg-surface-muted/30">
                                     {/* The Card Preview Container */}
-                                    <div className="w-[220px] h-[260px] bg-white rounded-xl border border-gray-200 shadow-[0_8px_30px_rgba(0,0,0,0.12)] flex flex-col items-center p-3 pb-9 relative overflow-hidden mb-5 select-none">
+                                    <div className="w-[220px] h-[260px] bg-surface rounded-xl border border-hairline-strong shadow-[0_8px_30px_rgba(0,0,0,0.12)] flex flex-col items-center p-3 pb-9 relative overflow-hidden mb-5 select-none">
                                         
                                         {/* Top Banner */}
                                         <div className="w-full flex items-center justify-center relative my-1.5 shrink-0">
@@ -371,7 +371,7 @@ export default function TableManager({
                                         {/* QR Code */}
                                         <div
                                             ref={el => { if (el) qrCanvasRefs.current.set(table.id, el) }}
-                                            className="my-1 shrink-0 bg-white"
+                                            className="my-1 shrink-0 bg-surface"
                                         >
                                             <QRCodeCanvas
                                                 value={menuUrl}
@@ -391,7 +391,7 @@ export default function TableManager({
 
                                         {/* Hotel / Restaurant Name */}
                                         <div className="text-center flex-1 flex flex-col justify-center pb-1 min-h-[40px] px-1 overflow-hidden shrink-0 mt-0.5">
-                                            <p className="font-extrabold text-[12px] text-gray-950 truncate max-w-[190px] leading-tight" title={restaurantName}>
+                                            <p className="font-extrabold text-[12px] text-ink truncate max-w-[190px] leading-tight" title={restaurantName}>
                                                 {restaurantName}
                                             </p>
                                         </div>
@@ -404,7 +404,7 @@ export default function TableManager({
                                             >
                                                 Powered by KKKHANEY
                                             </span>
-                                            <div className="relative w-4 h-4 rounded-full border-[1.5px] border-white shrink-0 shadow-sm overflow-hidden bg-white">
+                                            <div className="relative w-4 h-4 rounded-full border-[1.5px] border-white shrink-0 shadow-sm overflow-hidden bg-surface">
                                                 <NextImage
                                                     src={QR_LOGO_SRC}
                                                     alt="Logo"
@@ -508,14 +508,14 @@ export default function TableManager({
                 {/* Close button — always visible, top-right of viewport */}
                 <button
                     onClick={closePreview}
-                    className="absolute top-3 right-3 sm:top-5 sm:right-5 z-[70] w-10 h-10 bg-white/15 hover:bg-white/25 rounded-full flex items-center justify-center text-white transition-colors"
+                    className="absolute top-3 right-3 sm:top-5 sm:right-5 z-[70] w-10 h-10 bg-surface/15 hover:bg-surface/25 rounded-full flex items-center justify-center text-white transition-colors"
                     aria-label="Close preview"
                 >
                     <X size={20} />
                 </button>
 
                 {/* Table label */}
-                <div className={`absolute top-4 left-1/2 -translate-x-1/2 z-[70] text-white text-sm font-semibold bg-white/10 px-4 py-1.5 rounded-full backdrop-blur-sm transition-transform duration-300 ${previewTable ? 'translate-y-0' : '-translate-y-10'}`}>
+                <div className={`absolute top-4 left-1/2 -translate-x-1/2 z-[70] text-white text-sm font-semibold bg-surface/10 px-4 py-1.5 rounded-full backdrop-blur-sm transition-transform duration-300 ${previewTable ? 'translate-y-0' : '-translate-y-10'}`}>
                     {previewTable?.label || 'Preview'} — Customer View
                 </div>
 
@@ -525,76 +525,76 @@ export default function TableManager({
                     onClick={e => e.stopPropagation()}
                 >
                     {/* Phone bezel */}
-                    <div className="absolute inset-0 bg-gray-900 rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl border border-gray-700">
+                    <div className="absolute inset-0 bg-ink rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl border border-gray-700">
                         {/* Notch */}
-                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-28 sm:w-32 h-5 sm:h-6 bg-gray-900 rounded-b-xl z-20" />
+                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-28 sm:w-32 h-5 sm:h-6 bg-ink rounded-b-xl z-20" />
                     </div>
 
                     {/* Screen */}
-                    <div className="absolute inset-2 sm:inset-3 top-3 sm:top-4 rounded-[1.25rem] sm:rounded-[1.5rem] overflow-hidden bg-gray-100 flex flex-col">
+                    <div className="absolute inset-2 sm:inset-3 top-3 sm:top-4 rounded-[1.25rem] sm:rounded-[1.5rem] overflow-hidden bg-surface-muted flex flex-col">
                         {/* Browser chrome */}
-                        <div className="bg-gray-100 px-3 sm:px-4 pb-1.5 sm:pb-2 pt-6 sm:pt-7 border-b border-gray-200 shrink-0 flex items-center gap-2">
-                            <div className="w-4 h-4 text-gray-400"><Smartphone size={14} /></div>
-                            <div className="flex-1 bg-gray-200/80 rounded-lg text-[9px] sm:text-[10px] text-center text-gray-500 py-1 sm:py-1.5 px-2 truncate font-mono">
+                        <div className="bg-surface-muted px-3 sm:px-4 pb-1.5 sm:pb-2 pt-6 sm:pt-7 border-b border-hairline-strong shrink-0 flex items-center gap-2">
+                            <div className="w-4 h-4 text-ink-subtle"><Smartphone size={14} /></div>
+                            <div className="flex-1 bg-surface-muted/80 rounded-lg text-[9px] sm:text-[10px] text-center text-ink-subtle py-1 sm:py-1.5 px-2 truncate font-mono">
                                 {baseUrl.replace(/https?:\/\//, '')}/t/{previewTable?.qr_token?.substring(0, 8) || '...'}…
                             </div>
                         </div>
 
                         {/* Loading state / Skeleton UI */}
                         {!iframeLoaded && previewTable && (
-                            <div className="absolute inset-0 top-[60px] bg-gray-50 z-0 overflow-hidden flex flex-col pointer-events-none">
+                            <div className="absolute inset-0 top-[60px] bg-surface-muted z-0 overflow-hidden flex flex-col pointer-events-none">
                                 {/* Skeleton Header (matches customer UI) */}
-                                <div className="relative bg-[#FB6303] text-white rounded-b-[36px] pb-6 pt-2 h-[120px] shadow-md flex flex-col shrink-0 overflow-hidden">
+                                <div className="relative bg-brand-500 text-white rounded-b-[36px] pb-6 pt-2 h-[120px] shadow-md flex flex-col shrink-0 overflow-hidden">
                                     <div className="absolute inset-x-0 bottom-0 top-[48px] rounded-b-[36px] bg-black/20" />
                                     <div className="w-full px-4 flex items-center justify-between gap-3 h-10 mt-2 relative z-10">
                                         <div className="flex items-center gap-2">
-                                            <div className="w-8 h-8 rounded-full bg-white/25 animate-pulse" />
+                                            <div className="w-8 h-8 rounded-full bg-surface/25 animate-pulse" />
                                             <div className="flex flex-col gap-1.5">
-                                                <div className="w-10 h-2 bg-white/20 rounded animate-pulse" />
-                                                <div className="w-24 h-3 bg-white/30 rounded animate-pulse" />
+                                                <div className="w-10 h-2 bg-surface/20 rounded animate-pulse" />
+                                                <div className="w-24 h-3 bg-surface/30 rounded animate-pulse" />
                                             </div>
                                         </div>
-                                        <div className="w-8 h-8 rounded-full bg-white/20 animate-pulse" />
+                                        <div className="w-8 h-8 rounded-full bg-surface/20 animate-pulse" />
                                     </div>
                                     <div className="mt-8 px-4 flex justify-between items-center relative z-10">
                                         <div className="flex gap-2">
-                                            <div className="w-16 h-6 bg-white/20 rounded-full animate-pulse" />
-                                            <div className="w-16 h-6 bg-white/20 rounded-full animate-pulse" />
+                                            <div className="w-16 h-6 bg-surface/20 rounded-full animate-pulse" />
+                                            <div className="w-16 h-6 bg-surface/20 rounded-full animate-pulse" />
                                         </div>
                                     </div>
                                 </div>
                                 {/* Skeleton Content */}
                                 <div className="flex-1 p-4 space-y-4">
                                     {/* Search Bar Skeleton */}
-                                    <div className="w-full h-11 bg-white rounded-xl shadow-sm border border-gray-100 flex items-center px-4 animate-pulse">
-                                        <div className="w-4 h-4 bg-gray-200 rounded-full" />
-                                        <div className="ml-3 w-32 h-3 bg-gray-200 rounded" />
+                                    <div className="w-full h-11 bg-surface rounded-xl shadow-sm border border-hairline flex items-center px-4 animate-pulse">
+                                        <div className="w-4 h-4 bg-surface-muted rounded-full" />
+                                        <div className="ml-3 w-32 h-3 bg-surface-muted rounded" />
                                     </div>
                                     {/* Categories Skeleton */}
                                     <div className="flex gap-3 mt-4 overflow-hidden">
-                                        <div className="w-16 h-20 bg-white rounded-xl shadow-sm animate-pulse shrink-0" />
-                                        <div className="w-16 h-20 bg-white rounded-xl shadow-sm animate-pulse shrink-0" />
-                                        <div className="w-16 h-20 bg-white rounded-xl shadow-sm animate-pulse shrink-0" />
-                                        <div className="w-16 h-20 bg-white rounded-xl shadow-sm animate-pulse shrink-0" />
+                                        <div className="w-16 h-20 bg-surface rounded-xl shadow-sm animate-pulse shrink-0" />
+                                        <div className="w-16 h-20 bg-surface rounded-xl shadow-sm animate-pulse shrink-0" />
+                                        <div className="w-16 h-20 bg-surface rounded-xl shadow-sm animate-pulse shrink-0" />
+                                        <div className="w-16 h-20 bg-surface rounded-xl shadow-sm animate-pulse shrink-0" />
                                     </div>
                                     {/* Menu Items Skeleton */}
                                     <div className="mt-6 space-y-3">
-                                        <div className="w-24 h-4 bg-gray-200 rounded animate-pulse mb-4" />
-                                        <div className="w-full h-[104px] bg-white rounded-xl shadow-sm flex items-center p-3 animate-pulse">
+                                        <div className="w-24 h-4 bg-surface-muted rounded animate-pulse mb-4" />
+                                        <div className="w-full h-[104px] bg-surface rounded-xl shadow-sm flex items-center p-3 animate-pulse">
                                             <div className="flex-1 space-y-2.5">
-                                                <div className="w-3/4 h-3.5 bg-gray-200 rounded" />
-                                                <div className="w-1/2 h-2.5 bg-gray-100 rounded" />
-                                                <div className="w-16 h-4 bg-gray-200 rounded mt-3" />
+                                                <div className="w-3/4 h-3.5 bg-surface-muted rounded" />
+                                                <div className="w-1/2 h-2.5 bg-surface-muted rounded" />
+                                                <div className="w-16 h-4 bg-surface-muted rounded mt-3" />
                                             </div>
-                                            <div className="w-[80px] h-[80px] bg-gray-100 rounded-lg ml-3" />
+                                            <div className="w-[80px] h-[80px] bg-surface-muted rounded-lg ml-3" />
                                         </div>
-                                        <div className="w-full h-[104px] bg-white rounded-xl shadow-sm flex items-center p-3 animate-pulse">
+                                        <div className="w-full h-[104px] bg-surface rounded-xl shadow-sm flex items-center p-3 animate-pulse">
                                             <div className="flex-1 space-y-2.5">
-                                                <div className="w-2/3 h-3.5 bg-gray-200 rounded" />
-                                                <div className="w-1/3 h-2.5 bg-gray-100 rounded" />
-                                                <div className="w-16 h-4 bg-gray-200 rounded mt-3" />
+                                                <div className="w-2/3 h-3.5 bg-surface-muted rounded" />
+                                                <div className="w-1/3 h-2.5 bg-surface-muted rounded" />
+                                                <div className="w-16 h-4 bg-surface-muted rounded mt-3" />
                                             </div>
-                                            <div className="w-[80px] h-[80px] bg-gray-100 rounded-lg ml-3" />
+                                            <div className="w-[80px] h-[80px] bg-surface-muted rounded-lg ml-3" />
                                         </div>
                                     </div>
                                 </div>
@@ -602,12 +602,12 @@ export default function TableManager({
                         )}
 
                         {/* Iframe for active preview only */}
-                        <div className="flex-1 relative bg-white z-10">
+                        <div className="flex-1 relative bg-surface z-10">
                             {previewTable?.qr_token && (
                                 <iframe
                                     key={previewTable.qr_token}
                                     src={`/t/${previewTable.qr_token}`}
-                                    className="absolute inset-0 w-full h-full border-none bg-white z-10 pointer-events-auto"
+                                    className="absolute inset-0 w-full h-full border-none bg-surface z-10 pointer-events-auto"
                                     title="Customer menu preview"
                                     onLoad={() => setIframeLoaded(true)}
                                     loading="eager"

@@ -23,23 +23,23 @@ export default function OrderConfirmModal({
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-fade-in">
             {/* Backdrop */}
             <div
-                className="absolute inset-0 bg-[#1A1006]/50 backdrop-blur-sm"
+                className="absolute inset-0 bg-ink/50 backdrop-blur-sm"
                 onClick={!isPlacing ? onCancel : undefined}
             />
 
             {/* Modal */}
-            <div className="relative bg-white rounded-3xl max-w-sm w-full border border-[#EDD9C8] shadow-2xl overflow-hidden animate-scale-in">
+            <div className="relative bg-surface rounded-3xl max-w-sm w-full border border-hairline shadow-2xl overflow-hidden animate-scale-in">
                 {/* Header */}
                 <div className="bg-gradient-to-br from-[#FB6303] to-[#D14E00] px-6 pt-6 pb-8 text-center text-white relative">
                     {!isPlacing && (
                         <button
                             onClick={onCancel}
-                            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/15 flex items-center justify-center active:scale-90 transition"
+                            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-surface/15 flex items-center justify-center active:scale-90 transition"
                         >
                             <X size={16} />
                         </button>
                     )}
-                    <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center mx-auto mb-3">
+                    <div className="w-14 h-14 rounded-2xl bg-surface/15 flex items-center justify-center mx-auto mb-3">
                         <ShoppingBag size={28} />
                     </div>
                     <h2 className="text-xl font-black">Confirm Your Order?</h2>
@@ -51,12 +51,12 @@ export default function OrderConfirmModal({
                 {/* Summary */}
                 <div className="px-6 py-5">
                     <div className="flex items-center justify-between py-3 border-b border-[#F0E0D0]">
-                        <span className="text-sm text-[#8C6A50] font-semibold">Items</span>
-                        <span className="text-sm font-bold text-[#1A1006]">{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
+                        <span className="text-sm text-ink-subtle font-semibold">Items</span>
+                        <span className="text-sm font-bold text-ink">{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
                     </div>
                     <div className="flex items-center justify-between py-3">
-                        <span className="text-sm text-[#8C6A50] font-semibold">Total</span>
-                        <span className="text-lg font-black text-[#FB6303] tabular-nums">{money(totalAmount)}</span>
+                        <span className="text-sm text-ink-subtle font-semibold">Total</span>
+                        <span className="text-lg font-black text-brand-500 tabular-nums">{money(totalAmount)}</span>
                     </div>
                 </div>
 
@@ -65,14 +65,14 @@ export default function OrderConfirmModal({
                     <button
                         onClick={onCancel}
                         disabled={isPlacing}
-                        className="flex-1 py-3.5 rounded-2xl border-2 border-[#EDD9C8] text-[#8C6A50] font-bold text-sm active:scale-95 transition disabled:opacity-40"
+                        className="flex-1 py-3.5 rounded-2xl border-2 border-hairline text-ink-subtle font-bold text-sm active:scale-95 transition disabled:opacity-40"
                     >
                         Cancel
                     </button>
                     <button
                         onClick={onConfirm}
                         disabled={isPlacing}
-                        className="flex-1 py-3.5 rounded-2xl bg-[#FB6303] text-white font-bold text-sm active:scale-95 transition shadow-md shadow-[#FB6303]/20 disabled:opacity-70 flex items-center justify-center gap-2"
+                        className="flex-1 py-3.5 rounded-2xl bg-brand-500 text-white font-bold text-sm active:scale-95 transition shadow-md shadow-[#FB6303]/20 disabled:opacity-70 flex items-center justify-center gap-2"
                     >
                         {isPlacing ? (
                             <>

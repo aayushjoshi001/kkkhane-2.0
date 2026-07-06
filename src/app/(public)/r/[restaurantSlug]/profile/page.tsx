@@ -139,12 +139,12 @@ export default async function CustomerProfilePage(props: { params: Promise<{ res
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col relative overflow-hidden">
-            <header className="p-4 flex items-center justify-between bg-white border-b border-gray-100 shadow-sm sticky top-0 z-20">
-                <Link href={`/r/${restaurant.slug}`} className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:text-gray-900 transition-colors bg-gray-50">
+        <div className="min-h-screen bg-surface-muted flex flex-col relative overflow-hidden">
+            <header className="p-4 flex items-center justify-between bg-surface border-b border-hairline shadow-sm sticky top-0 z-20">
+                <Link href={`/r/${restaurant.slug}`} className="w-10 h-10 rounded-full flex items-center justify-center text-ink-subtle hover:text-ink transition-colors bg-surface-muted">
                     <ArrowLeft size={20} />
                 </Link>
-                <div className="font-bold text-gray-800">My Profile</div>
+                <div className="font-bold text-ink">My Profile</div>
                 <form action="/auth/signout" method="POST">
                     <button type="submit" className="w-10 h-10 rounded-full flex items-center justify-center text-danger-fg bg-danger-bg hover:opacity-80 transition-colors">
                         <LogOut size={18} />
@@ -155,7 +155,7 @@ export default async function CustomerProfilePage(props: { params: Promise<{ res
             <main className="flex-1 max-w-lg w-full mx-auto p-4 sm:p-6 space-y-6">
                 {/* ID Card */}
                 <div className="bg-gradient-to-br from-brand-500 to-brand-600 rounded-3xl p-6 shadow-xl shadow-brand-500/20 text-white relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10" />
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-surface/10 rounded-full blur-2xl -mr-10 -mt-10" />
                     <div className="flex items-start justify-between relative z-10 mb-8">
                         <div>
                             <p className="text-brand-100 text-sm font-semibold uppercase tracking-wider mb-1">Loyalty Tier</p>
@@ -164,7 +164,7 @@ export default async function CustomerProfilePage(props: { params: Promise<{ res
                                 {profile?.tier === 'gold' && <Star size={24} className="text-yellow-400 fill-yellow-400" />}
                             </h2>
                         </div>
-                        <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/20 shadow-inner">
+                        <div className="w-12 h-12 bg-surface/20 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/20 shadow-inner">
                             <Gift size={24} className="text-white" />
                         </div>
                     </div>
@@ -179,24 +179,24 @@ export default async function CustomerProfilePage(props: { params: Promise<{ res
                 </div>
 
                 {/* Details */}
-                <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm space-y-4">
-                    <div className="flex items-center gap-4 text-gray-700">
-                        <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center shrink-0 border border-gray-100">
-                            <User size={18} className="text-gray-400" />
+                <div className="bg-surface rounded-3xl p-6 border border-hairline shadow-sm space-y-4">
+                    <div className="flex items-center gap-4 text-ink-muted">
+                        <div className="w-10 h-10 bg-surface-muted rounded-xl flex items-center justify-center shrink-0 border border-hairline">
+                            <User size={18} className="text-ink-subtle" />
                         </div>
                         <div>
-                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Phone</p>
-                            <p className="font-semibold text-gray-900">{profile?.phone || user.phone || 'Unknown'}</p>
+                            <p className="text-xs font-bold text-ink-subtle uppercase tracking-wider">Phone</p>
+                            <p className="font-semibold text-ink">{profile?.phone || user.phone || 'Unknown'}</p>
                         </div>
                     </div>
                     
-                    <div className="flex items-center gap-4 text-gray-700">
-                        <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center shrink-0 border border-gray-100">
-                            <History size={18} className="text-gray-400" />
+                    <div className="flex items-center gap-4 text-ink-muted">
+                        <div className="w-10 h-10 bg-surface-muted rounded-xl flex items-center justify-center shrink-0 border border-hairline">
+                            <History size={18} className="text-ink-subtle" />
                         </div>
                         <div>
-                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Visits</p>
-                            <p className="font-semibold text-gray-900">{profile?.visit_count || 0} times</p>
+                            <p className="text-xs font-bold text-ink-subtle uppercase tracking-wider">Total Visits</p>
+                            <p className="font-semibold text-ink">{profile?.visit_count || 0} times</p>
                         </div>
                     </div>
                 </div>

@@ -181,42 +181,42 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
 
     if (!items || items.length === 0) {
         return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+            <div className="min-h-screen bg-surface-muted flex items-center justify-center p-4">
                 <div className="text-center">
                     <ShoppingBag className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                    <h2 className="text-xl font-medium text-gray-900 mb-2">Your cart is empty</h2>
-                    <p className="text-gray-500">Add some items before placing a takeout order.</p>
+                    <h2 className="text-xl font-medium text-ink mb-2">Your cart is empty</h2>
+                    <p className="text-ink-subtle">Add some items before placing a takeout order.</p>
                 </div>
             </div>
         )
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 pb-32">
-            <header className="bg-white px-4 py-4 shadow-sm sticky top-0 z-20 flex items-center gap-3">
-                <button onClick={() => router.back()} className="p-2 -ml-2 text-gray-600 rounded-full active:bg-gray-100">
+        <div className="min-h-screen bg-surface-muted pb-32">
+            <header className="bg-surface px-4 py-4 shadow-sm sticky top-0 z-20 flex items-center gap-3">
+                <button onClick={() => router.back()} className="p-2 -ml-2 text-ink-muted rounded-full active:bg-surface-muted">
                     <ArrowLeft size={20} />
                 </button>
                 <div>
-                    <h1 className="text-xl font-semibold text-gray-900">
+                    <h1 className="text-xl font-semibold text-ink">
                         {orderType === 'delivery' ? 'Delivery Order' : 'Takeaway Order'}
                     </h1>
-                    <p className="text-xs text-gray-500">{restaurantName}</p>
+                    <p className="text-xs text-ink-subtle">{restaurantName}</p>
                 </div>
             </header>
 
             <form onSubmit={handleSubmit} className="max-w-xl mx-auto px-4 mt-6 space-y-6">
                 {/* Order Type Selector */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                    <h2 className="font-semibold text-gray-700 mb-3 text-sm">Select Service Type</h2>
+                <div className="bg-surface rounded-xl shadow-sm border border-hairline p-4">
+                    <h2 className="font-semibold text-ink-muted mb-3 text-sm">Select Service Type</h2>
                     <div className="flex gap-2">
                         <button
                             type="button"
                             onClick={() => setOrderType('takeout')}
                             className={`flex-1 py-3 rounded-lg font-bold text-sm border flex items-center justify-center gap-2 transition cursor-pointer ${
                                 orderType === 'takeout'
-                                    ? 'bg-gray-900 text-white border-gray-900'
-                                    : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
+                                    ? 'bg-ink text-white border-gray-900'
+                                    : 'bg-surface text-ink-muted border-hairline-strong hover:border-gray-400'
                             }`}
                         >
                             Takeaway
@@ -226,8 +226,8 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                             onClick={() => setOrderType('delivery')}
                             className={`flex-1 py-3 rounded-lg font-bold text-sm border flex items-center justify-center gap-2 transition cursor-pointer ${
                                 orderType === 'delivery'
-                                    ? 'bg-gray-900 text-white border-gray-900'
-                                    : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
+                                    ? 'bg-ink text-white border-gray-900'
+                                    : 'bg-surface text-ink-muted border-hairline-strong hover:border-gray-400'
                             }`}
                         >
                             Online Delivery
@@ -236,8 +236,8 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                 </div>
 
                 {/* Order items summary */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                    <h2 className="font-semibold text-gray-700 mb-3">
+                <div className="bg-surface rounded-xl shadow-sm border border-hairline p-4">
+                    <h2 className="font-semibold text-ink-muted mb-3">
                         Your Items ({items.reduce((t, i) => t + i.quantity, 0)})
                     </h2>
                     <ul className="divide-y divide-gray-100">
@@ -250,20 +250,20 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                             return (
                                 <li key={cartKey} className="py-3 flex justify-between text-sm">
                                     <div className="flex-1 min-w-0 pr-4">
-                                        <span className="text-gray-900 font-medium">
+                                        <span className="text-ink font-medium">
                                             {item.quantity}× {item.name}
                                             {item.variationName && (
-                                                <span className="text-gray-600 font-normal"> ({item.variationName})</span>
+                                                <span className="text-ink-muted font-normal"> ({item.variationName})</span>
                                             )}
                                         </span>
                                         {modifierNames && (
-                                            <p className="text-xs text-gray-500 mt-0.5 ml-4">{modifierNames}</p>
+                                            <p className="text-xs text-ink-subtle mt-0.5 ml-4">{modifierNames}</p>
                                         )}
                                         {item.specialRequest && (
-                                            <p className="text-xs text-gray-400 italic mt-0.5 ml-4">Note: {item.specialRequest}</p>
+                                            <p className="text-xs text-ink-subtle italic mt-0.5 ml-4">Note: {item.specialRequest}</p>
                                         )}
                                     </div>
-                                    <span className="font-semibold text-gray-900 shrink-0">
+                                    <span className="font-semibold text-ink shrink-0">
                                         {money(lineTotal)}
                                     </span>
                                 </li>
@@ -273,63 +273,63 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                 </div>
 
                 {/* Customer Info */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-4">
-                    <h2 className="font-semibold text-gray-700">Your Details</h2>
+                <div className="bg-surface rounded-xl shadow-sm border border-hairline p-4 space-y-4">
+                    <h2 className="font-semibold text-ink-muted">Your Details</h2>
                     <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">Name *</label>
+                        <label className="block text-sm font-medium text-ink-muted mb-1">Name *</label>
                         <input
                             type="text"
                             value={customerName}
                             onChange={(e) => setCustomerName(e.target.value)}
                             required
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-hairline-strong px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">Phone *</label>
+                        <label className="block text-sm font-medium text-ink-muted mb-1">Phone *</label>
                         <input
                             type="tel"
                             value={customerPhone}
                             onChange={(e) => setCustomerPhone(e.target.value)}
                             required
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-hairline-strong px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                     </div>
                     {orderType === 'delivery' && (
                         <div className="space-y-3">
                             <div>
-                                <label className="block text-sm font-medium text-gray-600 mb-1">Delivery Address *</label>
+                                <label className="block text-sm font-medium text-ink-muted mb-1">Delivery Address *</label>
                                 <input
                                     type="text"
                                     value={deliveryAddress}
                                     onChange={(e) => setDeliveryAddress(e.target.value)}
                                     required={orderType === 'delivery'}
                                     placeholder="Apartment / street / location..."
-                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    className="w-full rounded-lg border border-hairline-strong px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-600 mb-1">Extra Address Details (Apt, Landmark, etc.)</label>
+                                <label className="block text-sm font-medium text-ink-muted mb-1">Extra Address Details (Apt, Landmark, etc.)</label>
                                 <input
                                     type="text"
                                     value={extraDetails}
                                     onChange={(e) => setExtraDetails(e.target.value)}
                                     placeholder="e.g., Apt 302, 3rd Floor, near Blue Landmark"
-                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    className="w-full rounded-lg border border-hairline-strong px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 />
                             </div>
 
                             {/* Premium Interactive Map Card */}
-                            <div className="border border-gray-200 rounded-xl overflow-hidden bg-gray-50 shadow-sm transition-all duration-300 hover:shadow-md">
-                                <div className="p-3 bg-white border-b border-gray-200 flex items-center justify-between">
-                                    <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                            <div className="border border-hairline-strong rounded-xl overflow-hidden bg-surface-muted shadow-sm transition-all duration-300 hover:shadow-md">
+                                <div className="p-3 bg-surface border-b border-hairline-strong flex items-center justify-between">
+                                    <span className="text-xs font-semibold text-ink-muted uppercase tracking-wider flex items-center gap-1.5">
                                         <MapPin size={14} className="text-red-500 animate-bounce" /> Pin Delivery Location
                                     </span>
                                     <button
                                         type="button"
                                         onClick={handleGeolocate}
-                                        className="text-xs bg-gray-900 text-white px-3 py-2 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                                        className="text-xs bg-ink text-white px-3 py-2 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
                                     >
                                         {geoStatus === 'loading' ? (
                                             <Loader2 size={12} className="animate-spin" />
@@ -359,10 +359,10 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                                         </MapContainer>
                                     )}
                                 </div>
-                                <div className="p-3 bg-gray-100/70 text-[11px] text-gray-500 flex items-center justify-between border-t border-gray-200">
+                                <div className="p-3 bg-surface-muted/70 text-[11px] text-ink-subtle flex items-center justify-between border-t border-hairline-strong">
                                     <span>Click on the map to pin exact delivery spot.</span>
                                     {latitude && longitude && (
-                                        <span className="font-mono text-gray-600 bg-white px-1.5 py-0.5 rounded border border-gray-200">
+                                        <span className="font-mono text-ink-muted bg-surface px-1.5 py-0.5 rounded border border-hairline-strong">
                                             {latitude.toFixed(5)}, {longitude.toFixed(5)}
                                         </span>
                                     )}
@@ -371,20 +371,20 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                         </div>
                     )}
                     <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">Email (optional)</label>
+                        <label className="block text-sm font-medium text-ink-muted mb-1">Email (optional)</label>
                         <input
                             type="email"
                             value={customerEmail}
                             onChange={(e) => setCustomerEmail(e.target.value)}
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-hairline-strong px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                     </div>
                 </div>
 
                 {/* Pickup/Delivery Time */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                    <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                        <Clock size={18} className="text-gray-500" />
+                <div className="bg-surface rounded-xl shadow-sm border border-hairline p-4">
+                    <h2 className="font-semibold text-ink-muted mb-3 flex items-center gap-2">
+                        <Clock size={18} className="text-ink-subtle" />
                         {orderType === 'delivery' ? 'Delivery Time Window *' : 'Pickup Time *'}
                     </h2>
                     <div className="grid grid-cols-4 gap-2">
@@ -395,8 +395,8 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                                 onClick={() => setPickupTime(slot)}
                                 className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
                                     pickupTime === slot
-                                        ? 'bg-gray-900 text-white border-gray-900'
-                                        : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
+                                        ? 'bg-ink text-white border-gray-900'
+                                        : 'bg-surface text-ink-muted border-hairline-strong hover:border-gray-400'
                                 }`}
                             >
                                 {formatTime(slot)}
@@ -406,7 +406,7 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                 </div>
 
                 {/* Promo Code */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="bg-surface rounded-xl shadow-sm border border-hairline p-4">
                     <PromoCodeInput
                         restaurantId={restaurantId}
                         subtotal={totalAmount()}
@@ -417,23 +417,23 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                 </div>
 
                 {/* Note */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                    <label className="block font-semibold text-gray-700 mb-2">Special Instructions</label>
+                <div className="bg-surface rounded-xl shadow-sm border border-hairline p-4">
+                    <label className="block font-semibold text-ink-muted mb-2">Special Instructions</label>
                     <textarea
                         rows={2}
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
-                        className="w-full border border-gray-200 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                        className="w-full border border-hairline-strong rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                         placeholder="E.g. No onions, extra napkins..."
                     />
                 </div>
             </form>
 
             {/* Bottom bar */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 z-50 bg-white border-t border-gray-200">
+            <div className="fixed bottom-0 left-0 right-0 p-4 z-50 bg-surface border-t border-hairline-strong">
                 <div className="max-w-xl mx-auto">
                     <div className="space-y-1 mb-3">
-                        <div className="flex justify-between text-sm text-gray-500">
+                        <div className="flex justify-between text-sm text-ink-subtle">
                             <span>Subtotal</span>
                             <span>{money(totalAmount())}</span>
                         </div>
@@ -443,15 +443,15 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                                 <span>-{money(promoDiscount)}</span>
                             </div>
                         )}
-                        <div className="flex justify-between items-center pt-1 border-t border-gray-100">
-                            <span className="font-medium text-gray-700">Total</span>
-                            <span className="text-xl font-bold text-gray-900">{money(finalTotal)}</span>
+                        <div className="flex justify-between items-center pt-1 border-t border-hairline">
+                            <span className="font-medium text-ink-muted">Total</span>
+                            <span className="text-xl font-bold text-ink">{money(finalTotal)}</span>
                         </div>
                     </div>
                     <button
                         onClick={handleSubmit as unknown as () => void}
                         disabled={isSubmitting}
-                        className="w-full bg-gray-900 text-white font-medium rounded-xl py-4 flex items-center justify-center gap-2 disabled:opacity-70 shadow-lg cursor-pointer hover:bg-gray-800"
+                        className="w-full bg-ink text-white font-medium rounded-xl py-4 flex items-center justify-center gap-2 disabled:opacity-70 shadow-lg cursor-pointer hover:bg-gray-800"
                     >
                         {isSubmitting ? (
                             <><Loader2 className="animate-spin" size={20} /> Placing Order...</>

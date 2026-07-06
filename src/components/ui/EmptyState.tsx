@@ -39,7 +39,7 @@ export default function EmptyState({
                     className={cn(
                         'grid place-items-center rounded-full',
                         compact ? 'size-10' : 'size-12',
-                        dark ? 'bg-white/5 text-dark-muted' : 'bg-surface-muted text-ink-subtle',
+                        dark ? 'bg-surface/5 text-dark-muted' : 'bg-surface-muted text-ink-subtle',
                     )}
                 >
                     <Icon size={compact ? 18 : 22} strokeWidth={2} />

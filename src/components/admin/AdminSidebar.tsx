@@ -66,7 +66,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
     const content = (
         <div className={cn(
             "flex flex-col h-full relative overflow-hidden transition-colors duration-500",
-            isDark ? "bg-[#0a0a0a] text-white/70" : "bg-[#f8f9fa] text-gray-600 border-r border-gray-200"
+            isDark ? "bg-[#0a0a0a] text-white/70" : "bg-[#f8f9fa] text-ink-muted border-r border-hairline-strong"
         )}>
             {/* Ambient Background Glow (Only in Dark Mode) */}
             {isDark && (
@@ -82,7 +82,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                     <Logo variant="dark" className={cn("shrink-0", isDark ? "h-7" : "h-7")} />
                     {!isCollapsed && (
                         <div className="min-w-0 flex flex-col justify-center transition-all duration-300 opacity-100">
-                            <p className={cn("text-base font-extrabold truncate leading-none tracking-tight", isDark ? "text-white" : "text-gray-900")}>
+                            <p className={cn("text-base font-extrabold truncate leading-none tracking-tight", isDark ? "text-white" : "text-ink")}>
                                 {restaurantName || 'kkkhane'}
                             </p>
                             <p className="text-[10px] font-bold text-[#ff5a00] uppercase tracking-[0.2em] mt-1.5">
@@ -94,7 +94,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                 <button onClick={closeMobile}
                         className={cn(
                             "md:hidden p-2 rounded-xl transition-colors",
-                            isDark ? "text-white/50 hover:text-white hover:bg-white/10" : "text-gray-400 hover:text-gray-900 hover:bg-gray-200"
+                            isDark ? "text-white/50 hover:text-white hover:bg-surface/10" : "text-ink-subtle hover:text-ink hover:bg-surface-muted"
                         )}>
                     <X size={18} />
                 </button>
@@ -142,8 +142,8 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                     "flex items-center rounded-2xl transition-all duration-300 group cursor-pointer backdrop-blur-md",
                     isCollapsed ? "flex-col p-2 gap-2" : "gap-3 p-3",
                     isDark 
-                        ? "bg-white/5 border border-white/10 hover:bg-white/10" 
-                        : "bg-white border border-gray-200 hover:border-gray-300 hover:shadow-sm"
+                        ? "bg-surface/5 border border-white/10 hover:bg-surface/10" 
+                        : "bg-surface border border-hairline-strong hover:border-hairline-strong hover:shadow-sm"
                 )}>
                     {/* User Avatar */}
                     <div className={cn("rounded-xl overflow-hidden shrink-0 border border-black/5 shadow-sm relative", isCollapsed ? "w-8 h-8" : "w-10 h-10")}>
@@ -165,7 +165,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                     
                     {!isCollapsed && (
                         <div className="flex-1 min-w-0 transition-opacity duration-300 opacity-100">
-                            <p className={cn("text-sm font-bold truncate capitalize", isDark ? "text-white" : "text-gray-900")}>
+                            <p className={cn("text-sm font-bold truncate capitalize", isDark ? "text-white" : "text-ink")}>
                                 {roleLabel}
                             </p>
                             <div className="flex items-center gap-1.5 mt-0.5">
@@ -173,7 +173,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                                   <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500"></span>
                                 </span>
-                                <p className={cn("text-[11px] font-medium truncate", isDark ? "text-white/50" : "text-gray-500")}>
+                                <p className={cn("text-[11px] font-medium truncate", isDark ? "text-white/50" : "text-ink-subtle")}>
                                     System Online
                                 </p>
                             </div>
@@ -189,8 +189,8 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                             className={cn(
                                 "p-2 rounded-xl transition-all",
                                 isDark 
-                                    ? "text-white/40 hover:text-white hover:bg-white/10" 
-                                    : "text-gray-400 hover:text-gray-800 hover:bg-gray-100"
+                                    ? "text-white/40 hover:text-white hover:bg-surface/10" 
+                                    : "text-ink-subtle hover:text-ink hover:bg-surface-muted"
                             )}
                             title="Toggle Theme"
                         >
@@ -202,7 +202,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                                 "p-2 rounded-xl transition-all",
                                 isDark 
                                     ? "text-white/40 hover:text-red-400 hover:bg-red-500/10" 
-                                    : "text-gray-400 hover:text-red-500 hover:bg-red-50"
+                                    : "text-ink-subtle hover:text-red-500 hover:bg-red-50"
                             )}
                             title="Sign Out"
                         >
@@ -237,7 +237,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
             <aside className={cn(
                 "hidden md:block shrink-0 z-20 h-screen sticky top-0 overflow-hidden transition-all duration-300 ease-[var(--ease-spring)]",
                 isCollapsed ? "w-[80px]" : "w-[280px]",
-                isDark ? "shadow-[4px_0_24px_rgba(0,0,0,0.05)] border-r border-white/5" : "border-r border-gray-200 shadow-sm"
+                isDark ? "shadow-[4px_0_24px_rgba(0,0,0,0.05)] border-r border-white/5" : "border-r border-hairline-strong shadow-sm"
             )}>
                 {content}
             </aside>
@@ -249,14 +249,14 @@ function SectionLabel({ children, isDark, isCollapsed }: { children: React.React
     if (isCollapsed) {
         return (
             <div className="py-4 flex justify-center">
-                <div className={cn("w-6 h-[1px]", isDark ? "bg-white/10" : "bg-gray-200")} />
+                <div className={cn("w-6 h-[1px]", isDark ? "bg-surface/10" : "bg-surface-muted")} />
             </div>
         )
     }
     return (
         <p className={cn(
             "px-4 pt-6 pb-2 text-[10px] font-extrabold uppercase tracking-[0.2em] flex items-center gap-2",
-            isDark ? "text-white/30" : "text-gray-400"
+            isDark ? "text-white/30" : "text-ink-subtle"
         )}>
             {children}
         </p>
@@ -278,8 +278,8 @@ function NavItem({ href, icon: Icon, label, path, badge, isDark, isCollapsed }: 
                         ? "bg-gradient-to-r from-[#ff5a00] to-[#ff7a00] text-white shadow-[0_4px_15px_rgba(255,90,0,0.3)] scale-[1.02] translate-x-1"
                         : "bg-[#ff5a00]/10 text-[#ff5a00] shadow-[inset_0_1px_3px_rgba(255,90,0,0.1)] scale-[1.02] translate-x-1 border border-[#ff5a00]/20"
                     : isDark
-                        ? "text-white/60 hover:bg-white/5 hover:text-white hover:translate-x-1"
-                        : "text-gray-500 hover:bg-gray-100 hover:text-gray-900 hover:translate-x-1"
+                        ? "text-white/60 hover:bg-surface/5 hover:text-white hover:translate-x-1"
+                        : "text-ink-subtle hover:bg-surface-muted hover:text-ink hover:translate-x-1"
             )}
         >
             <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3.5")}>
@@ -287,7 +287,7 @@ function NavItem({ href, icon: Icon, label, path, badge, isDark, isCollapsed }: 
                     "shrink-0 transition-all duration-300", 
                     isActive 
                         ? isDark ? "text-white" : "text-[#ff5a00]" 
-                        : isDark ? "text-white/40 group-hover:text-white/80" : "text-gray-400 group-hover:text-gray-600"
+                        : isDark ? "text-white/40 group-hover:text-white/80" : "text-ink-subtle group-hover:text-ink-muted"
                 )} />
                 {!isCollapsed && <span>{label}</span>}
             </div>
@@ -295,8 +295,8 @@ function NavItem({ href, icon: Icon, label, path, badge, isDark, isCollapsed }: 
                 <span className={cn(
                     "px-2 py-0.5 text-[10px] font-extrabold rounded-full tabular-nums shadow-sm transition-all duration-300",
                     isActive 
-                        ? isDark ? "bg-white text-[#ff5a00]" : "bg-[#ff5a00] text-white"
-                        : isDark ? "bg-[#ff5a00] text-white group-hover:shadow-[0_0_10px_rgba(255,90,0,0.5)]" : "bg-gray-200 text-gray-600"
+                        ? isDark ? "bg-surface text-[#ff5a00]" : "bg-[#ff5a00] text-white"
+                        : isDark ? "bg-[#ff5a00] text-white group-hover:shadow-[0_0_10px_rgba(255,90,0,0.5)]" : "bg-surface-muted text-ink-muted"
                 )}>
                     {badge}
                 </span>

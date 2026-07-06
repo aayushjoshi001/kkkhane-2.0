@@ -71,7 +71,7 @@ function BarChart({ data, color, fmtVal }: {
                             onMouseLeave={() => setHovered(null)}
                         >
                             {hovered === i && (
-                                <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 z-10 bg-gray-900 text-white text-[10px] font-semibold px-2 py-1 rounded-lg whitespace-nowrap shadow-lg pointer-events-none">
+                                <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 z-10 bg-ink text-white text-[10px] font-semibold px-2 py-1 rounded-lg whitespace-nowrap shadow-lg pointer-events-none">
                                     <div>{fmtVal(d.value)}</div>
                                     <div className="text-ink-subtle">{d.dayNum} {d.monthStr}</div>
                                 </div>

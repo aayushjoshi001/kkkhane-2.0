@@ -64,7 +64,7 @@ export default function CheckoutPage() {
     if (plan !== 'pro') {
         return (
             <div className="flex flex-col items-center justify-center min-h-[50vh]">
-                <p className="text-gray-500 mb-4">Invalid plan selected.</p>
+                <p className="text-ink-subtle mb-4">Invalid plan selected.</p>
                 <Button variant="secondary" onClick={() => router.push('/admin/billing/packages')}>
                     Go Back
                 </Button>
@@ -76,7 +76,7 @@ export default function CheckoutPage() {
         <div className="max-w-4xl mx-auto py-8 px-4">
             <button 
                 onClick={() => router.back()}
-                className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900 mb-8 transition-colors"
+                className="flex items-center gap-2 text-sm text-ink-subtle hover:text-ink mb-8 transition-colors"
             >
                 <ArrowLeft className="w-4 h-4" /> Back to Packages
             </button>
@@ -84,66 +84,66 @@ export default function CheckoutPage() {
             <div className="grid md:grid-cols-[1fr_380px] gap-8">
                 {/* Payment Form */}
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900 mb-2">Complete your upgrade</h1>
-                    <p className="text-gray-600 mb-8">
+                    <h1 className="text-3xl font-bold text-ink mb-2">Complete your upgrade</h1>
+                    <p className="text-ink-muted mb-8">
                         Select a payment method and upload your transaction reference to activate the Pro Plan.
                     </p>
 
                     <form onSubmit={handleSubmit} className="space-y-8">
                         <div className="space-y-4">
-                            <h3 className="text-lg font-semibold text-gray-900">Payment Method</h3>
+                            <h3 className="text-lg font-semibold text-ink">Payment Method</h3>
                             <div className="grid grid-cols-2 gap-4">
                                 <label 
                                     className={`relative flex items-center justify-center p-4 border-2 rounded-xl cursor-pointer transition-all ${
                                         method === 'esewa' 
                                         ? 'border-green-500 bg-green-50/50' 
-                                        : 'border-gray-200 hover:border-gray-300'
+                                        : 'border-hairline-strong hover:border-hairline-strong'
                                     }`}
                                 >
                                     <input type="radio" name="method" className="sr-only" checked={method === 'esewa'} onChange={() => setMethod('esewa')} />
                                     <div className="flex flex-col items-center gap-2">
-                                        <Smartphone className={`w-6 h-6 ${method === 'esewa' ? 'text-green-600' : 'text-gray-400'}`} />
-                                        <span className={`font-medium ${method === 'esewa' ? 'text-green-700' : 'text-gray-600'}`}>eSewa / Khalti</span>
+                                        <Smartphone className={`w-6 h-6 ${method === 'esewa' ? 'text-green-600' : 'text-ink-subtle'}`} />
+                                        <span className={`font-medium ${method === 'esewa' ? 'text-green-700' : 'text-ink-muted'}`}>eSewa / Khalti</span>
                                     </div>
                                 </label>
                                 <label 
                                     className={`relative flex items-center justify-center p-4 border-2 rounded-xl cursor-pointer transition-all ${
                                         method === 'bank' 
                                         ? 'border-brand-500 bg-brand-50/50' 
-                                        : 'border-gray-200 hover:border-gray-300'
+                                        : 'border-hairline-strong hover:border-hairline-strong'
                                     }`}
                                 >
                                     <input type="radio" name="method" className="sr-only" checked={method === 'bank'} onChange={() => setMethod('bank')} />
                                     <div className="flex flex-col items-center gap-2">
-                                        <Building2 className={`w-6 h-6 ${method === 'bank' ? 'text-brand-600' : 'text-gray-400'}`} />
-                                        <span className={`font-medium ${method === 'bank' ? 'text-brand-700' : 'text-gray-600'}`}>Bank Transfer</span>
+                                        <Building2 className={`w-6 h-6 ${method === 'bank' ? 'text-brand-600' : 'text-ink-subtle'}`} />
+                                        <span className={`font-medium ${method === 'bank' ? 'text-brand-700' : 'text-ink-muted'}`}>Bank Transfer</span>
                                     </div>
                                 </label>
                             </div>
                         </div>
 
-                        <Card className="p-6 bg-gray-50 border-gray-200">
+                        <Card className="p-6 bg-surface-muted border-hairline-strong">
                             {method === 'esewa' ? (
                                 <div className="space-y-3">
-                                    <h4 className="font-semibold text-gray-900">Digital Wallet Transfer</h4>
-                                    <p className="text-sm text-gray-600">Send the exact amount to the following eSewa/Khalti number:</p>
-                                    <div className="p-3 bg-white rounded border border-gray-200 font-mono text-lg text-center font-semibold text-green-700">
+                                    <h4 className="font-semibold text-ink">Digital Wallet Transfer</h4>
+                                    <p className="text-sm text-ink-muted">Send the exact amount to the following eSewa/Khalti number:</p>
+                                    <div className="p-3 bg-surface rounded border border-hairline-strong font-mono text-lg text-center font-semibold text-green-700">
                                         9800000000
                                     </div>
-                                    <p className="text-xs text-gray-500 text-center mt-2">Account Name: KK Khane Pvt. Ltd.</p>
+                                    <p className="text-xs text-ink-subtle text-center mt-2">Account Name: KK Khane Pvt. Ltd.</p>
                                 </div>
                             ) : (
                                 <div className="space-y-3">
-                                    <h4 className="font-semibold text-gray-900">Bank Transfer Details</h4>
-                                    <div className="space-y-2 text-sm text-gray-600">
-                                        <div className="flex justify-between p-2 bg-white rounded border border-gray-100">
-                                            <span>Bank Name</span><span className="font-medium text-gray-900">NABIL BANK</span>
+                                    <h4 className="font-semibold text-ink">Bank Transfer Details</h4>
+                                    <div className="space-y-2 text-sm text-ink-muted">
+                                        <div className="flex justify-between p-2 bg-surface rounded border border-hairline">
+                                            <span>Bank Name</span><span className="font-medium text-ink">NABIL BANK</span>
                                         </div>
-                                        <div className="flex justify-between p-2 bg-white rounded border border-gray-100">
-                                            <span>Account Name</span><span className="font-medium text-gray-900">KK KHANE PVT LTD</span>
+                                        <div className="flex justify-between p-2 bg-surface rounded border border-hairline">
+                                            <span>Account Name</span><span className="font-medium text-ink">KK KHANE PVT LTD</span>
                                         </div>
-                                        <div className="flex justify-between p-2 bg-white rounded border border-gray-100">
-                                            <span>Account No.</span><span className="font-medium text-gray-900 font-mono">01234567890123</span>
+                                        <div className="flex justify-between p-2 bg-surface rounded border border-hairline">
+                                            <span>Account No.</span><span className="font-medium text-ink font-mono">01234567890123</span>
                                         </div>
                                     </div>
                                 </div>
@@ -151,18 +151,18 @@ export default function CheckoutPage() {
                         </Card>
 
                         <div className="space-y-4">
-                            <h3 className="text-lg font-semibold text-gray-900">Verify Payment</h3>
+                            <h3 className="text-lg font-semibold text-ink">Verify Payment</h3>
                             <div className="space-y-2">
-                                <label className="block text-sm font-medium text-gray-700">Transaction Reference / Remarks Code</label>
+                                <label className="block text-sm font-medium text-ink-muted">Transaction Reference / Remarks Code</label>
                                 <input
                                     type="text"
                                     required
                                     value={reference}
                                     onChange={(e) => setReference(e.target.value)}
                                     placeholder="e.g. 0XF98..."
-                                    className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition-all font-mono"
+                                    className="w-full px-4 py-3 rounded-xl border border-hairline-strong focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition-all font-mono"
                                 />
-                                <p className="text-xs text-gray-500">
+                                <p className="text-xs text-ink-subtle">
                                     Enter the reference code from your bank or wallet receipt to help us verify your payment quickly.
                                 </p>
                             </div>
@@ -185,40 +185,40 @@ export default function CheckoutPage() {
                 {/* Order Summary */}
                 <div className="relative">
                     <div className="sticky top-24 space-y-6">
-                        <Card className="p-6 border-gray-200">
-                            <h3 className="font-semibold text-gray-900 mb-6">Order Summary</h3>
+                        <Card className="p-6 border-hairline-strong">
+                            <h3 className="font-semibold text-ink mb-6">Order Summary</h3>
                             
                             <div className="space-y-4 mb-6">
                                 <div className="flex justify-between items-start">
                                     <div>
-                                        <div className="font-medium text-gray-900">Pro Business Plan</div>
-                                        <div className="text-sm text-gray-500">Billed for {CYCLE_NAMES[cycle]}</div>
+                                        <div className="font-medium text-ink">Pro Business Plan</div>
+                                        <div className="text-sm text-ink-subtle">Billed for {CYCLE_NAMES[cycle]}</div>
                                     </div>
-                                    <div className="font-medium text-gray-900">
+                                    <div className="font-medium text-ink">
                                         NPR {amount.toLocaleString()}
                                     </div>
                                 </div>
                             </div>
                             
-                            <div className="pt-4 border-t border-gray-100 space-y-3 mb-6">
+                            <div className="pt-4 border-t border-hairline space-y-3 mb-6">
                                 <div className="flex justify-between items-center text-sm">
-                                    <span className="text-gray-500">Subtotal</span>
-                                    <span className="font-medium text-gray-900">NPR {amount.toLocaleString()}</span>
+                                    <span className="text-ink-subtle">Subtotal</span>
+                                    <span className="font-medium text-ink">NPR {amount.toLocaleString()}</span>
                                 </div>
                                 <div className="flex justify-between items-center text-sm">
-                                    <span className="text-gray-500">Tax (13% VAT included)</span>
-                                    <span className="font-medium text-gray-900">NPR 0</span>
+                                    <span className="text-ink-subtle">Tax (13% VAT included)</span>
+                                    <span className="font-medium text-ink">NPR 0</span>
                                 </div>
                             </div>
                             
-                            <div className="pt-4 border-t border-gray-200 flex justify-between items-center">
-                                <span className="font-semibold text-gray-900">Total Due</span>
+                            <div className="pt-4 border-t border-hairline-strong flex justify-between items-center">
+                                <span className="font-semibold text-ink">Total Due</span>
                                 <span className="text-xl font-bold text-brand-600">NPR {amount.toLocaleString()}</span>
                             </div>
                         </Card>
 
-                        <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-xl text-sm text-gray-600">
-                            <Shield className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
+                        <div className="flex items-start gap-3 p-4 bg-surface-muted rounded-xl text-sm text-ink-muted">
+                            <Shield className="w-5 h-5 text-ink-subtle shrink-0 mt-0.5" />
                             <p>
                                 Your subscription will be activated automatically once our team verifies the payment reference. This usually takes less than 15 minutes during business hours.
                             </p>

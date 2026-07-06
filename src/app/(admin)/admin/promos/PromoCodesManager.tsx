@@ -219,7 +219,7 @@ export default function PromoCodesManager({ initialPromos, restaurantId }: {
                                             checked={promo.is_active} 
                                             onChange={() => toggleActive(promo)}
                                         />
-                                        <div className="w-11 h-6 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-hairline after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-shadow"></div>
+                                        <div className="w-11 h-6 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-shadow"></div>
                                     </label>
                                 </td>
                                 <td className="px-5 py-4 text-right">

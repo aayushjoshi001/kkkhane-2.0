@@ -11,18 +11,18 @@ const BLOG_POSTS = [
 
 export default function BlogPage() {
     return (
-        <div className="min-h-screen bg-white text-gray-900">
+        <div className="min-h-screen bg-surface text-ink">
             <MarketingNav />
 
             {/* Hero */}
-            <section className="relative overflow-hidden bg-white pb-14 pt-36 text-center">
+            <section className="relative overflow-hidden bg-surface pb-14 pt-36 text-center">
                 <div className="pointer-events-none absolute left-1/2 top-1/2 h-[700px] w-[700px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-500/5 blur-[120px]" />
                 <div className="relative mx-auto max-w-3xl px-4 sm:px-6">
                     <Eyebrow tone="purple">Resources &amp; Insights</Eyebrow>
-                    <h1 className="mt-6 text-5xl font-extrabold tracking-tight text-gray-900 md:text-7xl">
+                    <h1 className="mt-6 text-5xl font-extrabold tracking-tight text-ink md:text-7xl">
                         Our <span className="text-[var(--color-primary)]">Blog</span>
                     </h1>
-                    <p className="mx-auto mt-8 max-w-xl text-xl font-medium leading-relaxed text-gray-500">
+                    <p className="mx-auto mt-8 max-w-xl text-xl font-medium leading-relaxed text-ink-subtle">
                         Tips, insights, and stories from the kkkhane team about running restaurants in Nepal.
                     </p>
                 </div>
@@ -33,8 +33,8 @@ export default function BlogPage() {
                 <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
                     {BLOG_POSTS.map((post) => (
                         <Link href="#" key={post.id}
-                            className="group flex flex-col overflow-hidden rounded-3xl border border-gray-100 bg-white transition-all duration-300 hover:-translate-y-1 hover:border-[var(--color-primary)]/30 hover:shadow-2xl">
-                            <div className="relative flex h-48 items-center justify-center overflow-hidden border-b border-gray-100 bg-gray-50">
+                            className="group flex flex-col overflow-hidden rounded-3xl border border-hairline bg-surface transition-all duration-300 hover:-translate-y-1 hover:border-[var(--color-primary)]/30 hover:shadow-2xl">
+                            <div className="relative flex h-48 items-center justify-center overflow-hidden border-b border-hairline bg-surface-muted">
                                 <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-primary)]/10 to-indigo-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                                 <span className="relative z-10 text-6xl transition-transform duration-300 group-hover:scale-110">{post.emoji}</span>
                             </div>
@@ -43,13 +43,13 @@ export default function BlogPage() {
                                     <span className="rounded-full bg-[var(--color-primary)]/10 px-3 py-1 text-xs font-extrabold uppercase tracking-wider text-[var(--color-primary)]">
                                         {post.category}
                                     </span>
-                                    <span className="text-xs font-bold text-gray-400">{post.date}</span>
+                                    <span className="text-xs font-bold text-ink-subtle">{post.date}</span>
                                 </div>
-                                <h3 className="mb-3 text-2xl font-extrabold leading-snug text-gray-900 transition-colors group-hover:text-[var(--color-primary)]">
+                                <h3 className="mb-3 text-2xl font-extrabold leading-snug text-ink transition-colors group-hover:text-[var(--color-primary)]">
                                     {post.title}
                                 </h3>
-                                <p className="mb-6 flex-1 font-medium leading-relaxed text-gray-500">{post.excerpt}</p>
-                                <div className="flex items-center border-t border-gray-100 pt-6 text-sm font-bold text-[var(--color-primary)]">
+                                <p className="mb-6 flex-1 font-medium leading-relaxed text-ink-subtle">{post.excerpt}</p>
+                                <div className="flex items-center border-t border-hairline pt-6 text-sm font-bold text-[var(--color-primary)]">
                                     Read Article <ArrowRight size={16} className="ml-2 transition-transform group-hover:translate-x-1" />
                                 </div>
                             </div>

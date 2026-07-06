@@ -26,12 +26,12 @@ export default function RevenueTrendChart({ days }: { days: DayData[] }) {
             {/* Summary row */}
             <div className="flex gap-6 mb-4 text-sm">
                 <div>
-                    <span className="text-gray-500">7-day revenue</span>
-                    <p className="font-bold text-gray-900 text-base">{fmt(totalRevenue)}</p>
+                    <span className="text-ink-subtle">7-day revenue</span>
+                    <p className="font-bold text-ink text-base">{fmt(totalRevenue)}</p>
                 </div>
                 <div>
-                    <span className="text-gray-500">7-day orders</span>
-                    <p className="font-bold text-gray-900 text-base">{totalOrders}</p>
+                    <span className="text-ink-subtle">7-day orders</span>
+                    <p className="font-bold text-ink text-base">{totalOrders}</p>
                 </div>
             </div>
 
@@ -90,7 +90,7 @@ export default function RevenueTrendChart({ days }: { days: DayData[] }) {
                 <line x1="0" y1={chartH} x2="100" y2={chartH} stroke="#f3f4f6" strokeWidth="0.5" />
             </svg>
 
-            <p className="text-xs text-gray-400 mt-1 text-center">Numbers on bars = orders that day</p>
+            <p className="text-xs text-ink-subtle mt-1 text-center">Numbers on bars = orders that day</p>
         </div>
     )
 }

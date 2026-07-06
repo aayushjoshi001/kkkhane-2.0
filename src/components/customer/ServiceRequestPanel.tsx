@@ -28,7 +28,7 @@ const CORE_OPTIONS: RequestOption[] = [
 // Shown when the manager hasn't configured any quick-serve items.
 const DEFAULT_QUICK_OPTIONS: RequestOption[] = [
         { id: 'need_water', type: 'need_water', label: 'Need Water', icon: Droplets, color: 'bg-cyan-500' },
-        { id: 'need_silverware', type: 'other', label: 'Need Silverware', icon: UtensilsCrossed, color: 'bg-orange-500', message: 'Need Silverware' },
+        { id: 'need_silverware', type: 'other', label: 'Need Silverware', icon: UtensilsCrossed, color: 'bg-brand-500', message: 'Need Silverware' },
     ]
 
 export default function ServiceRequestPanel({
@@ -114,11 +114,11 @@ export default function ServiceRequestPanel({
     if (!isOpen) return null
 
     return (
-        <div className={`fixed ${fabBottom} right-4 z-60 w-72 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden`}>
+        <div className={`fixed ${fabBottom} right-4 z-60 w-72 bg-surface rounded-2xl shadow-2xl border border-hairline overflow-hidden`}>
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
-                <h3 className="font-semibold text-gray-800 text-sm">Need Help?</h3>
-                <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-hairline bg-surface-muted">
+                <h3 className="font-semibold text-ink text-sm">Need Help?</h3>
+                <button onClick={onClose} className="text-ink-subtle hover:text-ink-muted">
                     <X size={18} />
                 </button>
             </div>
@@ -132,7 +132,7 @@ export default function ServiceRequestPanel({
                             key={option.id}
                             onClick={() => handlePreset(option)}
                             disabled={loading !== null}
-                            className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 active:scale-95 transition-all disabled:opacity-50"
+                            className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-hairline hover:bg-surface-muted active:scale-95 transition-all disabled:opacity-50"
                         >
                             <div className={`${option.color} text-white p-2 rounded-lg`}>
                                 {loading === option.id ? (
@@ -143,7 +143,7 @@ export default function ServiceRequestPanel({
                                     <Icon size={18} />
                                 )}
                             </div>
-                            <span className="text-xs font-medium text-gray-700">{option.label}</span>
+                            <span className="text-xs font-medium text-ink-muted">{option.label}</span>
                         </button>
                     )
                 })}
@@ -157,7 +157,7 @@ export default function ServiceRequestPanel({
                         value={customMessage}
                         onChange={(e) => setCustomMessage(e.target.value)}
                         placeholder="Other request..."
-                        className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        className="flex-1 text-sm border border-hairline-strong rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
                     />
                     <button
                         onClick={handleCustom}

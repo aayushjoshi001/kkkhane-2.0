@@ -512,7 +512,7 @@ export default function MenuManager({
                             ))}
                             {categories.length === 0 && (
                                 <li className="p-12 text-center flex flex-col items-center justify-center border-2 border-dashed border-hairline rounded-[var(--r-xl)] bg-surface-muted/50">
-                                    <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm mb-4">
+                                    <div className="w-16 h-16 bg-surface rounded-full flex items-center justify-center shadow-sm mb-4">
                                         <Tag size={28} className="text-ink-subtle" />
                                     </div>
                                     <p className="text-ink font-bold text-base">No categories yet</p>
@@ -876,7 +876,7 @@ export default function MenuManager({
                                                 }
                                             }} 
                                         />
-                                        <div className="w-11 h-6 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-hairline after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-shadow"></div>
+                                        <div className="w-11 h-6 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-shadow"></div>
                                     </label>
                                 </div>
 
@@ -1080,7 +1080,7 @@ export default function MenuManager({
                                 </div>
                                 <label className="relative inline-flex items-center cursor-pointer group">
                                     <input type="checkbox" className="sr-only peer" checked={!!itemFormData.is_available} onChange={e => setItemFormData({ ...itemFormData, is_available: e.target.checked })} />
-                                    <div className="w-11 h-6 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-hairline after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-shadow"></div>
+                                    <div className="w-11 h-6 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-shadow"></div>
                                 </label>
                             </div>
                         </div>

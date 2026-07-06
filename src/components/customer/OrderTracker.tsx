@@ -81,9 +81,9 @@ export default function OrderTracker({
                             playVoice('customer_order_ready')
                         }
                         toast.custom((t) => (
-                            <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-white shadow-xl rounded-2xl px-4 py-3 flex items-center gap-3 border border-gray-100`}>
+                            <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-surface shadow-xl rounded-2xl px-4 py-3 flex items-center gap-3 border border-hairline`}>
                                 <span className="text-2xl">{info.emoji}</span>
-                                <p className="text-sm font-semibold text-gray-800">{info.message}</p>
+                                <p className="text-sm font-semibold text-ink">{info.message}</p>
                             </div>
                         ), { duration: 5000, position: 'top-center' })
                     }
@@ -110,36 +110,36 @@ export default function OrderTracker({
 
     if (showSuccessScreen) {
         return (
-            <div className="flex flex-col min-h-screen bg-[#FFF8F3] text-[#1A1006] font-sans select-none pb-12">
+            <div className="flex flex-col min-h-screen bg-surface text-ink font-sans select-none pb-12">
                 {showConfetti && <Confetti />}
 
                 {/* Top Orange Section */}
-                <div className="bg-[#FB6303] pt-12 pb-16 px-4 text-white text-center relative overflow-hidden shrink-0 rounded-b-[40px] shadow-lg">
-                    <div className="absolute top-0 right-0 w-36 h-36 rounded-full bg-white/10 -translate-y-1/2 translate-x-1/2" />
+                <div className="bg-brand-500 pt-12 pb-16 px-4 text-white text-center relative overflow-hidden shrink-0 rounded-b-[40px] shadow-lg">
+                    <div className="absolute top-0 right-0 w-36 h-36 rounded-full bg-surface/10 -translate-y-1/2 translate-x-1/2" />
                     
                     {/* Circle Checkmark Icon */}
-                    <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-lg mx-auto mb-4 animate-scale-in">
-                        <div className="w-16 h-16 rounded-full border-4 border-[#FB6303] flex items-center justify-center">
-                            <CheckCircle size={28} className="text-[#FB6303] fill-white" />
+                    <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center shadow-lg mx-auto mb-4 animate-scale-in">
+                        <div className="w-16 h-16 rounded-full border-4 border-brand-500 flex items-center justify-center">
+                            <CheckCircle size={28} className="text-brand-500 fill-white" />
                         </div>
                     </div>
 
                     <h1 className="text-2xl font-black tracking-wide">🎉 Order Placed! 🎉</h1>
                     <p className="text-white/80 text-xs font-semibold mt-1">Sit back and relax — the kitchen is on it!</p>
 
-                    <div className="mt-4 inline-block bg-white/20 text-white font-black text-xs px-4 py-2 rounded-xl backdrop-blur-sm border border-white/10 tracking-widest uppercase">
+                    <div className="mt-4 inline-block bg-surface/20 text-white font-black text-xs px-4 py-2 rounded-xl backdrop-blur-sm border border-white/10 tracking-widest uppercase">
                         Order #{orderId.substring(0, 6).toUpperCase()}
                     </div>
                 </div>
 
                 {/* White Card Section */}
                 <div className="px-4 -mt-8 flex-1 max-w-md mx-auto w-full relative z-10">
-                    <div className="bg-white rounded-3xl border border-[#EDD9C8] p-5 shadow-xl">
-                        <div className="flex items-center justify-between border-b border-[#F5EDE6] pb-3 mb-4">
-                            <span className="font-black text-xs text-[#8C6A50] uppercase tracking-wider flex items-center gap-1">
+                    <div className="bg-surface rounded-3xl border border-hairline p-5 shadow-xl">
+                        <div className="flex items-center justify-between border-b border-hairline pb-3 mb-4">
+                            <span className="font-black text-xs text-ink-subtle uppercase tracking-wider flex items-center gap-1">
                                 📋 Your Order
                             </span>
-                            <span className="font-black text-xs text-[#1A1006] bg-[#FFF0E6] px-2.5 py-1 rounded-lg">
+                            <span className="font-black text-xs text-ink bg-surface-muted px-2.5 py-1 rounded-lg">
                                 Table {tableLabel}
                             </span>
                         </div>
@@ -150,20 +150,20 @@ export default function OrderTracker({
                                 <div key={item.id} className="py-2.5 flex justify-between gap-3 text-sm">
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-baseline gap-1">
-                                            <span className="font-bold text-[#8C6A50] tabular-nums text-xs">{item.quantity}×</span>
-                                            <span className="font-bold text-[#1A1006] leading-snug">{item.menu_items?.name}</span>
+                                            <span className="font-bold text-ink-subtle tabular-nums text-xs">{item.quantity}×</span>
+                                            <span className="font-bold text-ink leading-snug">{item.menu_items?.name}</span>
                                         </div>
                                         {item.order_item_modifiers && item.order_item_modifiers.length > 0 && (
                                             <div className="flex flex-wrap gap-1 mt-1">
                                                 {item.order_item_modifiers.map(m => (
-                                                    <span key={m.id} className="text-[9px] bg-gray-50 border border-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">
+                                                    <span key={m.id} className="text-[9px] bg-surface-muted border border-hairline text-ink-subtle px-1.5 py-0.5 rounded-full">
                                                         {m.modifier_name}
                                                     </span>
                                                 ))}
                                             </div>
                                         )}
                                     </div>
-                                    <span className="font-black text-[#FB6303] tabular-nums">
+                                    <span className="font-black text-brand-500 tabular-nums">
                                         {money(item.unit_price * item.quantity)}
                                     </span>
                                 </div>
@@ -171,21 +171,21 @@ export default function OrderTracker({
                         </div>
 
                         {/* Total amount */}
-                        <div className="flex justify-between items-center border-t border-[#EDD9C8] pt-4 mt-3">
-                            <span className="text-sm font-bold text-[#8C6A50]">Total Amount</span>
-                            <span className="font-black text-lg text-[#FB6303] tabular-nums">
+                        <div className="flex justify-between items-center border-t border-hairline pt-4 mt-3">
+                            <span className="text-sm font-bold text-ink-subtle">Total Amount</span>
+                            <span className="font-black text-lg text-brand-500 tabular-nums">
                                 {money(order.total_amount)}
                             </span>
                         </div>
 
                         {/* Estimated time callout */}
-                        <div className="mt-5 bg-[#FFF0E6] rounded-2xl p-3 border border-[#EDD9C8] flex items-center gap-3">
-                            <div className="text-[#FB6303] shrink-0 bg-white size-8 rounded-full flex items-center justify-center shadow-sm">
+                        <div className="mt-5 bg-surface-muted rounded-2xl p-3 border border-hairline flex items-center gap-3">
+                            <div className="text-brand-500 shrink-0 bg-surface size-8 rounded-full flex items-center justify-center shadow-sm">
                                 <Clock size={16} />
                             </div>
                             <div>
-                                <p className="text-[10px] text-[#8C6A50] font-black uppercase tracking-wider">Estimated time</p>
-                                <p className="text-sm font-black text-[#1A1006]">
+                                <p className="text-[10px] text-ink-subtle font-black uppercase tracking-wider">Estimated time</p>
+                                <p className="text-sm font-black text-ink">
                                     {preparationMin > 0 ? `${preparationMin} minutes` : '20–30 minutes'}
                                 </p>
                             </div>
@@ -196,7 +196,7 @@ export default function OrderTracker({
                     <div className="mt-6 mx-4">
                         <Link href={`/r/${restaurantInfo?.slug || 'unknown'}/login`} className="block">
                             <div className="bg-gradient-to-r from-brand-600 to-brand-500 rounded-2xl p-4 text-white shadow-lg shadow-brand-500/30 flex items-center gap-4 active:scale-[0.98] transition-transform">
-                                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center shrink-0">
+                                <div className="w-12 h-12 bg-surface/20 rounded-full flex items-center justify-center shrink-0">
                                     <PartyPopper size={24} className="text-white" />
                                 </div>
                                 <div className="flex-1">
@@ -212,7 +212,7 @@ export default function OrderTracker({
                     <div className="mt-8">
                         <button
                             onClick={() => setShowSuccessScreen(false)}
-                            className="w-full bg-[#FB6303] text-white font-black text-sm py-4 rounded-2xl active:scale-[0.98] transition-transform shadow-md shadow-[#FB6303]/15 flex items-center justify-center gap-2"
+                            className="w-full bg-brand-500 text-white font-black text-sm py-4 rounded-2xl active:scale-[0.98] transition-transform shadow-md shadow-[#FB6303]/15 flex items-center justify-center gap-2"
                         >
                             <MapPin size={16} />
                             Track Your Order
@@ -224,15 +224,15 @@ export default function OrderTracker({
     }
 
     return (
-        <div className="flex flex-col min-h-screen bg-[#FFF8F3] text-[#1A1006] font-sans pb-28 select-none">
+        <div className="flex flex-col min-h-screen bg-surface text-ink font-sans pb-28 select-none">
             {showConfetti && <Confetti />}
 
             {/* Tracking Header */}
-            <div className="bg-[#FB6303] pt-6 pb-8 px-4 relative overflow-hidden shrink-0">
-                <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-white/10 -translate-y-1/2 translate-x-1/2" />
+            <div className="bg-brand-500 pt-6 pb-8 px-4 relative overflow-hidden shrink-0">
+                <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-surface/10 -translate-y-1/2 translate-x-1/2" />
                 <button
                     onClick={() => setShowSuccessScreen(true)}
-                    className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-4 transition-transform active:scale-95 text-white hover:bg-white/30"
+                    className="w-9 h-9 bg-surface/20 rounded-full flex items-center justify-center mb-4 transition-transform active:scale-95 text-white hover:bg-surface/30"
                 >
                     <ChevronLeft size={20} />
                 </button>
@@ -245,7 +245,7 @@ export default function OrderTracker({
 
             <div className="px-4 pt-6 flex-1 max-w-md mx-auto w-full">
                 {/* Status card */}
-                <div className="bg-white rounded-2xl border border-[#EDD9C8] p-4 mb-6 shadow-sm" style={{ boxShadow: "0 2px 12px rgba(232,93,4,0.04)" }}>
+                <div className="bg-surface rounded-2xl border border-hairline p-4 mb-6 shadow-sm" style={{ boxShadow: "0 2px 12px rgba(232,93,4,0.04)" }}>
                     <div className="flex items-center gap-2 mb-1">
                         <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                         <span className="text-[10px] font-bold text-green-600 uppercase tracking-wide">Live Updates</span>
@@ -253,16 +253,16 @@ export default function OrderTracker({
                     {isCancelled ? (
                         <>
                             <p className="text-base font-black text-red-650">Order Cancelled</p>
-                            <p className="text-xs text-[#8C6A50] font-semibold mt-0.5">
+                            <p className="text-xs text-ink-subtle font-semibold mt-0.5">
                                 {order.cancellation_reason || 'Please contact a waiter for assistance.'}
                             </p>
                         </>
                     ) : (
                         <>
-                            <p className="text-base font-black text-[#1A1006]">
+                            <p className="text-base font-black text-ink">
                                 {STEPS[currentStepIndex]?.label || 'Pending Confirmation'}
                             </p>
-                            <p className="text-xs text-[#8C6A50] font-semibold mt-0.5">
+                            <p className="text-xs text-ink-subtle font-semibold mt-0.5">
                                 {STEPS[currentStepIndex]?.hint || 'Waiting for the kitchen...'}
                             </p>
                         </>
@@ -283,9 +283,9 @@ export default function OrderTracker({
                                         <div className={`w-9 h-9 rounded-full flex items-center justify-center border-2 shrink-0 z-10 transition-all duration-500 ${
                                             isDone
                                                 ? isActive
-                                                    ? "bg-[#FB6303] border-[#FB6303] shadow-md shadow-[#FB6303]/20 animate-pulse"
-                                                    : "bg-[#FB6303] border-[#FB6303]"
-                                                : "bg-white border-[#EDD9C8]"
+                                                    ? "bg-brand-500 border-brand-500 shadow-md shadow-[#FB6303]/20 animate-pulse"
+                                                    : "bg-brand-500 border-brand-500"
+                                                : "bg-surface border-hairline"
                                         }`}
                                             style={isActive ? { boxShadow: "0 0 0 6px rgba(232,93,4,0.15)" } : {}}
                                         >
@@ -293,15 +293,15 @@ export default function OrderTracker({
                                         </div>
                                         {i < STEPS.length - 1 && (
                                             <div className={`w-0.5 h-10 transition-all duration-700 ${
-                                                i < currentStepIndex ? "bg-[#FB6303]" : "bg-[#EDD9C8]"
+                                                i < currentStepIndex ? "bg-brand-500" : "bg-[#EDD9C8]"
                                             }`} />
                                         )}
                                     </div>
 
                                     {/* Content */}
                                     <div className="pt-1.5 pb-8">
-                                        <p className={`text-xs font-black ${isDone ? "text-[#1A1006]" : "text-[#C4A882]"}`}>{step.label}</p>
-                                        <p className={`text-[10px] font-semibold ${isDone ? "text-[#8C6A50]" : "text-[#C4A882]"}`}>{step.sub}</p>
+                                        <p className={`text-xs font-black ${isDone ? "text-ink" : "text-[#C4A882]"}`}>{step.label}</p>
+                                        <p className={`text-[10px] font-semibold ${isDone ? "text-ink-subtle" : "text-[#C4A882]"}`}>{step.sub}</p>
                                     </div>
                                 </div>
                             )
@@ -312,29 +312,29 @@ export default function OrderTracker({
 
 
                 {/* Order Details list */}
-                <div className="bg-white rounded-2xl border border-[#EDD9C8] shadow-sm overflow-hidden mb-6" style={{ boxShadow: "0 2px 12px rgba(232,93,4,0.04)" }}>
-                    <div className="px-4 py-3.5 border-b border-[#EDD9C8] bg-[#FFF0E6]/30">
-                        <h3 className="font-black text-[#1A1006] text-xs uppercase tracking-wider">Your Order Items</h3>
+                <div className="bg-surface rounded-2xl border border-hairline shadow-sm overflow-hidden mb-6" style={{ boxShadow: "0 2px 12px rgba(232,93,4,0.04)" }}>
+                    <div className="px-4 py-3.5 border-b border-hairline bg-surface-muted/30">
+                        <h3 className="font-black text-ink text-xs uppercase tracking-wider">Your Order Items</h3>
                     </div>
                     <div className="divide-y divide-[#F5EDE6]">
                         {order.order_items?.map((item) => (
                             <div key={item.id} className="px-4 py-3 flex justify-between gap-3">
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-baseline gap-1.5">
-                                        <span className="text-xs font-bold text-[#8C6A50] tabular-nums">{item.quantity}×</span>
-                                        <span className="text-xs font-bold text-[#1A1006] leading-snug">{item.menu_items?.name}</span>
+                                        <span className="text-xs font-bold text-ink-subtle tabular-nums">{item.quantity}×</span>
+                                        <span className="text-xs font-bold text-ink leading-snug">{item.menu_items?.name}</span>
                                     </div>
                                     {item.order_item_modifiers && item.order_item_modifiers.length > 0 && (
                                         <div className="flex flex-wrap gap-1 mt-1">
                                             {item.order_item_modifiers.map(mod => (
-                                                <span key={mod.id} className="text-[9px] bg-gray-50 border border-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                                                <span key={mod.id} className="text-[9px] bg-surface-muted border border-hairline text-ink-subtle px-2 py-0.5 rounded-full">
                                                     {mod.modifier_name}
                                                 </span>
                                             ))}
                                         </div>
                                     )}
                                 </div>
-                                <span className="text-xs font-black text-[#FB6303] tabular-nums shrink-0">
+                                <span className="text-xs font-black text-brand-500 tabular-nums shrink-0">
                                     {money(item.unit_price * item.quantity)}
                                 </span>
                             </div>
@@ -347,21 +347,21 @@ export default function OrderTracker({
             {/* Persistent Bottom Payment Control Button */}
             {!isCancelled && order.payment_status !== 'paid' && (
                 <div 
-                    className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-4 pt-4 z-40 border-t border-[#F5EDE6]" 
+                    className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur-md shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-4 pt-4 z-40 border-t border-hairline" 
                     style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 16px) + 12px)' }}
                 >
                     <div className="max-w-md mx-auto">
                         {!isDelivered ? (
                             <button
                                 disabled
-                                className="w-full bg-gray-200 text-gray-400 font-black text-sm py-3.5 rounded-2xl cursor-not-allowed flex items-center justify-center gap-2 border border-gray-300"
+                                className="w-full bg-surface-muted text-ink-subtle font-black text-sm py-3.5 rounded-2xl cursor-not-allowed flex items-center justify-center gap-2 border border-hairline-strong"
                             >
                                 Pay Now (Pending Delivery)
                             </button>
                         ) : (
                             <button
                                 onClick={() => router.push(`/t/${tableSlug}/order/${orderId}/payment`)}
-                                className="w-full bg-[#FB6303] text-white font-black text-sm py-3.5 rounded-2xl active:scale-[0.98] transition-transform shadow-md shadow-[#FB6303]/15 flex items-center justify-center gap-2"
+                                className="w-full bg-brand-500 text-white font-black text-sm py-3.5 rounded-2xl active:scale-[0.98] transition-transform shadow-md shadow-[#FB6303]/15 flex items-center justify-center gap-2"
                             >
                                 Pay Now
                             </button>

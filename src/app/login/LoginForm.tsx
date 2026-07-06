@@ -173,14 +173,14 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
             </p>
 
             {/* Demo Accounts (Subtle placement beneath the card) */}
-            <details className="mt-12 group w-full bg-gray-50 border border-gray-100 rounded-2xl">
-                <summary className="text-xs font-semibold text-gray-500 p-4 cursor-pointer flex justify-center hover:text-gray-700 transition-colors list-none text-center outline-none">
+            <details className="mt-12 group w-full bg-surface-muted border border-hairline rounded-2xl">
+                <summary className="text-xs font-semibold text-ink-subtle p-4 cursor-pointer flex justify-center hover:text-ink-muted transition-colors list-none text-center outline-none">
                     Development: Show Demo Accounts
                 </summary>
-                <div className="p-4 pt-0 grid grid-cols-2 gap-2 border-t border-gray-100">
+                <div className="p-4 pt-0 grid grid-cols-2 gap-2 border-t border-hairline">
                     {[
                         { label: 'New User', email: 'newuser@srms.app', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200' },
-                        { label: 'Super Admin', email: 'demo@srms.app', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200' },
+                        { label: 'Super Admin', email: 'demo@srms.app', color: 'bg-brand-100 text-orange-700 hover:bg-brand-200' },
                         { label: 'Manager',    email: 'manager@srms.app', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200' },
                         { label: 'Kitchen',    email: 'kitchen@srms.app', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' },
                         { label: 'Waiter',     email: 'waiter@srms.app',  color: 'bg-purple-100 text-purple-700 hover:bg-purple-200' },

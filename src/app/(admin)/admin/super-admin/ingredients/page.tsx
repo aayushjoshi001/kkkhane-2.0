@@ -39,17 +39,17 @@ export default async function IngredientsPage() {
             />
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
-                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">{ingredients.length}</div>
-                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Total Ingredients</div>
+                <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-ink tabular-nums">{ingredients.length}</div>
+                    <div className="text-[13px] font-semibold text-ink-subtle uppercase tracking-wider mt-1">Total Ingredients</div>
                 </div>
-                <div className={`rounded-xl border shadow-sm p-4 ${lowStock.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}>
-                    <div className={`text-2xl font-extrabold ${lowStock.length > 0 ? 'text-amber-700' : 'text-gray-900'}`}>{lowStock.length}</div>
-                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Low Stock Alerts</div>
+                <div className={`rounded-xl border shadow-sm p-4 ${lowStock.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-surface border-hairline-strong'}`}>
+                    <div className={`text-2xl font-extrabold ${lowStock.length > 0 ? 'text-amber-700' : 'text-ink'}`}>{lowStock.length}</div>
+                    <div className="text-[13px] font-semibold text-ink-subtle uppercase tracking-wider mt-1">Low Stock Alerts</div>
                 </div>
-                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
-                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">{Object.keys(grouped).length}</div>
-                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Restaurants Tracking</div>
+                <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-ink tabular-nums">{Object.keys(grouped).length}</div>
+                    <div className="text-[13px] font-semibold text-ink-subtle uppercase tracking-wider mt-1">Restaurants Tracking</div>
                 </div>
             </div>
 
@@ -73,17 +73,17 @@ export default async function IngredientsPage() {
             {Object.entries(grouped).map(([restaurantName, items]) => {
                 const restaurantLowStock = items.filter(i => i.reorder_level !== null && i.stock_quantity <= i.reorder_level)
                 return (
-                    <div key={restaurantName} className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-                            <h2 className="font-semibold text-gray-800">{restaurantName}</h2>
-                            <span className="text-xs text-gray-500">
+                    <div key={restaurantName} className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                        <div className="px-6 py-4 border-b border-hairline bg-surface-muted/50 flex items-center justify-between">
+                            <h2 className="font-semibold text-ink">{restaurantName}</h2>
+                            <span className="text-xs text-ink-subtle">
                                 {items.length} items{restaurantLowStock.length > 0 ? ` · ` : ''}
                                 {restaurantLowStock.length > 0 && <span className="text-amber-600 font-semibold">{restaurantLowStock.length} low stock</span>}
                             </span>
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
-                                <thead className="bg-gray-50/50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
+                                <thead className="bg-surface-muted/50 text-xs text-ink-subtle uppercase font-semibold border-b border-hairline">
                                     <tr>
                                         <th className="px-5 py-3 text-left">Ingredient</th>
                                         <th className="px-5 py-3 text-left">Unit</th>
@@ -96,11 +96,11 @@ export default async function IngredientsPage() {
                                     {items.map(i => {
                                         const isLow = i.reorder_level !== null && i.stock_quantity <= i.reorder_level
                                         return (
-                                            <tr key={i.id} className={`hover:bg-gray-50/50 ${isLow ? 'bg-amber-50/30' : ''}`}>
-                                                <td className="px-5 py-3 font-medium text-gray-900">{i.name}</td>
-                                                <td className="px-5 py-3 text-gray-500">{i.unit}</td>
-                                                <td className={`px-5 py-3 text-right font-semibold ${isLow ? 'text-amber-700' : 'text-gray-900'}`}>{i.stock_quantity}</td>
-                                                <td className="px-5 py-3 text-right text-gray-400">{i.reorder_level ?? '—'}</td>
+                                            <tr key={i.id} className={`hover:bg-surface-muted/50 ${isLow ? 'bg-amber-50/30' : ''}`}>
+                                                <td className="px-5 py-3 font-medium text-ink">{i.name}</td>
+                                                <td className="px-5 py-3 text-ink-subtle">{i.unit}</td>
+                                                <td className={`px-5 py-3 text-right font-semibold ${isLow ? 'text-amber-700' : 'text-ink'}`}>{i.stock_quantity}</td>
+                                                <td className="px-5 py-3 text-right text-ink-subtle">{i.reorder_level ?? '—'}</td>
                                                 <td className="px-5 py-3 text-center">
                                                     {isLow && <AlertTriangle size={13} className="text-amber-500 mx-auto" />}
                                                 </td>
@@ -115,7 +115,7 @@ export default async function IngredientsPage() {
             })}
 
             {ingredients.length === 0 && (
-                <div className="text-center py-16 text-gray-400">
+                <div className="text-center py-16 text-ink-subtle">
                     <Package size={36} className="mx-auto mb-3 opacity-40" />
                     <p>No ingredients tracked yet</p>
                 </div>

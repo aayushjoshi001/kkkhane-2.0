@@ -16,7 +16,7 @@ export default async function AdminThemePage() {
 
     if (!settings) {
         // In production we'd create a default row here if it didn't exist
-        return <div className="p-8 text-center text-gray-500">No settings configuration found in database.</div>
+        return <div className="p-8 text-center text-ink-subtle">No settings configuration found in database.</div>
     }
 
     return (

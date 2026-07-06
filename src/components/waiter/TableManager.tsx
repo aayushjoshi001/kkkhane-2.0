@@ -304,7 +304,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                             all: 'bg-[var(--color-primary)] text-white',
                             available: 'bg-emerald-500 text-white',
                             reserved: 'bg-blue-500 text-white',
-                            occupied: 'bg-orange-500 text-white',
+                            occupied: 'bg-brand-500 text-white',
                             dirty: 'bg-amber-500 text-white',
                         }
                         
@@ -315,12 +315,12 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                 className={`relative flex items-center justify-center gap-1.5 py-2 px-1 sm:py-2.5 sm:px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 w-full whitespace-nowrap ${
                                     isActive 
                                         ? activeColors[key] 
-                                        : 'bg-white border border-hairline text-gray-500 hover:bg-gray-50 hover:text-gray-700 shadow-sm'
+                                        : 'bg-surface border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink-muted shadow-sm'
                                 }`}
                             >
                                 {count > 0 && (
                                     <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md min-w-[18px] text-center ${
-                                        isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-700'
+                                        isActive ? 'bg-surface/20 text-white' : 'bg-red-100 text-red-700'
                                     }`}>
                                         {count}
                                     </span>
@@ -377,7 +377,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                     className={`relative aspect-square rounded-[20px] border flex flex-col items-center justify-center transition-all duration-300 ${
                                         hasOpenRequest ? 'border-violet-300 bg-violet-50/10 shadow-[0_0_12px_rgba(139,92,246,0.15)] animate-pulse' : cfg.card
                                     } ${
-                                        isSelected ? 'ring-2 ring-offset-2 ring-brand-500 scale-[1.02] z-10 shadow-[0_8px_20px_rgb(251,99,3,0.15)] bg-white' : 'hover:-translate-y-1 hover:shadow-md hover:bg-white active:scale-95'
+                                        isSelected ? 'ring-2 ring-offset-2 ring-brand-500 scale-[1.02] z-10 shadow-[0_8px_20px_rgb(251,99,3,0.15)] bg-surface' : 'hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95'
                                     }`}
                                 >
                                     <span className={`${getFontSizeClass(table.label || '')} font-extrabold tracking-tight text-ink leading-tight text-center break-words max-w-full px-1.5`}>
@@ -420,13 +420,13 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                     onClick={() => setSelectedTable(null)}
                 >
                     <div 
-                        className="bg-white rounded-[24px] border border-hairline shadow-2xl w-full max-w-md overflow-hidden transform transition-all"
+                        className="bg-surface rounded-[24px] border border-hairline shadow-2xl w-full max-w-md overflow-hidden transform transition-all"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
-                        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-gray-50/50">
+                        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
                             <div>
-                                <h3 className="text-h3 font-black text-gray-900">Table {selectedTable.label}</h3>
+                                <h3 className="text-h3 font-black text-ink">Table {selectedTable.label}</h3>
                                 <p className="text-caption text-ink-subtle mt-0.5">
                                     {selectedTable.activeSession
                                         ? 'Occupied'
@@ -439,7 +439,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                             </div>
                             <button 
                                 onClick={() => setSelectedTable(null)}
-                                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition text-gray-400 hover:text-gray-700"
+                                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink-muted"
                             >
                                 <X size={18} />
                             </button>
@@ -449,7 +449,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                         <div className="p-6">
                             {selectedTable.activeSession ? (
                                 <div className="space-y-4">
-                                    <div className="flex justify-center p-4 bg-gray-50 rounded-[var(--r-md)] border border-hairline">
+                                    <div className="flex justify-center p-4 bg-surface-muted rounded-[var(--r-md)] border border-hairline">
                                         <QRCodeSVG
                                             value={`${baseUrl}/t/${selectedTable.qr_token}?s=${selectedTable.activeSession.session_token}`}
                                             size={180}

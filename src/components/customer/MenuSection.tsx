@@ -145,14 +145,14 @@ export default function MenuSection({
                                     alt=""
                                     width={32}
                                     height={32}
-                                    className="w-8 h-8 rounded-lg object-cover shrink-0 border border-gray-100"
+                                    className="w-8 h-8 rounded-lg object-cover shrink-0 border border-hairline"
                                 />
                             )}
-                            <h2 className="text-base font-bold text-gray-900 leading-none">
+                            <h2 className="text-base font-bold text-ink leading-none">
                                 {t('category_name', category.id, category.name)}
                             </h2>
-                            <span className="text-xs text-gray-400 font-medium">{catItems.length} items</span>
-                            <div className="flex-1 h-px bg-gray-100" />
+                            <span className="text-xs text-ink-subtle font-medium">{catItems.length} items</span>
+                            <div className="flex-1 h-px bg-surface-muted" />
                         </div>
 
                         <ItemGrid
@@ -168,7 +168,7 @@ export default function MenuSection({
                 ))}
 
                 {categoriesWithItems.length === 0 && uncategorised.length === 0 && (
-                    <div className="py-16 text-center text-gray-400 text-sm">
+                    <div className="py-16 text-center text-ink-subtle text-sm">
                         No menu items available.
                     </div>
                 )}

@@ -94,15 +94,15 @@ export default function WaiterLayoutClient({
                         <Logo className="h-7 shrink-0" />
                         {restaurantName && (
                             <div className="hidden sm:block">
-                                <p className="text-xs font-bold text-gray-800 leading-none truncate max-w-[160px]">{restaurantName}</p>
-                                <p className="text-[10px] text-gray-400 font-medium tracking-widest uppercase mt-0.5">{portalLabel}</p>
+                                <p className="text-xs font-bold text-ink leading-none truncate max-w-[160px]">{restaurantName}</p>
+                                <p className="text-[10px] text-ink-subtle font-medium tracking-widest uppercase mt-0.5">{portalLabel}</p>
                             </div>
                         )}
                     </div>
 
                     {/* Center — clock */}
                     <div className="absolute left-1/2 -translate-x-1/2">
-                        <span className="font-mono text-sm font-bold text-gray-700 tabular-nums tracking-wider">
+                        <span className="font-mono text-sm font-bold text-ink-muted tabular-nums tracking-wider">
                             {time}
                         </span>
                     </div>
@@ -113,18 +113,18 @@ export default function WaiterLayoutClient({
                         <SoundEnableButton variant="light" />
                         {staffName && (
                             <div className="hidden md:flex items-center gap-2">
-                                <div className="h-4 w-px bg-gray-200" />
+                                <div className="h-4 w-px bg-surface-muted" />
                                 <Link 
                                     href={`/${commandRole}/profile`} 
-                                    className="flex items-center gap-2 hover:bg-gray-50 p-1.5 rounded-lg transition-colors cursor-pointer group"
+                                    className="flex items-center gap-2 hover:bg-surface-muted p-1.5 rounded-lg transition-colors cursor-pointer group"
                                 >
                                     <div className="w-7 h-7 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center text-[var(--color-primary)] text-xs font-bold group-hover:bg-[var(--color-primary)]/20 transition-colors">
                                         {staffName[0].toUpperCase()}
                                     </div>
                                     <div className="flex flex-col min-w-0">
-                                        <span className="text-xs font-semibold text-gray-700 max-w-28 truncate leading-none group-hover:text-[var(--color-primary)] transition-colors">{staffName}</span>
+                                        <span className="text-xs font-semibold text-ink-muted max-w-28 truncate leading-none group-hover:text-[var(--color-primary)] transition-colors">{staffName}</span>
                                         {shiftsEnabled && (
-                                            <span className={`text-[10px] font-bold ${shift ? 'text-emerald-600' : 'text-gray-400'} mt-0.5 leading-none`}>
+                                            <span className={`text-[10px] font-bold ${shift ? 'text-emerald-600' : 'text-ink-subtle'} mt-0.5 leading-none`}>
                                                 {shift ? 'On Shift' : 'Off Shift'}
                                             </span>
                                         )}
@@ -132,7 +132,7 @@ export default function WaiterLayoutClient({
                                 </Link>
                             </div>
                         )}
-                        <div className="h-4 w-px bg-gray-200 hidden md:block" />
+                        <div className="h-4 w-px bg-surface-muted hidden md:block" />
                         {shiftsEnabled && userId && (
                             <>
                                 {shift ? (
@@ -154,12 +154,12 @@ export default function WaiterLayoutClient({
                                         Clock In
                                     </button>
                                 )}
-                                <div className="h-4 w-px bg-gray-200 hidden md:block" />
+                                <div className="h-4 w-px bg-surface-muted hidden md:block" />
                             </>
                         )}
                         <button
                             onClick={handleSignOut}
-                            className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-red-600 transition px-2.5 py-2 rounded-lg hover:bg-red-50 active:scale-95"
+                            className="flex items-center gap-1.5 text-xs font-medium text-ink-subtle hover:text-red-600 transition px-2.5 py-2 rounded-lg hover:bg-red-50 active:scale-95"
                         >
                             <LogOut size={15} />
                             <span className="hidden md:inline">Sign Out</span>

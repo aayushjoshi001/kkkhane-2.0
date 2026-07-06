@@ -194,7 +194,7 @@ export default function CashierTableManager({
 
     return (
         <div className="w-full">
-            <div className="p-5 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-4 bg-white rounded-3xl border border-hairline shadow-sm">
+            <div className="p-5 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-4 bg-surface rounded-3xl border border-hairline shadow-sm">
                 {filteredTables.length === 0 ? (
                     <div className="col-span-full py-12 text-center">
                         <p className="text-sm font-semibold text-ink-muted">No tables found matching this filter</p>
@@ -218,14 +218,14 @@ export default function CashierTableManager({
                                 displayCardCls = 'border-emerald-200 bg-emerald-50/10'
                             } else if (cookingStatus === 'Cooking') {
                                 displayStatusLabel = 'Cooking'
-                                displayLabelCls = 'text-orange-600 bg-orange-50 border border-orange-100 px-1.5 py-0.5 rounded-md font-extrabold shadow-sm animate-pulse text-[8px]'
-                                displayDotCls = 'bg-orange-500 animate-pulse'
-                                displayCardCls = 'border-orange-200 bg-orange-50/10'
+                                displayLabelCls = 'text-brand-600 bg-brand-50 border border-orange-100 px-1.5 py-0.5 rounded-md font-extrabold shadow-sm animate-pulse text-[8px]'
+                                displayDotCls = 'bg-brand-500 animate-pulse'
+                                displayCardCls = 'border-brand-200 bg-brand-50/10'
                             } else if (cookingStatus === 'Served') {
                                 displayStatusLabel = 'Served'
-                                displayLabelCls = 'text-gray-500 bg-gray-50 border border-gray-150 px-1.5 py-0.5 rounded-md font-extrabold shadow-sm text-[8px]'
+                                displayLabelCls = 'text-ink-subtle bg-surface-muted border border-gray-150 px-1.5 py-0.5 rounded-md font-extrabold shadow-sm text-[8px]'
                                 displayDotCls = 'bg-gray-400'
-                                displayCardCls = 'border-gray-200 bg-gray-50/10'
+                                displayCardCls = 'border-hairline-strong bg-surface-muted/10'
                             } else {
                                 displayStatusLabel = 'Occupied'
                                 displayLabelCls = 'text-success-fg bg-success-bg border border-success/20 px-1.5 py-0.5 rounded-md font-extrabold shadow-sm text-[8px]'
@@ -248,7 +248,7 @@ export default function CashierTableManager({
                                     setReservePhone('')
                                     setSelectedTable(table)
                                 }}
-                                className={`relative aspect-square rounded-[20px] border flex flex-col items-center justify-center transition-all duration-300 ${displayCardCls} hover:-translate-y-1 hover:shadow-md hover:bg-white active:scale-95`}
+                                className={`relative aspect-square rounded-[20px] border flex flex-col items-center justify-center transition-all duration-300 ${displayCardCls} hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95`}
                             >
                                 <span className={`${getFontSizeClass(table.label || '')} font-extrabold tracking-tight text-ink leading-tight text-center break-words max-w-full px-1.5`}>
                                     {table.label}
@@ -275,13 +275,13 @@ export default function CashierTableManager({
                     onClick={() => setSelectedTable(null)}
                 >
                     <div 
-                        className="bg-white rounded-[24px] border border-hairline shadow-2xl w-full max-w-md overflow-hidden transform transition-all"
+                        className="bg-surface rounded-[24px] border border-hairline shadow-2xl w-full max-w-md overflow-hidden transform transition-all"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
-                        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-gray-50/50">
+                        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
                             <div>
-                                <h3 className="text-h3 font-black text-gray-900">
+                                <h3 className="text-h3 font-black text-ink">
                                     {selectedTable.label.toLowerCase().startsWith('table') 
                                         ? selectedTable.label 
                                         : `Table ${selectedTable.label}`}
@@ -298,7 +298,7 @@ export default function CashierTableManager({
                             </div>
                             <button 
                                 onClick={() => setSelectedTable(null)}
-                                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition text-gray-400 hover:text-gray-700"
+                                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink-muted"
                             >
                                 <X size={18} />
                             </button>
@@ -309,36 +309,36 @@ export default function CashierTableManager({
                             {selectedTable.activeSession ? (
                                 // Occupied View
                                 <div className="space-y-4">
-                                    <h4 className="text-xs font-bold uppercase text-gray-400 tracking-wider">Active Order Items</h4>
+                                    <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Active Order Items</h4>
                                     
                                     {tableSessionDetails && tableSessionDetails.items.length > 0 ? (
-                                        <div className="space-y-2 max-h-48 overflow-y-auto border border-hairline rounded-xl p-3 bg-gray-50/50 divide-y divide-gray-100">
+                                        <div className="space-y-2 max-h-48 overflow-y-auto border border-hairline rounded-xl p-3 bg-surface-muted/50 divide-y divide-gray-100">
                                             {tableSessionDetails.items.map((item, idx) => (
                                                 <div key={idx} className="flex justify-between items-center py-2 text-xs">
                                                     <div className="flex-1 min-w-0 pr-2">
-                                                        <p className="font-extrabold text-gray-900 truncate text-[13px]">{item.name}</p>
-                                                        <p className="text-[10px] text-gray-500 capitalize">
-                                                            Status: <span className="text-orange-500 font-extrabold">{item.status}</span>
+                                                        <p className="font-extrabold text-ink truncate text-[13px]">{item.name}</p>
+                                                        <p className="text-[10px] text-ink-subtle capitalize">
+                                                            Status: <span className="text-brand-500 font-extrabold">{item.status}</span>
                                                         </p>
                                                     </div>
                                                     <div className="flex items-center gap-3 shrink-0">
                                                         <span className="text-xs font-extrabold text-brand-600 bg-brand-50 border border-brand-100/50 px-2 py-0.5 rounded-lg tabular-nums">
                                                             {item.quantity}×
                                                         </span>
-                                                        <span className="font-semibold text-gray-700 tabular-nums">{money(item.unitPrice * item.quantity)}</span>
+                                                        <span className="font-semibold text-ink-muted tabular-nums">{money(item.unitPrice * item.quantity)}</span>
                                                     </div>
                                                 </div>
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="p-4 text-center border border-dashed border-gray-200 rounded-xl">
-                                            <p className="text-xs text-gray-400">No active items ordered yet</p>
+                                        <div className="p-4 text-center border border-dashed border-hairline-strong rounded-xl">
+                                            <p className="text-xs text-ink-subtle">No active items ordered yet</p>
                                         </div>
                                     )}
 
                                     {tableSessionDetails && (
                                         <div className="flex justify-between items-center py-3 px-1 border-t border-hairline font-bold text-sm">
-                                            <span className="text-gray-700">Total Amount:</span>
+                                            <span className="text-ink-muted">Total Amount:</span>
                                             <span className="text-brand-600 text-base tabular-nums">{money(tableSessionDetails.total)}</span>
                                         </div>
                                     )}
@@ -364,7 +364,7 @@ export default function CashierTableManager({
                                         <div className="space-y-4">
                                             <div className="flex flex-col items-center py-2 text-info-fg">
                                                 <CalendarClock size={44} strokeWidth={1.5} />
-                                                <p className="text-center text-xs font-semibold text-gray-600 mt-2">This table is currently reserved</p>
+                                                <p className="text-center text-xs font-semibold text-ink-muted mt-2">This table is currently reserved</p>
                                             </div>
                                             <Button 
                                                 block 
@@ -379,7 +379,7 @@ export default function CashierTableManager({
                                     ) : (
                                         <div className="space-y-3.5">
                                             <div className="space-y-1">
-                                                <label className="text-xs font-bold text-gray-500 uppercase">Guest Name</label>
+                                                <label className="text-xs font-bold text-ink-subtle uppercase">Guest Name</label>
                                                 <input
                                                     type="text"
                                                     value={reserveName}
@@ -389,7 +389,7 @@ export default function CashierTableManager({
                                                 />
                                             </div>
                                             <div className="space-y-1">
-                                                <label className="text-xs font-bold text-gray-500 uppercase">Phone Number</label>
+                                                <label className="text-xs font-bold text-ink-subtle uppercase">Phone Number</label>
                                                 <input
                                                     type="tel"
                                                     value={reservePhone}

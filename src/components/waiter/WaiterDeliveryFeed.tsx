@@ -147,7 +147,7 @@ export default function WaiterDeliveryFeed({ initialOrders, restaurantId, userId
                                                         value={code}
                                                         onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                                                         placeholder="••••"
-                                                        className="flex-1 text-center text-2xl font-mono tracking-[0.4em] border border-gray-300 rounded-lg py-2 focus:outline-none focus:ring-2 focus:ring-info"
+                                                        className="flex-1 text-center text-2xl font-mono tracking-[0.4em] border border-hairline-strong rounded-lg py-2 focus:outline-none focus:ring-2 focus:ring-info"
                                                     />
                                                     <Button variant="primary" icon={Check} loading={busyId === order.id} disabled={!code.trim()} onClick={() => handleDeliver(order.id)}>
                                                         Delivered

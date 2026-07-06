@@ -111,13 +111,13 @@ export default function CustomerProfileSheet({ isOpen, onClose, restaurantId }: 
                         animate={{ y: 0 }}
                         exit={{ y: '100%' }}
                         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                        className="fixed inset-x-0 bottom-0 z-[101] bg-white rounded-t-3xl overflow-hidden max-h-[90vh] flex flex-col"
+                        className="fixed inset-x-0 bottom-0 z-[101] bg-surface rounded-t-3xl overflow-hidden max-h-[90vh] flex flex-col"
                     >
-                        <div className="flex items-center justify-between p-5 border-b border-gray-100">
-                            <h2 className="text-lg font-black text-gray-900">
+                        <div className="flex items-center justify-between p-5 border-b border-hairline">
+                            <h2 className="text-lg font-black text-ink">
                                 {isLoggedIn ? 'My Profile' : 'Sign In'}
                             </h2>
-                            <button onClick={onClose} className="p-2 -mr-2 bg-gray-100 rounded-full text-gray-500 hover:text-gray-900">
+                            <button onClick={onClose} className="p-2 -mr-2 bg-surface-muted rounded-full text-ink-subtle hover:text-ink">
                                 <X size={20} />
                             </button>
                         </div>
@@ -129,22 +129,22 @@ export default function CustomerProfileSheet({ isOpen, onClose, restaurantId }: 
                                         <div className="w-16 h-16 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center mx-auto mb-4">
                                             <Star size={32} />
                                         </div>
-                                        <h3 className="text-xl font-black text-gray-900 mb-2">Join Our Loyalty Program</h3>
-                                        <p className="text-sm text-gray-500">Sign in to earn points, track your orders, and unlock exclusive rewards.</p>
+                                        <h3 className="text-xl font-black text-ink mb-2">Join Our Loyalty Program</h3>
+                                        <p className="text-sm text-ink-subtle">Sign in to earn points, track your orders, and unlock exclusive rewards.</p>
                                     </div>
 
                                     {/* Auth Method Toggle */}
                                     {!showOtpInput && (
-                                        <div className="flex p-1 bg-gray-100 rounded-xl mb-6">
+                                        <div className="flex p-1 bg-surface-muted rounded-xl mb-6">
                                             <button 
                                                 onClick={() => setAuthMethod('email')}
-                                                className={cn("flex-1 py-2 text-sm font-bold rounded-lg transition-colors", authMethod === 'email' ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700")}
+                                                className={cn("flex-1 py-2 text-sm font-bold rounded-lg transition-colors", authMethod === 'email' ? "bg-surface text-ink shadow-sm" : "text-ink-subtle hover:text-ink-muted")}
                                             >
                                                 Email
                                             </button>
                                             <button 
                                                 onClick={() => setAuthMethod('phone')}
-                                                className={cn("flex-1 py-2 text-sm font-bold rounded-lg transition-colors", authMethod === 'phone' ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700")}
+                                                className={cn("flex-1 py-2 text-sm font-bold rounded-lg transition-colors", authMethod === 'phone' ? "bg-surface text-ink shadow-sm" : "text-ink-subtle hover:text-ink-muted")}
                                             >
                                                 Phone (OTP)
                                             </button>
@@ -154,71 +154,71 @@ export default function CustomerProfileSheet({ isOpen, onClose, restaurantId }: 
                                     <div className="space-y-4">
                                         {showOtpInput ? (
                                             <div>
-                                                <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Verification Code</label>
+                                                <label className="block text-xs font-bold text-ink-muted uppercase mb-1.5">Verification Code</label>
                                                 <div className="relative">
-                                                    <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                    <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-subtle" />
                                                     <input 
                                                         type="text" 
                                                         value={otpToken}
                                                         onChange={e => setOtpToken(e.target.value)}
                                                         placeholder="Enter 6-digit code" 
-                                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-colors"
+                                                        className="w-full bg-surface-muted border border-hairline-strong rounded-xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-surface transition-colors"
                                                     />
                                                 </div>
                                             </div>
                                         ) : authMethod === 'email' ? (
                                             <>
                                                 <div>
-                                                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Email</label>
+                                                    <label className="block text-xs font-bold text-ink-muted uppercase mb-1.5">Email</label>
                                                     <div className="relative">
-                                                        <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                        <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-subtle" />
                                                         <input 
                                                             type="email" 
                                                             value={email}
                                                             onChange={e => setEmail(e.target.value)}
                                                             placeholder="Enter your email" 
-                                                            className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-colors"
+                                                            className="w-full bg-surface-muted border border-hairline-strong rounded-xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-surface transition-colors"
                                                         />
                                                     </div>
                                                 </div>
                                                 <div>
-                                                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Password</label>
+                                                    <label className="block text-xs font-bold text-ink-muted uppercase mb-1.5">Password</label>
                                                     <div className="relative">
-                                                        <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                        <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-subtle" />
                                                         <input 
                                                             type="password" 
                                                             value={password}
                                                             onChange={e => setPassword(e.target.value)}
                                                             placeholder="Enter password" 
-                                                            className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-colors"
+                                                            className="w-full bg-surface-muted border border-hairline-strong rounded-xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-surface transition-colors"
                                                         />
                                                     </div>
                                                 </div>
                                                 {authMode === 'signup' && (
                                                     <>
                                                         <div>
-                                                            <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Full Name</label>
+                                                            <label className="block text-xs font-bold text-ink-muted uppercase mb-1.5">Full Name</label>
                                                             <div className="relative">
-                                                                <UserIcon size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                                <UserIcon size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-subtle" />
                                                                 <input 
                                                                     type="text" 
                                                                     value={name}
                                                                     onChange={e => setName(e.target.value)}
                                                                     placeholder="John Doe" 
-                                                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-colors"
+                                                                    className="w-full bg-surface-muted border border-hairline-strong rounded-xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-surface transition-colors"
                                                                 />
                                                             </div>
                                                         </div>
                                                         <div>
-                                                            <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Phone (Optional)</label>
+                                                            <label className="block text-xs font-bold text-ink-muted uppercase mb-1.5">Phone (Optional)</label>
                                                             <div className="relative">
-                                                                <Phone size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                                <Phone size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-subtle" />
                                                                 <input 
                                                                     type="tel" 
                                                                     value={phone}
                                                                     onChange={e => setPhone(e.target.value)}
                                                                     placeholder="For loyalty points" 
-                                                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-colors"
+                                                                    className="w-full bg-surface-muted border border-hairline-strong rounded-xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-surface transition-colors"
                                                                 />
                                                             </div>
                                                         </div>
@@ -227,15 +227,15 @@ export default function CustomerProfileSheet({ isOpen, onClose, restaurantId }: 
                                             </>
                                         ) : (
                                             <div>
-                                                <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Phone Number</label>
+                                                <label className="block text-xs font-bold text-ink-muted uppercase mb-1.5">Phone Number</label>
                                                 <div className="relative">
-                                                    <Phone size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                    <Phone size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-subtle" />
                                                     <input 
                                                         type="tel" 
                                                         value={phone}
                                                         onChange={e => setPhone(e.target.value)}
                                                         placeholder="+1234567890" 
-                                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-colors"
+                                                        className="w-full bg-surface-muted border border-hairline-strong rounded-xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-surface transition-colors"
                                                     />
                                                 </div>
                                             </div>
@@ -259,7 +259,7 @@ export default function CustomerProfileSheet({ isOpen, onClose, restaurantId }: 
                                             {loading ? 'Processing...' : showOtpInput ? 'Verify Code' : authMethod === 'phone' ? 'Send OTP Code' : authMode === 'signup' ? 'Create Account' : 'Sign In'}
                                         </button>
                                         
-                                        <p className="text-center text-sm text-gray-500 mt-4">
+                                        <p className="text-center text-sm text-ink-subtle mt-4">
                                             {authMode === 'signup' ? 'Already have an account? ' : 'New here? '}
                                             <button 
                                                 onClick={() => setAuthMode(m => m === 'signup' ? 'login' : 'signup')}
@@ -277,8 +277,8 @@ export default function CustomerProfileSheet({ isOpen, onClose, restaurantId }: 
                                             {customerData?.display_name?.[0] || customerData?.email?.[0] || customerData?.phone?.[0] || 'U'}
                                         </div>
                                         <div className="min-w-0">
-                                            <h3 className="text-xl font-black text-gray-900 truncate">{customerData?.display_name || 'Customer'}</h3>
-                                            <p className="text-sm text-gray-500 truncate">{customerData?.phone || customerData?.email}</p>
+                                            <h3 className="text-xl font-black text-ink truncate">{customerData?.display_name || 'Customer'}</h3>
+                                            <p className="text-sm text-ink-subtle truncate">{customerData?.phone || customerData?.email}</p>
                                         </div>
                                     </div>
 
@@ -288,10 +288,10 @@ export default function CustomerProfileSheet({ isOpen, onClose, restaurantId }: 
                                             <Star size={100} />
                                         </div>
                                         <div className="relative z-10">
-                                            <p className="text-gray-400 text-sm font-semibold mb-1 uppercase tracking-wider">{customerData?.tier || 'Bronze'} Member</p>
+                                            <p className="text-ink-subtle text-sm font-semibold mb-1 uppercase tracking-wider">{customerData?.tier || 'Bronze'} Member</p>
                                             <div className="flex items-end gap-2 mb-4">
                                                 <span className="text-4xl font-black leading-none text-brand-400">{customerData?.points_balance || 0}</span>
-                                                <span className="text-gray-400 text-sm font-semibold pb-1">pts</span>
+                                                <span className="text-ink-subtle text-sm font-semibold pb-1">pts</span>
                                             </div>
                                             <div className="w-full bg-gray-700 h-2 rounded-full overflow-hidden">
                                                 <div className="bg-brand-500 h-full" style={{ width: `${Math.min(100, ((customerData?.points_balance || 0) / 1000) * 100)}%` }} />
@@ -300,24 +300,24 @@ export default function CustomerProfileSheet({ isOpen, onClose, restaurantId }: 
                                     </div>
 
                                     <div className="space-y-2">
-                                        <h4 className="text-sm font-bold text-gray-900 mb-3 px-1">Account Options</h4>
-                                        <button className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors">
+                                        <h4 className="text-sm font-bold text-ink mb-3 px-1">Account Options</h4>
+                                        <button className="w-full flex items-center justify-between p-4 bg-surface-muted hover:bg-surface-muted rounded-xl transition-colors">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm text-gray-600">
+                                                <div className="w-8 h-8 rounded-full bg-surface flex items-center justify-center shadow-sm text-ink-muted">
                                                     <History size={16} />
                                                 </div>
-                                                <span className="font-bold text-gray-700">Order History</span>
+                                                <span className="font-bold text-ink-muted">Order History</span>
                                             </div>
-                                            <ChevronRight size={18} className="text-gray-400" />
+                                            <ChevronRight size={18} className="text-ink-subtle" />
                                         </button>
-                                        <button className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors">
+                                        <button className="w-full flex items-center justify-between p-4 bg-surface-muted hover:bg-surface-muted rounded-xl transition-colors">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm text-gray-600">
+                                                <div className="w-8 h-8 rounded-full bg-surface flex items-center justify-center shadow-sm text-ink-muted">
                                                     <UserCircle size={16} />
                                                 </div>
-                                                <span className="font-bold text-gray-700">Edit Profile</span>
+                                                <span className="font-bold text-ink-muted">Edit Profile</span>
                                             </div>
-                                            <ChevronRight size={18} className="text-gray-400" />
+                                            <ChevronRight size={18} className="text-ink-subtle" />
                                         </button>
                                     </div>
 

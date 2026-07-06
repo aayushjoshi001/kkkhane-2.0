@@ -11,7 +11,7 @@ export default function NavBar({
 }) {
     const name = config.restaurant_name || ''
     return (
-        <nav className="sticky top-0 z-30 bg-white/85 backdrop-blur-md border-b border-black/5">
+        <nav className="sticky top-0 z-30 bg-surface/85 backdrop-blur-md border-b border-black/5">
             <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
                 {/* Brand: logo + name */}
                 <div className="flex items-center gap-2.5 min-w-0">

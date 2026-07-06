@@ -91,7 +91,7 @@ export default function TakeoutQueue({ restaurantId, initialOrders }: TakeoutQue
             <div className="flex items-center gap-2">
                 <Package size={16} className="text-dark-muted" />
                 <h2 className="text-h3 text-dark-ink">Takeout Orders</h2>
-                <span className="rounded-full bg-white/10 px-2 py-0.5 text-caption font-semibold text-dark-ink tabular">{activeOrders.length}</span>
+                <span className="rounded-full bg-surface/10 px-2 py-0.5 text-caption font-semibold text-dark-ink tabular">{activeOrders.length}</span>
             </div>
 
             {activeOrders.length === 0 && (
@@ -178,7 +178,7 @@ export default function TakeoutQueue({ restaurantId, initialOrders }: TakeoutQue
                     </summary>
                     <div className="mt-3 space-y-2">
                         {completedOrders.slice(0, 20).map((order) => (
-                            <div key={order.id} className="flex items-center justify-between gap-3 bg-white/5 rounded-[var(--r-md)] px-4 py-2 text-small">
+                            <div key={order.id} className="flex items-center justify-between gap-3 bg-surface/5 rounded-[var(--r-md)] px-4 py-2 text-small">
                                 <span className="font-mono text-dark-muted">#{order.id.slice(0, 8)}</span>
                                 <span className="text-dark-ink truncate flex-1">{order.customer_name}</span>
                                 <StatusBadge status={order.status} dot={false} />

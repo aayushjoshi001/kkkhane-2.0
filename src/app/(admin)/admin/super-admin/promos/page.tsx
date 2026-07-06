@@ -6,7 +6,7 @@ import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 export const dynamic = 'force-dynamic'
 
 const TIER_COLORS: Record<string, string> = {
-    free: 'bg-gray-100 text-gray-600',
+    free: 'bg-surface-muted text-ink-muted',
     basic: 'bg-blue-100 text-blue-700',
     pro: 'bg-purple-100 text-purple-700',
     enterprise: 'bg-amber-100 text-amber-700',
@@ -49,27 +49,27 @@ export default async function PromosPage() {
             />
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
-                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">{promos.length}</div>
-                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Total Promo Codes</div>
+                <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-ink tabular-nums">{promos.length}</div>
+                    <div className="text-[13px] font-semibold text-ink-subtle uppercase tracking-wider mt-1">Total Promo Codes</div>
                 </div>
-                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
                     <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600 tabular-nums">{activeCount}</div>
-                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Active</div>
+                    <div className="text-[13px] font-semibold text-ink-subtle uppercase tracking-wider mt-1">Active</div>
                 </div>
-                <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
-                    <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tabular-nums">{totalUses}</div>
-                    <div className="text-[13px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Total Uses</div>
+                <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-ink tabular-nums">{totalUses}</div>
+                    <div className="text-[13px] font-semibold text-ink-subtle uppercase tracking-wider mt-1">Total Uses</div>
                 </div>
             </div>
 
-            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-                    <h2 className="font-semibold text-gray-800">All Promo Codes</h2>
+            <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                <div className="px-6 py-4 border-b border-hairline bg-surface-muted/50">
+                    <h2 className="font-semibold text-ink">All Promo Codes</h2>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-50/50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
+                        <thead className="bg-surface-muted/50 text-xs text-ink-subtle uppercase font-semibold border-b border-hairline">
                             <tr>
                                 <th className="px-5 py-3 text-left">Restaurant</th>
                                 <th className="px-5 py-3 text-left">Code</th>
@@ -82,17 +82,17 @@ export default async function PromosPage() {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {promos.map(p => (
-                                <tr key={p.id} className="group hover:bg-gray-50/50 transition-colors">
-                                    <td className="px-5 py-3 font-medium text-gray-900">{p.restaurants?.name || '—'}</td>
-                                    <td className="px-5 py-3 font-mono font-bold text-gray-800 text-xs">{p.code}</td>
-                                    <td className="px-5 py-3 text-gray-600 text-xs">{PROMO_TYPE_LABEL[p.promo_type] || p.promo_type}</td>
-                                    <td className="px-5 py-3 text-right font-semibold text-gray-900">
+                                <tr key={p.id} className="group hover:bg-surface-muted/50 transition-colors">
+                                    <td className="px-5 py-3 font-medium text-ink">{p.restaurants?.name || '—'}</td>
+                                    <td className="px-5 py-3 font-mono font-bold text-ink text-xs">{p.code}</td>
+                                    <td className="px-5 py-3 text-ink-muted text-xs">{PROMO_TYPE_LABEL[p.promo_type] || p.promo_type}</td>
+                                    <td className="px-5 py-3 text-right font-semibold text-ink">
                                         {p.promo_type === 'percentage_off' ? `${p.value}%` : `Rs. ${p.value}`}
                                     </td>
-                                    <td className="px-5 py-3 text-right text-gray-600">
+                                    <td className="px-5 py-3 text-right text-ink-muted">
                                         {p.current_uses}{p.max_uses ? `/${p.max_uses}` : ''}
                                     </td>
-                                    <td className="px-5 py-3 text-gray-500 text-xs">
+                                    <td className="px-5 py-3 text-ink-subtle text-xs">
                                         {p.valid_until ? new Date(p.valid_until).toLocaleDateString('en-IN') : '—'}
                                     </td>
                                     <td className="px-5 py-3 text-center">
@@ -104,7 +104,7 @@ export default async function PromosPage() {
                                 </tr>
                             ))}
                             {promos.length === 0 && (
-                                <tr><td colSpan={7} className="px-5 py-12 text-center text-gray-400">
+                                <tr><td colSpan={7} className="px-5 py-12 text-center text-ink-subtle">
                                     <Tag size={32} className="mx-auto mb-2 opacity-40" />
                                     No promo codes found
                                 </td></tr>

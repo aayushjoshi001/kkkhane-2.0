@@ -9,28 +9,28 @@ export function ConfirmModal() {
     if (!isOpen) return null
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-100">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ink/40 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-surface rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 border border-hairline">
                 <div className="p-6">
                     <div className="flex items-start gap-4">
                         <div className={`shrink-0 flex items-center justify-center w-10 h-10 rounded-full ${isDestructive ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
                             {isDestructive ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
                         </div>
                         <div className="flex-1 mt-0.5">
-                            <h3 className="text-lg font-semibold text-gray-900 leading-tight">
+                            <h3 className="text-lg font-semibold text-ink leading-tight">
                                 {title}
                             </h3>
-                            <p className="mt-2 text-sm text-gray-500 leading-relaxed">
+                            <p className="mt-2 text-sm text-ink-subtle leading-relaxed">
                                 {message}
                             </p>
                         </div>
                     </div>
                 </div>
 
-                <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3 rounded-b-2xl">
+                <div className="px-6 py-4 bg-surface-muted border-t border-hairline flex justify-end gap-3 rounded-b-2xl">
                     <button
                         onClick={handleCancel}
-                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--color-primary)]/50"
+                        className="px-4 py-2 text-sm font-medium text-ink-muted bg-surface border border-hairline-strong rounded-lg shadow-sm hover:bg-surface-muted transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--color-primary)]/50"
                     >
                         {cancelText}
                     </button>

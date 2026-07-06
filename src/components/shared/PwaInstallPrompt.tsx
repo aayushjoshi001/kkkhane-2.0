@@ -57,7 +57,7 @@ export default function PwaInstallPrompt() {
     if (!showPrompt) return null
 
     return (
-        <div className="fixed bottom-24 left-4 right-4 md:left-auto md:right-8 md:bottom-8 md:w-96 bg-gray-900 text-white rounded-2xl shadow-2xl p-4 z-50 animate-in slide-in-from-bottom flex items-start gap-4">
+        <div className="fixed bottom-24 left-4 right-4 md:left-auto md:right-8 md:bottom-8 md:w-96 bg-ink text-white rounded-2xl shadow-2xl p-4 z-50 animate-in slide-in-from-bottom flex items-start gap-4">
             <div className="bg-[var(--color-primary)]/20 p-3 rounded-xl shrink-0">
                 <Download className="text-[var(--color-primary)]" size={24} />
             </div>
@@ -71,7 +71,7 @@ export default function PwaInstallPrompt() {
                 <div className="flex gap-2">
                     <button
                         onClick={dismissPrompt}
-                        className="px-3 py-1.5 text-sm font-medium text-gray-400 hover:text-white transition"
+                        className="px-3 py-1.5 text-sm font-medium text-ink-subtle hover:text-white transition"
                     >
                         Later
                     </button>
@@ -86,7 +86,7 @@ export default function PwaInstallPrompt() {
 
             <button
                 onClick={dismissPrompt}
-                className="absolute top-3 right-3 text-gray-400 hover:text-white"
+                className="absolute top-3 right-3 text-ink-subtle hover:text-white"
             >
                 <X size={16} />
             </button>

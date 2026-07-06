@@ -41,11 +41,11 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col items-center pt-12 px-4 pb-24">
+        <div className="min-h-screen bg-surface-muted flex flex-col items-center pt-12 px-4 pb-24">
             {/* Branding */}
             <div className="flex flex-col items-center text-center mb-8">
                 {restaurant.logo_url ? (
-                    <div className="relative w-24 h-24 rounded-2xl overflow-hidden bg-white shadow-sm mb-4 border border-gray-100">
+                    <div className="relative w-24 h-24 rounded-2xl overflow-hidden bg-surface shadow-sm mb-4 border border-hairline">
                         <Image src={restaurant.logo_url} alt={restaurant.name} fill className="object-cover" />
                     </div>
                 ) : (
@@ -53,8 +53,8 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
                         <UtensilsCrossed size={40} />
                     </div>
                 )}
-                <h1 className="text-2xl font-bold text-gray-900">{restaurant.name}</h1>
-                <p className="text-gray-500 mt-2 text-sm max-w-sm">
+                <h1 className="text-2xl font-bold text-ink">{restaurant.name}</h1>
+                <p className="text-ink-subtle mt-2 text-sm max-w-sm">
                     {dineInEnabled && tables.length > 0
                         ? 'Welcome! Please select your table to start ordering, or browse our menu below.'
                         : 'Welcome! Order online for pickup or delivery.'}
@@ -75,16 +75,16 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
 
                 {/* Session Request Card */}
                 {dineInEnabled && tables.length > 0 && (
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                        <h2 className="text-lg font-semibold text-gray-900 mb-4">Are you seated here?</h2>
+                    <div className="bg-surface p-6 rounded-2xl shadow-sm border border-hairline-strong">
+                        <h2 className="text-lg font-semibold text-ink mb-4">Are you seated here?</h2>
 
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Select your Table</label>
+                                <label className="block text-sm font-medium text-ink-muted mb-1.5">Select your Table</label>
                                 <select
                                     value={selectedTableId}
                                     onChange={(e) => setSelectedTableId(e.target.value)}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
+                                    className="w-full px-4 py-3 border border-hairline-strong rounded-xl bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
                                 >
                                     <option value="" disabled>Choose table number...</option>
                                     {tables.map(t => (
@@ -114,7 +114,7 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
                 {dineInEnabled && (
                     <button
                         onClick={() => router.push(`/takeout/${restaurantSlug}`)}
-                        className="w-full flex items-center justify-center gap-2 py-3 bg-white border border-gray-200 text-gray-800 rounded-xl font-semibold shadow-sm hover:bg-gray-50 transition"
+                        className="w-full flex items-center justify-center gap-2 py-3 bg-surface border border-hairline-strong text-ink rounded-xl font-semibold shadow-sm hover:bg-surface-muted transition"
                     >
                         <ShoppingBag size={18} />
                         Order for Pickup
@@ -124,7 +124,7 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
                 {/* Profile Link */}
                 <Link
                     href={`/r/${restaurantSlug}/profile`}
-                    className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl font-semibold shadow-sm hover:bg-black transition"
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-ink text-white rounded-xl font-semibold shadow-sm hover:bg-black transition"
                 >
                     <User size={18} />
                     My Profile & Loyalty Points

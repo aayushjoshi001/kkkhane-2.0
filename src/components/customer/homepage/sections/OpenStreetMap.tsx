@@ -48,8 +48,8 @@ export default function OpenStreetMap({ address, embedUrl }: { address?: string,
         )
     }
 
-    if (loading) return <div className="w-full h-full min-h-[260px] flex items-center justify-center bg-gray-200 text-gray-500 animate-pulse">Finding location...</div>
-    if (!coords) return <div className="w-full h-full min-h-[260px] flex items-center justify-center bg-gray-200 text-gray-500">Map unavailable for this address</div>
+    if (loading) return <div className="w-full h-full min-h-[260px] flex items-center justify-center bg-surface-muted text-ink-subtle animate-pulse">Finding location...</div>
+    if (!coords) return <div className="w-full h-full min-h-[260px] flex items-center justify-center bg-surface-muted text-ink-subtle">Map unavailable for this address</div>
 
     return (
         <div style={{ height: '100%', minHeight: '260px', width: '100%' }}>

@@ -3,18 +3,18 @@ import ContactForm from '@/components/marketing/ContactForm'
 
 export default function ContactPage() {
     return (
-        <div className="min-h-screen bg-white text-gray-900">
+        <div className="min-h-screen bg-surface text-ink">
             <MarketingNav />
 
             {/* Hero */}
-            <section className="relative overflow-hidden bg-white pb-14 pt-36 text-center">
+            <section className="relative overflow-hidden bg-surface pb-14 pt-36 text-center">
                 <div className="pointer-events-none absolute right-0 top-0 h-[600px] w-[600px] rounded-full bg-[var(--color-primary)]/5 blur-[120px]" />
                 <div className="relative mx-auto max-w-3xl px-4 sm:px-6">
                     <Eyebrow tone="brand">Contact Us</Eyebrow>
-                    <h1 className="mt-6 text-5xl font-extrabold tracking-tight text-gray-900 md:text-7xl">
+                    <h1 className="mt-6 text-5xl font-extrabold tracking-tight text-ink md:text-7xl">
                         Get in <span className="text-[var(--color-primary)]">Touch</span>
                     </h1>
-                    <p className="mx-auto mt-8 max-w-xl text-xl font-medium leading-relaxed text-gray-500">
+                    <p className="mx-auto mt-8 max-w-xl text-xl font-medium leading-relaxed text-ink-subtle">
                         Have questions? Our team is here to help. Get in touch and we&apos;ll get back to you as soon as possible.
                     </p>
                 </div>
@@ -23,40 +23,40 @@ export default function ContactPage() {
             {/* Contact form */}
             <section className="bg-[#FAFAF8] pb-24 pt-4">
                 <div className="mx-auto max-w-6xl px-4 sm:px-6">
-                    <div className="grid gap-12 rounded-3xl border border-gray-100 bg-white p-8 shadow-xl md:grid-cols-5 md:p-12 lg:gap-20">
+                    <div className="grid gap-12 rounded-3xl border border-hairline bg-surface p-8 shadow-xl md:grid-cols-5 md:p-12 lg:gap-20">
                         {/* Form */}
                         <div className="md:col-span-3">
-                            <h2 className="mb-8 text-3xl font-extrabold tracking-tight text-gray-900">Send a Message</h2>
+                            <h2 className="mb-8 text-3xl font-extrabold tracking-tight text-ink">Send a Message</h2>
                             <ContactForm />
                         </div>
 
                         {/* Info */}
-                        <div className="h-fit space-y-10 rounded-2xl border border-gray-100 bg-[#FAFAF8] p-8 md:col-span-2">
+                        <div className="h-fit space-y-10 rounded-2xl border border-hairline bg-[#FAFAF8] p-8 md:col-span-2">
                             <div>
-                                <h3 className="mb-3 text-xl font-extrabold text-gray-900">Direct Contact</h3>
+                                <h3 className="mb-3 text-xl font-extrabold text-ink">Direct Contact</h3>
                                 <div className="space-y-4">
-                                    <a href="mailto:hello@kkkhane.com" className="flex items-center gap-3 font-medium text-gray-600 transition hover:text-[var(--color-primary)]">
-                                        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-100 bg-white shadow-sm">📧</div>
+                                    <a href="mailto:hello@kkkhane.com" className="flex items-center gap-3 font-medium text-ink-muted transition hover:text-[var(--color-primary)]">
+                                        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-hairline bg-surface shadow-sm">📧</div>
                                         hello@kkkhane.com
                                     </a>
-                                    <a href="tel:+9779800000000" className="flex items-center gap-3 font-medium text-gray-600 transition hover:text-[var(--color-primary)]">
-                                        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-100 bg-white shadow-sm">📞</div>
+                                    <a href="tel:+9779800000000" className="flex items-center gap-3 font-medium text-ink-muted transition hover:text-[var(--color-primary)]">
+                                        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-hairline bg-surface shadow-sm">📞</div>
                                         +977 9800000000
                                     </a>
                                 </div>
                             </div>
                             <div>
-                                <h3 className="mb-3 text-xl font-extrabold text-gray-900">Headquarters</h3>
-                                <div className="flex items-start gap-3 font-medium text-gray-600">
-                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-100 bg-white shadow-sm">📍</div>
+                                <h3 className="mb-3 text-xl font-extrabold text-ink">Headquarters</h3>
+                                <div className="flex items-start gap-3 font-medium text-ink-muted">
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-hairline bg-surface shadow-sm">📍</div>
                                     <p className="mt-2">Kathmandu, Nepal<br />South Asia</p>
                                 </div>
                             </div>
-                            <div className="border-t border-gray-200 pt-6">
-                                <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-gray-400">Connect on Social</h3>
+                            <div className="border-t border-hairline-strong pt-6">
+                                <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-ink-subtle">Connect on Social</h3>
                                 <div className="flex gap-3">
                                     {['Twitter', 'Facebook', 'Instagram', 'LinkedIn'].map((social) => (
-                                        <a key={social} href="#" className="flex-1 rounded-lg border border-gray-200 bg-white py-2.5 text-center text-sm font-bold text-gray-600 shadow-sm transition hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]">
+                                        <a key={social} href="#" className="flex-1 rounded-lg border border-hairline-strong bg-surface py-2.5 text-center text-sm font-bold text-ink-muted shadow-sm transition hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]">
                                             {social}
                                         </a>
                                     ))}
@@ -68,11 +68,11 @@ export default function ContactPage() {
             </section>
 
             {/* Google Map Section */}
-            <section className="bg-white pt-10 pb-24">
+            <section className="bg-surface pt-10 pb-24">
                 <div className="mx-auto max-w-6xl px-4 sm:px-6">
                     <div className="text-center mb-10">
-                        <h2 className="text-3xl font-extrabold tracking-tight text-gray-900">Find Us Here</h2>
-                        <p className="text-gray-500 font-medium mt-3">Visit our headquarters in the heart of Kathmandu.</p>
+                        <h2 className="text-3xl font-extrabold tracking-tight text-ink">Find Us Here</h2>
+                        <p className="text-ink-subtle font-medium mt-3">Visit our headquarters in the heart of Kathmandu.</p>
                     </div>
                     <div className="w-full h-[450px] rounded-[2.5rem] overflow-hidden shadow-2xl border-8 border-gray-50 relative group">
                         <iframe 
@@ -87,17 +87,17 @@ export default function ContactPage() {
                         />
                         
                         {/* Premium Glassmorphic Overlay */}
-                        <div className="absolute top-6 left-6 md:top-8 md:left-8 bg-white/80 backdrop-blur-xl p-5 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-white/50 z-10 transform transition-transform group-hover:-translate-y-1">
+                        <div className="absolute top-6 left-6 md:top-8 md:left-8 bg-surface/80 backdrop-blur-xl p-5 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-white/50 z-10 transform transition-transform group-hover:-translate-y-1">
                             <div className="flex items-center gap-3 mb-2">
                                 <div className="w-10 h-10 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center text-[var(--color-primary)]">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
                                 </div>
                                 <div>
-                                    <h3 className="font-extrabold text-gray-900 text-base">Global HQ</h3>
-                                    <p className="text-gray-500 font-bold text-xs uppercase tracking-wider">Kathmandu, Nepal</p>
+                                    <h3 className="font-extrabold text-ink text-base">Global HQ</h3>
+                                    <p className="text-ink-subtle font-bold text-xs uppercase tracking-wider">Kathmandu, Nepal</p>
                                 </div>
                             </div>
-                            <a href="https://maps.google.com" target="_blank" rel="noopener noreferrer" className="block text-center w-full py-2 mt-3 bg-gray-900 text-white rounded-xl text-xs font-bold hover:bg-black transition-colors">
+                            <a href="https://maps.google.com" target="_blank" rel="noopener noreferrer" className="block text-center w-full py-2 mt-3 bg-ink text-white rounded-xl text-xs font-bold hover:bg-black transition-colors">
                                 Get Directions
                             </a>
                         </div>

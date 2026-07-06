@@ -241,7 +241,7 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                                         all: 'bg-[var(--color-primary)] text-white',
                                         available: 'bg-emerald-500 text-white',
                                         reserved: 'bg-blue-500 text-white',
-                                        occupied: 'bg-orange-500 text-white',
+                                        occupied: 'bg-brand-500 text-white',
                                         dirty: 'bg-amber-500 text-white',
                                     }
                                     
@@ -252,12 +252,12 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                                             className={`relative flex items-center justify-center gap-1.5 py-2 px-1 sm:py-2.5 sm:px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 w-full whitespace-nowrap ${
                                                 isActive 
                                                     ? activeColors[key] 
-                                                    : 'bg-white border border-hairline text-gray-500 hover:bg-gray-50 hover:text-gray-700 shadow-sm'
+                                                    : 'bg-surface border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink-muted shadow-sm'
                                             }`}
                                         >
                                             {count > 0 && (
                                                 <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md min-w-[18px] text-center ${
-                                                    isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-700'
+                                                    isActive ? 'bg-surface/20 text-white' : 'bg-red-100 text-red-700'
                                                 }`}>
                                                     {count}
                                                 </span>
@@ -287,9 +287,9 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                 {activeTab === 'takeaway' && (
                     <div className="flex flex-col gap-4 w-full">
                         {/* Top action row */}
-                        <div className="flex justify-between items-center bg-white rounded-2xl border border-hairline p-4 shadow-sm">
+                        <div className="flex justify-between items-center bg-surface rounded-2xl border border-hairline p-4 shadow-sm">
                             <div>
-                                <h3 className="text-sm font-bold text-gray-700">Takeaway &amp; Delivery Panel</h3>
+                                <h3 className="text-sm font-bold text-ink-muted">Takeaway &amp; Delivery Panel</h3>
                                 <p className="text-caption text-ink-subtle">Monitor status and manage takeaway/delivery orders.</p>
                             </div>
                             <button 
@@ -326,12 +326,12 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                                             className={`relative flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 w-full whitespace-nowrap ${
                                                 isActive 
                                                     ? activeColors[key] 
-                                                    : 'bg-white border border-hairline text-gray-500 hover:bg-gray-50 hover:text-gray-700 shadow-sm'
+                                                    : 'bg-surface border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink-muted shadow-sm'
                                             }`}
                                         >
                                             {count > 0 && (
                                                 <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md min-w-[18px] text-center ${
-                                                    isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-700'
+                                                    isActive ? 'bg-surface/20 text-white' : 'bg-red-100 text-red-700'
                                                 }`}>
                                                     {count}
                                                 </span>
@@ -344,10 +344,10 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                         </div>
 
                         {/* List grid */}
-                        <div className="bg-white rounded-[24px] border border-hairline p-5 shadow-sm">
+                        <div className="bg-surface rounded-[24px] border border-hairline p-5 shadow-sm">
                             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
                                 {activeTakeoutDelivery.filter(o => o.order_type === (takeawaySubTab === 'takeaway' ? 'takeout' : 'delivery')).length === 0 ? (
-                                    <div className="col-span-full py-12 text-center text-xs text-gray-400 font-semibold">
+                                    <div className="col-span-full py-12 text-center text-xs text-ink-subtle font-semibold">
                                         No active {takeawaySubTab === 'takeaway' ? 'takeaway' : 'delivery'} orders
                                     </div>
                                 ) : (
@@ -355,10 +355,10 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                                         const statusColors = {
                                             pending: 'border-yellow-200 bg-yellow-50/10 text-yellow-700',
                                             confirmed: 'border-blue-200 bg-blue-50/10 text-blue-700',
-                                            preparing: 'border-orange-200 bg-orange-50/10 text-orange-700',
+                                            preparing: 'border-brand-200 bg-brand-50/10 text-orange-700',
                                             ready: 'border-emerald-200 bg-emerald-50/10 text-emerald-700',
                                         } as any
-                                        const cls = statusColors[order.status] || 'border-hairline bg-surface text-gray-500'
+                                        const cls = statusColors[order.status] || 'border-hairline bg-surface text-ink-subtle'
 
                                         return (
                                             <button
@@ -366,10 +366,10 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                                                 onClick={() => setSelectedOrder(order)}
                                                 className={`aspect-square rounded-[20px] border flex flex-col items-center justify-center p-3 text-center transition-all duration-300 ${cls} hover:-translate-y-1 hover:shadow-md active:scale-95`}
                                             >
-                                                <span className="text-sm font-black tracking-tight text-gray-900 block font-mono">
+                                                <span className="text-sm font-black tracking-tight text-ink block font-mono">
                                                     #{order.id.slice(0, 4).toUpperCase()}
                                                 </span>
-                                                <span className="text-[9px] font-extrabold uppercase tracking-wide mt-2.5 px-2 py-0.5 rounded bg-white/60 border border-black/5 shadow-sm">
+                                                <span className="text-[9px] font-extrabold uppercase tracking-wide mt-2.5 px-2 py-0.5 rounded bg-surface/60 border border-black/5 shadow-sm">
                                                     {order.status === 'ready' ? 'Ready' : order.status}
                                                 </span>
                                             </button>
@@ -393,7 +393,7 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
 
                         {/* Unpaid Bills — main cashier action */}
                         <div>
-                            <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                            <h2 className="text-sm font-semibold text-ink-muted mb-3 flex items-center gap-2">
                                 <Receipt size={14} className="text-red-400" />
                                 Awaiting Payment
                                 {unpaid.length > 0 && (
@@ -402,9 +402,9 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                             </h2>
 
                             {unpaidBySession.length === 0 ? (
-                                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center">
+                                <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-10 text-center">
                                     <CheckCircle size={32} className="mx-auto text-emerald-300 mb-2" />
-                                    <p className="text-sm font-medium text-gray-400">All bills settled</p>
+                                    <p className="text-sm font-medium text-ink-subtle">All bills settled</p>
                                     <p className="text-xs text-gray-300 mt-1">No pending payments right now</p>
                                 </div>
                             ) : (
@@ -412,7 +412,7 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                                     {unpaidBySession.map(([sessionKey, { label, orders: tableOrders, total }]) => (
                                         <div 
                                             key={sessionKey} 
-                                            className={`bg-white rounded-2xl border-2 shadow-sm overflow-hidden transition-all duration-500 ${
+                                            className={`bg-surface rounded-2xl border-2 shadow-sm overflow-hidden transition-all duration-500 ${
                                                 sessionKey === highlightSessionId 
                                                     ? 'border-[var(--brand-500)] ring-2 ring-brand-500/20 scale-[1.01]' 
                                                     : 'border-red-200'
@@ -430,18 +430,18 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                                                 {tableOrders.map(order => (
                                                     <div key={order.id} className="flex items-start gap-3">
                                                         <div className="flex-1 min-w-0">
-                                                            <p className="text-xs text-gray-400 mb-1 font-mono">#{order.id.substring(0, 6).toUpperCase()}</p>
-                                                            <ul className="text-sm text-gray-700 space-y-0.5">
+                                                            <p className="text-xs text-ink-subtle mb-1 font-mono">#{order.id.substring(0, 6).toUpperCase()}</p>
+                                                            <ul className="text-sm text-ink-muted space-y-0.5">
                                                                 {order.order_items.map((item, i) => (
                                                                     <li key={i} className="flex gap-1.5">
-                                                                        <span className="text-xs text-gray-400 tabular-nums shrink-0">{item.quantity}×</span>
+                                                                        <span className="text-xs text-ink-subtle tabular-nums shrink-0">{item.quantity}×</span>
                                                                         <span className="truncate">{(item.menu_items as { name?: string } | null)?.name}</span>
                                                                     </li>
                                                                 ))}
                                                             </ul>
                                                         </div>
                                                         <div className="flex flex-col items-end gap-2 shrink-0">
-                                                            <span className="text-sm font-semibold text-gray-800 tabular-nums">{money(order.total_amount)}</span>
+                                                            <span className="text-sm font-semibold text-ink tabular-nums">{money(order.total_amount)}</span>
                                                             <button
                                                                 onClick={() => handleCashPay(order.id)}
                                                                 disabled={processingId === order.id}
@@ -456,9 +456,9 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                                             </div>
 
                                             {tableOrders.length > 1 && (
-                                                <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-                                                    <span className="text-xs text-gray-400">{tableOrders.length} orders · table total</span>
-                                                    <span className="text-sm font-bold text-gray-900 tabular-nums">{money(total)}</span>
+                                                <div className="px-4 py-2.5 bg-surface-muted border-t border-hairline flex items-center justify-between">
+                                                    <span className="text-xs text-ink-subtle">{tableOrders.length} orders · table total</span>
+                                                    <span className="text-sm font-bold text-ink tabular-nums">{money(total)}</span>
                                                 </div>
                                             )}
                                         </div>
@@ -472,12 +472,12 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                         {/* Active Pipeline — read-only overview for cashier */}
                         {activePipeline.length > 0 && (
                             <div>
-                                <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                <h2 className="text-sm font-semibold text-ink-muted mb-3 flex items-center gap-2">
                                     <ChefHat size={14} className="text-orange-400" />
                                     In Pipeline (Dine-In)
-                                    <span className="ml-1 bg-orange-100 text-orange-600 text-[10px] font-bold px-2 py-0.5 rounded-full">{activeDineIn.length}</span>
+                                    <span className="ml-1 bg-brand-100 text-brand-600 text-[10px] font-bold px-2 py-0.5 rounded-full">{activeDineIn.length}</span>
                                 </h2>
-                                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                                <div className="bg-surface rounded-2xl border border-hairline shadow-sm overflow-hidden">
                                     <div className="divide-y divide-gray-50">
                                         {activePipeline.map(([sessionKey, { label, orders: tableOrders }]) => {
                                             const worstStatus = tableOrders.some(o => o.status === 'ready') ? 'ready'
@@ -485,7 +485,7 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                                                 : 'pending'
                                             const statusConfig = {
                                                 ready:    { dot: 'bg-emerald-500 animate-pulse', label: 'Ready',    cls: 'text-emerald-700' },
-                                                preparing:{ dot: 'bg-orange-400 animate-pulse',  label: 'Cooking',  cls: 'text-orange-700' },
+                                                preparing:{ dot: 'bg-brand-400 animate-pulse',  label: 'Cooking',  cls: 'text-orange-700' },
                                                 pending:  { dot: 'bg-amber-300',                 label: 'Pending',  cls: 'text-amber-700' },
                                             }
                                             const sc = statusConfig[worstStatus]
@@ -496,14 +496,14 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                                                     <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${sc.dot}`} />
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2">
-                                                            <span className="font-semibold text-sm text-gray-800">Table {label}</span>
+                                                            <span className="font-semibold text-sm text-ink">Table {label}</span>
                                                             <span className={`text-[10px] font-semibold ${sc.cls}`}>{sc.label}</span>
                                                         </div>
-                                                        <p className="text-xs text-gray-400 mt-0.5">
+                                                        <p className="text-xs text-ink-subtle mt-0.5">
                                                             {tableOrders.length} order{tableOrders.length !== 1 ? 's' : ''}
                                                         </p>
                                                     </div>
-                                                    <span className="text-sm font-semibold text-gray-700 tabular-nums shrink-0">{money(total)}</span>
+                                                    <span className="text-sm font-semibold text-ink-muted tabular-nums shrink-0">{money(total)}</span>
                                                     <Clock size={13} className="text-gray-300 shrink-0" />
                                                 </div>
                                             )
@@ -514,9 +514,9 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                         )}
 
                         {unpaid.length === 0 && activePipeline.length === 0 && activeTakeoutDelivery.length === 0 && pendingClaims === 0 && (
-                            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
+                            <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-12 text-center">
                                 <CreditCard size={36} className="mx-auto text-gray-200 mb-3" />
-                                <p className="text-base font-semibold text-gray-400">All quiet at the counter</p>
+                                <p className="text-base font-semibold text-ink-subtle">All quiet at the counter</p>
                                 <p className="text-sm text-gray-350 mt-1">No active orders or pending payments</p>
                             </div>
                         )}
@@ -531,13 +531,13 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                     onClick={() => setSelectedOrder(null)}
                 >
                     <div 
-                        className="bg-white rounded-[24px] border border-hairline shadow-2xl w-full max-w-md overflow-hidden transform transition-all"
+                        className="bg-surface rounded-[24px] border border-hairline shadow-2xl w-full max-w-md overflow-hidden transform transition-all"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
-                        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-gray-50/50">
+                        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
                             <div>
-                                <h3 className="text-h3 font-black text-gray-900 font-mono">
+                                <h3 className="text-h3 font-black text-ink font-mono">
                                     Order #{selectedOrder.id.substring(0, 6).toUpperCase()}
                                 </h3>
                                 <p className="text-caption text-ink-subtle mt-0.5 capitalize">
@@ -546,7 +546,7 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                             </div>
                             <button 
                                 onClick={() => setSelectedOrder(null)}
-                                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition text-gray-400 hover:text-gray-700"
+                                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink-muted"
                             >
                                 <X size={18} />
                             </button>
@@ -555,11 +555,11 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                         {/* Content */}
                         <div className="p-6 max-h-[70vh] overflow-y-auto space-y-4">
                             {/* Customer info */}
-                            <div className="space-y-1 text-xs text-gray-600 bg-gray-50 p-3.5 rounded-xl border border-hairline">
-                                <p className="font-bold text-gray-800 text-sm">{selectedOrder.customer_name || 'Customer'}</p>
+                            <div className="space-y-1 text-xs text-ink-muted bg-surface-muted p-3.5 rounded-xl border border-hairline">
+                                <p className="font-bold text-ink text-sm">{selectedOrder.customer_name || 'Customer'}</p>
                                 <p className="font-mono">{selectedOrder.customer_phone}</p>
                                 {selectedOrder.order_type === 'delivery' && selectedOrder.delivery_address && (
-                                    <p className="text-gray-500 italic mt-1 bg-white p-2.5 rounded border border-gray-100">
+                                    <p className="text-ink-subtle italic mt-1 bg-surface p-2.5 rounded border border-hairline">
                                         {selectedOrder.delivery_address}
                                     </p>
                                 )}
@@ -567,26 +567,26 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
 
                             {/* Order Items */}
                             <div className="space-y-2">
-                                <h4 className="text-xs font-bold uppercase text-gray-400 tracking-wider">Order Items</h4>
-                                <div className="space-y-2 border border-hairline rounded-xl p-3 bg-gray-50/50 divide-y divide-gray-100">
+                                <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Order Items</h4>
+                                <div className="space-y-2 border border-hairline rounded-xl p-3 bg-surface-muted/50 divide-y divide-gray-100">
                                     {(selectedOrder.order_items || []).map((item, idx) => {
                                         const price = Number(item.unit_price ?? 0)
                                         const qty = item.quantity || 0
                                         return (
                                             <div key={idx} className="flex justify-between items-center py-2 text-xs">
                                                 <div className="flex-1 min-w-0 pr-2">
-                                                    <p className="font-extrabold text-gray-900 truncate text-[13px]">
+                                                    <p className="font-extrabold text-ink truncate text-[13px]">
                                                         {item.menu_items?.name || 'Item'}
                                                     </p>
-                                                    <p className="text-[10px] text-gray-500 capitalize">
-                                                        Status: <span className="text-orange-500 font-extrabold">{item.status || selectedOrder.status}</span>
+                                                    <p className="text-[10px] text-ink-subtle capitalize">
+                                                        Status: <span className="text-brand-500 font-extrabold">{item.status || selectedOrder.status}</span>
                                                     </p>
                                                 </div>
                                                 <div className="flex items-center gap-3 shrink-0">
                                                     <span className="text-xs font-extrabold text-brand-600 bg-brand-50 border border-brand-100/50 px-2 py-0.5 rounded-lg tabular-nums">
                                                         {qty}×
                                                     </span>
-                                                    <span className="font-semibold text-gray-700 tabular-nums">
+                                                    <span className="font-semibold text-ink-muted tabular-nums">
                                                         {money(price * qty)}
                                                     </span>
                                                 </div>
@@ -599,12 +599,12 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                             {/* Total Amount & Prepaid status */}
                             <div className="flex flex-col gap-2 pt-3 border-t border-hairline">
                                 <div className="flex justify-between items-center font-bold text-sm">
-                                    <span className="text-gray-700">Total Amount:</span>
+                                    <span className="text-ink-muted">Total Amount:</span>
                                     <span className="text-brand-600 text-base tabular-nums">{money(selectedOrder.total_amount)}</span>
                                 </div>
 
                                 <div className="flex items-center justify-between mt-1 text-xs">
-                                    <span className="text-gray-500 font-bold">Payment Status:</span>
+                                    <span className="text-ink-subtle font-bold">Payment Status:</span>
                                     {selectedOrder.payment_status === 'paid' ? (
                                         <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 font-extrabold px-3 py-1 rounded-full text-[10px]">
                                             ✓ Prepaid
@@ -625,7 +625,7 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
                                             await handleUpdateStatus(selectedOrder.id, 'cancelled')
                                             setSelectedOrder(null)
                                         }}
-                                        className="w-full bg-white border border-red-200 text-red-700 hover:bg-red-50 font-extrabold text-xs py-3 rounded-xl transition duration-200 active:scale-95 shadow-sm flex items-center justify-center gap-1.5"
+                                        className="w-full bg-surface border border-red-200 text-red-700 hover:bg-red-50 font-extrabold text-xs py-3 rounded-xl transition duration-200 active:scale-95 shadow-sm flex items-center justify-center gap-1.5"
                                     >
                                         Cancel Order
                                     </button>

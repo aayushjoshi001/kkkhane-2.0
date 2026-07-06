@@ -3,9 +3,9 @@ import { cn } from '@/lib/utils'
 type Tone = 'white' | 'band' | 'gray' | 'dark'
 
 const TONES: Record<Tone, string> = {
-    white: 'bg-white',
+    white: 'bg-surface',
     band: 'bg-[#FAFAF8]',
-    gray: 'bg-gray-50',
+    gray: 'bg-surface-muted',
     dark: 'bg-[var(--color-secondary)] text-white',
 }
 

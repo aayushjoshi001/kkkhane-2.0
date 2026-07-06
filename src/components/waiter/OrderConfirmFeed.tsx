@@ -63,7 +63,7 @@ export default function OrderConfirmFeed({ initialOrders, restaurantId }: {
             navigator.vibrate?.(300)
             const tbl = order.sessions?.tables?.label
             toast.custom((t) => (
-                <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-white shadow-xl rounded-xl px-4 py-3 flex items-start gap-3 border-2 border-amber-300`}>
+                <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-surface shadow-xl rounded-xl px-4 py-3 flex items-start gap-3 border-2 border-amber-300`}>
                     <span className="text-xl mt-0.5">📝</span>
                     <div>
                         <p className="font-bold text-sm text-amber-700">Confirm Order?</p>
@@ -177,7 +177,7 @@ export default function OrderConfirmFeed({ initialOrders, restaurantId }: {
             {/* Reject reason picker */}
             {rejecting && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setRejecting(null)}>
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+                    <div className="bg-surface rounded-2xl shadow-xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
                         <div className="px-5 py-4 border-b border-hairline flex items-center justify-between">
                             <h3 className="font-semibold text-ink">Reject — Table {rejecting.sessions?.tables?.label || '?'}</h3>
                             <button onClick={() => setRejecting(null)} className="text-ink-muted hover:text-ink"><X size={18} /></button>

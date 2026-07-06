@@ -263,23 +263,23 @@ export default function OnboardingCreateClient() {
         router.push('/admin/dashboard')
     }
 
-    const inputClasses = "w-full px-4 py-3.5 bg-white border border-gray-200 rounded-xl focus:border-[#ff5a00] focus:ring-1 focus:ring-[#ff5a00] outline-none transition-all text-sm placeholder:text-gray-400 text-gray-900"
-    const labelClasses = "block text-sm font-semibold text-gray-900 mb-2"
+    const inputClasses = "w-full px-4 py-3.5 bg-surface border border-hairline-strong rounded-xl focus:border-[#ff5a00] focus:ring-1 focus:ring-[#ff5a00] outline-none transition-all text-sm placeholder:text-ink-subtle text-ink"
+    const labelClasses = "block text-sm font-semibold text-ink mb-2"
 
     return (
         <>
-            <div className="w-full max-w-3xl mx-auto bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] p-6 sm:p-12 animate-in fade-in slide-in-from-bottom-4 duration-500 border border-gray-100 mb-10">
+            <div className="w-full max-w-3xl mx-auto bg-surface rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] p-6 sm:p-12 animate-in fade-in slide-in-from-bottom-4 duration-500 border border-hairline mb-10">
                 <div className="flex items-center gap-4 mb-8">
                     <button 
                         type="button"
                         onClick={() => router.push('/onboarding')}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors shrink-0"
+                        className="w-10 h-10 flex items-center justify-center rounded-xl border border-hairline-strong text-ink-subtle hover:bg-surface-muted transition-colors shrink-0"
                     >
                         <ChevronLeft size={20} />
                     </button>
                     <div>
-                        <h2 className="text-2xl font-extrabold tracking-tight text-gray-900">Configure Your Setup</h2>
-                        <p className="text-sm text-gray-500">Provide details to bring your restaurant online.</p>
+                        <h2 className="text-2xl font-extrabold tracking-tight text-ink">Configure Your Setup</h2>
+                        <p className="text-sm text-ink-subtle">Provide details to bring your restaurant online.</p>
                     </div>
                 </div>
 
@@ -294,14 +294,14 @@ export default function OnboardingCreateClient() {
                     
                     {/* Section 1: Basic Details */}
                     <section>
-                        <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-100 pb-2">
+                        <h3 className="text-lg font-bold text-ink mb-4 flex items-center gap-2 border-b border-hairline pb-2">
                             <Store size={20} className="text-[#ff5a00]" /> General Information
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                             <div className="sm:col-span-2">
-                                <label className={labelClasses}>Restaurant Logo <span className="text-gray-400 font-normal">(optional)</span></label>
+                                <label className={labelClasses}>Restaurant Logo <span className="text-ink-subtle font-normal">(optional)</span></label>
                                 <div className="flex items-center gap-4">
-                                    <div className="w-20 h-20 rounded-xl border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0 relative">
+                                    <div className="w-20 h-20 rounded-xl border border-hairline-strong bg-surface-muted flex items-center justify-center overflow-hidden shrink-0 relative">
                                         {logoPreviewUrl ? (
                                             <Image src={logoPreviewUrl} alt="Logo preview" fill sizes="80px" className="object-contain p-1" />
                                         ) : (
@@ -309,9 +309,9 @@ export default function OnboardingCreateClient() {
                                         )}
                                     </div>
                                     <div className="flex-1 space-y-2">
-                                        <label className="inline-flex items-center gap-2 px-4 py-2.5 border border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-[#ff5a00] hover:bg-orange-50 transition-all">
-                                            <Upload size={16} className="text-gray-500" />
-                                            <span className="text-sm font-semibold text-gray-700">{logoFile ? 'Change Logo' : 'Upload Logo'}</span>
+                                        <label className="inline-flex items-center gap-2 px-4 py-2.5 border border-dashed border-hairline-strong rounded-xl cursor-pointer hover:border-[#ff5a00] hover:bg-brand-50 transition-all">
+                                            <Upload size={16} className="text-ink-subtle" />
+                                            <span className="text-sm font-semibold text-ink-muted">{logoFile ? 'Change Logo' : 'Upload Logo'}</span>
                                             <input
                                                 ref={logoInputRef}
                                                 type="file"
@@ -341,7 +341,7 @@ export default function OnboardingCreateClient() {
                                 {fieldErrors.restaurantName && <p className="text-xs text-red-600 mt-1.5 font-medium">{fieldErrors.restaurantName}</p>}
                             </div>
                             <div className="sm:col-span-2">
-                                <label className={labelClasses}>Slogan / Tagline <span className="text-gray-400 font-normal">(optional)</span></label>
+                                <label className={labelClasses}>Slogan / Tagline <span className="text-ink-subtle font-normal">(optional)</span></label>
                                 <input 
                                     name="slogan"
                                     placeholder="e.g. Taste of the Himalayas"
@@ -359,27 +359,27 @@ export default function OnboardingCreateClient() {
                                             className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors border ${
                                                 selectedType === type
                                                 ? 'bg-[#ff5a00] border-[#ff5a00] text-white shadow-md'
-                                                : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                                                : 'bg-surface border-hairline-strong text-ink-muted hover:border-hairline-strong hover:bg-surface-muted'
                                             }`}
                                         >
                                             {type}
                                         </button>
                                     ))}
                                 </div>
-                                <p className="text-xs text-gray-500 mt-2">{MODE_HELPER_TEXT[getBusinessMode(selectedType)]}</p>
+                                <p className="text-xs text-ink-subtle mt-2">{MODE_HELPER_TEXT[getBusinessMode(selectedType)]}</p>
                             </div>
                         </div>
                     </section>
 
                     {/* Section 2: Digital Identity */}
                     <section>
-                        <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-100 pb-2">
+                        <h3 className="text-lg font-bold text-ink mb-4 flex items-center gap-2 border-b border-hairline pb-2">
                             <Globe size={20} className="text-[#ff5a00]" /> Digital Identity
                         </h3>
                         <div>
                             <label className={labelClasses}>Custom URL Slug <span className="text-red-500">*</span></label>
-                            <div className="flex h-[52px] rounded-xl overflow-hidden border border-gray-200 focus-within:ring-1 focus-within:ring-[#ff5a00] focus-within:border-[#ff5a00] transition-all bg-white">
-                                <div className="bg-gray-50 px-4 flex items-center justify-center border-r border-gray-200 text-gray-500 text-sm select-none">
+                            <div className="flex h-[52px] rounded-xl overflow-hidden border border-hairline-strong focus-within:ring-1 focus-within:ring-[#ff5a00] focus-within:border-[#ff5a00] transition-all bg-surface">
+                                <div className="bg-surface-muted px-4 flex items-center justify-center border-r border-hairline-strong text-ink-subtle text-sm select-none">
                                     kkkhane.com/t/
                                 </div>
                                 <input
@@ -388,10 +388,10 @@ export default function OnboardingCreateClient() {
                                     onChange={handleSlugChange}
                                     required
                                     placeholder="himalayan-kitchen"
-                                    className="flex-1 px-3 outline-none text-sm text-gray-900 placeholder:text-gray-400"
+                                    className="flex-1 px-3 outline-none text-sm text-ink placeholder:text-ink-subtle"
                                 />
                                 <div className="flex items-center px-3">
-                                    {slugStatus === 'checking' && <Loader2 size={16} className="animate-spin text-gray-400" />}
+                                    {slugStatus === 'checking' && <Loader2 size={16} className="animate-spin text-ink-subtle" />}
                                     {slugStatus === 'available' && <Check size={16} className="text-green-600" />}
                                     {slugStatus === 'taken' && <X size={16} className="text-red-500" />}
                                 </div>
@@ -403,24 +403,24 @@ export default function OnboardingCreateClient() {
                             ) : slugStatus === 'available' ? (
                                 <p className="text-xs text-green-600 mt-2 font-medium">✓ Available</p>
                             ) : (
-                                <p className="text-xs text-gray-500 mt-2">Customers will scan QR codes leading to this URL to view your menu.</p>
+                                <p className="text-xs text-ink-subtle mt-2">Customers will scan QR codes leading to this URL to view your menu.</p>
                             )}
                         </div>
                     </section>
 
                     {/* Section 3: Contact & Location */}
                     <section>
-                        <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-100 pb-2">
+                        <h3 className="text-lg font-bold text-ink mb-4 flex items-center gap-2 border-b border-hairline pb-2">
                             <Phone size={20} className="text-[#ff5a00]" /> Contact & Location
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                             <div>
                                 <label className={labelClasses}>Primary Phone <span className="text-red-500">*</span></label>
-                                <div className="flex h-[52px] w-full rounded-xl border border-gray-200 overflow-hidden bg-white focus-within:border-[#ff5a00] focus-within:ring-1 focus-within:ring-[#ff5a00] transition-all">
-                                    <div className="flex items-center bg-gray-50 border-r border-gray-200">
+                                <div className="flex h-[52px] w-full rounded-xl border border-hairline-strong overflow-hidden bg-surface focus-within:border-[#ff5a00] focus-within:ring-1 focus-within:ring-[#ff5a00] transition-all">
+                                    <div className="flex items-center bg-surface-muted border-r border-hairline-strong">
                                         <select 
                                             name="countryCode"
-                                            className="h-full px-3 outline-none bg-transparent text-sm text-gray-900 cursor-pointer appearance-none"
+                                            className="h-full px-3 outline-none bg-transparent text-sm text-ink cursor-pointer appearance-none"
                                         >
                                             <option value="+977">🇳🇵 +977</option>
                                             <option value="+1">🇺🇸 +1</option>
@@ -436,13 +436,13 @@ export default function OnboardingCreateClient() {
                                         value={contactPhoneRaw}
                                         onChange={(e) => setContactPhoneRaw(e.target.value)}
                                         placeholder="98XXXXXXX"
-                                        className="flex-1 px-3 text-sm outline-none text-gray-900 w-full placeholder:text-gray-400"
+                                        className="flex-1 px-3 text-sm outline-none text-ink w-full placeholder:text-ink-subtle"
                                     />
                                 </div>
                                 {fieldErrors.contactPhone && <p className="text-xs text-red-600 mt-1.5 font-medium">{fieldErrors.contactPhone}</p>}
                             </div>
                             <div>
-                                <label className={labelClasses}>Telephone <span className="text-gray-400 font-normal">(optional)</span></label>
+                                <label className={labelClasses}>Telephone <span className="text-ink-subtle font-normal">(optional)</span></label>
                                 <input
                                     name="telephone"
                                     value={telephone}
@@ -465,17 +465,17 @@ export default function OnboardingCreateClient() {
                                     <button
                                         type="button"
                                         onClick={() => { setMapSnapshot({ position, address }); setIsMapModalOpen(true) }}
-                                        className="w-[52px] h-[52px] flex items-center justify-center rounded-xl border border-gray-200 text-[#ff5a00] bg-orange-50 hover:bg-orange-100 transition-colors shrink-0 shadow-sm"
+                                        className="w-[52px] h-[52px] flex items-center justify-center rounded-xl border border-hairline-strong text-[#ff5a00] bg-brand-50 hover:bg-brand-100 transition-colors shrink-0 shadow-sm"
                                         title="Pin on Map"
                                     >
                                         <MapPin size={20} />
                                     </button>
                                 </div>
-                                {!position && <p className="text-xs text-orange-600 mt-2">Please pin your exact location on the map for delivery/customer accuracy.</p>}
+                                {!position && <p className="text-xs text-brand-600 mt-2">Please pin your exact location on the map for delivery/customer accuracy.</p>}
                                 {position && <p className="text-xs text-green-600 mt-2 font-medium">✓ Location pinned successfully.</p>}
                             </div>
                             <div className="sm:col-span-2">
-                                <label className={labelClasses}>Restaurant Email <span className="text-gray-400 font-normal">(optional)</span></label>
+                                <label className={labelClasses}>Restaurant Email <span className="text-ink-subtle font-normal">(optional)</span></label>
                                 <input
                                     name="restaurantEmail"
                                     type="email"
@@ -491,12 +491,12 @@ export default function OnboardingCreateClient() {
 
                     {/* Section 4: Legal & Tax */}
                     <section>
-                        <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-100 pb-2">
+                        <h3 className="text-lg font-bold text-ink mb-4 flex items-center gap-2 border-b border-hairline pb-2">
                             <FileText size={20} className="text-[#ff5a00]" /> Legal & Tax
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                             <div>
-                                <label className={labelClasses}>PAN Number <span className="text-gray-400 font-normal">(optional)</span></label>
+                                <label className={labelClasses}>PAN Number <span className="text-ink-subtle font-normal">(optional)</span></label>
                                 <input
                                     name="panNumber"
                                     value={panNumber}
@@ -512,9 +512,9 @@ export default function OnboardingCreateClient() {
                                         type="checkbox"
                                         checked={vatRegistered}
                                         onChange={(e) => setVatRegistered(e.target.checked)}
-                                        className="w-5 h-5 rounded border-gray-300 text-[#ff5a00] focus:ring-[#ff5a00]"
+                                        className="w-5 h-5 rounded border-hairline-strong text-[#ff5a00] focus:ring-[#ff5a00]"
                                     />
-                                    <span className="text-sm font-semibold text-gray-900">This business is VAT Registered (13%)</span>
+                                    <span className="text-sm font-semibold text-ink">This business is VAT Registered (13%)</span>
                                 </label>
                             </div>
                             {vatRegistered && (
@@ -533,7 +533,7 @@ export default function OnboardingCreateClient() {
                         </div>
                     </section>
 
-                    <div className="pt-6 border-t border-gray-100 flex items-center gap-4">
+                    <div className="pt-6 border-t border-hairline flex items-center gap-4">
                         <button
                             type="submit"
                             disabled={isLoading}
@@ -552,16 +552,16 @@ export default function OnboardingCreateClient() {
             {/* Map Modal */}
             {isMapModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-black/50 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-white w-full max-w-5xl h-[80vh] rounded-3xl overflow-hidden shadow-2xl relative flex flex-col">
+                    <div className="bg-surface w-full max-w-5xl h-[80vh] rounded-3xl overflow-hidden shadow-2xl relative flex flex-col">
                         
                         {/* Map Header Overlay */}
                         <div className="absolute top-6 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-[1000] flex gap-3">
-                            <div className="flex-1 bg-white rounded-xl shadow-lg flex items-center px-4 border border-gray-100">
-                                <span className="text-gray-400 mr-2 text-sm">🔍</span>
+                            <div className="flex-1 bg-surface rounded-xl shadow-lg flex items-center px-4 border border-hairline">
+                                <span className="text-ink-subtle mr-2 text-sm">🔍</span>
                                 <input 
                                     type="text" 
                                     placeholder="Search for a place..."
-                                    className="w-full py-3.5 outline-none text-sm text-gray-700"
+                                    className="w-full py-3.5 outline-none text-sm text-ink-muted"
                                     value={address}
                                     onChange={(e) => setAddress(e.target.value)}
                                     onKeyDown={(e) => {
@@ -575,7 +575,7 @@ export default function OnboardingCreateClient() {
                             </div>
                             <button
                                 onClick={handleCancelMap}
-                                className="w-12 h-[52px] bg-white rounded-xl shadow-lg border border-gray-100 flex items-center justify-center text-gray-500 hover:text-red-500 transition-colors shrink-0"
+                                className="w-12 h-[52px] bg-surface rounded-xl shadow-lg border border-hairline flex items-center justify-center text-ink-subtle hover:text-red-500 transition-colors shrink-0"
                             >
                                 ✕
                             </button>
@@ -585,7 +585,7 @@ export default function OnboardingCreateClient() {
                         <div className="absolute bottom-24 right-4 sm:right-10 z-[1000]">
                             <button 
                                 onClick={handleCurrentLocation}
-                                className="bg-white text-[#ff5a00] font-semibold text-sm px-4 py-3 rounded-xl shadow-lg border border-gray-100 flex items-center gap-2 hover:bg-orange-50 transition-colors"
+                                className="bg-surface text-[#ff5a00] font-semibold text-sm px-4 py-3 rounded-xl shadow-lg border border-hairline flex items-center gap-2 hover:bg-brand-50 transition-colors"
                             >
                                 <MapPin size={16} /> <span className="hidden sm:inline">Use current location</span>
                             </button>
@@ -595,7 +595,7 @@ export default function OnboardingCreateClient() {
                         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-full max-w-md px-4 z-[1000] flex gap-4">
                             <button
                                 onClick={handleCancelMap}
-                                className="flex-1 bg-white text-gray-700 font-bold py-3.5 rounded-xl shadow-lg border border-gray-100 hover:bg-gray-50 transition-colors"
+                                className="flex-1 bg-surface text-ink-muted font-bold py-3.5 rounded-xl shadow-lg border border-hairline hover:bg-surface-muted transition-colors"
                             >
                                 Cancel
                             </button>
@@ -607,7 +607,7 @@ export default function OnboardingCreateClient() {
                             </button>
                         </div>
 
-                        <div className="flex-1 w-full bg-gray-100">
+                        <div className="flex-1 w-full bg-surface-muted">
                             {typeof window !== 'undefined' && (
                                 <MapContainer 
                                     center={position || [27.7172, 85.3240]} // Default to Kathmandu, Nepal
@@ -632,18 +632,18 @@ export default function OnboardingCreateClient() {
             {/* Success Modal */}
             {isSuccessModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-white w-full max-w-lg rounded-[2rem] p-10 text-center shadow-2xl relative overflow-hidden">
+                    <div className="bg-surface w-full max-w-lg rounded-[2rem] p-10 text-center shadow-2xl relative overflow-hidden">
                         
                         {/* Orange Glow Effect */}
                         <div className="absolute -top-40 -right-40 w-80 h-80 bg-[#ff5a00] rounded-full blur-[100px] opacity-20 pointer-events-none"></div>
                         <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-[#ff5a00] rounded-full blur-[100px] opacity-20 pointer-events-none"></div>
 
                         <div className="relative z-10 flex flex-col items-center">
-                            <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mb-6 text-[#ff5a00]">
+                            <div className="w-20 h-20 bg-brand-100 rounded-full flex items-center justify-center mb-6 text-[#ff5a00]">
                                 <Store size={40} />
                             </div>
-                            <h2 className="text-3xl font-extrabold text-gray-900 mb-3 tracking-tight">Setup Complete!</h2>
-                            <p className="text-[15px] text-gray-500 font-medium leading-relaxed mb-8 max-w-sm mx-auto">
+                            <h2 className="text-3xl font-extrabold text-ink mb-3 tracking-tight">Setup Complete!</h2>
+                            <p className="text-[15px] text-ink-subtle font-medium leading-relaxed mb-8 max-w-sm mx-auto">
                                 Your restaurant is now provisioned and ready for business. Let's head to your management dashboard.
                             </p>
 

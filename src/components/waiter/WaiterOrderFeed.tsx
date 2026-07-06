@@ -76,7 +76,7 @@ export default function WaiterOrderFeed({ initialOrders, restaurantId, userId, s
                 navigator.vibrate?.(300)
                 const tbl = order.sessions?.tables?.label
                 toast.custom((t) => (
-                    <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-white shadow-xl rounded-xl px-4 py-3 flex items-start gap-3 border border-amber-200`}>
+                    <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-surface shadow-xl rounded-xl px-4 py-3 flex items-start gap-3 border border-amber-200`}>
                         <span className="text-xl mt-0.5">🛎️</span>
                         <div>
                             <p className="font-bold text-sm text-amber-700">New Order</p>
@@ -120,7 +120,7 @@ export default function WaiterOrderFeed({ initialOrders, restaurantId, userId, s
                 navigator.vibrate?.([200, 100, 200])
                 const tbl = fresh.sessions?.tables?.label
                 toast.custom((t) => (
-                    <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-white shadow-xl rounded-xl px-4 py-3 flex items-start gap-3 border-2 border-emerald-300`}>
+                    <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-surface shadow-xl rounded-xl px-4 py-3 flex items-start gap-3 border-2 border-emerald-300`}>
                         <span className="text-xl mt-0.5">✅</span>
                         <div>
                             <p className="font-bold text-sm text-emerald-700">Ready to Serve!</p>

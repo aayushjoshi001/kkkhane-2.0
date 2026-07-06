@@ -25,7 +25,7 @@ export default function PremiumPageHeader({ title, description, icon, actions, c
             <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
                 <div>
                     {icon && (
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/10 mb-6 text-sm font-medium text-white/90">
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface/10 backdrop-blur-md border border-white/10 mb-6 text-sm font-medium text-white/90">
                             {icon}
                         </div>
                     )}

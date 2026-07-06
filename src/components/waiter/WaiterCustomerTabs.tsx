@@ -96,11 +96,11 @@ export default function WaiterCustomerTabs({
                 const label = LABEL_MAP[req.request_type as ServiceRequestType] || 'Service Request'
                 const isOpenSession = req.request_type === 'open_session'
                 toast.custom((t) => (
-                    <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-gray-900 text-white shadow-2xl rounded-xl px-4 py-3 flex items-start gap-3 ${isOpenSession ? 'border border-violet-500/40' : 'border border-amber-500/30'}`}>
+                    <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-ink text-white shadow-2xl rounded-xl px-4 py-3 flex items-start gap-3 ${isOpenSession ? 'border border-violet-500/40' : 'border border-amber-500/30'}`}>
                         <span className="text-xl mt-0.5">{isOpenSession ? '🪑' : '🔔'}</span>
                         <div>
                             <p className={`font-bold text-sm ${isOpenSession ? 'text-violet-400' : 'text-amber-400'}`}>{label}</p>
-                            <p className="text-xs text-gray-400 mt-0.5">Table {tblLabel}{req.message ? ` — ${req.message}` : ''}</p>
+                            <p className="text-xs text-ink-subtle mt-0.5">Table {tblLabel}{req.message ? ` — ${req.message}` : ''}</p>
                         </div>
                     </div>
                 ), { duration: 7000, position: 'top-right' })
@@ -181,7 +181,7 @@ export default function WaiterCustomerTabs({
 
         if (pending.length === 0 && acknowledged.length === 0) {
             return (
-                <div className="text-center py-10 bg-white rounded-3xl border border-hairline shadow-sm">
+                <div className="text-center py-10 bg-surface rounded-3xl border border-hairline shadow-sm">
                     <p className="text-sm font-semibold text-ink-muted">No pending requests</p>
                 </div>
             )
@@ -266,7 +266,7 @@ export default function WaiterCustomerTabs({
                         className={`relative flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-extrabold transition-all active:scale-95 w-full ${
                             activeTab === 'food'
                                 ? 'bg-[var(--color-primary)] text-white shadow-sm'
-                                : 'bg-white border border-hairline text-gray-500 hover:bg-gray-50 hover:text-gray-700 shadow-sm'
+                                : 'bg-surface border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink-muted shadow-sm'
                         }`}
                     >
                         <Utensils size={13} />
@@ -290,7 +290,7 @@ export default function WaiterCustomerTabs({
                         className={`relative flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-extrabold transition-all active:scale-95 w-full ${
                             activeTab === 'service'
                                 ? 'bg-[var(--color-primary)] text-white shadow-sm'
-                                : 'bg-white border border-hairline text-gray-500 hover:bg-gray-50 hover:text-gray-700 shadow-sm'
+                                : 'bg-surface border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink-muted shadow-sm'
                         }`}
                     >
                         <HandHelping size={13} />
@@ -314,13 +314,13 @@ export default function WaiterCustomerTabs({
                         className={`relative flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-extrabold transition-all active:scale-95 w-full ${
                             activeTab === 'billing'
                                 ? 'bg-[var(--color-primary)] text-white shadow-sm'
-                                : 'bg-white border border-hairline text-gray-500 hover:bg-gray-50 hover:text-gray-700 shadow-sm'
+                                : 'bg-surface border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink-muted shadow-sm'
                         }`}
                     >
                         <Banknote size={13} />
                         {billingCount > 0 && (
                             <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md min-w-[18px] text-center ${
-                                activeTab === 'billing' ? 'bg-white/20 text-white' : 'bg-red-100 text-red-700'
+                                activeTab === 'billing' ? 'bg-surface/20 text-white' : 'bg-red-100 text-red-700'
                             }`}>
                                 {billingCount}
                             </span>

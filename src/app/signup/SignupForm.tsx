@@ -59,8 +59,8 @@ export default function SignupForm() {
         }
     }
 
-    const inputClasses = "h-[52px] w-full pl-12 pr-4 border border-gray-200 rounded-[14px] text-[15px] focus:outline-none focus:ring-1 focus:ring-[#ff5a00] focus:border-[#ff5a00] transition-all bg-white placeholder:text-gray-400 text-gray-900"
-    const labelClasses = "text-[14px] font-semibold text-gray-900 flex gap-1 mb-2"
+    const inputClasses = "h-[52px] w-full pl-12 pr-4 border border-hairline-strong rounded-[14px] text-[15px] focus:outline-none focus:ring-1 focus:ring-[#ff5a00] focus:border-[#ff5a00] transition-all bg-surface placeholder:text-ink-subtle text-ink"
+    const labelClasses = "text-[14px] font-semibold text-ink flex gap-1 mb-2"
 
     return (
         <div className="flex flex-col items-center justify-start md:justify-center w-full max-w-[420px] mx-auto pb-10">
@@ -69,8 +69,8 @@ export default function SignupForm() {
 
             {/* Header Content */}
             <div className="w-full text-left mb-8">
-                <h1 className="text-[1.75rem] font-bold text-gray-900 mb-2">Create an Account</h1>
-                <p className="text-[15px] text-gray-500 font-normal">Join KKKhane and set up your restaurant in minutes.</p>
+                <h1 className="text-[1.75rem] font-bold text-ink mb-2">Create an Account</h1>
+                <p className="text-[15px] text-ink-subtle font-normal">Join KKKhane and set up your restaurant in minutes.</p>
             </div>
 
             {error && (
@@ -101,7 +101,7 @@ export default function SignupForm() {
                     <div className="relative">
                         <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#ff5a00]" />
                         <input id="password" name="password" type={showPassword ? 'text' : 'password'} required placeholder="At least 8 characters" className={inputClasses} />
-                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition p-1">
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-ink-muted transition p-1">
                             {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>
                     </div>
@@ -141,19 +141,19 @@ export default function SignupForm() {
             </form>
 
             <div className="w-full flex items-center gap-4 mt-6 mb-6">
-                <div className="h-px bg-gray-200 flex-1"></div>
-                <span className="text-[13px] text-gray-400 font-medium">or</span>
-                <div className="h-px bg-gray-200 flex-1"></div>
+                <div className="h-px bg-surface-muted flex-1"></div>
+                <span className="text-[13px] text-ink-subtle font-medium">or</span>
+                <div className="h-px bg-surface-muted flex-1"></div>
             </div>
 
             <button
                 type="button"
                 onClick={handleGoogleSignup}
                 disabled={isGoogleLoading}
-                className="w-full bg-white border border-gray-200 text-gray-700 h-[52px] rounded-[14px] text-[15px] font-semibold shadow-sm hover:bg-gray-50 transition-all flex items-center justify-center gap-3 mb-6 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full bg-surface border border-hairline-strong text-ink-muted h-[52px] rounded-[14px] text-[15px] font-semibold shadow-sm hover:bg-surface-muted transition-all flex items-center justify-center gap-3 mb-6 disabled:opacity-60 disabled:cursor-not-allowed"
             >
                 {isGoogleLoading ? (
-                    <span className="w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                    <span className="w-5 h-5 border-2 border-hairline-strong border-t-gray-600 rounded-full animate-spin" />
                 ) : (
                     <svg viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
                         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -165,7 +165,7 @@ export default function SignupForm() {
                 {isGoogleLoading ? 'Redirecting…' : 'Sign up with Google'}
             </button>
 
-            <p className="text-center text-[15px] text-gray-500">
+            <p className="text-center text-[15px] text-ink-subtle">
                 Already have an account?{' '}
                 <Link href="/login" className="font-semibold text-[#ff5a00] hover:underline">
                     Log In

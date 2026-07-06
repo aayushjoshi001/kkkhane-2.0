@@ -40,7 +40,7 @@ export default function MobileNav() {
             {/* Hamburger button — visible only on mobile */}
             <button
                 onClick={() => setOpen(!open)}
-                className="md:hidden flex items-center justify-center w-10 h-10 rounded-lg hover:bg-gray-100 transition-colors"
+                className="md:hidden flex items-center justify-center w-10 h-10 rounded-lg hover:bg-surface-muted transition-colors"
                 aria-label={open ? 'Close menu' : 'Open menu'}
                 aria-expanded={open}
             >
@@ -58,7 +58,7 @@ export default function MobileNav() {
 
             {/* Slide-down mobile menu */}
             <div
-                className={`fixed top-14 sm:top-16 left-0 right-0 z-50 md:hidden bg-white border-b border-gray-200 shadow-xl transition-all duration-300 ease-in-out ${
+                className={`fixed top-14 sm:top-16 left-0 right-0 z-50 md:hidden bg-surface border-b border-hairline-strong shadow-xl transition-all duration-300 ease-in-out ${
                     open
                         ? 'opacity-100 translate-y-0'
                         : 'opacity-0 -translate-y-4 pointer-events-none'
@@ -70,16 +70,16 @@ export default function MobileNav() {
                             key={link.href}
                             href={link.href}
                             onClick={() => setTimeout(() => setOpen(false), 150)}
-                            className="flex items-center px-4 py-3 text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors"
+                            className="flex items-center px-4 py-3 text-base font-medium text-ink-muted hover:text-ink hover:bg-surface-muted rounded-xl transition-colors"
                         >
                             {link.label}
                         </a>
                     ))}
-                    <hr className="my-2 border-gray-100" />
+                    <hr className="my-2 border-hairline" />
                     <Link
                         href="/login"
                         onClick={() => setTimeout(() => setOpen(false), 150)}
-                        className="flex items-center px-4 py-3 text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors"
+                        className="flex items-center px-4 py-3 text-base font-medium text-ink-muted hover:text-ink hover:bg-surface-muted rounded-xl transition-colors"
                     >
                         Staff Login
                     </Link>

@@ -91,19 +91,19 @@ export default function OnboardingGetStarted({
     }
 
     return (
-        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-gray-100 p-8 sm:p-10 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
+        <div className="w-full max-w-md bg-surface rounded-3xl shadow-2xl border border-hairline p-8 sm:p-10 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
 
-            <button onClick={() => router.push('/login')} className="mb-6 flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
+            <button onClick={() => router.push('/login')} className="mb-6 flex items-center justify-center w-8 h-8 rounded-lg border border-hairline-strong text-ink-subtle hover:bg-surface-muted transition-colors">
                 <ChevronLeft size={16} />
             </button>
 
-            <h1 className="text-3xl font-extrabold text-gray-900 mb-2">Get Started</h1>
-            <p className="text-gray-500 font-medium mb-8">Tell us your name and how you'll be using KKKhane</p>
+            <h1 className="text-3xl font-extrabold text-ink mb-2">Get Started</h1>
+            <p className="text-ink-subtle font-medium mb-8">Tell us your name and how you'll be using KKKhane</p>
 
             {/* Profile Block */}
             <div className="mb-8">
-                <h3 className="text-sm font-bold text-gray-900 mb-3">Your Profile</h3>
-                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex items-center justify-between relative">
+                <h3 className="text-sm font-bold text-ink mb-3">Your Profile</h3>
+                <div className="bg-surface-muted rounded-2xl p-4 border border-hairline flex items-center justify-between relative">
                     <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-xl bg-brand-50 text-brand-700 font-black flex items-center justify-center text-lg uppercase tracking-wider overflow-hidden relative">
                             {avatarUrl ? (
@@ -111,22 +111,22 @@ export default function OnboardingGetStarted({
                             ) : initials}
                         </div>
                         <div>
-                            <h4 className="font-bold text-gray-900 leading-tight">{userName}</h4>
-                            <p className="text-xs text-gray-500">{userEmail}</p>
+                            <h4 className="font-bold text-ink leading-tight">{userName}</h4>
+                            <p className="text-xs text-ink-subtle">{userEmail}</p>
                         </div>
                     </div>
 
                     <button
                         onClick={() => setIsMenuOpen(!isMenuOpen)}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-colors text-gray-500"
+                        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-surface-muted transition-colors text-ink-subtle"
                     >
                         <MoreHorizontal size={20} />
                     </button>
 
                     {/* Dropdown Menu */}
                     {isMenuOpen && (
-                        <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 p-2 z-20 animate-in fade-in zoom-in-95 duration-200">
-                            <div className="p-3 border-b border-gray-100 mb-2">
+                        <div className="absolute top-full right-0 mt-2 w-64 bg-surface rounded-2xl shadow-xl border border-hairline p-2 z-20 animate-in fade-in zoom-in-95 duration-200">
+                            <div className="p-3 border-b border-hairline mb-2">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-lg bg-brand-50 text-brand-700 font-black flex items-center justify-center overflow-hidden relative">
                                         {avatarUrl ? (
@@ -134,22 +134,22 @@ export default function OnboardingGetStarted({
                                         ) : initials}
                                     </div>
                                     <div>
-                                        <h4 className="font-bold text-sm text-gray-900">{userName}</h4>
-                                        <p className="text-[10px] text-gray-500 truncate w-32">{userEmail}</p>
+                                        <h4 className="font-bold text-sm text-ink">{userName}</h4>
+                                        <p className="text-[10px] text-ink-subtle truncate w-32">{userEmail}</p>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="space-y-1">
-                                <button onClick={() => { setIsProfileModalOpen(true); setIsMenuOpen(false) }} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
-                                    <Settings size={16} className="text-gray-400" /> Profile Setting
+                                <button onClick={() => { setIsProfileModalOpen(true); setIsMenuOpen(false) }} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-ink-muted hover:bg-surface-muted rounded-xl transition-colors">
+                                    <Settings size={16} className="text-ink-subtle" /> Profile Setting
                                 </button>
                             </div>
 
-                            <div className="mt-2 pt-2 border-t border-gray-100">
+                            <div className="mt-2 pt-2 border-t border-hairline">
                                 <button
                                     onClick={handleLogout}
-                                    className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-bold text-gray-900 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
+                                    className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-bold text-ink bg-surface-muted hover:bg-surface-muted rounded-xl transition-colors"
                                 >
                                     <LogOut size={16} /> Log out
                                 </button>
@@ -163,7 +163,7 @@ export default function OnboardingGetStarted({
             <div className="mb-8">
                 <div className="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-[var(--color-primary)] bg-brand-50">
                     <Store size={20} className="text-[var(--color-primary)]" />
-                    <span className="font-bold text-sm text-gray-900">
+                    <span className="font-bold text-sm text-ink">
                         Next, you&apos;ll set up your restaurant
                     </span>
                 </div>
@@ -179,10 +179,10 @@ export default function OnboardingGetStarted({
             {/* Profile Setting Modal */}
             {isProfileModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden">
-                        <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
-                            <h3 className="font-extrabold text-gray-900 text-lg">Profile Setting</h3>
-                            <button onClick={() => setIsProfileModalOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
+                    <div className="bg-surface w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden">
+                        <div className="px-6 py-5 border-b border-hairline flex items-center justify-between">
+                            <h3 className="font-extrabold text-ink text-lg">Profile Setting</h3>
+                            <button onClick={() => setIsProfileModalOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-lg text-ink-subtle hover:bg-surface-muted hover:text-ink-muted transition-colors">
                                 <X size={18} />
                             </button>
                         </div>
@@ -190,9 +190,9 @@ export default function OnboardingGetStarted({
                         <div className="p-6 space-y-6">
                             <div className="flex flex-col items-center gap-3">
                                 <div className="relative group">
-                                    <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-gray-100 bg-gray-50 relative shadow-inner flex items-center justify-center">
+                                    <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-hairline bg-surface-muted relative shadow-inner flex items-center justify-center">
                                         {isUploading ? (
-                                            <Loader2 size={22} className="animate-spin text-gray-400" />
+                                            <Loader2 size={22} className="animate-spin text-ink-subtle" />
                                         ) : avatarUrl ? (
                                             <Image src={avatarUrl} alt="Profile avatar" fill sizes="80px" className="object-cover" />
                                         ) : (
@@ -224,21 +224,21 @@ export default function OnboardingGetStarted({
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Full Name</label>
+                                <label className="block text-xs font-bold text-ink-subtle uppercase tracking-wider mb-2">Full Name</label>
                                 <input
                                     type="text"
                                     value={fullName}
                                     onChange={(e) => setFullName(e.target.value)}
-                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] transition-all"
+                                    className="w-full px-4 py-3 bg-surface-muted border border-hairline-strong rounded-xl text-sm font-semibold text-ink focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] transition-all"
                                 />
                             </div>
                         </div>
 
-                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                        <div className="px-6 py-4 bg-surface-muted border-t border-hairline flex justify-end gap-3">
                             <button
                                 onClick={() => setIsProfileModalOpen(false)}
                                 disabled={isSaving}
-                                className="px-4 py-2.5 text-sm font-bold text-gray-600 hover:text-gray-900 transition-colors disabled:opacity-50"
+                                className="px-4 py-2.5 text-sm font-bold text-ink-muted hover:text-ink transition-colors disabled:opacity-50"
                             >
                                 Cancel
                             </button>

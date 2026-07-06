@@ -108,10 +108,10 @@ export default function StaffShiftClock({ userId, restaurantId, initialShift, in
         muted: dark ? 'text-dark-muted' : 'text-ink-muted',
         label: dark ? 'text-dark-ink/80' : 'text-ink-muted',
         divider: dark ? 'border-dark-border' : 'border-hairline',
-        hover: dark ? 'hover:bg-white/5' : 'hover:bg-surface-muted',
-        historyRow: dark ? 'bg-white/5' : 'bg-surface-muted',
+        hover: dark ? 'hover:bg-surface/5' : 'hover:bg-surface-muted',
+        historyRow: dark ? 'bg-surface/5' : 'bg-surface-muted',
         historyText: dark ? 'text-dark-ink' : 'text-ink',
-        iconBg: activeShift ? 'bg-success/20' : dark ? 'bg-white/5' : 'bg-surface-muted',
+        iconBg: activeShift ? 'bg-success/20' : dark ? 'bg-surface/5' : 'bg-surface-muted',
     }
 
     return (
@@ -119,7 +119,7 @@ export default function StaffShiftClock({ userId, restaurantId, initialShift, in
             {/* Current status */}
             <div className="p-4 md:p-6 text-center">
                 <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-3 ${t.iconBg}`}>
-                    <Clock className={`w-8 h-8 ${activeShift ? 'text-green-400' : dark ? 'text-gray-500' : 'text-gray-400'}`} />
+                    <Clock className={`w-8 h-8 ${activeShift ? 'text-green-400' : dark ? 'text-ink-subtle' : 'text-ink-subtle'}`} />
                 </div>
 
                 <p className={`text-sm font-medium ${activeShift ? 'text-green-400' : t.muted}`}>
@@ -196,9 +196,9 @@ export default function StaffShiftClock({ userId, restaurantId, initialShift, in
             {/* End-of-shift congrats summary */}
             {summary && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setSummary(null)}>
-                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden text-center" onClick={(e) => e.stopPropagation()}>
+                    <div className="bg-surface rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="bg-gradient-to-b from-[#FB6303] to-[#e25600] text-white px-6 pt-7 pb-6 relative">
-                            <button onClick={() => setSummary(null)} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center" aria-label="Close">
+                            <button onClick={() => setSummary(null)} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-surface/20 hover:bg-surface/30 flex items-center justify-center" aria-label="Close">
                                 <X size={16} />
                             </button>
                             <PartyPopper size={40} className="mx-auto mb-2" />
@@ -212,15 +212,15 @@ export default function StaffShiftClock({ userId, restaurantId, initialShift, in
                                 { icon: Package, label: 'Orders served', value: summary.ordersHandled },
                                 { icon: Bike, label: 'Deliveries', value: summary.deliveries },
                             ].map(({ icon: Icon, label, value }) => (
-                                <div key={label} className="rounded-2xl border border-gray-100 bg-gray-50 py-3">
-                                    <Icon size={18} className="mx-auto text-[#FB6303] mb-1" />
-                                    <p className="text-2xl font-black text-gray-900 leading-none">{value}</p>
-                                    <p className="text-[10px] text-gray-500 mt-1">{label}</p>
+                                <div key={label} className="rounded-2xl border border-hairline bg-surface-muted py-3">
+                                    <Icon size={18} className="mx-auto text-brand-500 mb-1" />
+                                    <p className="text-2xl font-black text-ink leading-none">{value}</p>
+                                    <p className="text-[10px] text-ink-subtle mt-1">{label}</p>
                                 </div>
                             ))}
                         </div>
                         <div className="px-5 pb-5">
-                            <button onClick={() => setSummary(null)} className="w-full bg-gray-900 text-white font-bold rounded-xl py-3 text-sm hover:bg-gray-800">
+                            <button onClick={() => setSummary(null)} className="w-full bg-ink text-white font-bold rounded-xl py-3 text-sm hover:bg-gray-800">
                                 Done & Sign Out
                             </button>
                         </div>

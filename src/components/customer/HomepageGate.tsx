@@ -30,7 +30,7 @@ export default function HomepageGate({ initialHomepageConfig, onProceed, takeout
     }
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-surface-muted">
             <HomepageRenderer
                 config={initialHomepageConfig}
                 onMenuClick={() => {
@@ -43,7 +43,7 @@ export default function HomepageGate({ initialHomepageConfig, onProceed, takeout
                 {takeoutHref && (
                     <Link
                         href={takeoutHref}
-                        className="px-5 py-2.5 bg-white text-primary border border-primary rounded-full shadow-lg hover:bg-primary/5 flex items-center gap-2 font-semibold text-sm"
+                        className="px-5 py-2.5 bg-surface text-primary border border-primary rounded-full shadow-lg hover:bg-primary/5 flex items-center gap-2 font-semibold text-sm"
                     >
                         <ShoppingBag size={16} />
                         Takeout / Pickup

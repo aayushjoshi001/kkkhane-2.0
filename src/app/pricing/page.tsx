@@ -71,21 +71,21 @@ const CURRENCY_SYMBOL = 'Rs.'
 
 export default function PricingPage() {
     return (
-        <div className="min-h-screen bg-[#FAFAF8] text-gray-900 font-sans selection:bg-[var(--color-primary)] selection:text-white">
+        <div className="min-h-screen bg-[#FAFAF8] text-ink font-sans selection:bg-[var(--color-primary)] selection:text-white">
             <MarketingNav />
 
             {/* Hero Section */}
-            <section className="pt-32 pb-16 px-4 relative overflow-hidden bg-white border-b border-gray-100">
+            <section className="pt-32 pb-16 px-4 relative overflow-hidden bg-surface border-b border-hairline">
                 <div className="absolute top-0 right-0 -mr-32 -mt-32 w-96 h-96 bg-purple-50 rounded-full blur-3xl opacity-50"></div>
                 <div className="absolute bottom-0 left-0 -ml-32 -mb-32 w-96 h-96 bg-blue-50 rounded-full blur-3xl opacity-50"></div>
 
                 <div className="max-w-[1000px] mx-auto text-center relative z-10">
                     <div className="mb-6 inline-flex justify-center"><Eyebrow tone="brand">Transparent Pricing</Eyebrow></div>
                     <div className="text-center mt-12 max-w-3xl mx-auto">
-                        <h2 className="text-5xl md:text-6xl font-extrabold tracking-tight text-gray-900 mb-6">
+                        <h2 className="text-5xl md:text-6xl font-extrabold tracking-tight text-ink mb-6">
                             Simple, transparent pricing
                         </h2>
-                        <p className="text-xl text-gray-500 font-medium leading-relaxed max-w-2xl mx-auto">
+                        <p className="text-xl text-ink-subtle font-medium leading-relaxed max-w-2xl mx-auto">
                             No hidden fees, no hardware lock-in. Choose the plan that fits your growth.
                         </p>
                     </div>
@@ -99,7 +99,7 @@ export default function PricingPage() {
                     {PRICING_PLANS.map((plan) => (
                         <div
                             key={plan.name}
-                            className={`relative bg-white rounded-3xl p-8 flex flex-col border transition-all duration-300 ${plan.popular ? 'border-[var(--color-primary)] shadow-2xl z-10 lg:scale-105' : 'border-gray-100 shadow-sm hover:shadow-md'}`}
+                            className={`relative bg-surface rounded-3xl p-8 flex flex-col border transition-all duration-300 ${plan.popular ? 'border-[var(--color-primary)] shadow-2xl z-10 lg:scale-105' : 'border-hairline shadow-sm hover:shadow-md'}`}
                         >
                             {plan.popular && (
                                 <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2">
@@ -110,18 +110,18 @@ export default function PricingPage() {
                             )}
 
                             <div className="mb-6">
-                                <h3 className="text-xl font-bold text-gray-900 mb-2">{plan.name}</h3>
-                                <p className="text-sm text-gray-500 font-medium h-10">{plan.description}</p>
+                                <h3 className="text-xl font-bold text-ink mb-2">{plan.name}</h3>
+                                <p className="text-sm text-ink-subtle font-medium h-10">{plan.description}</p>
                             </div>
 
                             <div className="mb-8">
                                 <div className="flex items-baseline gap-1">
-                                    <span className="text-gray-500 font-bold">{CURRENCY_SYMBOL}</span>
-                                    <span className="text-4xl font-black text-gray-900 tracking-tight">
+                                    <span className="text-ink-subtle font-bold">{CURRENCY_SYMBOL}</span>
+                                    <span className="text-4xl font-black text-ink tracking-tight">
                                         {plan.price}
                                     </span>
                                 </div>
-                                {plan.price !== 'Custom' && plan.price !== '0' && <span className="text-sm font-medium text-gray-500">/year</span>}
+                                {plan.price !== 'Custom' && plan.price !== '0' && <span className="text-sm font-medium text-ink-subtle">/year</span>}
                             </div>
 
                             <MarketingButton
@@ -133,9 +133,9 @@ export default function PricingPage() {
                             </MarketingButton>
 
                             <div className="space-y-4 flex-1">
-                                <p className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-4">Includes:</p>
+                                <p className="text-xs font-bold text-ink uppercase tracking-wider mb-4">Includes:</p>
                                 {plan.features.map(f => (
-                                    <div key={f} className="flex gap-3 text-sm font-medium text-gray-700">
+                                    <div key={f} className="flex gap-3 text-sm font-medium text-ink-muted">
                                         <CheckCircle2 size={18} className="text-[var(--color-primary)] shrink-0" />
                                         <span>{f}</span>
                                     </div>
@@ -143,10 +143,10 @@ export default function PricingPage() {
 
                                 {plan.limitations && (
                                     <>
-                                        <div className="pt-4 border-t border-gray-100 mt-4">
-                                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Limitations:</p>
+                                        <div className="pt-4 border-t border-hairline mt-4">
+                                            <p className="text-xs font-bold text-ink-subtle uppercase tracking-wider mb-4">Limitations:</p>
                                             {plan.limitations.map(l => (
-                                                <div key={l} className="flex gap-3 text-sm font-medium text-gray-400">
+                                                <div key={l} className="flex gap-3 text-sm font-medium text-ink-subtle">
                                                     <div className="w-[18px] flex justify-center text-gray-300 font-black shrink-0">-</div>
                                                     <span>{l}</span>
                                                 </div>
@@ -162,20 +162,20 @@ export default function PricingPage() {
 
             {/* Enterprise / Combo Banner */}
             <section className="py-12 px-4 max-w-[1000px] mx-auto">
-                <div className="bg-gray-900 rounded-[2rem] p-8 md:p-12 text-white flex flex-col md:flex-row items-center justify-between gap-8 shadow-2xl relative overflow-hidden">
-                    <div className="absolute -right-20 -top-20 w-64 h-64 bg-white/5 rounded-full blur-3xl"></div>
+                <div className="bg-ink rounded-[2rem] p-8 md:p-12 text-white flex flex-col md:flex-row items-center justify-between gap-8 shadow-2xl relative overflow-hidden">
+                    <div className="absolute -right-20 -top-20 w-64 h-64 bg-surface/5 rounded-full blur-3xl"></div>
 
                     <div className="relative z-10 max-w-xl">
-                        <div className="inline-flex items-center gap-2 bg-white/10 px-3 py-1 rounded-full text-xs font-bold tracking-wider mb-4 border border-white/10">
+                        <div className="inline-flex items-center gap-2 bg-surface/10 px-3 py-1 rounded-full text-xs font-bold tracking-wider mb-4 border border-white/10">
                             Enterprise & Combos
                         </div>
                         <h3 className="text-3xl font-extrabold mb-3">Need Custom Hardware & Software?</h3>
-                        <p className="text-gray-400 font-medium text-lg">
+                        <p className="text-ink-subtle font-medium text-lg">
                             We offer special Combo Packages including Professional Thermal Printers and Power Backups perfectly synced with your KKKhane software.
                         </p>
                     </div>
                     <div className="relative z-10 shrink-0">
-                        <Link href="/contact" className="inline-flex items-center justify-center bg-white text-black px-8 py-4 rounded-full font-bold text-lg hover:bg-gray-100 transition-colors">
+                        <Link href="/contact" className="inline-flex items-center justify-center bg-surface text-black px-8 py-4 rounded-full font-bold text-lg hover:bg-surface-muted transition-colors">
                             Talk to Sales <ArrowRight size={20} className="ml-2" />
                         </Link>
                     </div>
@@ -183,11 +183,11 @@ export default function PricingPage() {
             </section>
 
             {/* FAQ Section */}
-            <section className="py-20 bg-white border-t border-gray-100">
+            <section className="py-20 bg-surface border-t border-hairline">
                 <div className="max-w-[800px] mx-auto px-4">
                     <div className="text-center mb-16">
-                        <h2 className="text-3xl font-extrabold text-gray-900 mb-4">Frequently Asked Questions</h2>
-                        <p className="text-gray-500 font-medium">Everything you need to know about our pricing.</p>
+                        <h2 className="text-3xl font-extrabold text-ink mb-4">Frequently Asked Questions</h2>
+                        <p className="text-ink-subtle font-medium">Everything you need to know about our pricing.</p>
                     </div>
 
                     <div className="space-y-6">
@@ -195,8 +195,8 @@ export default function PricingPage() {
                             <div key={i} className="flex gap-4">
                                 <HelpCircle className="text-[var(--color-primary)] shrink-0 mt-1" size={24} />
                                 <div>
-                                    <h4 className="text-lg font-bold text-gray-900 mb-2">{faq.q}</h4>
-                                    <p className="text-gray-600 font-medium leading-relaxed">{faq.a}</p>
+                                    <h4 className="text-lg font-bold text-ink mb-2">{faq.q}</h4>
+                                    <p className="text-ink-muted font-medium leading-relaxed">{faq.a}</p>
                                 </div>
                             </div>
                         ))}

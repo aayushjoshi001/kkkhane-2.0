@@ -7,7 +7,7 @@ interface AppleLogoProps {
 /**
  * Official Apple Inc. logo (the bitten apple) as an inline SVG.
  * Uses `currentColor` so it follows the surrounding text color
- * (e.g. add `text-white` or `text-gray-900`).
+ * (e.g. add `text-white` or `text-ink`).
  */
 export default function AppleLogo({ size = 24, className = '' }: AppleLogoProps) {
     return (

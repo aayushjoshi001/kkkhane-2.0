@@ -45,13 +45,13 @@ export default async function TakeoutOrderPage({
         .single()
 
     return (
-        <div className="min-h-screen bg-gray-50 pb-12">
-            <header className="bg-white px-4 py-4 shadow-sm sticky top-0 z-20">
-                <h1 className="text-xl font-semibold text-gray-900 text-center">
+        <div className="min-h-screen bg-surface-muted pb-12">
+            <header className="bg-surface px-4 py-4 shadow-sm sticky top-0 z-20">
+                <h1 className="text-xl font-semibold text-ink text-center">
                     Track Takeout Order
                 </h1>
                 {restaurant && (
-                    <p className="text-xs text-gray-500 text-center mt-0.5">{restaurant.name}</p>
+                    <p className="text-xs text-ink-subtle text-center mt-0.5">{restaurant.name}</p>
                 )}
             </header>
 

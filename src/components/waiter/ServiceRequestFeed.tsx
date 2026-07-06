@@ -79,11 +79,11 @@ export default function ServiceRequestFeed({
                 const label = LABEL_MAP[req.request_type as ServiceRequestType] || 'Service Request'
                 const isOpenSession = req.request_type === 'open_session'
                 toast.custom((t) => (
-                    <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-gray-900 text-white shadow-2xl rounded-xl px-4 py-3 flex items-start gap-3 ${isOpenSession ? 'border border-violet-500/40' : 'border border-amber-500/30'}`}>
+                    <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-ink text-white shadow-2xl rounded-xl px-4 py-3 flex items-start gap-3 ${isOpenSession ? 'border border-violet-500/40' : 'border border-amber-500/30'}`}>
                         <span className="text-xl mt-0.5">{isOpenSession ? '🪑' : '🔔'}</span>
                         <div>
                             <p className={`font-bold text-sm ${isOpenSession ? 'text-violet-400' : 'text-amber-400'}`}>{label}</p>
-                            <p className="text-xs text-gray-400 mt-0.5">Table {tableLabel}{req.message ? ` — ${req.message}` : ''}</p>
+                            <p className="text-xs text-ink-subtle mt-0.5">Table {tableLabel}{req.message ? ` — ${req.message}` : ''}</p>
                         </div>
                     </div>
                 ), { duration: 7000, position: 'top-right' })

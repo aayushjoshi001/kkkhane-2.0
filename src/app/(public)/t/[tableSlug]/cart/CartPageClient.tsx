@@ -156,25 +156,25 @@ export default function CartPageClient({ params }: { params: { tableSlug: string
     // Empty cart state
     if (count === 0) {
         return (
-            <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-                <header className="bg-white border-b border-gray-100 sticky top-0 z-20 px-4 py-3.5">
+            <div className="min-h-screen bg-surface-muted flex flex-col font-sans">
+                <header className="bg-surface border-b border-hairline sticky top-0 z-20 px-4 py-3.5">
                     <div className="max-w-2xl mx-auto flex items-center gap-3">
                         <button
                             onClick={() => router.back()}
-                            className="w-9 h-9 rounded-full bg-white border border-gray-200 flex items-center justify-center active:scale-95 transition shadow-sm"
+                            className="w-9 h-9 rounded-full bg-surface border border-hairline-strong flex items-center justify-center active:scale-95 transition shadow-sm"
                         >
-                            <ChevronLeft size={18} className="text-gray-600" />
+                            <ChevronLeft size={18} className="text-ink-muted" />
                         </button>
-                        <h1 className="text-base font-bold text-gray-900">Your Cart</h1>
+                        <h1 className="text-base font-bold text-ink">Your Cart</h1>
                     </div>
                 </header>
 
                 <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-                    <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+                    <div className="w-16 h-16 rounded-full bg-surface-muted flex items-center justify-center mb-4">
                         <span className="text-2xl">🛒</span>
                     </div>
-                    <h2 className="text-base font-bold text-gray-950 mb-1">Your cart is empty</h2>
-                    <p className="text-xs text-gray-400 font-semibold mb-6">
+                    <h2 className="text-base font-bold text-ink mb-1">Your cart is empty</h2>
+                    <p className="text-xs text-ink-subtle font-semibold mb-6">
                         Browse the menu and add some delicious items!
                     </p>
                     <button
@@ -191,20 +191,20 @@ export default function CartPageClient({ params }: { params: { tableSlug: string
     const editTargetItem = activeEditCartKey ? items.find(i => getCartItemKey(i) === activeEditCartKey) : null
 
     return (
-        <div className="min-h-screen bg-gray-50 pb-36 text-gray-950 font-sans flex flex-col justify-between">
+        <div className="min-h-screen bg-surface-muted pb-36 text-ink font-sans flex flex-col justify-between">
             <div>
                 {/* Header */}
-                <header className="bg-white border-b border-gray-100 sticky top-0 z-20 px-4 py-3">
+                <header className="bg-surface border-b border-hairline sticky top-0 z-20 px-4 py-3">
                     <div className="max-w-2xl mx-auto flex items-center gap-3">
                         <button
                             onClick={() => router.back()}
-                            className="w-9 h-9 rounded-full bg-white border border-gray-200 flex items-center justify-center active:scale-95 transition shadow-sm"
+                            className="w-9 h-9 rounded-full bg-surface border border-hairline-strong flex items-center justify-center active:scale-95 transition shadow-sm"
                         >
-                            <ChevronLeft size={18} className="text-gray-600" />
+                            <ChevronLeft size={18} className="text-ink-muted" />
                         </button>
                         <div>
-                            <h1 className="text-base font-bold text-gray-950 leading-none">Your Cart</h1>
-                            <p className="text-[11px] text-gray-400 font-semibold mt-0.5">
+                            <h1 className="text-base font-bold text-ink leading-none">Your Cart</h1>
+                            <p className="text-[11px] text-ink-subtle font-semibold mt-0.5">
                                 Review and confirm your order
                             </p>
                         </div>
@@ -229,10 +229,10 @@ export default function CartPageClient({ params }: { params: { tableSlug: string
                             return (
                                 <div
                                     key={cartKey}
-                                    className="bg-white rounded-2xl border border-gray-200 p-4 flex gap-4 items-start shadow-sm"
+                                    className="bg-surface rounded-2xl border border-hairline-strong p-4 flex gap-4 items-start shadow-sm"
                                 >
                                     {/* Product Image */}
-                                    <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-gray-100 shrink-0">
+                                    <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-surface-muted shrink-0">
                                         {item.imageUrl ? (
                                             <Image
                                                 src={item.imageUrl}
@@ -250,11 +250,11 @@ export default function CartPageClient({ params }: { params: { tableSlug: string
 
                                     {/* Info Panel */}
                                     <div className="flex-1 min-w-0">
-                                        <h3 className="text-[15px] font-bold text-gray-950 leading-tight">
+                                        <h3 className="text-[15px] font-bold text-ink leading-tight">
                                             {item.name}{item.variationName ? ` – ${item.variationName}` : ''}
                                         </h3>
                                         {(modifierNames || varLabel) && (
-                                            <p className="text-xs text-gray-500 font-medium mt-1 leading-snug line-clamp-2">
+                                            <p className="text-xs text-ink-subtle font-medium mt-1 leading-snug line-clamp-2">
                                                 {[varLabel, modifierNames].filter(Boolean).join(' · ')}
                                             </p>
                                         )}
@@ -277,7 +277,7 @@ export default function CartPageClient({ params }: { params: { tableSlug: string
                                             >
                                                 <Minus size={13} strokeWidth={3} />
                                             </button>
-                                            <span className="min-w-[14px] text-center tabular-nums text-sm font-black text-gray-900">
+                                            <span className="min-w-[14px] text-center tabular-nums text-sm font-black text-ink">
                                                 {item.quantity}
                                             </span>
                                             <button
@@ -290,7 +290,7 @@ export default function CartPageClient({ params }: { params: { tableSlug: string
                                         </div>
 
                                         {/* Price */}
-                                        <span className="text-sm font-black text-gray-950 mt-2 tabular-nums">
+                                        <span className="text-sm font-black text-ink mt-2 tabular-nums">
                                             {money(lineTotal)}
                                         </span>
                                     </div>
@@ -303,27 +303,27 @@ export default function CartPageClient({ params }: { params: { tableSlug: string
                     <div className="flex gap-3 mt-5">
                         <button
                             onClick={() => router.back()}
-                            className="flex-1 border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 text-xs transition active:scale-95"
+                            className="flex-1 border border-hairline-strong bg-surface text-ink-muted hover:bg-surface-muted font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 text-xs transition active:scale-95"
                         >
                             <Plus size={13} className="stroke-[3px]" /> Add Items
                         </button>
                         <button
                             onClick={() => setShowNoteModal(true)}
-                            className="flex-1 border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 text-xs transition active:scale-95"
+                            className="flex-1 border border-hairline-strong bg-surface text-ink-muted hover:bg-surface-muted font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 text-xs transition active:scale-95"
                         >
                             ✍️ Cooking Requests
                         </button>
                     </div>
 
                     {/* Order Summary */}
-                    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm mt-6 p-4 space-y-2.5">
+                    <div className="bg-surface rounded-2xl border border-hairline-strong shadow-sm mt-6 p-4 space-y-2.5">
                         <div className="flex justify-between items-center text-sm">
-                            <span className="text-gray-500 font-medium">Subtotal · {count} item{count !== 1 ? 's' : ''}</span>
-                            <span className="text-gray-900 font-bold tabular-nums">{money(totalAmount)}</span>
+                            <span className="text-ink-subtle font-medium">Subtotal · {count} item{count !== 1 ? 's' : ''}</span>
+                            <span className="text-ink font-bold tabular-nums">{money(totalAmount)}</span>
                         </div>
-                        <div className="flex justify-between items-center pt-2.5 border-t border-gray-100">
-                            <span className="text-base font-bold text-gray-900">Total</span>
-                            <span className="text-lg font-black text-gray-950 tabular-nums">{money(totalAmount)}</span>
+                        <div className="flex justify-between items-center pt-2.5 border-t border-hairline">
+                            <span className="text-base font-bold text-ink">Total</span>
+                            <span className="text-lg font-black text-ink tabular-nums">{money(totalAmount)}</span>
                         </div>
                     </div>
                 </div>
@@ -331,7 +331,7 @@ export default function CartPageClient({ params }: { params: { tableSlug: string
 
             {/* Sticky Footer PLACE ORDER Bar — shows the amount inline */}
             <div
-                className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-4 pt-3 border-t border-gray-100"
+                className="fixed bottom-0 left-0 right-0 z-40 bg-surface/95 backdrop-blur-md shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-4 pt-3 border-t border-hairline"
                 style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 16px) + 12px)' }}
             >
                 <div className="max-w-2xl mx-auto">
@@ -341,7 +341,7 @@ export default function CartPageClient({ params }: { params: { tableSlug: string
                         className="w-full bg-[var(--color-primary)] hover:opacity-90 disabled:opacity-60 text-white font-bold py-4 rounded-2xl flex items-center justify-between px-5 text-sm shadow-md shadow-[var(--color-primary)]/20 active:scale-[0.98] transition-all"
                     >
                         <span className="flex items-center gap-2">
-                            <span className="bg-white/20 rounded-full px-2 py-0.5 text-xs tabular-nums">{count}</span>
+                            <span className="bg-surface/20 rounded-full px-2 py-0.5 text-xs tabular-nums">{count}</span>
                             Place Order
                         </span>
                         <span className="text-base font-black tabular-nums">{money(totalAmount)}</span>
@@ -357,10 +357,10 @@ export default function CartPageClient({ params }: { params: { tableSlug: string
             {/* Global Cooking Note Modal */}
             {showNoteModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-2xl max-w-sm w-full p-5 border border-gray-100 shadow-xl flex flex-col gap-4 animate-scale-in">
+                    <div className="bg-surface rounded-2xl max-w-sm w-full p-5 border border-hairline shadow-xl flex flex-col gap-4 animate-scale-in">
                         <div>
-                            <h3 className="text-sm font-bold text-gray-900">Add Cooking Requests</h3>
-                            <p className="text-[11px] text-gray-400 font-semibold mt-0.5">
+                            <h3 className="text-sm font-bold text-ink">Add Cooking Requests</h3>
+                            <p className="text-[11px] text-ink-subtle font-semibold mt-0.5">
                                 Specify instructions for the chef (applies to the whole order)
                             </p>
                         </div>
@@ -368,12 +368,12 @@ export default function CartPageClient({ params }: { params: { tableSlug: string
                             value={globalNote}
                             onChange={(e) => setGlobalNote(e.target.value)}
                             placeholder="e.g. Make it extra spicy, bring together with drinks..."
-                            className="w-full text-xs border border-gray-200 rounded-xl p-3 focus:outline-none focus:border-[var(--color-primary)] min-h-[90px] resize-none"
+                            className="w-full text-xs border border-hairline-strong rounded-xl p-3 focus:outline-none focus:border-[var(--color-primary)] min-h-[90px] resize-none"
                         />
                         <div className="flex gap-2.5">
                             <button
                                 onClick={() => setShowNoteModal(false)}
-                                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs active:scale-95 transition"
+                                className="flex-1 py-2.5 rounded-xl border border-hairline-strong text-ink-subtle font-bold text-xs active:scale-95 transition"
                             >
                                 Cancel
                             </button>
