@@ -7,10 +7,15 @@ import TablePageClient from './TablePageClient'
 import { verifyClientIp } from '@/lib/ip-check'
 import { getOrCreateActiveSession } from '@/lib/sessions'
 import { getOptionalUser } from '@/lib/auth'
+import { getHomepageConfig } from '@/lib/homepage'
 
 import type { Metadata } from 'next'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 600
+
+export function generateStaticParams() {
+    return []
+}
 
 export async function generateMetadata(props: {
     params: Promise<{ tableSlug: string }>
@@ -33,14 +38,9 @@ export async function generateMetadata(props: {
 
 export default async function CustomerMenuPage(props: {
     params: Promise<{ tableSlug: string }>
-    searchParams: Promise<{ s?: string; w?: string }>
 }) {
     const params = await props.params;
-    const searchParams = await props.searchParams;
-    // 1. Session & Table Validation
     const tableToken = params.tableSlug
-    let sessionToken = searchParams.s
-    const isWaiterMode = searchParams.w === '1'
 
     const supabase = await createAdminClient()
 
@@ -55,75 +55,20 @@ export default async function CustomerMenuPage(props: {
 
     const restaurantId = tableData.restaurant_id
 
-    // Track the session UUID (needed for FK references like service_requests.session_id)
-    let sessionUUID: string | undefined
-
-    // Find active session for this table (opened by waiter)
-    if (!sessionToken) {
-        const { data: existingSession } = await supabase
-            .from('sessions')
-            .select('id, session_token')
-            .eq('table_id', tableData.id)
-            .eq('status', 'active')
-            .gt('expires_at', new Date().toISOString())
-            .order('opened_at', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-
-        if (existingSession) {
-            sessionToken = existingSession.session_token
-            sessionUUID = existingSession.id
-        }
-        // If no active session, customer sees menu in view-only mode
-        // They need to ask the waiter to open a session for their table
-    } else {
-        // Validate the provided session token is still active
-        const { data: validSession } = await supabase
-            .from('sessions')
-            .select('id, session_token')
-            .eq('session_token', sessionToken)
-            .eq('status', 'active')
-            .gt('expires_at', new Date().toISOString())
-            .maybeSingle()
-
-        if (!validSession) {
-            sessionToken = undefined // Session expired or invalid
-        } else {
-            sessionUUID = validSession.id
-        }
-    }
-
     // 2. Fetch Menu Data + Feature Flags in parallel
     const [
         features,
         menuData,
         menuLayout,
-        ipCheckResult,
-        optionalUser
+        homepageConfig
     ] = await Promise.all([
         getRestaurantFeatures(restaurantId),
         getCachedMenuData(restaurantId),
         getMenuLayout(restaurantId),
-        verifyClientIp(restaurantId, 'customer'),
-        isWaiterMode ? getOptionalUser() : Promise.resolve(null)
+        getHomepageConfig(restaurantId)
     ])
 
-    const isIpRestricted = !ipCheckResult.allowed && !optionalUser
-
-    // Optional "Waiter-Managed Sessions" feature (manager-toggleable, package-gated):
-    //  • ON  → a waiter must open the table session before guests can order.
-    //  • OFF → self-service: auto-open a session on QR scan so guests order instantly.
     const waiterSessionEnabled = features?.waiterSessionEnabled === true
-
-    if (!sessionToken && !isIpRestricted && !waiterSessionEnabled) {
-        const session = await getOrCreateActiveSession(supabase, tableData.id, restaurantId)
-        if (session) {
-            sessionToken = session.session_token
-            sessionUUID = session.id
-        }
-    }
-
-    const isValidSession = !!sessionToken
 
     const { categories, menuItems, translations, supportedLanguages, comboItems, pairings } = menuData
 
@@ -147,9 +92,9 @@ export default async function CustomerMenuPage(props: {
             menuItems={menuItems}
             comboItems={comboItems || []}
             pairings={pairings}
-            sessionToken={sessionToken}
-            sessionUUID={sessionUUID}
-            isValidSession={isValidSession}
+            sessionToken={undefined}
+            sessionUUID={undefined}
+            isValidSession={false}
             serviceRequestsEnabled={features?.serviceRequestsEnabled !== false}
             quickServeItems={(features as { quickServeItems?: string[] } | null)?.quickServeItems ?? []}
             waiterSessionEnabled={waiterSessionEnabled}
@@ -158,7 +103,8 @@ export default async function CustomerMenuPage(props: {
             menuLayout={menuLayout}
             translations={translations}
             supportedLanguages={langs}
-            isIpRestricted={isIpRestricted}
+            isIpRestricted={false}
+            initialHomepageConfig={homepageConfig}
         />
     )
 }

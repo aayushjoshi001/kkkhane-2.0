@@ -1,6 +1,3 @@
-'use client'
-
-import { use } from 'react'
 import { CheckCircle, ArrowRight } from 'lucide-react'
 import { MarketingNav, MarketingFooter, Eyebrow, MarketingButton } from '@/components/marketing'
 
@@ -112,8 +109,8 @@ const FEATURE_CONTENT: Record<string, { title: string, subtitle: string, icon: s
     }
 }
 
-export default function FeatureSlugPage({ params }: { params: Promise<{ slug: string }> }) {
-    const { slug } = use(params)
+export default async function FeatureSlugPage({ params }: { params: Promise<{ slug: string }> }) {
+    const { slug } = await params
     const feature = FEATURE_CONTENT[slug]
 
     if (!feature) {

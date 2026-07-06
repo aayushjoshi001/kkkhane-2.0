@@ -6,7 +6,11 @@ import TakeoutPageClient from './TakeoutPageClient'
 
 import type { Metadata } from 'next'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 600
+
+export function generateStaticParams() {
+    return []
+}
 
 export async function generateMetadata({ params }: { params: Promise<{ restaurantSlug: string }> }): Promise<Metadata> {
     const { restaurantSlug } = await params

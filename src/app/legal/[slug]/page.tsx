@@ -1,6 +1,3 @@
-'use client'
-
-import { use } from 'react'
 import { MarketingNav, MarketingFooter, Eyebrow, MarketingButton } from '@/components/marketing'
 
 const LEGAL_CONTENT: Record<string, { title: string, subtitle: string, lastUpdated: string, content: React.ReactNode }> = {
@@ -58,8 +55,8 @@ const LEGAL_CONTENT: Record<string, { title: string, subtitle: string, lastUpdat
     }
 }
 
-export default function LegalPage({ params }: { params: Promise<{ slug: string }> }) {
-    const { slug } = use(params)
+export default async function LegalPage({ params }: { params: Promise<{ slug: string }> }) {
+    const { slug } = await params
     const page = LEGAL_CONTENT[slug]
 
     if (!page) {

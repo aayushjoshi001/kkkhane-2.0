@@ -5,7 +5,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import HomepageGate from '@/components/customer/HomepageGate'
-import type { MenuItem, MenuCategory } from '@/types/database'
+import type { MenuItem, MenuCategory, HomepageConfig } from '@/types/database'
 import MenuSection from '@/components/customer/MenuSection'
 import CartSummary from '@/components/customer/CartSummary'
 import Logo from '@/components/shared/Logo'
@@ -15,6 +15,7 @@ import { RecommendationsProvider, type PairingMap } from '@/lib/contexts/Recomme
 import { UtensilsCrossed, RefreshCw, Bell, Check, Loader2, Home, X, ShoppingBag, ChefHat, Search, CreditCard, UserCircle } from 'lucide-react'
 import { useCartStore } from '@/lib/stores/cart'
 import { requestSessionOpen } from '@/app/api/service-requests/actions'
+import { initTableSession } from '@/app/api/table-session/actions'
 import ActiveOrderPill from '@/components/customer/ActiveOrderPill'
 import ServiceRequestPanel from '@/components/customer/ServiceRequestPanel'
 import { useActiveOrders } from '@/lib/stores/activeOrders'
@@ -49,6 +50,9 @@ interface TablePageClientProps {
     supportedLanguages: { code: string; name: string }[]
     isIpRestricted?: boolean
     pairings?: PairingMap
+    // Fetched server-side alongside the rest of this page's data — see
+    // HomepageGate for why this replaced a client-side useEffect fetch.
+    initialHomepageConfig: HomepageConfig | null
 }
 
 const PROMOS = [
@@ -103,6 +107,7 @@ export default function TablePageClient({
     supportedLanguages,
     isIpRestricted = false,
     pairings = {},
+    initialHomepageConfig,
 }: TablePageClientProps) {
     // Live session state. In self-service mode the session is auto-opened server-side
     // and arrives via props. In waiter-managed mode it may arrive later (the waiter
@@ -118,8 +123,8 @@ export default function TablePageClient({
     // view-only mode; a floating button brings it back to ring for service.
     const [popupDismissed, setPopupDismissed] = useState(false)
     // WiFi IP restriction states
-    const [isRestricted, setIsRestricted] = useState(isIpRestricted)
-    const [verifyingIp, setVerifyingIp] = useState(false)
+    const [isRestricted, setIsRestricted] = useState(false)
+    const [verifyingIp, setVerifyingIp] = useState(true)
     const [currentIp, setCurrentIp] = useState<string>('')
     const [isServiceOpen, setIsServiceOpen] = useState(false)
     const [showProfile, setShowProfile] = useState(false)
@@ -136,21 +141,22 @@ export default function TablePageClient({
     const checkIpStatus = async () => {
         setVerifyingIp(true)
         try {
-            const res = await fetch(`/api/verify-ip?restaurantId=${encodeURIComponent(tableData.restaurant_id)}&role=customer`, {
-                cache: 'no-store'
-            })
-            if (res.ok) {
-                const data = await res.json()
-                if (data.clientIp) setCurrentIp(data.clientIp)
-                // Self-service: the IP just became allowed but no session exists yet
-                // (none was opened during the restricted SSR pass). Reload so the
-                // server can auto-open the dining session and enable ordering.
-                if (data.allowed && isRestricted && !waiterSessionEnabled && !hasSession) {
-                    window.location.reload()
-                    return
-                }
-                setIsRestricted(!data.allowed)
+            const providedToken = searchParams?.get('s')
+            const data = await initTableSession(
+                tableData.id,
+                tableData.restaurant_id,
+                isWaiter,
+                waiterSessionEnabled,
+                providedToken
+            )
+
+            if (data.clientIp) setCurrentIp(data.clientIp)
+            
+            if (data.sessionToken) {
+                applySession(data.sessionToken, data.sessionUUID!)
             }
+            
+            setIsRestricted(data.isIpRestricted)
         } catch {
             // Keep existing state if check fails
         } finally {
@@ -158,12 +164,10 @@ export default function TablePageClient({
         }
     }
 
-    // Run a check on mount if restricted to load current IP for display
+    // Run initialization on mount
     useEffect(() => {
-        if (isIpRestricted) {
-            checkIpStatus()
-        }
-    }, [isIpRestricted])
+        checkIpStatus()
+    }, [tableData.id, tableData.restaurant_id, isWaiter, waiterSessionEnabled])
 
     // Keep the Zustand cart store in sync with the live session so checkout always
     // sees a non-null sessionId regardless of how the session arrived.

@@ -1,5 +1,6 @@
 import { forwardRef } from 'react'
 import type { LucideIcon } from 'lucide-react'
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success'
@@ -37,6 +38,14 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
     icon?: LucideIcon
     /** Trailing icon, e.g. an arrow on a CTA. */
     iconRight?: LucideIcon
+    /**
+     * Render as a plain navigation link instead of a button — a real <a> via
+     * next/link rather than an onClick + router.push()/window.location handler,
+     * so pure navigation doesn't require client JS. Internal paths use Link
+     * (client-side transition); anything else (mailto:, tel:, external) renders
+     * a plain <a>.
+     */
+    href?: string
 }
 
 /**
@@ -44,26 +53,22 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
  * Use `variant` for intent — never restyle ad-hoc.
  */
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-    { variant = 'primary', size = 'md', block, loading, icon: Icon, iconRight: IconRight, disabled, className, children, ...props },
+    { variant = 'primary', size = 'md', block, loading, icon: Icon, iconRight: IconRight, disabled, className, children, href, ...props },
     ref,
 ) {
     const iconSize = ICON_SIZE[size]
-    return (
-        <button
-            ref={ref}
-            disabled={disabled || loading}
-            className={cn(
-                'inline-flex items-center justify-center font-semibold whitespace-nowrap select-none',
-                'transition-[background-color,color,box-shadow,filter] duration-150',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
-                'disabled:opacity-50 disabled:pointer-events-none',
-                VARIANTS[variant],
-                SIZES[size],
-                block && 'w-full',
-                className,
-            )}
-            {...props}
-        >
+    const classes = cn(
+        'inline-flex items-center justify-center font-semibold whitespace-nowrap select-none',
+        'transition-[background-color,color,box-shadow,filter] duration-150',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+        'disabled:opacity-50 disabled:pointer-events-none',
+        VARIANTS[variant],
+        SIZES[size],
+        block && 'w-full',
+        className,
+    )
+    const content = (
+        <>
             {loading ? (
                 <span className="size-4 rounded-full border-2 border-current border-t-transparent animate-spin" aria-hidden />
             ) : (
@@ -71,6 +76,24 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
             )}
             {children}
             {IconRight && <IconRight size={iconSize} strokeWidth={2.25} aria-hidden />}
+        </>
+    )
+
+    if (href) {
+        const isInternal = href.startsWith('/') || href.startsWith('#')
+        return isInternal
+            ? <Link href={href} className={classes}>{content}</Link>
+            : <a href={href} className={classes}>{content}</a>
+    }
+
+    return (
+        <button
+            ref={ref}
+            disabled={disabled || loading}
+            className={classes}
+            {...props}
+        >
+            {content}
         </button>
     )
 })

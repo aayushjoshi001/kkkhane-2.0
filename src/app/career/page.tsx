@@ -1,5 +1,3 @@
-'use client'
-
 import { ShieldCheck, Zap, TrendingUp, HeartHandshake, Lightbulb, Users } from 'lucide-react'
 import { MarketingNav, MarketingFooter, Eyebrow } from '@/components/marketing'
 

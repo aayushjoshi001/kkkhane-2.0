@@ -1,9 +1,6 @@
-'use client'
-
 import { CheckCircle2, ArrowRight, HelpCircle } from 'lucide-react'
 import { MarketingNav, MarketingFooter, MarketingButton, Eyebrow } from '@/components/marketing'
 import Link from 'next/link'
-import { useFeatures } from '@/lib/contexts/FeatureContext'
 
 const PRICING_PLANS = [
     {
@@ -67,9 +64,12 @@ const FAQS = [
     { q: "What happens if I cancel?", a: "You can cancel anytime. If you cancel a paid plan, your account will revert to the Free version after the billing period ends." }
 ]
 
-export default function PricingPage() {
-    const { currencySymbol } = useFeatures()
+// This is the SaaS's own pricing page (not restaurant-tenant-scoped), so it's
+// never wrapped in a <FeatureProvider> — currencySymbol was always resolving
+// to the context's hardcoded 'Rs.' default. Nepal-only pricing, so that's fixed.
+const CURRENCY_SYMBOL = 'Rs.'
 
+export default function PricingPage() {
     return (
         <div className="min-h-screen bg-[#FAFAF8] text-gray-900 font-sans selection:bg-[var(--color-primary)] selection:text-white">
             <MarketingNav />
@@ -116,7 +116,7 @@ export default function PricingPage() {
 
                             <div className="mb-8">
                                 <div className="flex items-baseline gap-1">
-                                    <span className="text-gray-500 font-bold">{currencySymbol}</span>
+                                    <span className="text-gray-500 font-bold">{CURRENCY_SYMBOL}</span>
                                     <span className="text-4xl font-black text-gray-900 tracking-tight">
                                         {plan.price}
                                     </span>

@@ -1,13 +1,8 @@
-'use client'
-
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import { Clock, CheckCircle2, AlertCircle } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 
 export default function PendingVerificationPage() {
-    const router = useRouter()
-
     return (
         <div className="max-w-2xl mx-auto py-12 px-4 text-center">
             <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-8 shadow-sm">
@@ -41,18 +36,10 @@ export default function PendingVerificationPage() {
             </Card>
 
             <div className="flex justify-center gap-4">
-                <Button 
-                    variant="primary" 
-                    size="lg" 
-                    onClick={() => router.push('/admin/dashboard')}
-                >
+                <Button variant="primary" size="lg" href="/admin/dashboard">
                     Check Status
                 </Button>
-                <Button
-                    variant="secondary"
-                    size="lg"
-                    onClick={() => window.location.href = 'mailto:support@kkkhane.com'}
-                >
+                <Button variant="secondary" size="lg" href="mailto:support@kkkhane.com">
                     Contact Support
                 </Button>
             </div>

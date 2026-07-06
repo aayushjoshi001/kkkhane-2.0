@@ -1,22 +1,54 @@
 /**
- * MessageBird SMS integration
- * Env vars required: MESSAGEBIRD_API_KEY
+ * SMS sending, provider-selected at call time.
+ *
+ * Sparrow SMS is preferred when configured — it's a Nepal-local aggregator
+ * with better delivery and lower per-message cost to +977 numbers than an
+ * international gateway. MessageBird remains the fallback until a Sparrow
+ * account (https://sparrowsms.com) is set up.
+ *
+ * Env vars:
+ *   SPARROW_SMS_TOKEN, SPARROW_SMS_FROM   — preferred, used when both are set
+ *   MESSAGEBIRD_API_KEY, MESSAGEBIRD_ORIGINATOR — fallback
  */
 
+const SPARROW_SMS_API = 'https://api.sparrowsms.com/v2/sms/'
 const MESSAGEBIRD_API = 'https://rest.messagebird.com/messages'
 
 type SmsResult = { success: true } | { success: false; error: string }
 
-async function sendSms(to: string, text: string): Promise<SmsResult> {
-    // API key from env or fallback to user provided one
-    const token = process.env.MESSAGEBIRD_API_KEY || 'bk_eu1_QDobai8YAhbKAOuqjhoPsge0qtYrs'
+async function sendViaSparrow(to: string, text: string): Promise<SmsResult> {
+    const token = process.env.SPARROW_SMS_TOKEN!
+    const from = process.env.SPARROW_SMS_FROM!
+
+    // Sparrow expects a bare 10-digit Nepal mobile number, no country code.
+    const normalized = to.replace(/\D/g, '')
+    const formattedTo = normalized.length > 10 ? normalized.slice(-10) : normalized
+
+    try {
+        const res = await fetch(SPARROW_SMS_API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ token, from, to: formattedTo, text }),
+        })
+
+        const body = await res.json().catch(() => ({}))
+
+        if (!res.ok || body.response_code !== 200) {
+            console.error('[SMS] Sparrow send failed:', body)
+            return { success: false, error: body.response ?? `HTTP ${res.status}` }
+        }
+
+        return { success: true }
+    } catch (err) {
+        console.error('[SMS] Network error:', err)
+        return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }
+    }
+}
+
+async function sendViaMessageBird(to: string, text: string): Promise<SmsResult> {
+    const token = process.env.MESSAGEBIRD_API_KEY!
     // Originator must be alphanumeric (max 11 chars) or a valid phone number
     const originator = process.env.MESSAGEBIRD_ORIGINATOR || 'KKKhane'
-
-    if (!token) {
-        console.warn('[SMS] MESSAGEBIRD_API_KEY not set — skipping SMS')
-        return { success: false, error: 'SMS not configured' }
-    }
 
     // Strip out any non-numeric characters for MessageBird
     const normalized = to.replace(/\D/g, '')
@@ -26,7 +58,7 @@ async function sendSms(to: string, text: string): Promise<SmsResult> {
     try {
         const res = await fetch(MESSAGEBIRD_API, {
             method: 'POST',
-            headers: { 
+            headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `AccessKey ${token}`
             },
@@ -49,6 +81,17 @@ async function sendSms(to: string, text: string): Promise<SmsResult> {
         console.error('[SMS] Network error:', err)
         return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }
     }
+}
+
+async function sendSms(to: string, text: string): Promise<SmsResult> {
+    if (process.env.SPARROW_SMS_TOKEN && process.env.SPARROW_SMS_FROM) {
+        return sendViaSparrow(to, text)
+    }
+    if (process.env.MESSAGEBIRD_API_KEY) {
+        return sendViaMessageBird(to, text)
+    }
+    console.warn('[SMS] No SMS provider configured — skipping SMS')
+    return { success: false, error: 'SMS not configured' }
 }
 
 /** Notify customer their order was received and is being prepared. */
