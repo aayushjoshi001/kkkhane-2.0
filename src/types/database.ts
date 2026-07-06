@@ -8,7 +8,10 @@ export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'del
 export type OrderItemStatus = 'pending' | 'preparing' | 'ready' | 'served' | 'cancelled'
 export type SessionStatus = 'active' | 'closed' | 'expired'
 export type PaymentStatus = 'unpaid' | 'pending' | 'paid' | 'refunded' | 'failed'
-export type RoleName = 'super_admin' | 'manager' | 'kitchen' | 'waiter' | 'cashier' | 'customer'
+// 'owner' has no corresponding row in the `roles` table (custom_access_token_hook
+// derives app_role from roles.name) — it's kept here because auth.ts and the
+// billing actions already branch on it defensively for legacy/edge-case JWTs.
+export type RoleName = 'super_admin' | 'manager' | 'kitchen' | 'waiter' | 'cashier' | 'customer' | 'owner'
 export type PricingRuleType = 'percentage_off' | 'fixed_price' | 'amount_off'
 export type PromoType = 'percentage_off' | 'amount_off' | 'free_item' | 'bogo'
 export type LoyaltyTier = 'bronze' | 'silver' | 'gold' | 'platinum'

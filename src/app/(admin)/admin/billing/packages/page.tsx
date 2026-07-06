@@ -54,7 +54,7 @@ export default function PackagesPage() {
     return (
         <div className="max-w-6xl mx-auto py-8 px-4">
             <div className="text-center max-w-2xl mx-auto mb-12">
-                <Badge variant="brand" className="mb-4">Subscription & Billing</Badge>
+                <Badge tone="brand" className="mb-4">Subscription & Billing</Badge>
                 <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">
                     Choose the right plan for your restaurant
                 </h1>
@@ -104,7 +104,7 @@ export default function PackagesPage() {
                 <Card className="relative overflow-hidden border-2 border-brand-500 shadow-xl p-8 flex flex-col h-full bg-white transform md:-translate-y-4">
                     <div className="absolute top-0 inset-x-0 h-1.5 bg-brand-500" />
                     <div className="absolute top-4 right-4">
-                        <Badge variant="brand" className="bg-brand-100 text-brand-700 border-none">Most Popular</Badge>
+                        <Badge tone="brand" className="bg-brand-100 text-brand-700 border-none">Most Popular</Badge>
                     </div>
                     
                     <div className="mb-6">
@@ -195,10 +195,10 @@ export default function PackagesPage() {
                             </li>
                         ))}
                     </ul>
-                    <Button 
-                        block 
-                        variant="outline" 
-                        size="lg" 
+                    <Button
+                        block
+                        variant="secondary"
+                        size="lg"
                         onClick={() => window.location.href = 'mailto:enterprise@kkkhane.com?subject=Enterprise%20Plan%20Inquiry'}
                     >
                         Contact Sales

@@ -47,9 +47,9 @@ export default function PendingVerificationPage() {
                 >
                     Check Status
                 </Button>
-                <Button 
-                    variant="outline" 
-                    size="lg" 
+                <Button
+                    variant="secondary"
+                    size="lg"
                     onClick={() => window.location.href = 'mailto:support@kkkhane.com'}
                 >
                     Contact Support
