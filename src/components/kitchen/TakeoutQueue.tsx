@@ -7,7 +7,8 @@ import { useCurrency } from '@/lib/contexts/FeatureContext'
 import type { TakeoutOrder } from '@/types/database'
 import { Phone, User, CheckCircle2, XCircle, Timer, Package } from 'lucide-react'
 import { playKitchenPing } from '@/lib/audio'
-import { Button, StatusBadge } from '@/components/ui'
+import Button from '@/components/ui/Button'
+import { StatusBadge } from '@/components/ui/Badge'
 
 interface TakeoutQueueProps {
     restaurantId: string

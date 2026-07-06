@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { Clock, ShoppingBag, UtensilsCrossed } from 'lucide-react'
-import { OrderCard, FeedSection } from '@/components/ui'
+import OrderCard from '@/components/ui/OrderCard'
+import FeedSection from '@/components/ui/FeedSection'
 import { timeAgo } from '@/lib/utils'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 

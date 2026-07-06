@@ -1,6 +1,7 @@
 'use client'
 
-import { Card, Button } from '@/components/ui'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
 import { Clock, CheckCircle2, AlertCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 

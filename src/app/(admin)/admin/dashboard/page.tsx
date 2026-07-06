@@ -8,7 +8,9 @@ import {
 import { getCurrentUser } from '@/lib/auth'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { Card, StatusBadge, EmptyState } from '@/components/ui'
+import Card from '@/components/ui/Card'
+import EmptyState from '@/components/ui/EmptyState'
+import { StatusBadge } from '@/components/ui/Badge'
 
 export const revalidate = 0
 

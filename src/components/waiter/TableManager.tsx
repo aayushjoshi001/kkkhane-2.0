@@ -10,7 +10,9 @@ import type { Table, Session } from '@/types/database'
 import { QRCodeSVG } from 'qrcode.react'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
-import { Card, Button, EmptyState } from '@/components/ui'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
+import EmptyState from '@/components/ui/EmptyState'
 import { useRouter } from 'next/navigation'
 
 export type TableWithSession = Table & { activeSession?: Session | null }

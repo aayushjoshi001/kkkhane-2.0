@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
-import { NepaliInput } from '@/components/ui'
+import { NepaliInput } from '@/components/ui/NepaliInput'
 import Image from 'next/image'
 import { Plus, Edit2, Trash2, GripVertical, Check, X, Tag, Loader2, Image as ImageIcon, Globe, Upload, Link, Search } from 'lucide-react'
 import type { MenuCategory, MenuItem, Ingredient } from '@/types/database'

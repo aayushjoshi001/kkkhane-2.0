@@ -12,7 +12,12 @@ import { toast } from 'react-hot-toast'
 import { timeAgo } from '@/lib/utils'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { Package, ChefHat, Banknote, Clock, Footprints, X, CheckSquare, Square, Check, Utensils } from 'lucide-react'
-import { Card, Button, Badge, StatusBadge, TableChip, FeedSection, EmptyState } from '@/components/ui'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
+import TableChip from '@/components/ui/TableChip'
+import FeedSection from '@/components/ui/FeedSection'
+import EmptyState from '@/components/ui/EmptyState'
+import { Badge, StatusBadge } from '@/components/ui/Badge'
 import type { Order, OrderItem, MenuItem, Session, Table, OrderStatus, OrderItemStatus } from '@/types/database'
 
 export type WaiterOrderItem = OrderItem & { menu_items?: Partial<MenuItem> }

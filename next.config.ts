@@ -99,19 +99,22 @@ const nextConfig: NextConfig = {
             value: [
               "default-src 'self'",
               // 'unsafe-eval' is only needed by the dev/HMR runtime — never ship it to prod.
-              `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`,
+              `script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`,
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://*.supabase.co https://images.unsplash.com https://*.tile.openstreetmap.org",
               "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://nominatim.openstreetmap.org",
               "font-src 'self' https://fonts.gstatic.com",
               "media-src 'self' blob:",
-              "frame-src 'self'",
+              "frame-src 'self' https://challenges.cloudflare.com",
               "frame-ancestors 'self'",
             ].join('; '),
           },
         ],
       },
     ]
+  },
+  experimental: {
+    optimizePackageImports: ['lucide-react', 'framer-motion', '@marsidev/react-turnstile'],
   },
   turbopack: {},
 }
@@ -120,7 +123,7 @@ const pwaConfig = withPWA(nextConfig as any)
 
 // withSentryConfig uploads source maps at build time when SENTRY_AUTH_TOKEN is set.
 // Skipped silently in dev/when token is absent.
-export default withSentryConfig(pwaConfig, {
+const prodConfig = withSentryConfig(pwaConfig, {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
   authToken: process.env.SENTRY_AUTH_TOKEN,
@@ -133,3 +136,6 @@ export default withSentryConfig(pwaConfig, {
     excludeDebugStatements: true, // replaces disableLogger (tree-shakes Sentry logs)
   },
 })
+
+// Completely bypass Webpack-based wrappers in development to maximize Turbopack speed
+export default process.env.NODE_ENV === 'development' ? nextConfig : prodConfig

@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { Users, Package, Bell, ChefHat } from 'lucide-react'
-import { StatCard } from '@/components/ui'
-import type { StatCardProps } from '@/components/ui'
+import StatCard from '@/components/ui/StatCard'
+import type { StatCardProps } from '@/components/ui/StatCard'
 
 interface Props {
     occupiedTables: number

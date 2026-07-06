@@ -7,7 +7,10 @@ import { useCurrency } from '@/lib/contexts/FeatureContext'
 import type { TakeoutOrder } from '@/types/database'
 import { Phone, User, Clock, CreditCard, Package } from 'lucide-react'
 import { playOrderReady } from '@/lib/audio'
-import { FeedSection, Card, Button, StatusBadge } from '@/components/ui'
+import FeedSection from '@/components/ui/FeedSection'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
+import { StatusBadge } from '@/components/ui/Badge'
 
 interface Props {
     initialOrders: TakeoutOrder[]

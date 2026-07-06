@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Users, X, Check, CalendarClock, ShoppingBag, Eye } from 'lucide-react'
 import type { Table, Session } from '@/types/database'
 import { toast } from 'react-hot-toast'
-import { Button } from '@/components/ui'
+import Button from '@/components/ui/Button'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 
 export type TableWithSession = Table & { activeSession?: Session | null }

@@ -7,7 +7,10 @@ import { verifyPayment, verifyPaymentAndCloseTable } from './payment-verificatio
 import { timeAgo } from '@/lib/utils'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
-import { FeedSection, Card, Button, StatusBadge } from '@/components/ui'
+import FeedSection from '@/components/ui/FeedSection'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
+import { StatusBadge } from '@/components/ui/Badge'
 
 export interface PaymentClaim {
     id: string

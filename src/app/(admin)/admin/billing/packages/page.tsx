@@ -1,7 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, Button, Badge } from '@/components/ui'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
 import { CheckCircle2, Zap, Shield, HelpCircle } from 'lucide-react'
 import { selectFreePlanAction } from './actions'
 import { useRouter } from 'next/navigation'

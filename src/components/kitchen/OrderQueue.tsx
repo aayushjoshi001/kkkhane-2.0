@@ -11,7 +11,7 @@ import { Bell, Hourglass, Flame, ChefHat, ChevronDown, CheckSquare, Square, Chec
 import type { OrderStatus, OrderItemStatus, Order, OrderItem, OrderItemModifier, MenuItem, Session, Table } from '@/types/database'
 import { setOrderItemsStatus, getKitchenOrders } from '@/app/(staff)/kitchen/actions'
 import { rollUpOrderStatus } from '@/lib/orderRollup'
-import { EmptyState } from '@/components/ui'
+import EmptyState from '@/components/ui/EmptyState'
 
 export type KitchenOrderItem = OrderItem & {
     menu_item_id?: string

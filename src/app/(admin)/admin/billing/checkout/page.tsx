@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, Button } from '@/components/ui'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
 import { Shield, ArrowRight, ArrowLeft, Building2, Smartphone } from 'lucide-react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'

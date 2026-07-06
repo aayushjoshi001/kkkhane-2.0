@@ -7,7 +7,9 @@ import { Banknote, CheckCircle } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { timeAgo } from '@/lib/utils'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
-import { FeedSection, OrderCard, Button } from '@/components/ui'
+import FeedSection from '@/components/ui/FeedSection'
+import OrderCard from '@/components/ui/OrderCard'
+import Button from '@/components/ui/Button'
 
 export interface UnpaidOrder {
     id: string
