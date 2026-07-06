@@ -6,7 +6,7 @@ import SoundEnableButton from '@/components/shared/SoundEnableButton'
 import SessionSync from '@/components/shared/SessionSync'
 import { CommandHint } from '@/components/ui/CommandHint'
 import CommandPaletteMount from '@/components/ui/CommandPaletteMount'
-import { requireRole } from '@/lib/auth'
+import { requireRoleWithOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import { getRestaurantFeatures } from '@/lib/features'
 import { FeatureProvider } from '@/lib/contexts/FeatureContext'
@@ -16,7 +16,7 @@ import SidebarToggle from '@/components/admin/SidebarToggle'
 export default async function AdminLayout({ children }: { children: ReactNode }) {
     // requireRole() uses the React.cache-wrapped getCurrentUser — no duplicate DB call
     // when the page also calls getCurrentUser().
-    const currentUser = await requireRole('super_admin', 'manager')
+    const currentUser = await requireRoleWithOptions(['super_admin', 'manager'], { allowSuspended: true })
     const roleNameRaw = currentUser.role || 'unknown'
 
     const roleDisplay = roleNameRaw

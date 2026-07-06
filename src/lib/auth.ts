@@ -50,7 +50,7 @@ async function safeGetUser(
     }
 }
 
-async function _getCurrentUser(): Promise<CurrentUser> {
+async function _getCurrentUser(options?: { allowSuspended?: boolean }): Promise<CurrentUser> {
     const supabase = await createServerClient()
     const user = await safeGetUser(supabase)
 
@@ -81,7 +81,12 @@ async function _getCurrentUser(): Promise<CurrentUser> {
             redirect('/suspended')
         }
 
-        if (rest?.is_suspended) redirect('/suspended')
+        const isOwnerOrManager = claims.app_role === 'owner' || claims.app_role === 'manager'
+        
+        if (rest?.is_suspended && !options?.allowSuspended) {
+            if (isOwnerOrManager) redirect('/admin/billing/packages')
+            else redirect('/suspended')
+        }
 
         return {
             id: user.id,
@@ -125,9 +130,12 @@ async function _getCurrentUser(): Promise<CurrentUser> {
     }
 
     const isSuspended = restaurant?.is_suspended
-    if (isSuspended) redirect('/suspended')
-
     const roleName = (userData.roles as unknown as { name: string } | null)?.name || 'waiter'
+
+    if (isSuspended && !options?.allowSuspended) {
+        if (roleName === 'owner' || roleName === 'manager') redirect('/admin/billing/packages')
+        else redirect('/suspended')
+    }
 
     return {
         id: user.id,
@@ -140,6 +148,19 @@ async function _getCurrentUser(): Promise<CurrentUser> {
 // React.cache deduplicates within a single render tree: layout + page both call
 // getCurrentUser() but with this wrapper, the DB call only runs once per request.
 export const getCurrentUser = cache(_getCurrentUser)
+
+export async function requireRoleWithOptions(
+    allowedRoles: RoleName[],
+    options?: { allowSuspended?: boolean }
+): Promise<CurrentUser> {
+    const currentUser = await getCurrentUser(options)
+
+    if (!allowedRoles.includes(currentUser.role as RoleName)) {
+        redirect('/unauthorized')
+    }
+
+    return currentUser
+}
 
 /**
  * Require a specific role (or set of roles).
