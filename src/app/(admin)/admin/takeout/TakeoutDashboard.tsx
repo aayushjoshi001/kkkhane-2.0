@@ -146,7 +146,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantSlug, restau
                                         fgColor="#000000"
                                         bgColor="#ffffff"
                                         imageSettings={{
-                                            src: '/icons/kkkhane.png?v=2',
+                                            src: '/icons/kkkhane.png',
                                             height: 32,
                                             width: 32,
                                             excavate: true,
@@ -171,7 +171,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantSlug, restau
                                     </span>
                                     <div className="relative w-5 h-5 rounded-full border-[1.5px] border-white shrink-0 shadow-sm overflow-hidden bg-white">
                                         <Image
-                                            src="/icons/kkkhane.png?v=2"
+                                            src="/icons/kkkhane.png"
                                             alt="Logo"
                                             fill
                                             sizes="20px"

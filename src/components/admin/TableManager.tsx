@@ -12,7 +12,7 @@ import { useConfirmStore } from '@/lib/stores/confirm'
 // Brand colors for QR code customization
 const QR_FG_COLOR = '#000000'   // black for QR code body to maximize scan readability
 const QR_BG_COLOR = '#ffffff'
-const QR_LOGO_SRC = '/icons/kkkhane.png?v=2'
+const QR_LOGO_SRC = '/icons/kkkhane.png'
 const QR_LOGO_SIZE = 28  // px — centered inside the QR
 
 export default function TableManager({
