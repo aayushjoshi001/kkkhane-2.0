@@ -273,6 +273,7 @@ export default function ThemeCustomizer({
                                 <option value="Inter">Inter (Modern Clean)</option>
                                 <option value="Roboto">Roboto (Geometric)</option>
                                 <option value="Lato">Lato (Tech)</option>
+                                <option value="Outfit">Outfit (Contemporary)</option>
                             </select>
                         </div>
 

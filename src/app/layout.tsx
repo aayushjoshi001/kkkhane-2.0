@@ -1,4 +1,4 @@
-import { Inter, Playfair_Display, Roboto, Lato } from 'next/font/google'
+import { Inter, Playfair_Display, Roboto, Lato, Outfit } from 'next/font/google'
 import { Toaster } from 'react-hot-toast'
 import { ConfirmModal } from '@/components/shared/ConfirmModal'
 import type { Viewport } from 'next'
@@ -11,6 +11,7 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'sw
 const playfair = Playfair_Display({ subsets: ['latin'], variable: '--font-playfair', display: 'swap' })
 const roboto = Roboto({ weight: ['400', '500', '700'], subsets: ['latin'], variable: '--font-roboto', display: 'swap' })
 const lato = Lato({ weight: ['400', '700'], subsets: ['latin'], variable: '--font-lato', display: 'swap' })
+const outfit = Outfit({ subsets: ['latin'], variable: '--font-outfit', display: 'swap' })
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -58,6 +59,7 @@ function themeToCSS(theme: Record<string, string>): string {
     Playfair: 'var(--font-playfair), serif',
     Roboto: 'var(--font-roboto), sans-serif',
     Lato: 'var(--font-lato), sans-serif',
+    Outfit: 'var(--font-outfit), sans-serif',
   }
 
   const radiusMap: Record<string, string> = {
@@ -108,7 +110,7 @@ export default async function RootLayout({
         <style dangerouslySetInnerHTML={{ __html: themeToCSS(theme) }} />
       </head>
       <body className={`
-        ${inter.variable} ${playfair.variable} ${roboto.variable} ${lato.variable} 
+        ${inter.variable} ${playfair.variable} ${roboto.variable} ${lato.variable} ${outfit.variable}
         font-[family-name:var(--font-family)]
         bg-canvas text-ink
         antialiased min-h-screen flex flex-col

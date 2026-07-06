@@ -167,6 +167,11 @@ export default function TableManager({
             ctx.fillStyle = '#ffffff'
             ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height)
 
+            // Extract hashed font names from CSS variables created by next/font
+            const outfitFont = typeof window !== 'undefined' ? window.getComputedStyle(document.body).getPropertyValue('--font-outfit').trim() || '"Outfit"' : '"Outfit"'
+            const interFont = typeof window !== 'undefined' ? window.getComputedStyle(document.body).getPropertyValue('--font-inter').trim() || '"Inter"' : '"Inter"'
+            const fontStack = `${outfitFont}, ${interFont}, system-ui, -apple-system, sans-serif`
+
             // 2. Draw Top Banner
             const orangeColor = '#ff7a00'
             
@@ -189,7 +194,7 @@ export default function TableManager({
             
             // Table Label inside the orange box
             ctx.fillStyle = '#ffffff'
-            ctx.font = `bold ${22 * scale}px "Outfit", "Inter", system-ui, -apple-system, sans-serif`
+            ctx.font = `bold ${22 * scale}px ${fontStack}`
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
             ctx.fillText(
@@ -212,7 +217,7 @@ export default function TableManager({
 
             // 4. Draw Hotel/Restaurant Name (centered in the gap between QR and footer)
             ctx.fillStyle = '#000000'
-            ctx.font = `bold ${26 * scale}px "Outfit", "Inter", system-ui, -apple-system, sans-serif`
+            ctx.font = `bold ${26 * scale}px ${fontStack}`
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
             ctx.fillText(
@@ -230,7 +235,7 @@ export default function TableManager({
 
             // Draw Footer Text "Powered by KKKHANEY"
             ctx.fillStyle = '#ffffff'
-            ctx.font = `bold ${16 * scale}px "Outfit", "Inter", system-ui, -apple-system, sans-serif`
+            ctx.font = `bold ${16 * scale}px ${fontStack}`
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
             
@@ -287,7 +292,7 @@ export default function TableManager({
                 
                 // Draw white K letter inside the circle fallback
                 ctx.fillStyle = '#ffffff'
-                ctx.font = `bold ${12 * scale}px "Outfit", "Inter", system-ui, sans-serif`
+                ctx.font = `bold ${12 * scale}px ${fontStack}`
                 ctx.textAlign = 'center'
                 ctx.textBaseline = 'middle'
                 ctx.fillText('K', logoCenterX, logoCenterY + 0.5 * scale)
@@ -391,7 +396,7 @@ export default function TableManager({
                                         <div className="absolute bottom-0 left-0 right-0 h-8 bg-[#ff7a00] flex items-center justify-center gap-1.5 shrink-0 shadow-[0_-2px_10px_rgba(255,122,0,0.3)]">
                                             <span 
                                                 className="text-white text-[9px] font-extrabold tracking-wider uppercase" 
-                                                style={{ fontFamily: '"Outfit", "Inter", system-ui, sans-serif' }}
+                                                style={{ fontFamily: 'var(--font-outfit), var(--font-inter), system-ui, sans-serif' }}
                                             >
                                                 Powered by KKKHANEY
                                             </span>

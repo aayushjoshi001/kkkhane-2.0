@@ -165,7 +165,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantSlug, restau
                                 <div className="absolute bottom-0 left-0 right-0 h-10 bg-[#ff7a00] flex items-center justify-center gap-2 shrink-0 shadow-[0_-2px_10px_rgba(255,122,0,0.3)]">
                                     <span 
                                         className="text-white text-[11px] font-extrabold tracking-widest uppercase" 
-                                        style={{ fontFamily: '"Outfit", "Inter", system-ui, sans-serif' }}
+                                        style={{ fontFamily: 'var(--font-outfit), var(--font-inter), system-ui, sans-serif' }}
                                     >
                                         Powered by KKKHANEY
                                     </span>
