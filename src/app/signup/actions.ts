@@ -2,6 +2,7 @@
 
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/ratelimit'
+import { verifyTurnstileToken } from '@/lib/turnstile'
 
 export async function registerUserAction(formData: FormData) {
     const fullName = formData.get('fullName') as string
@@ -14,6 +15,17 @@ export async function registerUserAction(formData: FormData) {
 
     const rateLimitError = await checkRateLimit('SIGNUP', 3, 3600)
     if (rateLimitError) return { error: rateLimitError }
+
+    const turnstileToken = formData.get('cf-turnstile-response') as string | null
+    if (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) {
+        if (!turnstileToken) {
+            return { error: 'Please complete the CAPTCHA.' }
+        }
+        const isValid = await verifyTurnstileToken(turnstileToken)
+        if (!isValid) {
+            return { error: 'CAPTCHA verification failed. Please try again.' }
+        }
+    }
 
     const adminSupabase = await createAdminClient()
     const serverSupabase = await createServerClient()

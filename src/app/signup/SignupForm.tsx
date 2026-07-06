@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { registerUserAction } from './actions'
 import { Eye, EyeOff, Lock, Mail, ArrowRight, User } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { Turnstile } from '@marsidev/react-turnstile'
 
 export default function SignupForm() {
     const router = useRouter()
@@ -13,6 +14,7 @@ export default function SignupForm() {
     const [error, setError] = useState<string | null>(null)
     const [showPassword, setShowPassword] = useState(false)
     const [isGoogleLoading, setIsGoogleLoading] = useState(false)
+    const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
@@ -113,9 +115,21 @@ export default function SignupForm() {
                     </div>
                 </div>
 
+                <input type="hidden" name="cf-turnstile-response" value={turnstileToken || ''} />
+
+                {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
+                    <div className="flex justify-center mt-2 mb-2">
+                        <Turnstile 
+                            siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY} 
+                            onSuccess={(token) => setTurnstileToken(token)}
+                            options={{ theme: 'light', size: 'normal' }}
+                        />
+                    </div>
+                )}
+
                 <button
                     type="submit"
-                    disabled={isPending}
+                    disabled={isPending || (!!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && !turnstileToken)}
                     className="w-full bg-[#ff5a00] hover:bg-[#ff4500] text-white h-[52px] rounded-[14px] text-[16px] font-semibold shadow-lg shadow-[#ff5a00]/25 transition-all hover:scale-[1.01] flex items-center justify-center gap-2 mt-2 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
                     {isPending ? (
