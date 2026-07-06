@@ -11,6 +11,7 @@ import CartSummary from '@/components/customer/CartSummary'
 import Logo from '@/components/shared/Logo'
 import PhysicalMenuGallery from '@/components/customer/PhysicalMenuGallery'
 import { TranslationProvider } from '@/lib/contexts/TranslationContext'
+import { RecommendationsProvider, type PairingMap } from '@/lib/contexts/RecommendationsContext'
 import { UtensilsCrossed, RefreshCw, Bell, Check, Loader2, Home, X, ShoppingBag, ChefHat, Search, CreditCard, UserCircle } from 'lucide-react'
 import { useCartStore } from '@/lib/stores/cart'
 import { requestSessionOpen } from '@/app/api/service-requests/actions'
@@ -47,6 +48,7 @@ interface TablePageClientProps {
     translations: { language_code: string; entity_type: string; entity_id: string; translated_text: string }[]
     supportedLanguages: { code: string; name: string }[]
     isIpRestricted?: boolean
+    pairings?: PairingMap
 }
 
 const PROMOS = [
@@ -100,6 +102,7 @@ export default function TablePageClient({
     translations,
     supportedLanguages,
     isIpRestricted = false,
+    pairings = {},
 }: TablePageClientProps) {
     // Live session state. In self-service mode the session is auto-opened server-side
     // and arrives via props. In waiter-managed mode it may arrive later (the waiter
@@ -495,6 +498,7 @@ export default function TablePageClient({
             supportedLanguages={supportedLanguages}
             restaurantId={tableData.restaurant_id}
         >
+          <RecommendationsProvider pairings={pairings}>
             <HomepageGate
                 restaurantId={tableData.restaurant_id}
                 onProceed={() => setShowMenu(true)}
@@ -550,6 +554,7 @@ export default function TablePageClient({
                     </>
                 )}
             </HomepageGate>
+          </RecommendationsProvider>
         </TranslationProvider>
     )
 }

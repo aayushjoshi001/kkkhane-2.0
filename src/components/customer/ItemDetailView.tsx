@@ -3,11 +3,13 @@
 import { useState, useEffect } from 'react'
 import { ChevronLeft, Plus, Minus, X, Check } from 'lucide-react'
 import Image from 'next/image'
+import { toast } from 'react-hot-toast'
 import type { MenuItem, CartItemModifier } from '@/types/database'
 import { useCartStore, getCartItemKey } from '@/lib/stores/cart'
 import { useHydratedStore } from '@/lib/stores/useHydratedStore'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { useTranslation } from '@/lib/contexts/TranslationContext'
+import { useRecommendedItemIds } from '@/lib/contexts/RecommendationsContext'
 
 interface ItemDetailViewProps {
     item: MenuItem
@@ -97,6 +99,37 @@ export default function ItemDetailView({
     }, [initialCookingRequest])
 
     const hasModifiers = (item.modifier_groups?.length ?? 0) > 0
+
+    // "Pairs well with" — only for the fresh add-to-cart flow, not the cart-edit
+    // sheet (onSaveEdit), since editing an existing line isn't a discovery moment.
+    const recommendedIds = useRecommendedItemIds(item.id)
+    const recommendedItems = onSaveEdit ? [] : recommendedIds
+        .map((id) => menuItems.find((m) => m.id === id))
+        .filter((m): m is MenuItem => !!m && m.is_available)
+        .slice(0, 3)
+
+    const handleQuickAdd = (recItem: MenuItem) => {
+        if (!isTakeout && !sessionId) return
+        if (sessionId) {
+            setSession(sessionId, restaurantSlug, restaurantId)
+        }
+        const cartItem = {
+            menuItemId: recItem.id,
+            name: recItem.name,
+            price: recItem.price,
+            imageUrl: recItem.image_url || undefined,
+            modifiers: [],
+        }
+        const key = getCartItemKey(cartItem)
+        const existing = items.find((i) => getCartItemKey(i) === key)
+        if (existing) {
+            updateQuantity(key, existing.quantity + 1)
+        } else {
+            addItem(cartItem)
+            updateQuantity(key, 1)
+        }
+        toast.success(`Added ${recItem.name}`)
+    }
 
     // Build standard CartItemModifier list from current selections
     const currentModifiers: CartItemModifier[] = []
@@ -341,6 +374,56 @@ export default function ItemDetailView({
                         <p className="text-xs text-gray-500 font-semibold leading-relaxed mb-6">
                             {displayDesc}
                         </p>
+                    )}
+
+                    {/* Pairs well with — precomputed order co-occurrence, see refresh_menu_item_pairings() */}
+                    {recommendedItems.length > 0 && (
+                        <div className="mb-6">
+                            <h3 className="text-sm font-bold text-gray-900 mb-2">Goes well with</h3>
+                            <div className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-none" style={{ scrollbarWidth: 'none' }}>
+                                {recommendedItems.map((recItem) => {
+                                    const isSimple = (recItem.modifier_groups?.length ?? 0) === 0 && (recItem.variations?.length ?? 0) === 0
+                                    return (
+                                        <div
+                                            key={recItem.id}
+                                            className="shrink-0 w-28 border border-gray-100 rounded-2xl bg-white shadow-sm overflow-hidden"
+                                        >
+                                            <div className="relative w-full h-16 bg-gray-100">
+                                                {recItem.image_url ? (
+                                                    <Image
+                                                        src={recItem.image_url}
+                                                        alt={recItem.name}
+                                                        fill
+                                                        className="object-cover"
+                                                        sizes="112px"
+                                                    />
+                                                ) : (
+                                                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#f5f0eb] to-[#ede8e0]">
+                                                        <span className="text-lg opacity-20">🍽️</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="p-2">
+                                                <p className="text-[11px] font-bold text-gray-900 leading-tight truncate">{recItem.name}</p>
+                                                <div className="flex items-center justify-between mt-1">
+                                                    <span className="text-[10px] font-bold text-gray-500">{money(recItem.price)}</span>
+                                                    {isSimple && (
+                                                        <button
+                                                            onClick={() => handleQuickAdd(recItem)}
+                                                            disabled={!isTakeout && !sessionId}
+                                                            className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center active:scale-90 transition disabled:opacity-40"
+                                                            aria-label={`Add ${recItem.name}`}
+                                                        >
+                                                            <Plus size={11} strokeWidth={3} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
                     )}
 
                     {/* Variations Section */}

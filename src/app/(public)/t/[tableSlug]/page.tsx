@@ -125,7 +125,7 @@ export default async function CustomerMenuPage(props: {
 
     const isValidSession = !!sessionToken
 
-    const { categories, menuItems, translations, supportedLanguages, comboItems } = menuData
+    const { categories, menuItems, translations, supportedLanguages, comboItems, pairings } = menuData
 
     // Always include English as first option if there are other languages
     const langs = supportedLanguages.length > 0
@@ -146,6 +146,7 @@ export default async function CustomerMenuPage(props: {
             categories={categories || []}
             menuItems={menuItems}
             comboItems={comboItems || []}
+            pairings={pairings}
             sessionToken={sessionToken}
             sessionUUID={sessionUUID}
             isValidSession={isValidSession}

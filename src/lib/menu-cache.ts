@@ -11,7 +11,8 @@ export const getCachedMenuData = unstable_cache(
             { data: rawMenuItems },
             { data: rawTranslations },
             { data: rawLangs },
-            comboItemsResult
+            comboItemsResult,
+            { data: rawPairings }
         ] = await Promise.all([
             supabase
                 .from('menu_categories')
@@ -43,7 +44,13 @@ export const getCachedMenuData = unstable_cache(
                 // Scope to this restaurant's combos via the parent combo's restaurant_id
                 // (combo_items has no restaurant_id of its own).
                 .select('id, combo_id, item_id, quantity, combo:menu_items!combo_id!inner(restaurant_id)')
-                .eq('combo.restaurant_id', restaurantId)
+                .eq('combo.restaurant_id', restaurantId),
+
+            supabase
+                .from('menu_item_pairings')
+                .select('item_id, paired_item_id, co_order_count')
+                .eq('restaurant_id', restaurantId)
+                .order('co_order_count', { ascending: false })
         ])
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -60,12 +67,20 @@ export const getCachedMenuData = unstable_cache(
         const supportedLanguages = (rawLangs || []).map(l => ({ code: l.language_code, name: l.language_name }))
         const comboItems = comboItemsResult?.data || []
 
+        // itemId -> ranked list of paired item ids, for the "pairs well with" UI.
+        const pairings: Record<string, string[]> = {}
+        for (const row of rawPairings || []) {
+            if (!pairings[row.item_id]) pairings[row.item_id] = []
+            pairings[row.item_id].push(row.paired_item_id)
+        }
+
         return {
             categories: categories || [],
             menuItems,
             translations,
             supportedLanguages,
-            comboItems
+            comboItems,
+            pairings
         }
     },
     ['restaurant-menu-data'],

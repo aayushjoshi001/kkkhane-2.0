@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/auto-suspend",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-item-pairings",
+      "schedule": "30 3 * * *"
     }
   ]
 }
