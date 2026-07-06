@@ -13,7 +13,6 @@ import { signOutAndRedirect } from '@/lib/auth/signOut'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { useSidebar } from '@/lib/contexts/SidebarContext'
-import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))
@@ -25,7 +24,6 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
     const { isOpen, isCollapsed, closeMobile } = useSidebar()
     const [isDark, setIsDark] = useState(true) // Defaulting to the dark premium vibe
     const [imgError, setImgError] = useState(false)
-    const dineInEnabled = useFeatureEnabled('dineInEnabled')
 
     // Load theme preference on mount
     // eslint-disable-next-line
@@ -108,9 +106,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/orders"      icon={ShoppingBag}     label="Live Orders"     path={pathname} badge="12" />
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/payments"    icon={CreditCard}      label="Payments"        path={pathname} />
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/takeout"     icon={Truck}           label="Takeout & Disp." path={pathname} />
-                {dineInEnabled && (
-                    <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"      icon={Grid3X3}         label="Table Layout"    path={pathname} />
-                )}
+                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"      icon={Grid3X3}         label="Tables & QR"     path={pathname} />
                 
                 <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Intelligence</SectionLabel>
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/loyalty"     icon={Heart}           label="Loyalty Program" path={pathname} />
