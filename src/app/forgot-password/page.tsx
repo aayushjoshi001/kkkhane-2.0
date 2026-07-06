@@ -1,7 +1,8 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useState } from 'react'
 import Link from 'next/link'
+import { Turnstile } from '@marsidev/react-turnstile'
 import { forgotPasswordAction } from './actions'
 import AuthHero from '@/components/shared/AuthHero'
 import { Mail, ArrowLeft, CheckCircle2, ArrowRight } from 'lucide-react'
@@ -10,6 +11,7 @@ const initialState = { error: null as string | null, success: false }
 
 export default function ForgotPasswordPage() {
     const [state, formAction, isPending] = useActionState(forgotPasswordAction, initialState)
+    const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
 
     const inputClasses = "h-[52px] w-full rounded-[14px] border border-gray-200 bg-white pl-12 pr-4 text-[15px] outline-none text-gray-900 placeholder:text-gray-400 focus:border-[#ff5a00] focus:ring-1 focus:ring-[#ff5a00] transition-all"
     const labelClasses = "text-[13px] font-semibold text-gray-900 flex gap-1 mb-1.5"
@@ -47,6 +49,7 @@ export default function ForgotPasswordPage() {
                                 </div>
 
                                 <form action={formAction} className="w-full flex flex-col gap-5">
+                                    <input type="hidden" name="cf-turnstile-response" value={turnstileToken || ''} />
                                     {state.error && (
                                         <div className="bg-red-50 text-red-700 px-4 py-3 rounded-[14px] text-sm border border-red-100 font-medium text-center">
                                             {state.error}
@@ -70,10 +73,20 @@ export default function ForgotPasswordPage() {
                                             />
                                         </div>
                                     </div>
+                                    
+                                    {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
+                                        <div className="flex justify-center mt-2">
+                                            <Turnstile 
+                                                siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY} 
+                                                onSuccess={(token) => setTurnstileToken(token)}
+                                                options={{ theme: 'light', size: 'normal' }}
+                                            />
+                                        </div>
+                                    )}
 
                                     <button
                                         type="submit"
-                                        disabled={isPending}
+                                        disabled={isPending || (!!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && !turnstileToken)}
                                         className="w-full bg-[#ff5a00] hover:bg-[#ff4500] text-white h-[52px] rounded-[14px] text-[16px] font-semibold shadow-lg shadow-[#ff5a00]/25 transition-all hover:scale-[1.01] flex items-center justify-center gap-2 mt-2 disabled:opacity-70 disabled:cursor-not-allowed"
                                     >
                                         {isPending ? (

@@ -5,11 +5,13 @@ import { getCurrentUser } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/ratelimit'
 import { ROLE_LANDING } from '@/lib/roleLanding'
+import { verifyTurnstileToken } from '@/lib/turnstile'
 
 export async function loginAction(prevState: { error: string | null }, formData: FormData) {
     const email = formData.get('email') as string
     const password = formData.get('password') as string
     const explicitRedirect = formData.get('redirect') as string
+    const turnstileToken = formData.get('cf-turnstile-response') as string | null
 
     if (!email || !password) {
         return { error: 'Email and password are required' }
@@ -19,6 +21,11 @@ export async function loginAction(prevState: { error: string | null }, formData:
     const rateLimitError = await checkRateLimit('LOGIN', RATE_LIMIT_RULES.LOGIN.requests, RATE_LIMIT_RULES.LOGIN.windowSeconds)
     if (rateLimitError) {
         return { error: 'Too many attempts. Please wait 15 minutes before trying again.' }
+    }
+
+    const isTokenValid = await verifyTurnstileToken(turnstileToken)
+    if (!isTokenValid) {
+        return { error: 'Security check failed. Please try again.' }
     }
 
     const supabase = await createServerClient()

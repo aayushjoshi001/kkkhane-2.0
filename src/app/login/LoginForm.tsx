@@ -6,12 +6,14 @@ import Link from 'next/link'
 import { loginAction } from './actions'
 import { createClient } from '@/lib/supabase/client'
 import { Eye, EyeOff, Lock, Mail, ArrowRight } from 'lucide-react'
+import { Turnstile } from '@marsidev/react-turnstile'
 
 const initialState = { error: null as string | null }
 
 export function LoginForm({ redirectTo }: { redirectTo: string }) {
     const [state, formAction, isPending] = useActionState(loginAction, initialState)
     const [showPassword, setShowPassword] = useState(false)
+    const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
     const [isGoogleLoading, setIsGoogleLoading] = useState(false)
     const [googleError, setGoogleError] = useState<string | null>(null)
 
@@ -50,6 +52,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
 
             <form action={formAction} className="w-full flex flex-col gap-5">
                 <input type="hidden" name="redirect" value={redirectTo} />
+                <input type="hidden" name="cf-turnstile-response" value={turnstileToken || ''} />
 
                 {state?.error && (
                     <div className="bg-red-50 text-red-700 px-4 py-3 rounded-xl text-sm border border-red-100 font-medium text-center">
@@ -106,10 +109,20 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
                         Forgot Password?
                     </Link>
                 </div>
+                
+                {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
+                    <div className="flex justify-center mb-2">
+                        <Turnstile 
+                            siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY} 
+                            onSuccess={(token) => setTurnstileToken(token)}
+                            options={{ theme: 'light', size: 'normal' }}
+                        />
+                    </div>
+                )}
 
                 <button
                     type="submit"
-                    disabled={isPending}
+                    disabled={isPending || (!!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && !turnstileToken)}
                     className="w-full bg-brand-500 hover:bg-brand-400 text-white h-14 rounded-2xl text-base font-extrabold shadow-[0_8px_24px_rgba(251,99,3,0.3)] hover:shadow-[0_12px_32px_rgba(251,99,3,0.4)] transition-all hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2 mt-1 disabled:opacity-70 disabled:pointer-events-none focus-ring"
                 >
                     {isPending ? (

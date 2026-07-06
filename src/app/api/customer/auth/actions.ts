@@ -2,7 +2,13 @@
 
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 
-export async function loginWithEmail(email: string, password: string) {
+import { verifyTurnstileToken } from '@/lib/turnstile'
+
+export async function loginWithEmail(email: string, password: string, turnstileToken?: string | null) {
+    const isTokenValid = await verifyTurnstileToken(turnstileToken)
+    if (!isTokenValid) {
+        return { error: 'Security check failed. Please try again.' }
+    }
     const supabase = await createServerClient()
     const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -21,8 +27,13 @@ export async function signUpCustomerWithEmail(
     password: string, 
     phone: string, 
     displayName: string, 
-    restaurantId: string
+    restaurantId: string,
+    turnstileToken?: string | null
 ) {
+    const isTokenValid = await verifyTurnstileToken(turnstileToken)
+    if (!isTokenValid) {
+        return { error: 'Security check failed. Please try again.' }
+    }
     const supabase = await createServerClient()
     const adminSupabase = await createAdminClient()
 
@@ -102,7 +113,11 @@ export async function signUpCustomerWithEmail(
     return { user: authData.user }
 }
 
-export async function sendPhoneOtp(phone: string) {
+export async function sendPhoneOtp(phone: string, turnstileToken?: string | null) {
+    const isTokenValid = await verifyTurnstileToken(turnstileToken)
+    if (!isTokenValid) {
+        return { error: 'Security check failed. Please try again.' }
+    }
     const supabase = await createServerClient()
     const { error } = await supabase.auth.signInWithOtp({
         phone

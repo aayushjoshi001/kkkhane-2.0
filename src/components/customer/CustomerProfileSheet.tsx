@@ -8,6 +8,7 @@ import { twMerge } from 'tailwind-merge'
 import { signUpCustomerWithEmail, loginWithEmail, sendPhoneOtp, verifyPhoneOtp } from '@/app/api/customer/auth/actions'
 import { toast } from 'react-hot-toast'
 import { createBrowserClient } from '@supabase/ssr'
+import { Turnstile } from '@marsidev/react-turnstile'
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))
@@ -48,6 +49,7 @@ export default function CustomerProfileSheet({ isOpen, onClose, restaurantId }: 
     const [name, setName] = useState('')
     const [otpToken, setOtpToken] = useState('')
     
+    const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
     const [loading, setLoading] = useState(false)
     const [showOtpInput, setShowOtpInput] = useState(false)
 
@@ -74,13 +76,13 @@ export default function CustomerProfileSheet({ isOpen, onClose, restaurantId }: 
                     if (!email) throw new Error('Email is required')
                     if (!password || password.length < 6) throw new Error('Password must be at least 6 characters')
                     
-                    const res = await signUpCustomerWithEmail(email, password, phone, name, restaurantId)
+                    const res = await signUpCustomerWithEmail(email, password, phone, name, restaurantId, turnstileToken)
                     if (res.error) throw new Error(res.error)
                     toast.success('Account created successfully!')
                     setIsLoggedIn(true)
                 } else {
                     if (!email || !password) throw new Error('Email and password are required')
-                    const res = await loginWithEmail(email, password)
+                    const res = await loginWithEmail(email, password, turnstileToken)
                     if (res.error) throw new Error(res.error)
                     toast.success('Successfully logged in!')
                     setIsLoggedIn(true)
@@ -239,9 +241,19 @@ export default function CustomerProfileSheet({ isOpen, onClose, restaurantId }: 
                                             </div>
                                         )}
                                         
+                                        {!showOtpInput && authMethod === 'email' && process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
+                                            <div className="flex justify-center mb-2">
+                                                <Turnstile 
+                                                    siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY} 
+                                                    onSuccess={(token) => setTurnstileToken(token)}
+                                                    options={{ theme: 'light', size: 'normal' }}
+                                                />
+                                            </div>
+                                        )}
+                                        
                                         <button 
                                             onClick={handleAuthSubmit}
-                                            disabled={loading}
+                                            disabled={loading || (!showOtpInput && authMethod === 'email' && !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && !turnstileToken)}
                                             className="w-full bg-brand-500 text-white font-black py-4 rounded-xl shadow-lg shadow-brand-500/25 hover:bg-brand-600 active:scale-[0.98] transition-all disabled:opacity-70"
                                         >
                                             {loading ? 'Processing...' : showOtpInput ? 'Verify Code' : authMethod === 'phone' ? 'Send OTP Code' : authMode === 'signup' ? 'Create Account' : 'Sign In'}

@@ -7,12 +7,15 @@ import { toast } from 'react-hot-toast'
 import Image from 'next/image'
 import { ArrowLeft, ArrowRight, Loader2, Phone, ShieldCheck } from 'lucide-react'
 import Link from 'next/link'
+import { Turnstile } from '@marsidev/react-turnstile'
+import { sendPhoneOtp } from '@/app/api/customer/auth/actions'
 
 export default function LoginClient({ restaurant }: { restaurant: any }) {
     const [phone, setPhone] = useState('')
     const [otp, setOtp] = useState('')
     const [step, setStep] = useState<'phone' | 'otp'>('phone')
     const [loading, setLoading] = useState(false)
+    const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
     const router = useRouter()
     const supabase = createClient()
 
@@ -28,10 +31,9 @@ export default function LoginClient({ restaurant }: { restaurant: any }) {
         const formattedPhone = phone.startsWith('+') ? phone : `+977${phone}`
         
         try {
-            const { error } = await supabase.auth.signInWithOtp({
-                phone: formattedPhone,
-            })
-            if (error) throw error
+            const res = await sendPhoneOtp(formattedPhone, turnstileToken)
+            if (res?.error) throw new Error(res.error)
+            
             setStep('otp')
             toast.success('Verification code sent!')
         } catch (err: any) {
@@ -114,9 +116,20 @@ export default function LoginClient({ restaurant }: { restaurant: any }) {
                                     autoFocus
                                 />
                             </div>
+                            
+                            {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
+                                <div className="flex justify-center mt-4">
+                                    <Turnstile 
+                                        siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY} 
+                                        onSuccess={(token) => setTurnstileToken(token)}
+                                        options={{ theme: 'light', size: 'normal' }}
+                                    />
+                                </div>
+                            )}
+
                             <button
                                 type="submit"
-                                disabled={loading || phone.length < 10}
+                                disabled={loading || phone.length < 10 || (!!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && !turnstileToken)}
                                 className="w-full bg-brand-500 text-white font-bold py-3.5 rounded-xl hover:bg-brand-600 active:scale-[0.98] transition-all disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2 shadow-lg shadow-brand-500/25"
                             >
                                 {loading ? <Loader2 size={20} className="animate-spin" /> : 'Continue'}
