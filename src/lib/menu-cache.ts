@@ -1,9 +1,8 @@
-import { unstable_cache } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/server'
 import type { MenuItem } from '@/types/database'
+import { fetchWithCache } from '@/lib/redis'
 
-export const getCachedMenuData = unstable_cache(
-    async (restaurantId: string) => {
+async function fetchMenuDataFromDb(restaurantId: string) {
         const supabase = await createAdminClient()
 
         const [
@@ -82,7 +81,12 @@ export const getCachedMenuData = unstable_cache(
             comboItems,
             pairings
         }
-    },
-    ['restaurant-menu-data'],
-    { revalidate: 60 }
-)
+}
+
+export async function getCachedMenuData(restaurantId: string) {
+    return fetchWithCache(
+        `menu-data:${restaurantId}`,
+        () => fetchMenuDataFromDb(restaurantId),
+        300 // 5 minutes TTL
+    )
+}

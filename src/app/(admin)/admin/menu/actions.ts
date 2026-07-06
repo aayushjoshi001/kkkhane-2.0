@@ -2,6 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { invalidateCache } from '@/lib/redis'
 
 export async function addCategoryAction(restaurantId: string, name: string, sortOrder: number, isVisible: boolean, imageUrl?: string | null) {
     const supabase = await createAdminClient()
@@ -18,6 +19,7 @@ export async function addCategoryAction(restaurantId: string, name: string, sort
         .single()
 
     if (error) return { error: error.message }
+    await invalidateCache(`menu-data:${restaurantId}`)
     revalidatePath('/admin/menu')
     return { data }
 }

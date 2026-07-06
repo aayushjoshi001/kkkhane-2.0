@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/auth'
+import { invalidateCache } from '@/lib/redis'
 
 // Columns the manager is allowed to write. Anything else in the request body
 // (id, created_at, computed fields, …) is ignored to prevent both
@@ -81,6 +82,7 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: error.message }, { status: 400 })
             }
 
+            await invalidateCache(`homepage-config:${restaurant_id}`)
             return NextResponse.json({ success: true, config: updatedConfig })
         } else {
             const { data: newConfig, error } = await supabase
@@ -97,6 +99,7 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: error.message }, { status: 400 })
             }
 
+            await invalidateCache(`homepage-config:${restaurant_id}`)
             return NextResponse.json({ success: true, config: newConfig }, { status: 201 })
         }
     } catch (error) {

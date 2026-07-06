@@ -1,17 +1,17 @@
 'use server'
 
-import { unstable_cache } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/server'
 import type { Settings, Restaurant } from '@/types/database'
 import { getBusinessMode, type BusinessMode } from '@/lib/businessMode'
+import { fetchWithCache, invalidateCache } from '@/lib/redis'
 
 /**
  * Fetch features_v2 flags for a restaurant.
  * Cached for 30 seconds across requests — features change rarely and this
  * was previously hitting the DB on every kitchen/waiter/admin page load.
  */
-export const getRestaurantFeatures = unstable_cache(
-    async (restaurantId: string): Promise<Settings['features_v2'] | null> => {
+export async function getRestaurantFeatures(restaurantId: string): Promise<Settings['features_v2'] | null> {
+    return fetchWithCache(`features:${restaurantId}`, async () => {
         const supabase = await createAdminClient()
         const { data } = await supabase
             .from('settings')
@@ -19,17 +19,15 @@ export const getRestaurantFeatures = unstable_cache(
             .eq('restaurant_id', restaurantId)
             .single()
         return data?.features_v2 ?? null
-    },
-    ['restaurant-features'],
-    { revalidate: 30 }
-)
+    }, 60)
+}
 
 /**
  * Fetch the restaurant's operational mode (derived from business_type).
  * Cached for 30 seconds — same rationale as getRestaurantFeatures.
  */
-export const getRestaurantMode = unstable_cache(
-    async (restaurantId: string): Promise<BusinessMode> => {
+export async function getRestaurantMode(restaurantId: string): Promise<BusinessMode> {
+    return fetchWithCache(`mode:${restaurantId}`, async () => {
         const supabase = await createAdminClient()
         const { data } = await supabase
             .from('restaurants')
@@ -37,17 +35,15 @@ export const getRestaurantMode = unstable_cache(
             .eq('id', restaurantId)
             .single()
         return getBusinessMode(data?.business_type)
-    },
-    ['restaurant-mode'],
-    { revalidate: 30 }
-)
+    }, 60)
+}
 
 /**
  * Fetch the customer-facing menu layout ('grid' | 'list') from settings.theme.
  * Cached for 30 seconds — changes rarely and rides a hot customer page path.
  */
-export const getMenuLayout = unstable_cache(
-    async (restaurantId: string): Promise<'grid' | 'list'> => {
+export async function getMenuLayout(restaurantId: string): Promise<'grid' | 'list'> {
+    return fetchWithCache(`menu-layout:${restaurantId}`, async () => {
         const supabase = await createAdminClient()
         const { data } = await supabase
             .from('settings')
@@ -55,10 +51,8 @@ export const getMenuLayout = unstable_cache(
             .eq('restaurant_id', restaurantId)
             .single()
         return (data?.theme as { menuLayout?: string } | null)?.menuLayout === 'list' ? 'list' : 'grid'
-    },
-    ['restaurant-menu-layout'],
-    { revalidate: 30 }
-)
+    }, 60)
+}
 
 /**
  * Fetch restaurant with SaaS/Nepal fields for settings pages.
@@ -107,5 +101,10 @@ export async function updateFeaturesAction(restaurantId: string, features: Parti
         .eq('restaurant_id', restaurantId)
 
     if (error) return { error: error.message }
+    
+    // Invalidate caches
+    await invalidateCache(`features:${restaurantId}`)
+    await invalidateCache(`menu-layout:${restaurantId}`)
+    
     return { success: true }
 }
