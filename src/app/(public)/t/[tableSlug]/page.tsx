@@ -12,6 +12,7 @@ import { getHomepageConfig } from '@/lib/homepage'
 import type { Metadata } from 'next'
 
 export const revalidate = 600
+export const runtime = 'edge'
 
 export function generateStaticParams() {
     return []

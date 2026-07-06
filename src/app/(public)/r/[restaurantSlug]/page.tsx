@@ -9,6 +9,7 @@ import type { Metadata } from 'next'
 // Serve cached HTML and revalidate every 10 min as a safety net; table edits trigger
 // immediate on-demand revalidation from admin/tables/actions.ts.
 export const revalidate = 600
+export const runtime = 'edge'
 
 // Slugs are tenant-defined and unbounded, so we prerender none at build time and let
 // each slug be generated + cached on first request (on-demand ISR). Without this,
