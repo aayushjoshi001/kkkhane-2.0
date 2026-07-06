@@ -318,6 +318,7 @@ export default function SettingsManager({
                                 disabled={!canEdit || isSubmitting}
                                 className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
                             >
+                                {!formData.business_type && <option value="" disabled>Not set</option>}
                                 {ONBOARDING_BUSINESS_TYPES.map(type => (
                                     <option key={type} value={type}>{type}</option>
                                 ))}

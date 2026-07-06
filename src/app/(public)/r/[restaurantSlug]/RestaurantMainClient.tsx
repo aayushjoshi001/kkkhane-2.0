@@ -55,7 +55,7 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
                 )}
                 <h1 className="text-2xl font-bold text-gray-900">{restaurant.name}</h1>
                 <p className="text-gray-500 mt-2 text-sm max-w-sm">
-                    {dineInEnabled
+                    {dineInEnabled && tables.length > 0
                         ? 'Welcome! Please select your table to start ordering, or browse our menu below.'
                         : 'Welcome! Order online for pickup or delivery.'}
                 </p>

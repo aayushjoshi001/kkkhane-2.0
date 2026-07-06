@@ -55,8 +55,11 @@ export default async function AdminDashboardPage() {
         adminSupabase.from('settings').select('business_hours, features_v2').eq('restaurant_id', restaurantId).maybeSingle(),
     ])
 
-    const currencyFeatures = restaurantSettings?.features_v2 as { currency?: string; currencySymbol?: string | null } | null
+    const currencyFeatures = restaurantSettings?.features_v2 as { currency?: string; currencySymbol?: string | null; dineInEnabled?: boolean } | null
     const money = (amount: number) => formatCurrency(amount, currencyFeatures?.currency, currencyFeatures?.currencySymbol)
+    // Same safe default as elsewhere — restaurants provisioned before this flag
+    // existed have no dineInEnabled key in their stored features_v2.
+    const dineInEnabled = currencyFeatures?.dineInEnabled ?? true
 
     const totalRevenueToday = (todayOrders || []).filter(o => o.status === 'delivered').reduce((s, o) => s + (o.total_amount || 0), 0)
     const totalRevenueMonth = (monthOrders || []).reduce((s, o) => s + (o.total_amount || 0), 0)
@@ -77,7 +80,9 @@ export default async function AdminDashboardPage() {
     const onboardingSteps = [
         { done: (menuCategoryCount || 0) > 0, icon: UtensilsCrossed, label: 'Add a menu category', desc: 'Group your dishes into sections', href: '/admin/menu' },
         { done: (menuItemCount || 0) > 0, icon: ClipboardList, label: 'Customize your menu items', desc: 'Set names, prices and photos', href: '/admin/menu' },
-        { done: (tableCount || 0) > 0, icon: QrCode, label: 'Review tables & print QR codes', desc: 'Let guests scan to order', href: '/admin/tables' },
+        // Not applicable for delivery-only restaurants (dineInEnabled: false) — don't
+        // block the checklist on a step that links to a nav item they don't even see.
+        { done: !dineInEnabled || (tableCount || 0) > 0, icon: QrCode, label: 'Review tables & print QR codes', desc: 'Let guests scan to order', href: '/admin/tables' },
         { done: (staffCount || 0) > 1, icon: Users, label: 'Invite your staff', desc: 'Add waiters, kitchen and cashier', href: '/admin/staff' },
         { done: !!restaurantSettings?.business_hours, icon: Clock, label: 'Set business hours & tax', desc: 'Configure opening times and rates', href: '/admin/settings' },
     ]

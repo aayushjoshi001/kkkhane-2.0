@@ -27,7 +27,10 @@ export const ONBOARDING_BUSINESS_TYPES = [
 //     pattern of place_delivery_order() in src/app/api/takeout/actions.ts.
 // Until that epic ships, Resort/Hotel behaves identically to Full-Service
 // Dine-In (the closest existing operational fit) — do not leave it unmapped.
-export const BUSINESS_TYPE_TO_MODE: Record<string, BusinessMode> = {
+// Keyed by typeof ONBOARDING_BUSINESS_TYPES[number] (not a bare string) so
+// adding/renaming a business type without updating this map is a compile
+// error, not a silent fallback to 'dine_in' for the new/renamed value.
+export const BUSINESS_TYPE_TO_MODE: Record<typeof ONBOARDING_BUSINESS_TYPES[number], BusinessMode> = {
     'Restaurant': 'dine_in',
     'Fine Dining': 'dine_in',
     'Resort/Hotel': 'dine_in',
@@ -39,5 +42,6 @@ export const BUSINESS_TYPE_TO_MODE: Record<string, BusinessMode> = {
 }
 
 export function getBusinessMode(businessType: string | null | undefined): BusinessMode {
-    return (businessType && BUSINESS_TYPE_TO_MODE[businessType]) || 'dine_in'
+    if (!businessType) return 'dine_in'
+    return (BUSINESS_TYPE_TO_MODE as Record<string, BusinessMode | undefined>)[businessType] ?? 'dine_in'
 }

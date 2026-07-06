@@ -85,9 +85,10 @@ export const DEFAULT_FEATURES_V1 = {
  * are here; everything else (loyalty/promos/ingredient tracking/staff
  * shifts) stays purely tier-driven.
  *
- * dynamicPricingEnabled for bar_service is intentionally NOT included here —
- * it's applied conditionally in buildFeaturesV2 so a free/basic-tier bar
- * doesn't get a paid feature for free; only pro/enterprise bars get it forced on.
+ * dynamicPricingEnabled is deliberately NOT overridden for bar_service here:
+ * forcing it on would grant a paid (pro/enterprise) feature to a free/basic
+ * bar for free, so bars simply keep whatever their tier already grants —
+ * identical to every other mode for this one flag.
  */
 const MODE_FEATURES: Record<BusinessMode, {
     dineInEnabled: boolean
@@ -119,6 +120,7 @@ const MODE_FEATURES: Record<BusinessMode, {
         takeoutEnabled: true,
         waiterSessionEnabled: false,
         waiterOrderConfirmation: false,
+        splitBillingEnabled: false,
         serviceRequestsEnabled: false,
         quickServeItems: [],
     },
@@ -127,16 +129,10 @@ const MODE_FEATURES: Record<BusinessMode, {
 /** Build the full features_v2 object for a given tier + business mode (Nepal defaults). */
 export function buildFeaturesV2(tier: Tier, mode: BusinessMode) {
     const modeOverlay = { ...MODE_FEATURES[mode] }
-    // Happy-hour/dynamic pricing is the canonical bar use case, but only grant
-    // it for free if the tier already allows dynamic pricing at all.
-    const dynamicPricingOverlay = mode === 'bar_service' && TIER_FEATURES[tier].dynamicPricingEnabled
-        ? { dynamicPricingEnabled: true }
-        : {}
 
     return {
         ...TIER_FEATURES[tier],
         ...modeOverlay,
-        ...dynamicPricingOverlay,
         defaultTaxRate: 13,
         currency: 'NPR',
         currencySymbol: 'Rs.',
