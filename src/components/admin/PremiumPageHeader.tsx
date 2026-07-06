@@ -10,7 +10,7 @@ interface PremiumPageHeaderProps {
 
 export default function PremiumPageHeader({ title, description, icon, actions, color = 'orange' }: PremiumPageHeaderProps) {
     const bgColors = {
-        orange: 'bg-[#ff5a00]',
+        orange: 'bg-brand-500',
         blue: 'bg-blue-500',
         purple: 'bg-purple-500',
         green: 'bg-green-500'

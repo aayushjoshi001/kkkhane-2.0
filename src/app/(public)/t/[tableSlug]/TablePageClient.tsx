@@ -317,7 +317,7 @@ export default function TablePageClient({
                             placeholder="SEARCH FOR ITEM..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="block w-full pl-10 pr-10 py-2.5 text-[11px] border-0 rounded-full bg-[#FFEAE0] text-[#7A3300] placeholder-[#D68E65] font-extrabold focus:outline-none focus:ring-2 focus:ring-orange-300 focus:bg-surface transition-all text-center uppercase tracking-wider"
+                            className="block w-full pl-10 pr-10 py-2.5 text-[11px] border-0 rounded-full bg-brand-50 text-brand-900 placeholder-[#D68E65] font-extrabold focus:outline-none focus:ring-2 focus:ring-orange-300 focus:bg-surface transition-all text-center uppercase tracking-wider"
                         />
                         {searchQuery && (
                             <button
@@ -358,7 +358,7 @@ export default function TablePageClient({
                                 Your waiter will open a session for Table {tableData.label} so you can place orders.
                             </p>
                             {!selfOrderRequestEnabled ? (
-                                <p className="text-[#C4A882] text-[11px] font-bold flex items-center justify-center gap-1">
+                                <p className="text-brand-200 text-[11px] font-bold flex items-center justify-center gap-1">
                                     <RefreshCw size={10} className="animate-spin text-brand-500" />
                                     Waiting for your waiter to open the table...
                                 </p>
@@ -385,7 +385,7 @@ export default function TablePageClient({
                                         {requestLoading ? <Loader2 size={16} className="animate-spin" /> : <Bell size={16} />}
                                         Ring for Service
                                     </button>
-                                    <p className="text-[#C4A882] text-[11px] font-bold flex items-center justify-center gap-1">
+                                    <p className="text-brand-200 text-[11px] font-bold flex items-center justify-center gap-1">
                                         <RefreshCw size={10} className="animate-spin text-brand-500" />
                                         Waiting for session to open...
                                     </p>
@@ -396,7 +396,7 @@ export default function TablePageClient({
                                 the table QR self-order for pickup instead of waiting. */}
                             {restaurantSlug && (
                                 <div className="w-full mt-5 pt-5 border-t border-hairline">
-                                    <p className="text-[#C4A882] text-[11px] font-bold mb-3">Not dining in?</p>
+                                    <p className="text-brand-200 text-[11px] font-bold mb-3">Not dining in?</p>
                                     <Link
                                         href={`/takeout/${restaurantSlug}`}
                                         className="w-full flex items-center justify-center gap-2 text-sm font-black bg-surface text-brand-500 border-2 border-brand-500 py-3.5 rounded-2xl active:scale-95 transition"

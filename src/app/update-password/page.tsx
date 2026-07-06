@@ -19,7 +19,7 @@ export default function UpdatePasswordPage() {
         setIsChecking(false)
     }, [])
 
-    const inputClasses = "h-[52px] w-full rounded-[14px] border border-hairline-strong bg-surface pl-12 pr-12 text-[15px] outline-none text-ink placeholder:text-ink-subtle focus:border-[#ff5a00] focus:ring-1 focus:ring-[#ff5a00] transition-all"
+    const inputClasses = "h-[52px] w-full rounded-[14px] border border-hairline-strong bg-surface pl-12 pr-12 text-[15px] outline-none text-ink placeholder:text-ink-subtle focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all"
     const labelClasses = "text-[13px] font-semibold text-ink flex gap-1 mb-1.5"
 
     if (isChecking) return null
@@ -53,7 +53,7 @@ export default function UpdatePasswordPage() {
                                     New Password <span className="text-red-500">*</span>
                                 </label>
                                 <div className="relative">
-                                    <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#ff5a00]" />
+                                    <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-500" />
                                     <input
                                         id="password"
                                         name="password"
@@ -79,7 +79,7 @@ export default function UpdatePasswordPage() {
                                     Confirm New Password <span className="text-red-500">*</span>
                                 </label>
                                 <div className="relative">
-                                    <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#ff5a00]" />
+                                    <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-500" />
                                     <input
                                         id="confirmPassword"
                                         name="confirmPassword"
@@ -102,7 +102,7 @@ export default function UpdatePasswordPage() {
                             <button
                                 type="submit"
                                 disabled={isPending}
-                                className="w-full bg-[#ff5a00] hover:bg-[#ff4500] text-white h-[52px] rounded-[14px] text-[16px] font-semibold shadow-lg shadow-[#ff5a00]/25 transition-all hover:scale-[1.01] flex items-center justify-center gap-2 mt-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                                className="w-full bg-brand-500 hover:bg-brand-600 text-white h-[52px] rounded-[14px] text-[16px] font-semibold shadow-lg shadow-[#ff5a00]/25 transition-all hover:scale-[1.01] flex items-center justify-center gap-2 mt-2 disabled:opacity-70 disabled:cursor-not-allowed"
                             >
                                 {isPending ? (
                                     <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />

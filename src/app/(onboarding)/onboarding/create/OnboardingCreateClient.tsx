@@ -263,7 +263,7 @@ export default function OnboardingCreateClient() {
         router.push('/admin/dashboard')
     }
 
-    const inputClasses = "w-full px-4 py-3.5 bg-surface border border-hairline-strong rounded-xl focus:border-[#ff5a00] focus:ring-1 focus:ring-[#ff5a00] outline-none transition-all text-sm placeholder:text-ink-subtle text-ink"
+    const inputClasses = "w-full px-4 py-3.5 bg-surface border border-hairline-strong rounded-xl focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none transition-all text-sm placeholder:text-ink-subtle text-ink"
     const labelClasses = "block text-sm font-semibold text-ink mb-2"
 
     return (
@@ -295,7 +295,7 @@ export default function OnboardingCreateClient() {
                     {/* Section 1: Basic Details */}
                     <section>
                         <h3 className="text-lg font-bold text-ink mb-4 flex items-center gap-2 border-b border-hairline pb-2">
-                            <Store size={20} className="text-[#ff5a00]" /> General Information
+                            <Store size={20} className="text-brand-500" /> General Information
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                             <div className="sm:col-span-2">
@@ -309,7 +309,7 @@ export default function OnboardingCreateClient() {
                                         )}
                                     </div>
                                     <div className="flex-1 space-y-2">
-                                        <label className="inline-flex items-center gap-2 px-4 py-2.5 border border-dashed border-hairline-strong rounded-xl cursor-pointer hover:border-[#ff5a00] hover:bg-brand-50 transition-all">
+                                        <label className="inline-flex items-center gap-2 px-4 py-2.5 border border-dashed border-hairline-strong rounded-xl cursor-pointer hover:border-brand-500 hover:bg-brand-50 transition-all">
                                             <Upload size={16} className="text-ink-subtle" />
                                             <span className="text-sm font-semibold text-ink-muted">{logoFile ? 'Change Logo' : 'Upload Logo'}</span>
                                             <input
@@ -358,7 +358,7 @@ export default function OnboardingCreateClient() {
                                             onClick={() => setSelectedType(type)}
                                             className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors border ${
                                                 selectedType === type
-                                                ? 'bg-[#ff5a00] border-[#ff5a00] text-white shadow-md'
+                                                ? 'bg-brand-500 border-brand-500 text-white shadow-md'
                                                 : 'bg-surface border-hairline-strong text-ink-muted hover:border-hairline-strong hover:bg-surface-muted'
                                             }`}
                                         >
@@ -374,11 +374,11 @@ export default function OnboardingCreateClient() {
                     {/* Section 2: Digital Identity */}
                     <section>
                         <h3 className="text-lg font-bold text-ink mb-4 flex items-center gap-2 border-b border-hairline pb-2">
-                            <Globe size={20} className="text-[#ff5a00]" /> Digital Identity
+                            <Globe size={20} className="text-brand-500" /> Digital Identity
                         </h3>
                         <div>
                             <label className={labelClasses}>Custom URL Slug <span className="text-red-500">*</span></label>
-                            <div className="flex h-[52px] rounded-xl overflow-hidden border border-hairline-strong focus-within:ring-1 focus-within:ring-[#ff5a00] focus-within:border-[#ff5a00] transition-all bg-surface">
+                            <div className="flex h-[52px] rounded-xl overflow-hidden border border-hairline-strong focus-within:ring-1 focus-within:ring-brand-500 focus-within:border-brand-500 transition-all bg-surface">
                                 <div className="bg-surface-muted px-4 flex items-center justify-center border-r border-hairline-strong text-ink-subtle text-sm select-none">
                                     kkkhane.com/t/
                                 </div>
@@ -411,12 +411,12 @@ export default function OnboardingCreateClient() {
                     {/* Section 3: Contact & Location */}
                     <section>
                         <h3 className="text-lg font-bold text-ink mb-4 flex items-center gap-2 border-b border-hairline pb-2">
-                            <Phone size={20} className="text-[#ff5a00]" /> Contact & Location
+                            <Phone size={20} className="text-brand-500" /> Contact & Location
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                             <div>
                                 <label className={labelClasses}>Primary Phone <span className="text-red-500">*</span></label>
-                                <div className="flex h-[52px] w-full rounded-xl border border-hairline-strong overflow-hidden bg-surface focus-within:border-[#ff5a00] focus-within:ring-1 focus-within:ring-[#ff5a00] transition-all">
+                                <div className="flex h-[52px] w-full rounded-xl border border-hairline-strong overflow-hidden bg-surface focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 transition-all">
                                     <div className="flex items-center bg-surface-muted border-r border-hairline-strong">
                                         <select 
                                             name="countryCode"
@@ -465,7 +465,7 @@ export default function OnboardingCreateClient() {
                                     <button
                                         type="button"
                                         onClick={() => { setMapSnapshot({ position, address }); setIsMapModalOpen(true) }}
-                                        className="w-[52px] h-[52px] flex items-center justify-center rounded-xl border border-hairline-strong text-[#ff5a00] bg-brand-50 hover:bg-brand-100 transition-colors shrink-0 shadow-sm"
+                                        className="w-[52px] h-[52px] flex items-center justify-center rounded-xl border border-hairline-strong text-brand-500 bg-brand-50 hover:bg-brand-100 transition-colors shrink-0 shadow-sm"
                                         title="Pin on Map"
                                     >
                                         <MapPin size={20} />
@@ -492,7 +492,7 @@ export default function OnboardingCreateClient() {
                     {/* Section 4: Legal & Tax */}
                     <section>
                         <h3 className="text-lg font-bold text-ink mb-4 flex items-center gap-2 border-b border-hairline pb-2">
-                            <FileText size={20} className="text-[#ff5a00]" /> Legal & Tax
+                            <FileText size={20} className="text-brand-500" /> Legal & Tax
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                             <div>
@@ -512,7 +512,7 @@ export default function OnboardingCreateClient() {
                                         type="checkbox"
                                         checked={vatRegistered}
                                         onChange={(e) => setVatRegistered(e.target.checked)}
-                                        className="w-5 h-5 rounded border-hairline-strong text-[#ff5a00] focus:ring-[#ff5a00]"
+                                        className="w-5 h-5 rounded border-hairline-strong text-brand-500 focus:ring-brand-500"
                                     />
                                     <span className="text-sm font-semibold text-ink">This business is VAT Registered (13%)</span>
                                 </label>
@@ -537,7 +537,7 @@ export default function OnboardingCreateClient() {
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className="w-full bg-[#ff5a00] hover:bg-[#ff4500] text-white font-bold py-4 rounded-xl shadow-lg shadow-[#ff5a00]/25 disabled:opacity-50 transition-all hover:scale-[1.01] text-lg flex items-center justify-center gap-2"
+                            className="w-full bg-brand-500 hover:bg-brand-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-[#ff5a00]/25 disabled:opacity-50 transition-all hover:scale-[1.01] text-lg flex items-center justify-center gap-2"
                         >
                             {isLoading ? (
                                 <span className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -571,7 +571,7 @@ export default function OnboardingCreateClient() {
                                         }
                                     }}
                                 />
-                                <button type="button" onClick={handleSearchLocation} className="text-[#ff5a00] font-semibold text-sm px-2 hover:text-[#ff4500]">Search</button>
+                                <button type="button" onClick={handleSearchLocation} className="text-brand-500 font-semibold text-sm px-2 hover:text-brand-600">Search</button>
                             </div>
                             <button
                                 onClick={handleCancelMap}
@@ -585,7 +585,7 @@ export default function OnboardingCreateClient() {
                         <div className="absolute bottom-24 right-4 sm:right-10 z-[1000]">
                             <button 
                                 onClick={handleCurrentLocation}
-                                className="bg-surface text-[#ff5a00] font-semibold text-sm px-4 py-3 rounded-xl shadow-lg border border-hairline flex items-center gap-2 hover:bg-brand-50 transition-colors"
+                                className="bg-surface text-brand-500 font-semibold text-sm px-4 py-3 rounded-xl shadow-lg border border-hairline flex items-center gap-2 hover:bg-brand-50 transition-colors"
                             >
                                 <MapPin size={16} /> <span className="hidden sm:inline">Use current location</span>
                             </button>
@@ -601,7 +601,7 @@ export default function OnboardingCreateClient() {
                             </button>
                             <button 
                                 onClick={() => setIsMapModalOpen(false)}
-                                className="flex-1 bg-[#ff5a00] text-white font-bold py-3.5 rounded-xl shadow-lg hover:bg-[#ff4500] transition-colors flex items-center justify-center gap-2"
+                                className="flex-1 bg-brand-500 text-white font-bold py-3.5 rounded-xl shadow-lg hover:bg-brand-600 transition-colors flex items-center justify-center gap-2"
                             >
                                 ✓ Save Location
                             </button>
@@ -635,11 +635,11 @@ export default function OnboardingCreateClient() {
                     <div className="bg-surface w-full max-w-lg rounded-[2rem] p-10 text-center shadow-2xl relative overflow-hidden">
                         
                         {/* Orange Glow Effect */}
-                        <div className="absolute -top-40 -right-40 w-80 h-80 bg-[#ff5a00] rounded-full blur-[100px] opacity-20 pointer-events-none"></div>
-                        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-[#ff5a00] rounded-full blur-[100px] opacity-20 pointer-events-none"></div>
+                        <div className="absolute -top-40 -right-40 w-80 h-80 bg-brand-500 rounded-full blur-[100px] opacity-20 pointer-events-none"></div>
+                        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-brand-500 rounded-full blur-[100px] opacity-20 pointer-events-none"></div>
 
                         <div className="relative z-10 flex flex-col items-center">
-                            <div className="w-20 h-20 bg-brand-100 rounded-full flex items-center justify-center mb-6 text-[#ff5a00]">
+                            <div className="w-20 h-20 bg-brand-100 rounded-full flex items-center justify-center mb-6 text-brand-500">
                                 <Store size={40} />
                             </div>
                             <h2 className="text-3xl font-extrabold text-ink mb-3 tracking-tight">Setup Complete!</h2>
@@ -650,7 +650,7 @@ export default function OnboardingCreateClient() {
                             <button
                                 onClick={handleContinue}
                                 disabled={isContinuing}
-                                className="w-full bg-[#ff5a00] hover:bg-[#ff4500] text-white font-bold py-4 px-8 rounded-xl shadow-lg shadow-[#ff5a00]/25 transition-all hover:scale-105 disabled:opacity-50 flex items-center justify-center"
+                                className="w-full bg-brand-500 hover:bg-brand-600 text-white font-bold py-4 px-8 rounded-xl shadow-lg shadow-[#ff5a00]/25 transition-all hover:scale-105 disabled:opacity-50 flex items-center justify-center"
                             >
                                 {isContinuing ? (
                                     <span className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />

@@ -13,7 +13,7 @@ export default function ForgotPasswordPage() {
     const [state, formAction, isPending] = useActionState(forgotPasswordAction, initialState)
     const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
 
-    const inputClasses = "h-[52px] w-full rounded-[14px] border border-hairline-strong bg-surface pl-12 pr-4 text-[15px] outline-none text-ink placeholder:text-ink-subtle focus:border-[#ff5a00] focus:ring-1 focus:ring-[#ff5a00] transition-all"
+    const inputClasses = "h-[52px] w-full rounded-[14px] border border-hairline-strong bg-surface pl-12 pr-4 text-[15px] outline-none text-ink placeholder:text-ink-subtle focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all"
     const labelClasses = "text-[13px] font-semibold text-ink flex gap-1 mb-1.5"
 
     return (
@@ -61,7 +61,7 @@ export default function ForgotPasswordPage() {
                                             Email Address <span className="text-red-500">*</span>
                                         </label>
                                         <div className="relative">
-                                            <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#ff5a00]" />
+                                            <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-500" />
                                             <input
                                                 id="email"
                                                 name="email"
@@ -87,7 +87,7 @@ export default function ForgotPasswordPage() {
                                     <button
                                         type="submit"
                                         disabled={isPending || (!!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && !turnstileToken)}
-                                        className="w-full bg-[#ff5a00] hover:bg-[#ff4500] text-white h-[52px] rounded-[14px] text-[16px] font-semibold shadow-lg shadow-[#ff5a00]/25 transition-all hover:scale-[1.01] flex items-center justify-center gap-2 mt-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                                        className="w-full bg-brand-500 hover:bg-brand-600 text-white h-[52px] rounded-[14px] text-[16px] font-semibold shadow-lg shadow-[#ff5a00]/25 transition-all hover:scale-[1.01] flex items-center justify-center gap-2 mt-2 disabled:opacity-70 disabled:cursor-not-allowed"
                                     >
                                         {isPending ? (
                                             <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />

@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react'
 import useSWR from 'swr'
-import { useWindowVirtualizer } from '@tanstack/react-virtual'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { updateTakeoutStatusAction } from './actions'
 import { Clock, Phone, User, CheckCircle, XCircle, Search, QrCode, Download, ExternalLink } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
@@ -71,8 +71,9 @@ export default function TakeoutDashboard({ initialOrders, restaurantId, restaura
     })
 
     const parentRef = useRef<HTMLDivElement>(null)
-    const virtualizer = useWindowVirtualizer({
+    const virtualizer = useVirtualizer({
         count: filteredOrders.length,
+        getScrollElement: () => parentRef.current,
         estimateSize: () => 220,
         overscan: 5,
     })
@@ -225,7 +226,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantId, restaura
                 </select>
             </div>
 
-            <div className="space-y-4" ref={parentRef}>
+            <div className="space-y-4 max-h-[calc(100vh-280px)] overflow-y-auto pr-2" ref={parentRef} style={{ scrollbarWidth: 'thin' }}>
                 {filteredOrders.length === 0 && (
                     <div className="bg-surface rounded-card border border-hairline p-10 text-center text-ink-subtle font-bold shadow-sm">
                         No active takeout orders.

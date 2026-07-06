@@ -289,7 +289,7 @@ export default function OrderTracker({
                                         }`}
                                             style={isActive ? { boxShadow: "0 0 0 6px rgba(232,93,4,0.15)" } : {}}
                                         >
-                                            <Icon size={16} className={isDone ? "text-white" : "text-[#C4A882]"} />
+                                            <Icon size={16} className={isDone ? "text-white" : "text-brand-200"} />
                                         </div>
                                         {i < STEPS.length - 1 && (
                                             <div className={`w-0.5 h-10 transition-all duration-700 ${
@@ -300,8 +300,8 @@ export default function OrderTracker({
 
                                     {/* Content */}
                                     <div className="pt-1.5 pb-8">
-                                        <p className={`text-xs font-black ${isDone ? "text-ink" : "text-[#C4A882]"}`}>{step.label}</p>
-                                        <p className={`text-[10px] font-semibold ${isDone ? "text-ink-subtle" : "text-[#C4A882]"}`}>{step.sub}</p>
+                                        <p className={`text-xs font-black ${isDone ? "text-ink" : "text-brand-200"}`}>{step.label}</p>
+                                        <p className={`text-[10px] font-semibold ${isDone ? "text-ink-subtle" : "text-brand-200"}`}>{step.sub}</p>
                                     </div>
                                 </div>
                             )

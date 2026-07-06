@@ -39,7 +39,7 @@ export default function WaiterOrdersTabs({
                             <div className="absolute -top-2.5 -right-2.5 w-6 h-6 flex items-center justify-center pointer-events-none">
                                 <Flame 
                                     size={22} 
-                                    className="transition-all fill-[#EA580C] text-[#EA580C]" 
+                                    className="transition-all fill-brand-600 text-brand-600" 
                                 />
                                 <span className="absolute text-[8.5px] font-black tracking-tighter pt-1.5 text-white">
                                     {dineInCount}
@@ -62,7 +62,7 @@ export default function WaiterOrdersTabs({
                             <div className="absolute -top-2.5 -right-2.5 w-6 h-6 flex items-center justify-center pointer-events-none">
                                 <Flame 
                                     size={22} 
-                                    className="transition-all fill-[#EA580C] text-[#EA580C]" 
+                                    className="transition-all fill-brand-600 text-brand-600" 
                                 />
                                 <span className="absolute text-[8.5px] font-black tracking-tighter pt-1.5 text-white">
                                     {takeawayCount}

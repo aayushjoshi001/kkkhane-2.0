@@ -45,7 +45,7 @@ export default async function AdminDashboardPage() {
         <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
             {/* Premium Header */}
             <div className="relative overflow-hidden rounded-[2rem] bg-[#0a0a0a] text-white p-8 sm:p-12 shadow-2xl animate-fade-up">
-                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#ff5a00] opacity-20 blur-[120px] rounded-full translate-x-1/3 -translate-y-1/4 pointer-events-none" />
+                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-brand-500 opacity-20 blur-[120px] rounded-full translate-x-1/3 -translate-y-1/4 pointer-events-none" />
                 <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-blue-500 opacity-20 blur-[100px] rounded-full -translate-x-1/3 translate-y-1/4 pointer-events-none" />
 
                 <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
@@ -65,7 +65,7 @@ export default async function AdminDashboardPage() {
                         </p>
                     </div>
                     <div className="shrink-0 flex flex-wrap gap-3">
-                        <Link href="/admin/orders" className="bg-[#ff5a00] hover:bg-[#ff4500] text-white px-7 py-3.5 rounded-[16px] font-semibold transition-all duration-300 hover:scale-105 shadow-[0_0_20px_rgba(255,90,0,0.3)] hover:shadow-[0_0_30px_rgba(255,90,0,0.5)] flex items-center gap-2">
+                        <Link href="/admin/orders" className="bg-brand-500 hover:bg-brand-600 text-white px-7 py-3.5 rounded-[16px] font-semibold transition-all duration-300 hover:scale-105 shadow-[0_0_20px_rgba(255,90,0,0.3)] hover:shadow-[0_0_30px_rgba(255,90,0,0.5)] flex items-center gap-2">
                             <ShoppingBag size={18} /> View Orders
                         </Link>
                     </div>
@@ -102,7 +102,7 @@ export default async function AdminDashboardPage() {
                     {/* Quick Actions Grid — static; only the Promotions badge needs a query */}
                     <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.3s' }}>
                         <h3 className="text-[1.15rem] font-bold text-ink mb-5 flex items-center gap-2">
-                            <Rocket size={18} className="text-[#ff5a00]" /> Quick Actions
+                            <Rocket size={18} className="text-brand-500" /> Quick Actions
                         </h3>
                         <div className="grid grid-cols-2 gap-3">
                             <QuickAction href="/admin/menu" icon={UtensilsCrossed} label="Edit Menu" />
@@ -183,7 +183,7 @@ async function PipelineTableSection({ restaurantId, money }: { restaurantId: str
         <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
             <div className="px-6 py-5 border-b border-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-surface-muted/50">
                 <div className="flex items-center gap-3">
-                    <div className="p-2 bg-[#ff5a00]/10 rounded-xl text-[#ff5a00]">
+                    <div className="p-2 bg-brand-500/10 rounded-xl text-brand-500">
                         <BarChart3 size={20} />
                     </div>
                     <h2 className="text-[1.15rem] font-bold text-ink">Today&apos;s Pipeline</h2>
@@ -209,7 +209,7 @@ async function PipelineTableSection({ restaurantId, money }: { restaurantId: str
                         {recentOrders?.map(order => (
                             <tr key={order.id} className="group hover:bg-surface-muted/50 transition-colors cursor-pointer">
                                 <td className="px-6 py-4">
-                                    <span className="font-mono text-[13px] font-bold text-ink group-hover:text-[#ff5a00] transition-colors">#{order.id.substring(0, 6).toUpperCase()}</span>
+                                    <span className="font-mono text-[13px] font-bold text-ink group-hover:text-brand-500 transition-colors">#{order.id.substring(0, 6).toUpperCase()}</span>
                                 </td>
                                 <td className="px-6 py-4 text-[14px] text-ink-subtle font-medium tabular">
                                     {new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -231,7 +231,7 @@ async function PipelineTableSection({ restaurantId, money }: { restaurantId: str
                 )}
             </div>
             <div className="bg-surface-muted/50 px-6 py-4 border-t border-hairline text-center">
-                <Link href="/admin/orders" className="text-[14px] font-semibold text-[#ff5a00] hover:text-[#e04f00] flex items-center justify-center gap-1.5 transition-colors">
+                <Link href="/admin/orders" className="text-[14px] font-semibold text-brand-500 hover:text-brand-700 flex items-center justify-center gap-1.5 transition-colors">
                     View all orders <ArrowRight size={16} />
                 </Link>
             </div>
@@ -279,10 +279,10 @@ async function OnboardingChecklistSection({
 
     return (
         <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.3s' }}>
-            <div className="relative bg-gradient-to-br from-[#ff5a00]/5 to-white px-6 pt-6 pb-6 border-b border-gray-50">
+            <div className="relative bg-gradient-to-br from-brand-500/5 to-white px-6 pt-6 pb-6 border-b border-gray-50">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
                     <div className="flex items-start gap-4">
-                        <div className="p-3 bg-[#ff5a00] text-white rounded-2xl shadow-[0_4px_15px_rgba(255,90,0,0.25)]">
+                        <div className="p-3 bg-brand-500 text-white rounded-2xl shadow-[0_4px_15px_rgba(255,90,0,0.25)]">
                             <Rocket size={24} />
                         </div>
                         <div>
@@ -294,13 +294,13 @@ async function OnboardingChecklistSection({
                         <div className="text-3xl font-extrabold text-ink tracking-tight tabular-nums">
                             {doneSteps}<span className="text-ink-subtle text-xl font-semibold">/{totalSteps}</span>
                         </div>
-                        <div className="text-[13px] font-semibold text-[#ff5a00] mt-1 bg-[#ff5a00]/10 px-2.5 py-0.5 rounded-full inline-block">
+                        <div className="text-[13px] font-semibold text-brand-500 mt-1 bg-brand-500/10 px-2.5 py-0.5 rounded-full inline-block">
                             {progressPct}% Completed
                         </div>
                     </div>
                 </div>
                 <div className="mt-6 h-2 w-full rounded-full bg-surface-muted overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-[#ff5a00] to-[#ff9a00] transition-all duration-700 ease-out" style={{ width: `${progressPct}%` }} />
+                    <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-[#ff9a00] transition-all duration-700 ease-out" style={{ width: `${progressPct}%` }} />
                 </div>
             </div>
             <ul className="divide-y divide-gray-50">
@@ -309,17 +309,17 @@ async function OnboardingChecklistSection({
                     return (
                         <li key={i}>
                             <Link href={step.href} className={`group block flex items-center gap-4 px-6 py-4 transition-all hover:bg-surface-muted/50 ${step.done ? 'opacity-60' : ''}`}>
-                                <div className={`p-2.5 rounded-xl transition-colors ${step.done ? 'bg-green-100 text-green-600' : 'bg-brand-50 text-[#ff5a00] group-hover:bg-[#ff5a00] group-hover:text-white'}`}>
+                                <div className={`p-2.5 rounded-xl transition-colors ${step.done ? 'bg-green-100 text-green-600' : 'bg-brand-50 text-brand-500 group-hover:bg-brand-500 group-hover:text-white'}`}>
                                     {step.done ? <CheckCircle2 size={20} /> : <Icon size={20} />}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className={`text-[15px] font-bold leading-tight ${step.done ? 'text-ink-subtle line-through' : 'text-ink group-hover:text-[#ff5a00] transition-colors'}`}>{step.label}</p>
+                                    <p className={`text-[15px] font-bold leading-tight ${step.done ? 'text-ink-subtle line-through' : 'text-ink group-hover:text-brand-500 transition-colors'}`}>{step.label}</p>
                                     <p className="text-[13px] text-ink-subtle mt-0.5 truncate">{step.desc}</p>
                                 </div>
                                 {step.done ? (
                                     <span className="text-[13px] font-bold text-green-600">Done</span>
                                 ) : (
-                                    <ChevronRight size={18} className="text-gray-300 group-hover:text-[#ff5a00] group-hover:translate-x-1 transition-all" />
+                                    <ChevronRight size={18} className="text-gray-300 group-hover:text-brand-500 group-hover:translate-x-1 transition-all" />
                                 )}
                             </Link>
                         </li>
@@ -396,7 +396,7 @@ async function ActiveStaffSection({ restaurantId }: { restaurantId: string }) {
                 <h3 className="text-[1.15rem] font-bold text-ink flex items-center gap-2">
                     <UserCheck size={18} className="text-green-500" /> Active Staff
                 </h3>
-                <Link href="/admin/shifts" className="p-1 text-ink-subtle hover:text-[#ff5a00] hover:bg-brand-50 rounded-lg transition-colors">
+                <Link href="/admin/shifts" className="p-1 text-ink-subtle hover:text-brand-500 hover:bg-brand-50 rounded-lg transition-colors">
                     <MoreHorizontal size={20} />
                 </Link>
             </div>
@@ -442,7 +442,7 @@ function ActiveStaffCardSkeleton() {
 
 function KpiCard({ title, value, icon: Icon, trend, trendUp, color }: { title: string, value: string, icon: any, trend: string, trendUp: boolean, color: 'brand' | 'blue' | 'green' | 'purple' }) {
     const colors = {
-        brand: 'from-[#ff5a00] to-[#ff9a00] text-[#ff5a00] bg-[#ff5a00]/10',
+        brand: 'from-brand-500 to-[#ff9a00] text-brand-500 bg-brand-500/10',
         blue: 'from-blue-500 to-cyan-500 text-blue-500 bg-blue-500/10',
         green: 'from-green-500 to-emerald-500 text-green-500 bg-green-500/10',
         purple: 'from-purple-500 to-pink-500 text-purple-500 bg-purple-500/10'
@@ -486,8 +486,8 @@ function PipelineBadge({ label, count, color }: { label: string, count: number, 
 
 function QuickAction({ href, icon: Icon, label, badge }: { href: string, icon: any, label: string, badge?: number | null }) {
     return (
-        <Link href={href} className="group relative flex flex-col items-center justify-center gap-3 p-4 rounded-[16px] bg-surface-muted hover:bg-[#ff5a00]/5 border border-transparent hover:border-[#ff5a00]/20 transition-all duration-300 hover:scale-[1.02]">
-            <div className="text-ink-subtle group-hover:text-[#ff5a00] transition-colors">
+        <Link href={href} className="group relative flex flex-col items-center justify-center gap-3 p-4 rounded-[16px] bg-surface-muted hover:bg-brand-500/5 border border-transparent hover:border-brand-500/20 transition-all duration-300 hover:scale-[1.02]">
+            <div className="text-ink-subtle group-hover:text-brand-500 transition-colors">
                 <Icon size={24} />
             </div>
             <span className="text-[13px] font-bold text-ink-muted group-hover:text-ink">{label}</span>

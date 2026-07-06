@@ -71,7 +71,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
             {/* Ambient Background Glow (Only in Dark Mode) */}
             {isDark && (
                 <>
-                    <div className="absolute top-[-10%] left-[-20%] w-[300px] h-[300px] bg-[#ff5a00] opacity-10 blur-[100px] rounded-full pointer-events-none" />
+                    <div className="absolute top-[-10%] left-[-20%] w-[300px] h-[300px] bg-brand-500 opacity-10 blur-[100px] rounded-full pointer-events-none" />
                     <div className="absolute bottom-[-10%] right-[-20%] w-[300px] h-[300px] bg-blue-500 opacity-10 blur-[100px] rounded-full pointer-events-none" />
                 </>
             )}
@@ -85,7 +85,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                             <p className={cn("text-base font-extrabold truncate leading-none tracking-tight", isDark ? "text-white" : "text-ink")}>
                                 {restaurantName || 'kkkhane'}
                             </p>
-                            <p className="text-[10px] font-bold text-[#ff5a00] uppercase tracking-[0.2em] mt-1.5">
+                            <p className="text-[10px] font-bold text-brand-500 uppercase tracking-[0.2em] mt-1.5">
                                 Workspace
                             </p>
                         </div>
@@ -148,7 +148,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                     {/* User Avatar */}
                     <div className={cn("rounded-xl overflow-hidden shrink-0 border border-black/5 shadow-sm relative", isCollapsed ? "w-8 h-8" : "w-10 h-10")}>
                         {imgError ? (
-                            <div className="w-full h-full bg-[#ff5a00] flex items-center justify-center text-white font-bold">
+                            <div className="w-full h-full bg-brand-500 flex items-center justify-center text-white font-bold">
                                 {roleLabel.charAt(0).toUpperCase()}
                             </div>
                         ) : (
@@ -275,8 +275,8 @@ function NavItem({ href, icon: Icon, label, path, badge, isDark, isCollapsed }: 
                 isCollapsed ? "justify-center" : "justify-between",
                 isActive
                     ? isDark 
-                        ? "bg-gradient-to-r from-[#ff5a00] to-[#ff7a00] text-white shadow-[0_4px_15px_rgba(255,90,0,0.3)] scale-[1.02] translate-x-1"
-                        : "bg-[#ff5a00]/10 text-[#ff5a00] shadow-[inset_0_1px_3px_rgba(255,90,0,0.1)] scale-[1.02] translate-x-1 border border-[#ff5a00]/20"
+                        ? "bg-gradient-to-r from-brand-500 to-[#ff7a00] text-white shadow-[0_4px_15px_rgba(255,90,0,0.3)] scale-[1.02] translate-x-1"
+                        : "bg-brand-500/10 text-brand-500 shadow-[inset_0_1px_3px_rgba(255,90,0,0.1)] scale-[1.02] translate-x-1 border border-brand-500/20"
                     : isDark
                         ? "text-white/60 hover:bg-surface/5 hover:text-white hover:translate-x-1"
                         : "text-ink-subtle hover:bg-surface-muted hover:text-ink hover:translate-x-1"
@@ -286,7 +286,7 @@ function NavItem({ href, icon: Icon, label, path, badge, isDark, isCollapsed }: 
                 <Icon size={isCollapsed ? 20 : 18} className={cn(
                     "shrink-0 transition-all duration-300", 
                     isActive 
-                        ? isDark ? "text-white" : "text-[#ff5a00]" 
+                        ? isDark ? "text-white" : "text-brand-500" 
                         : isDark ? "text-white/40 group-hover:text-white/80" : "text-ink-subtle group-hover:text-ink-muted"
                 )} />
                 {!isCollapsed && <span>{label}</span>}
@@ -295,15 +295,15 @@ function NavItem({ href, icon: Icon, label, path, badge, isDark, isCollapsed }: 
                 <span className={cn(
                     "px-2 py-0.5 text-[10px] font-extrabold rounded-full tabular-nums shadow-sm transition-all duration-300",
                     isActive 
-                        ? isDark ? "bg-surface text-[#ff5a00]" : "bg-[#ff5a00] text-white"
-                        : isDark ? "bg-[#ff5a00] text-white group-hover:shadow-[0_0_10px_rgba(255,90,0,0.5)]" : "bg-surface-muted text-ink-muted"
+                        ? isDark ? "bg-surface text-brand-500" : "bg-brand-500 text-white"
+                        : isDark ? "bg-brand-500 text-white group-hover:shadow-[0_0_10px_rgba(255,90,0,0.5)]" : "bg-surface-muted text-ink-muted"
                 )}>
                     {badge}
                 </span>
             )}
             {/* Dot indicator for collapsed active state with badge */}
             {isCollapsed && badge && (
-                <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#ff5a00] border-2 border-[#0a0a0a]" />
+                <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-brand-500 border-2 border-[#0a0a0a]" />
             )}
         </Link>
     )
