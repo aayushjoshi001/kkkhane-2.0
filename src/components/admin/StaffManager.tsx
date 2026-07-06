@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import useSWR from 'swr'
 import Image from 'next/image'
 import { Shield, ChefHat, Users, User, Check, AlertTriangle, Loader2, Pencil, Trash2, Eye, EyeOff, Banknote, Search, Mail, X, RotateCw } from 'lucide-react'
 import { updateStaffRoleAction, toggleStaffStatusAction, updateStaffNameAction, resetStaffPasswordAction, deleteStaffAction } from '@/app/(admin)/admin/staff/actions'
@@ -8,6 +9,7 @@ import { createDepartmentAction, updateDepartmentAction, deleteDepartmentAction,
 import { createInvitationAction, revokeInvitationAction, resendInvitationAction } from '@/app/(admin)/admin/staff/invite-actions'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
+import { fetchStaffData } from '@/lib/swr-fetchers'
 
 type StaffMember = {
     id: string
@@ -70,9 +72,17 @@ export default function StaffManager({
     currentUserId: string
     restaurantId: string
 }) {
-    const [staff, setStaff] = useState<StaffMember[]>(initialStaff)
-    const [departments, setDepartments] = useState<Department[]>(initialDepartments)
-    const [invitations, setInvitations] = useState<Invitation[]>(initialInvitations)
+    const { data: staffData = { staff: initialStaff, departments: initialDepartments, invitations: initialInvitations }, mutate } = useSWR<{
+        staff: StaffMember[];
+        departments: Department[];
+        invitations: Invitation[];
+    }>(
+        ['staff', restaurantId], 
+        () => fetchStaffData(restaurantId), 
+        { fallbackData: { staff: initialStaff, departments: initialDepartments, invitations: initialInvitations } }
+    )
+    const { staff, departments, invitations } = staffData
+
     const [activeTab, setActiveTab] = useState<'staff' | 'departments' | 'invitations'>('staff')
     const [submittingId, setSubmittingId] = useState<string | null>(null)
     const [invitingId, setInvitingId] = useState<string | null>(null)
@@ -158,7 +168,7 @@ export default function StaffManager({
 
         if (res.success) {
             const newRoleName = roles.find(r => r.id === changeRoleModal.newRoleId)?.name || ''
-            setStaff(staff.map(s => s.id === user.id ? { ...s, role_id: changeRoleModal.newRoleId, roles: { ...s.roles, name: newRoleName } } : s))
+            mutate()
             toast.success('Role updated')
         } else {
             toast.error(res.error || 'Failed to update role')
@@ -181,7 +191,7 @@ export default function StaffManager({
         const res = await toggleStaffStatusAction(user.id, !user.is_active)
 
         if (res.success) {
-            setStaff(staff.map(s => s.id === user.id ? { ...s, is_active: !user.is_active } : s))
+            mutate()
             toast.success(user.is_active ? 'User suspended' : 'User activated')
         } else {
             toast.error(res.error || 'Failed to update status')
@@ -226,7 +236,7 @@ export default function StaffManager({
 
             // Add new staff to list
             if (data.staff) {
-                setStaff(prev => [data.staff, ...prev])
+                mutate()
             }
 
             toast.success(data.message || 'Staff member created successfully')
@@ -272,10 +282,7 @@ export default function StaffManager({
         }
 
         if (res.invitation) {
-            setInvitations(prev => {
-                const withoutOld = prev.filter(i => i.id !== res.invitation!.id)
-                return [res.invitation as Invitation, ...withoutOld]
-            })
+            mutate()
         }
         toast.success(`Invitation sent to ${inviteModal.email.trim()}`)
         setInviteModal({ isOpen: false, email: '', roleId: 4, departmentId: '', isInviting: false })
@@ -293,7 +300,7 @@ export default function StaffManager({
         setInvitingId(invitation.id)
         const res = await revokeInvitationAction(invitation.id)
         if (res.success) {
-            setInvitations(prev => prev.map(i => i.id === invitation.id ? { ...i, status: 'revoked' } : i))
+            mutate()
             toast.success('Invitation revoked')
         } else {
             toast.error(res.error || 'Failed to revoke invitation')
@@ -305,7 +312,7 @@ export default function StaffManager({
         setInvitingId(invitation.id)
         const res = await resendInvitationAction(invitation.id)
         if (res.success && res.invitation) {
-            setInvitations(prev => prev.map(i => i.id === invitation.id ? (res.invitation as Invitation) : i))
+            mutate()
             toast.success(`Invitation resent to ${invitation.email}`)
         } else {
             toast.error(res.error || 'Failed to resend invitation')
@@ -326,7 +333,7 @@ export default function StaffManager({
         if (editModal.fullName.trim() !== editModal.user.full_name) {
             const res = await updateStaffNameAction(editModal.user.id, editModal.fullName)
             if (res.success) {
-                setStaff(prev => prev.map(s => s.id === editModal.user!.id ? { ...s, full_name: editModal.fullName.trim() } : s))
+                mutate()
             } else {
                 toast.error(res.error || 'Failed to update name')
                 success = false
@@ -336,8 +343,7 @@ export default function StaffManager({
         if (editModal.departmentId !== editModal.user.department_id) {
             const res = await updateStaffDepartmentAction(editModal.user.id, editModal.departmentId)
             if (res.success) {
-                const newDept = departments.find(d => d.id === editModal.departmentId)
-                setStaff(prev => prev.map(s => s.id === editModal.user!.id ? { ...s, department_id: editModal.departmentId, departments: newDept || null } : s))
+                mutate()
             } else {
                 toast.error(res.error || 'Failed to update department')
                 success = false
@@ -374,7 +380,7 @@ export default function StaffManager({
         setEditModal(prev => ({ ...prev, deletingId: user.id }))
         const res = await deleteStaffAction(user.id)
         if (res.success) {
-            setStaff(prev => prev.filter(s => s.id !== user.id))
+            mutate()
             setEditModal({ isOpen: false, user: null, fullName: '', departmentId: null, newPassword: '', confirmPassword: '', showPassword: false, saving: false, deletingId: null })
             toast.success(`${user.full_name} has been removed`)
         } else {
@@ -393,7 +399,7 @@ export default function StaffManager({
         if (departmentModal.department) {
             const res = await updateDepartmentAction(departmentModal.department.id, departmentModal.name, departmentModal.description)
             if (res.success) {
-                setDepartments(prev => prev.map(d => d.id === departmentModal.department!.id ? { ...d, name: departmentModal.name.trim(), description: departmentModal.description.trim() || null } : d))
+                mutate()
                 toast.success('Department updated')
                 setDepartmentModal({ isOpen: false, department: null, name: '', description: '', saving: false })
             } else {
@@ -403,7 +409,7 @@ export default function StaffManager({
         } else {
             const res = await createDepartmentAction(departmentModal.name, departmentModal.description)
             if (res.success && res.department) {
-                setDepartments(prev => [...prev, res.department as Department])
+                mutate()
                 toast.success('Department created')
                 setDepartmentModal({ isOpen: false, department: null, name: '', description: '', saving: false })
             } else {
@@ -426,8 +432,7 @@ export default function StaffManager({
         
         const res = await deleteDepartmentAction(dept.id)
         if (res.success) {
-            setDepartments(prev => prev.filter(d => d.id !== dept.id))
-            setStaff(prev => prev.map(s => s.department_id === dept.id ? { ...s, department_id: null, departments: null } : s))
+            mutate()
             toast.success('Department deleted')
         } else {
             toast.error(res.error || 'Failed to delete department')

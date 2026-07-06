@@ -1,13 +1,15 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
+import useSWR from 'swr'
 import { QrCode, Plus, Edit2, Trash2, Check, X, Loader2, Download, Smartphone } from 'lucide-react'
 import NextImage from 'next/image'
 import type { Table } from '@/types/database'
 import { QRCodeCanvas } from 'qrcode.react'
-import { addTableAction, updateTableAction, deleteTableAction } from '@/app/(admin)/admin/tables/actions'
+import { updateTableAction, deleteTableAction, addTableAction } from '@/app/(admin)/admin/tables/actions'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
+import { fetchTablesData } from '@/lib/swr-fetchers'
 
 // Brand colors for QR code customization
 const QR_FG_COLOR = '#000000'   // black for QR code body to maximize scan readability
@@ -26,7 +28,7 @@ export default function TableManager({
     restaurantName: string
     appUrl: string
 }) {
-    const [tables, setTables] = useState<Table[]>(initialTables)
+    const { data: tables = [], mutate } = useSWR(['tables', restaurantId], () => fetchTablesData(restaurantId), { fallbackData: initialTables })
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [editingTable, setEditingTable] = useState<Table | null>(null)
     const [formData, setFormData] = useState({ label: '', capacity: '' })
@@ -79,14 +81,16 @@ export default function TableManager({
                 capacity: capacityNum
             })
             if (res.success) {
-                setTables(tables.map(t => t.id === editingTable.id ? { ...t, label: formData.label, capacity: capacityNum || null } : t))
+                mutate()
+                toast.success('Table updated')
             } else {
                 toast.error(res.error || 'Failed to update table')
             }
         } else {
             const res = await addTableAction(restaurantId, formData.label, capacityNum)
             if (res.data) {
-                setTables([...tables, res.data])
+                mutate()
+                toast.success('Table added')
             } else {
                 toast.error(res.error || 'Failed to add table')
             }
@@ -107,7 +111,7 @@ export default function TableManager({
 
         const res = await deleteTableAction(id)
         if (res.success) {
-            setTables(tables.filter(t => t.id !== id))
+            mutate()
             toast.success('Table deleted')
         } else {
             toast.error(res.error || 'Failed to delete table')

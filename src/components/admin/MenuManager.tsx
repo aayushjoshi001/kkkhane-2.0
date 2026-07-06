@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
+import useSWR from 'swr'
 import { NepaliInput } from '@/components/ui/NepaliInput'
 import Image from 'next/image'
 import { Plus, Edit2, Trash2, GripVertical, Check, X, Tag, Loader2, Image as ImageIcon, Globe, Upload, Link, Search } from 'lucide-react'
@@ -18,6 +19,7 @@ import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import TranslationModal from '@/components/admin/TranslationModal'
+import { fetchMenuData } from '@/lib/swr-fetchers'
 
 type TranslationRow = { language_code: string; entity_type: string; entity_id: string; translated_text: string }
 
@@ -36,10 +38,17 @@ export default function MenuManager({
     initialIngredients: Ingredient[]
     restaurantId: string
 }) {
-    const [categories, setCategories] = useState<MenuCategory[]>(initialCategories)
+    const { data: menuData = { categories: initialCategories, items: initialItems, ingredients: initialIngredients }, mutate } = useSWR<{
+        categories: MenuCategory[];
+        items: MenuItem[];
+        ingredients: Ingredient[];
+    }>(
+        ['menu', restaurantId], 
+        () => fetchMenuData(restaurantId), 
+        { fallbackData: { categories: initialCategories, items: initialItems, ingredients: initialIngredients } }
+    )
+    const { categories, items, ingredients } = menuData
     const money = useCurrency()
-    const [items, setItems] = useState<MenuItem[]>(initialItems)
-    const [ingredients, setIngredients] = useState<Ingredient[]>(initialIngredients)
     const [recipe, setRecipe] = useState<{
         ingredient_id: string;
         quantity_needed: number;
@@ -138,22 +147,23 @@ export default function MenuManager({
                 image_url: categoryImageUrl || null
             })
             if (res.success) {
-                setCategories(categories.map(c => c.id === editingCategory.id ? { ...c, name: categoryName, sort_order: categorySort, is_visible: categoryVisible, image_url: categoryImageUrl || null } : c))
+                mutate()
                 toast.success('Category updated')
+                setIsCategoryModalOpen(false)
             } else {
                 toast.error(res.error || 'Failed to update category')
             }
         } else {
             const res = await addCategoryAction(restaurantId, categoryName, categorySort, categoryVisible, categoryImageUrl || null)
             if (res.data) {
-                setCategories([...categories, res.data])
+                mutate()
                 toast.success('Category created')
+                setIsCategoryModalOpen(false)
             } else {
                 toast.error(res.error || 'Failed to create category')
             }
         }
 
-        setIsCategoryModalOpen(false)
         setIsSubmitting(false)
     }
 
@@ -168,7 +178,7 @@ export default function MenuManager({
 
         const res = await deleteCategoryAction(id)
         if (res.success) {
-            setCategories(categories.filter(c => c.id !== id))
+            mutate()
             toast.success('Category deleted')
         } else {
             toast.error(res.error || 'Failed to delete category')
@@ -288,26 +298,23 @@ export default function MenuManager({
         if (editingItem) {
             const res = await updateItemAction(editingItem.id, payload, variationsPayload, validRecipe)
             if (res.success) {
-                setItems(items.map(i => i.id === editingItem.id ? { 
-                    ...i, 
-                    ...payload, 
-                    variations: variationsPayload as MenuItem['variations'] 
-                } as MenuItem : i))
+                mutate()
                 toast.success('Item updated')
+                setIsItemModalOpen(false)
             } else {
                 toast.error(res.error || 'Failed to update item')
             }
         } else {
             const res = await addItemAction(payload, variationsPayload, validRecipe)
             if (res.data) {
+                mutate()
                 toast.success('Item added')
-                setTimeout(() => window.location.reload(), 800)
+                setIsItemModalOpen(false)
             } else {
                 toast.error(res.error || 'Failed to add item')
             }
         }
 
-        setIsItemModalOpen(false)
         setIsSubmitting(false)
     }
 
@@ -322,7 +329,7 @@ export default function MenuManager({
 
         const res = await deleteItemAction(id)
         if (res.success) {
-            setItems(items.filter(i => i.id !== id))
+            mutate()
             toast.success('Item deleted')
         } else {
             toast.error(res.error || 'Failed to delete item')
@@ -403,9 +410,9 @@ export default function MenuManager({
             if (res.error) {
                 toast.error(res.error)
             } else if (res.data) {
+                mutate()
                 toast.success('Stock item created!')
-                const created: Ingredient = res.data as any
-                setIngredients(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
+                const created = res.data
                 setRecipe(prev => {
                     const index = prev.findIndex(r => r.ingredient_id === '')
                     if (index !== -1) {
