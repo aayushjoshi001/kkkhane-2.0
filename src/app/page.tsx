@@ -3,12 +3,10 @@ import { getOptionalUser } from '@/lib/auth'
 import Link from 'next/link'
 import Image from 'next/image'
 import { MarketingNav, MarketingFooter } from '@/components/marketing'
-import AppleLogo from '@/components/shared/AppleLogo'
-import ComingSoonButton from '@/components/shared/ComingSoonButton'
 import {
     QrCode, ArrowRight, BarChart3,
-    ShieldCheck, Globe, CheckCircle,
-    Play, Star, Plus, ChefHat, Receipt, LayoutDashboard
+    Globe, CheckCircle,
+    Star, Plus, ChefHat, Receipt, LayoutDashboard
 } from 'lucide-react'
 
 const ROLE_LANDING: Record<string, string> = {
@@ -24,7 +22,7 @@ const faqs = [
     { q: "What are the features of kkkhane?", a: "It provides robust features including Order Management, Inventory Tracking, Accounting, Digital QR Menu, and Real-Time Reporting." },
     { q: "Can I use the kkkhane software for free?", a: "Yes, we offer a completely free tier with essential tools for small businesses." },
     { q: "How secure is my restaurant data?", a: "We use top-tier cloud encryption and role-based access control to ensure complete security." },
-    { q: "Is kkkhane Nepal available in Android and iOS also?", a: "Yes, you can access our platform on Android, iOS, or any web browser." },
+    { q: "Is kkkhane Nepal available in Android and iOS also?", a: "Yes, you can access our platform on any device with a modern web browser." },
     { q: "Do you offer a QR code menu feature?", a: "Absolutely. Our digital QR menus allow contactless ordering seamlessly." },
 ]
 
@@ -196,22 +194,13 @@ export default async function Home() {
                                 Manage your business from your phone, tablet, or desktop. Our cloud architecture ensures you are always synced across all your devices in real-time.
                             </p>
 
-                            <div className="flex flex-col sm:flex-row justify-center lg:justify-start gap-4">
-                                <ComingSoonButton feature="The Google Play app" className="bg-black text-white px-6 py-4 rounded-2xl flex items-center justify-center gap-3 hover:bg-gray-800 transition-colors shadow-lg">
-                                    <Play size={24} className="fill-current" /> 
+                                <div className="bg-black text-white px-8 py-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg">
+                                    <Globe size={24} className="text-[var(--color-primary)]" /> 
                                     <div className="text-left">
-                                        <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">Get it on</span>
-                                        <span className="block text-sm font-bold">Google Play</span>
+                                        <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">Access Anywhere</span>
+                                        <span className="block text-sm font-bold">Web Browser</span>
                                     </div>
-                                </ComingSoonButton>
-                                <ComingSoonButton feature="The App Store app" className="bg-black text-white px-6 py-4 rounded-2xl flex items-center justify-center gap-3 hover:bg-gray-800 transition-colors shadow-lg">
-                                    <AppleLogo size={24} />
-                                    <div className="text-left">
-                                        <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">Download on the</span>
-                                        <span className="block text-sm font-bold">App Store</span>
-                                    </div>
-                                </ComingSoonButton>
-                            </div>
+                                </div>
                         </div>
                     </div>
                 </div>
@@ -300,13 +289,13 @@ export default async function Home() {
                     <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
                         {/* Free Tier */}
                         <div className="bg-white rounded-[2.5rem] p-10 border border-gray-200 hover:border-gray-300 transition-all hover:shadow-xl flex flex-col">
-                            <h3 className="text-2xl font-extrabold text-gray-900 mb-2">Essential</h3>
-                            <p className="text-gray-500 font-medium mb-6">Perfect for small cafes and startups.</p>
+                            <h3 className="text-2xl font-extrabold text-gray-900 mb-2">Free Starter</h3>
+                            <p className="text-gray-500 font-medium mb-6">Perfect for small food stalls or testing the waters.</p>
                             <div className="mb-8">
                                 <span className="text-5xl font-black text-gray-900">Free</span>
                             </div>
                             <ul className="space-y-4 mb-10 flex-1">
-                                {['Digital QR Menu', 'Order Management', 'Basic Reports', 'Up to 3 Staff Members', 'Email Support'].map((f, i) => (
+                                {['Up to 1 Staff Member', 'Max 20 Menu Items', 'Basic POS Features', 'Standard Email Support'].map((f, i) => (
                                     <li key={i} className="flex items-center gap-3 font-medium text-gray-700">
                                         <CheckCircle className="text-brand-500 shrink-0" size={20} />
                                         {f}
@@ -322,14 +311,14 @@ export default async function Home() {
                         <div className="bg-gray-900 rounded-[2.5rem] p-10 border border-gray-800 hover:border-gray-700 transition-all hover:shadow-2xl shadow-xl shadow-gray-900/20 relative flex flex-col overflow-hidden">
                             <div className="absolute top-0 right-0 w-64 h-64 bg-brand-500 opacity-20 blur-[80px] rounded-full pointer-events-none" />
                             <div className="absolute top-6 right-8 bg-brand-500 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">Most Popular</div>
-                            <h3 className="text-2xl font-extrabold text-white mb-2">Professional</h3>
-                            <p className="text-gray-400 font-medium mb-6">For growing restaurants that need more power.</p>
+                            <h3 className="text-2xl font-extrabold text-white mb-2">Pro Business</h3>
+                            <p className="text-gray-400 font-medium mb-6">Everything you need to run and scale a growing restaurant.</p>
                             <div className="mb-8 flex items-end gap-2">
-                                <span className="text-5xl font-black text-white">Rs. 2,999</span>
+                                <span className="text-5xl font-black text-white">Rs. 1,200</span>
                                 <span className="text-gray-400 font-medium mb-2">/month</span>
                             </div>
                             <ul className="space-y-4 mb-10 flex-1">
-                                {['Everything in Essential', 'IRD Approved Billing', 'Unlimited Staff Members', 'Advanced Analytics & Exports', 'Priority 24/7 Support'].map((f, i) => (
+                                {['Unlimited Staff & Roles', 'Unlimited Menu Items', 'Kitchen Display System (KDS)', 'Advanced Analytics & Reports', 'Priority 24/7 Support'].map((f, i) => (
                                     <li key={i} className="flex items-center gap-3 font-medium text-gray-300">
                                         <CheckCircle className="text-brand-400 shrink-0" size={20} />
                                         {f}

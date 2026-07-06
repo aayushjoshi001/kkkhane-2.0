@@ -8,73 +8,53 @@ import { useFeatures } from '@/lib/contexts/FeatureContext'
 
 const PRICING_PLANS = [
     {
-        name: 'Free',
+        name: 'Free Starter',
         price: '0',
-        description: 'For individuals & starters looking to digitize their kitchen.',
+        description: 'Perfect for small food stalls or testing the waters.',
         features: [
-            'Up to 100 Dishes & 10 Categories',
-            'Dine-in & Digital QR Menu',
-            'Basic KOT/BOT Management',
-            'Limited Income & Expense Tracking',
-            'Daybook (Daily Closing)',
+            'Up to 1 Staff Member (Owner)',
+            'Max 20 Menu Items',
+            'Basic POS Features',
+            'Standard Email Support',
         ],
         limitations: [
-            'No Customer Orders or Reservations',
-            'No Low Stock Alerts',
-            'No Custom User Roles',
+            'No Kitchen Display System',
+            'No Advanced Analytics',
+            'Limited Staff Roles',
         ],
         cta: 'Start for Free',
         href: '/signup',
         popular: false,
     },
     {
-        name: 'Basic',
-        price: '10,000',
-        description: 'Perfect for tracking order management and basic needs.',
+        name: 'Pro Business',
+        price: '14,400',
+        description: 'Everything you need to run and scale a growing restaurant.',
         features: [
-            'Up to 5 Users Login',
-            'Up to 20 Tables & 500 Dishes',
-            'Dine-in, Delivery & QR Ordering',
-            'Up to 30 Customer Management',
-            'Full History of Transitions',
-            'Standard Support',
-        ],
-        cta: 'Start 14-Day Trial',
-        href: '/signup',
-        popular: false,
-    },
-    {
-        name: 'Premium',
-        price: '22,000',
-        description: 'Perfect for growing restaurants looking to scale rapidly.',
-        features: [
-            'Up to 24 Users & 50 Tables',
-            'Up to 1000 Dishes',
-            'Takeaway, Pickup & Reservations',
-            'Live Sales & Finance Insights',
-            'Low Stock Alerts (Email/SMS)',
-            'Custom User Roles',
-            'Daybook Closing Alerts',
+            'Unlimited Staff & Roles',
+            'Unlimited Menu Items',
+            'Advanced POS & Waiter App',
+            'Kitchen Display System (KDS)',
+            'Advanced Analytics & Reports',
+            'Priority 24/7 Support',
         ],
         cta: 'Start 14-Day Trial',
         href: '/signup',
         popular: true,
     },
     {
-        name: 'Platinum',
-        price: '58,000',
-        description: 'For large sized teams with multi-kitchen departments.',
+        name: 'Enterprise',
+        price: 'Custom',
+        description: 'Tailored solutions for franchises and large chains.',
         features: [
-            'Unlimited Users, Tables & Dishes',
-            'Multi-Outlet Management',
-            'eBilling Setup (IRD Compliant)',
-            'Advanced Insights & Reporting',
-            'Custom Domain & Branding',
-            'Unlimited Activity Logs',
-            '24/7 Priority Support',
+            'Multi-Location Management',
+            'Custom POS Hardware Integrations',
+            'Dedicated Account Manager',
+            'On-site Training & Setup',
+            'Custom Feature Development',
         ],
         cta: 'Contact Sales',
-        href: '/contact',
+        href: 'mailto:enterprise@kkkhane.com',
         popular: false,
     }
 ]
@@ -83,8 +63,8 @@ const FAQS = [
     { q: "Is there a free trial available?", a: "Yes, all paid plans come with a 14-day free trial so you can test all the premium features before committing." },
     { q: "Can I upgrade or downgrade later?", a: "Absolutely. You can upgrade, downgrade, or cancel your plan at any time right from your dashboard." },
     { q: "Are there any hidden setup fees?", a: "No hidden fees. Setup and standard onboarding support are fully included in your subscription." },
-    { q: "Do I need special hardware?", a: "No, kkkhane works perfectly on any Android, iOS device, tablet, or desktop web browser." },
-    { q: "Is it IRD Compliant?", a: "Yes, our higher-tier plans include full eBilling integration compliant with Nepal's Inland Revenue Department." },
+    { q: "Do I need special hardware?", a: "No, kkkhane works perfectly on any device with a modern web browser." },
+    { q: "Is it IRD Compliant?", a: "Yes, our platform includes IRD-compliant billing settings for registered restaurants." },
     { q: "What happens if I cancel?", a: "You can cancel anytime. If you cancel a paid plan, your account will revert to the Free version after the billing period ends." }
 ]
 
@@ -138,7 +118,7 @@ export default function PricingPage() {
                 </div>
 
                 {/* Pricing Cards */}
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch pt-8 pb-8">
+                <div className="grid md:grid-cols-3 lg:grid-cols-3 gap-6 items-stretch pt-8 pb-8">
                     {PRICING_PLANS.map((plan) => (
                         <div
                             key={plan.name}
@@ -161,10 +141,10 @@ export default function PricingPage() {
                                 <div className="flex items-baseline gap-1">
                                     <span className="text-gray-500 font-bold">{currencySymbol}</span>
                                     <span className="text-4xl font-black text-gray-900 tracking-tight">
-                                        {billingCycle === 'yearly' ? plan.price : Math.round(parseInt(plan.price.replace(/,/g, '')) / 10).toLocaleString()}
+                                        {plan.price === 'Custom' || plan.price === '0' ? plan.price : (billingCycle === 'yearly' ? plan.price : Math.round(parseInt(plan.price.replace(/,/g, '')) / 12).toLocaleString())}
                                     </span>
                                 </div>
-                                <span className="text-sm font-medium text-gray-500">/{billingCycle === 'yearly' ? 'year' : 'month'}</span>
+                                {plan.price !== 'Custom' && <span className="text-sm font-medium text-gray-500">/{billingCycle === 'yearly' ? 'year' : 'month'}</span>}
                             </div>
 
                             <MarketingButton
