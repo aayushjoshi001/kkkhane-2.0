@@ -216,7 +216,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                 return next
             })
         }
-        const session = res.session as Session
+        const session = res.session as unknown as Session
         await setTableStatus(tableId, 'available')
         setTables(prev => prev.map(t => t.id === tableId ? { ...t, activeSession: session } : t))
         setSelectedTable(prev => prev?.id === tableId ? { ...prev, activeSession: session } : prev)

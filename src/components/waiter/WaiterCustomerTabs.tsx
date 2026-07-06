@@ -11,7 +11,7 @@ import { Bell, Droplets, Receipt, Sparkles, MessageCircle, LogIn, Flame, Utensil
 import { OrderCard, Button } from '@/components/ui'
 import { acknowledgeServiceRequest, completeServiceRequest } from '@/app/api/service-requests/actions'
 import { openSessionFromRequest } from '@/app/(staff)/waiter/actions'
-import type { ServiceRequest, ServiceRequestType, ServiceRequestStatus } from '@/types/database'
+import type { ServiceRequest, ServiceRequestType, ServiceRequestStatus, Settings } from '@/types/database'
 import CashPaymentFeed, { type UnpaidOrder } from './CashPaymentFeed'
 import PaymentVerificationFeed, { type PaymentClaim } from './PaymentVerificationFeed'
 
@@ -48,7 +48,7 @@ interface Props {
     restaurantId: string
     userId: string
     staffNames?: Record<string, string>
-    features: { digital_menu: boolean; ordering: boolean; payments: boolean }
+    features: Settings['features_v2'] | null
 }
 
 type TabType = 'food' | 'service' | 'billing'
