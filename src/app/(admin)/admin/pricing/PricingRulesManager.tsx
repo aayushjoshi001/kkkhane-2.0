@@ -3,8 +3,10 @@
 import { useState } from 'react'
 import { createPricingRuleAction, updatePricingRuleAction, deletePricingRuleAction } from './actions'
 import { Plus, Trash2, Power, Pencil, CalendarClock, Search, Loader2 } from 'lucide-react'
+import useSWR from 'swr'
 import toast from 'react-hot-toast'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
+import { fetchPricingRules } from '@/lib/swr-fetchers'
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const RULE_TYPES = [
@@ -75,7 +77,7 @@ export default function PricingRulesManager({ initialRules, menuItems, categorie
     categories: { id: string; name: string }[]
     restaurantId: string
 }) {
-    const [rules, setRules] = useState<Rule[]>(initialRules)
+    const { data: rules = initialRules, mutate } = useSWR(['pricing_rules', restaurantId], () => fetchPricingRules(restaurantId), { fallbackData: initialRules })
     const money = useCurrency()
     const [showForm, setShowForm] = useState(false)
     const [editingId, setEditingId] = useState<string | null>(null)
@@ -187,9 +189,7 @@ export default function PricingRulesManager({ initialRules, menuItems, categorie
             const result = await updatePricingRuleAction(editingId, payload)
             setSaving(false)
             if (result.error) { toast.error(result.error); return }
-            setRules(prev => prev.map(r => r.id === editingId
-                ? { ...r, ...payload, menu_items: payload.applies_to_item_id ? { name: menuItems.find(i => i.id === payload.applies_to_item_id)?.name || '' } : null }
-                : r))
+            mutate()
             toast.success('Rule updated')
         } else {
             const result = await createPricingRuleAction({ restaurant_id: restaurantId, ...payload })
@@ -200,7 +200,7 @@ export default function PricingRulesManager({ initialRules, menuItems, categorie
                     ...(result.data as Rule),
                     menu_items: payload.applies_to_item_id ? { name: menuItems.find(i => i.id === payload.applies_to_item_id)?.name || '' } : null,
                 }
-                setRules(prev => [created, ...prev])
+                mutate()
             }
             toast.success('Rule created')
         }
@@ -210,14 +210,14 @@ export default function PricingRulesManager({ initialRules, menuItems, categorie
     async function toggleActive(rule: Rule) {
         const result = await updatePricingRuleAction(rule.id, { is_active: !rule.is_active })
         if (result.error) { toast.error(result.error); return }
-        setRules(prev => prev.map(r => r.id === rule.id ? { ...r, is_active: !r.is_active } : r))
+        mutate()
     }
 
     async function handleDelete(id: string) {
         if (!confirm('Delete this pricing rule?')) return
         const result = await deletePricingRuleAction(id)
         if (result.error) { toast.error(result.error); return }
-        setRules(prev => prev.filter(r => r.id !== id))
+        mutate()
         toast.success('Deleted')
     }
 
@@ -409,7 +409,7 @@ export default function PricingRulesManager({ initialRules, menuItems, categorie
                                     <td className="px-5 py-4 text-ink-subtle hidden md:table-cell">{appliesToLabel(r)}</td>
                                     <td className="px-5 py-4 text-ink-subtle text-xs hidden lg:table-cell whitespace-nowrap">{dateRangeLabel(r.valid_from, r.valid_until)}</td>
                                     <td className="px-5 py-4 text-ink-subtle text-xs hidden lg:table-cell whitespace-nowrap">
-                                        <span className="font-medium">{(r.days_of_week?.length ? r.days_of_week.map(d => DAYS[d]).join(', ') : 'All days')}</span>
+                                        <span className="font-medium">{(r.days_of_week?.length ? r.days_of_week.map((d: number) => DAYS[d]).join(', ') : 'All days')}</span>
                                         <br /><span className="tabular-nums">{r.start_time?.slice(0, 5)}–{r.end_time?.slice(0, 5)}</span>
                                     </td>
                                     <td className="px-5 py-4 text-center font-bold tabular-nums text-ink hidden sm:table-cell">{r.priority}</td>

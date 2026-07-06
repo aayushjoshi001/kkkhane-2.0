@@ -4,13 +4,19 @@ import { useState } from 'react'
 import { createIngredientAction, addStockMovementAction, deleteIngredientAction, updateIngredientAction } from './actions'
 import { Plus, Trash2, Edit2, AlertTriangle, Package, X, Check, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import useSWR from 'swr'
 import type { Ingredient } from '@/types/database'
+import { fetchIngredientsData } from '@/lib/swr-fetchers'
 
 export default function IngredientsManager({ initialIngredients, restaurantId }: {
     initialIngredients: Ingredient[]
     restaurantId: string
 }) {
-    const [ingredients, setIngredients] = useState(initialIngredients)
+    const { data: ingredients = initialIngredients, mutate } = useSWR(
+        ['ingredients', restaurantId],
+        () => fetchIngredientsData(restaurantId),
+        { fallbackData: initialIngredients }
+    )
     const [showAdd, setShowAdd] = useState(false)
     const [editingItem, setEditingItem] = useState<Ingredient | null>(null)
     const [stockModal, setStockModal] = useState<Ingredient | null>(null)
@@ -54,7 +60,7 @@ export default function IngredientsManager({ initialIngredients, restaurantId }:
             const result = await updateIngredientAction(editingItem.id, editable)
             setSaving(false)
             if (result.error) { toast.error(result.error); return }
-            setIngredients(prev => prev.map(i => i.id === editingItem.id ? { ...i, ...editable } : i).sort((a, b) => a.name.localeCompare(b.name)))
+            mutate()
             toast.success('Stock item updated!')
         } else {
             const result = await createIngredientAction({
@@ -63,7 +69,7 @@ export default function IngredientsManager({ initialIngredients, restaurantId }:
             })
             setSaving(false)
             if (result.error) { toast.error(result.error); return }
-            if (result.data) setIngredients(prev => [...prev, result.data].sort((a, b) => a.name.localeCompare(b.name)))
+            if (result.data) mutate()
             toast.success('Stock item added!')
         }
         setShowAdd(false)
@@ -82,11 +88,7 @@ export default function IngredientsManager({ initialIngredients, restaurantId }:
         })
         setSaving(false)
         if (result.error) { toast.error(result.error); return }
-        // Update local state
-        const delta = moveForm.movement_type === 'purchase' ? (parseFloat(moveForm.quantity) || 0) : -(parseFloat(moveForm.quantity) || 0)
-        setIngredients(prev => prev.map(i =>
-            i.id === stockModal.id ? { ...i, stock_quantity: Math.max(0, i.stock_quantity + delta) } : i
-        ))
+        mutate()
         toast.success('Stock updated!')
         setStockModal(null)
         setMoveForm({ movement_type: 'purchase', quantity: '', notes: '' })
@@ -96,7 +98,7 @@ export default function IngredientsManager({ initialIngredients, restaurantId }:
         if (!confirm('Delete this stock item?')) return
         const result = await deleteIngredientAction(id)
         if (result.error) { toast.error(result.error); return }
-        setIngredients(prev => prev.filter(i => i.id !== id))
+        mutate()
         toast.success('Deleted')
     }
 

@@ -4,13 +4,15 @@ import { useState } from 'react'
 import { generateEodReportAction } from './actions'
 import { FileText, Calendar, TrendingUp, DollarSign } from 'lucide-react'
 import toast from 'react-hot-toast'
+import useSWR from 'swr'
+import { fetchReportsData } from '@/lib/swr-fetchers'
 import type { EodReport } from '@/types/database'
 
 export default function ReportsViewer({ initialReports, restaurantId }: {
     initialReports: EodReport[]
     restaurantId: string
 }) {
-    const [reports, setReports] = useState(initialReports)
+    const { data: reports = initialReports, mutate } = useSWR(['reports', restaurantId], () => fetchReportsData(restaurantId), { fallbackData: initialReports })
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
     const [generating, setGenerating] = useState(false)
     const [expanded, setExpanded] = useState<string | null>(null)
@@ -23,10 +25,7 @@ export default function ReportsViewer({ initialReports, restaurantId }: {
         toast.success('Report generated!')
         // Refetch is handled by revalidation, but add to local state
         if (result.data) {
-            setReports(prev => {
-                const filtered = prev.filter(r => r.report_date !== selectedDate)
-                return [result.data, ...filtered].sort((a, b) => b.report_date.localeCompare(a.report_date))
-            })
+            mutate()
         }
     }
 

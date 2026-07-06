@@ -5,6 +5,8 @@ import { createPromoCodeAction, updatePromoCodeAction, deletePromoCodeAction } f
 import type { PromoCode } from '@/types/database'
 import { Plus, Trash2, ToggleLeft, ToggleRight, Pencil } from 'lucide-react'
 import toast from 'react-hot-toast'
+import useSWR from 'swr'
+import { fetchPromoCodes } from '@/lib/swr-fetchers'
 
 const PROMO_TYPES = [
     { value: 'percentage_off', label: '% Off' },
@@ -17,7 +19,7 @@ export default function PromoCodesManager({ initialPromos, restaurantId }: {
     initialPromos: PromoCode[]
     restaurantId: string
 }) {
-    const [promos, setPromos] = useState(initialPromos)
+    const { data: promos = initialPromos, mutate } = useSWR(['promo_codes', restaurantId], () => fetchPromoCodes(restaurantId), { fallbackData: initialPromos })
     const [showForm, setShowForm] = useState(false)
     const [editingId, setEditingId] = useState<string | null>(null)
     const [form, setForm] = useState({
@@ -81,9 +83,9 @@ export default function PromoCodesManager({ initialPromos, restaurantId }: {
             const result = await updatePromoCodeAction(editingId, updates)
             setSaving(false)
             if (result.error) { toast.error(result.error); return }
-            setPromos(promos.map(p => p.id === editingId ? { ...p, ...updates, code: updates.code.toUpperCase().trim() } as PromoCode : p))
+            mutate()
+            toast.success('Promo code updated')
             closeForm()
-            toast.success('Promo code updated!')
             return
         }
 
@@ -100,23 +102,23 @@ export default function PromoCodesManager({ initialPromos, restaurantId }: {
         })
         setSaving(false)
         if (result.error) { toast.error(result.error); return }
-        setPromos([result.data, ...promos])
+        mutate()
+        toast.success('Promo code created')
         closeForm()
-        toast.success('Promo code created!')
     }
 
     async function toggleActive(promo: PromoCode) {
         const result = await updatePromoCodeAction(promo.id, { is_active: !promo.is_active })
         if (result.error) { toast.error(result.error); return }
-        setPromos(promos.map(p => p.id === promo.id ? { ...p, is_active: !p.is_active } : p))
+        mutate()
     }
 
     async function handleDelete(id: string) {
         if (!confirm('Delete this promo code?')) return
         const result = await deletePromoCodeAction(id)
         if (result.error) { toast.error(result.error); return }
-        setPromos(promos.filter(p => p.id !== id))
-        toast.success('Deleted')
+        mutate()
+        toast.success('Promo code deleted')
     }
 
     return (

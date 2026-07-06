@@ -1,12 +1,14 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import useSWR from 'swr'
 import { Plus, Trash2, Edit2, Sparkles, AlertCircle, Info, ShoppingBag, Upload, Link as LinkIcon, Image as ImageIcon, Loader2, X } from 'lucide-react'
 import type { MenuItem, MenuCategory } from '@/types/database'
 import { createClient } from '@/lib/supabase/client'
 import { addComboAction, updateComboAction, deleteComboAction } from './actions'
 import toast from 'react-hot-toast'
 import { useCurrency, useFeatures } from '@/lib/contexts/FeatureContext'
+import { fetchCombosData } from '@/lib/swr-fetchers'
 import Image from 'next/image'
 
 // Monotonic counter for unique upload paths — avoids crypto.randomUUID (unavailable
@@ -39,10 +41,18 @@ export default function CombosManager({
     isDbReady,
     dbError,
 }: CombosManagerProps) {
-    const [combos, setCombos] = useState<MenuItem[]>(initialCombos)
+    const { data: combosData = { combos: initialCombos, comboItems: initialComboItems }, mutate } = useSWR<{
+        combos: MenuItem[];
+        comboItems: ComboItemMapping[];
+    }>(
+        ['combos', restaurantId],
+        () => fetchCombosData(restaurantId),
+        { fallbackData: { combos: initialCombos, comboItems: initialComboItems } }
+    )
+    const { combos, comboItems } = combosData
+
     const money = useCurrency()
     const { currencySymbol } = useFeatures()
-    const [comboItems, setComboItems] = useState<ComboItemMapping[]>(initialComboItems)
     const [showForm, setShowForm] = useState(false)
     const [editingCombo, setEditingCombo] = useState<MenuItem | null>(null)
     const [saving, setSaving] = useState(false)
@@ -219,36 +229,8 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
             if (result.error) {
                 toast.error(result.error)
             } else {
-                toast.success('Combo offer updated successfully!')
-                // Refresh local state (since we are not re-fetching from DB directly on client state)
-                setCombos(prev =>
-                    prev.map(c =>
-                        c.id === editingCombo.id
-                            ? {
-                                  ...c,
-                                  name: form.name,
-                                  description: form.description || null,
-                                  price: form.price,
-                                  category_id: form.category_id || null,
-                                  image_url: form.image_url || null,
-                                  is_available: form.is_available,
-                              }
-                            : c
-                    )
-                )
-
-                // Update combo items state
-                setComboItems(prev => {
-                    const filtered = prev.filter(ci => ci.combo_id !== editingCombo.id)
-                    const added = form.components.map((c, i) => ({
-                        id: `temp-${Date.now()}-${i}`,
-                        combo_id: editingCombo.id,
-                        item_id: c.item_id,
-                        quantity: c.quantity,
-                    }))
-                    return [...filtered, ...added]
-                })
-
+                mutate()
+                toast.success('Combo updated')
                 setShowForm(false)
             }
         } else {
@@ -268,19 +250,8 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
             if (result.error) {
                 toast.error(result.error)
             } else {
-                toast.success('Combo offer created!')
-                const newCombo = result.data as MenuItem
-                setCombos(prev => [newCombo, ...prev])
-
-                // Add newly created combo items mappings to local state
-                const newMappings = form.components.map((c, i) => ({
-                    id: `temp-${Date.now()}-${i}`,
-                    combo_id: newCombo.id,
-                    item_id: c.item_id,
-                    quantity: c.quantity,
-                }))
-                setComboItems(prev => [...prev, ...newMappings])
-
+                mutate()
+                toast.success('Combo created successfully')
                 setShowForm(false)
             }
         }
@@ -305,8 +276,8 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
         if (result.error) {
             toast.error(result.error)
         } else {
-            setCombos(prev => prev.map(c => (c.id === combo.id ? { ...c, is_available: newStatus } : c)))
-            toast.success(`Combo set to ${newStatus ? 'Available' : 'Unavailable'}`)
+            mutate()
+            toast.success(newStatus ? 'Combo activated' : 'Combo deactivated')
         }
     }
 
@@ -317,9 +288,8 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
         if (result.error) {
             toast.error(result.error)
         } else {
-            setCombos(prev => prev.filter(c => c.id !== comboId))
-            setComboItems(prev => prev.filter(ci => ci.combo_id !== comboId))
-            toast.success('Combo offer deleted successfully')
+            mutate()
+            toast.success('Combo deleted permanently')
         }
     }
 

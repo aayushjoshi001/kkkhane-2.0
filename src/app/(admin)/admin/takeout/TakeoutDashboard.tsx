@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import useSWR from 'swr'
 import { updateTakeoutStatusAction } from './actions'
 import { Clock, Phone, User, CheckCircle, XCircle, Search, QrCode, Download, ExternalLink } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
@@ -8,6 +9,7 @@ import toast from 'react-hot-toast'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import type { TakeoutOrder } from '@/types/database'
 import Image from 'next/image'
+import { fetchTakeoutOrders } from '@/lib/swr-fetchers'
 
 const STATUS_COLORS: Record<string, string> = {
     placed: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -25,13 +27,13 @@ const NEXT_STATUS: Record<string, string> = {
     ready_for_pickup: 'picked_up',
 }
 
-export default function TakeoutDashboard({ initialOrders, restaurantSlug, restaurantName }: {
+export default function TakeoutDashboard({ initialOrders, restaurantId, restaurantSlug, restaurantName }: {
     initialOrders: TakeoutOrder[]
     restaurantId: string
     restaurantSlug: string
     restaurantName: string
 }) {
-    const [orders, setOrders] = useState(initialOrders)
+    const { data: orders = initialOrders, mutate } = useSWR(['takeout_orders', restaurantId], () => fetchTakeoutOrders(restaurantId), { fallbackData: initialOrders, refreshInterval: 15000 })
     const money = useCurrency()
     const [searchQuery, setSearchQuery] = useState('')
     const [statusFilter, setStatusFilter] = useState('all')
@@ -72,8 +74,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantSlug, restau
         if (!next) return
         const result = await updateTakeoutStatusAction(order.id, next)
         if (result.error) { toast.error(result.error); return }
-        setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: next as TakeoutOrder['status'] } : o)
-            .filter(o => o.status !== 'picked_up'))
+        mutate()
         toast.success(`Order → ${next.replace('_', ' ')}`)
     }
 
@@ -81,7 +82,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantSlug, restau
         if (!confirm('Cancel this takeout order?')) return
         const result = await updateTakeoutStatusAction(order.id, 'cancelled')
         if (result.error) { toast.error(result.error); return }
-        setOrders(prev => prev.filter(o => o.id !== order.id))
+        mutate()
         toast.success('Order cancelled')
     }
 
@@ -249,7 +250,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantSlug, restau
                     {/* Items */}
                     <div className="bg-surface-muted/30 border border-hairline rounded-[var(--r-md)] p-4 mb-4 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
                         <ul className="space-y-2 text-sm text-ink font-medium">
-                            {order.items.map((item, i) => (
+                            {order.items.map((item: any, i: number) => (
                                 <li key={i} className="flex justify-between items-center group">
                                     <span className="flex items-center gap-2">
                                         <span className="font-bold text-ink-subtle tabular-nums bg-surface border border-hairline w-6 h-6 rounded-full flex items-center justify-center text-[10px] shadow-sm">{item.quantity}</span> 
