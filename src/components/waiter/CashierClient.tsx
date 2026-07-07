@@ -121,6 +121,11 @@ export default function CashierClient({
         setRoomsState(rooms)
     }, [rooms])
 
+    // Sync bookings state when prop changes (e.g. on server reload or catch up)
+    useEffect(() => {
+        setBookings(initialBookings)
+    }, [initialBookings])
+
     // Realtime subscriptions for rooms
     useRestaurantTable(restaurantId, 'rooms', (payload) => {
         if (payload.eventType === 'UPDATE') {
