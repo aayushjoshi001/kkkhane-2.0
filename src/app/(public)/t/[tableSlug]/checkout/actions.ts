@@ -389,7 +389,7 @@ export async function placeOrder(
                 qstash?.publishJSON({
                     url: `${baseUrl}/api/webhooks/qstash/order-processed`,
                     body: { orderId: result.order_id, restaurantId: sessionData.restaurant_id }
-                }).catch(err => console.error('[QStash] Order webhook publish error:', err))
+                }).catch((err: any) => console.error('[QStash] Order webhook publish error:', err))
             })
         }
     }

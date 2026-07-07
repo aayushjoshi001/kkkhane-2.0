@@ -902,7 +902,7 @@ export type DayBookEntryCategory =
     | 'advance'
     | 'bank_deposit'
     | 'other'
-    -- Bank categories
+    // Bank categories
     | 'qr_payment'
     | 'card'
     | 'transfer'

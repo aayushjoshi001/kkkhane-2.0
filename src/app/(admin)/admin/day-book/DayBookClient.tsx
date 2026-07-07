@@ -164,6 +164,7 @@ export default function DayBookClient({
 
     // ── Add Entry ────────────────────────────────────────────
     const handleAddEntry = async () => {
+        if (!entryModal || !session) return
         const amount = parseFloat(entryForm.amount)
         if (isNaN(amount) || amount <= 0) { toast.error('Enter a valid amount'); return }
         if (!entryForm.description.trim()) { toast.error('Description is required'); return }
@@ -175,7 +176,6 @@ export default function DayBookClient({
             toast.error('Bank name is required for bank transactions');
             return
         }
-        if (!entryModal || !session) return
 
         setIsSubmittingEntry(true)
         try {
