@@ -3,9 +3,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
-import { setTableStatus, openSession } from '@/app/(staff)/waiter/actions'
+import { setTableStatus } from '@/app/(staff)/waiter/actions'
 import { createClient } from '@/lib/supabase/client'
-import { Users, X, Check, CalendarClock, ShoppingBag, Eye } from 'lucide-react'
+import { Users, X, Check, CalendarClock, Eye } from 'lucide-react'
 import type { Table, Session } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
@@ -89,14 +89,8 @@ export default function CashierTableManager({
     // Form inputs for reservation
     const [reserveName, setReserveName] = useState('')
     const [reservePhone, setReservePhone] = useState('')
-    const [showReserveForm, setShowReserveForm] = useState(false)
 
     const supabaseRef = useRef(createClient())
-
-    // Reset reservation form on select change
-    useEffect(() => {
-        setShowReserveForm(false)
-    }, [selectedTable])
 
     useEffect(() => {
         setMounted(true)
@@ -200,25 +194,7 @@ export default function CashierTableManager({
         setIsProcessing(false)
     }
 
-    const handleManualOrder = async () => {
-        if (!selectedTable) return
-        setIsProcessing(true)
-        try {
-            const res = await openSession(selectedTable.id, restaurantId)
-            if (res.error) {
-                toast.error(res.error)
-            } else if (res.success && res.session) {
-                toast.success(`Session opened for Table ${selectedTable.label}`)
-                // Redirect waiter/cashier to the table's menu ordering page in waiter mode
-                window.location.href = `/t/${selectedTable.qr_token}?s=${res.session.session_token}&w=1`
-                setSelectedTable(null)
-            }
-        } catch {
-            toast.error('Failed to start session')
-        } finally {
-            setIsProcessing(false)
-        }
-    }
+
 
     return (
         <div className="w-full">
@@ -404,20 +380,12 @@ export default function CashierTableManager({
                                                 Release Reservation
                                             </Button>
                                         </div>
-                                    ) : (showReserveForm || !isHotel) ? (
+                                    ) : (
                                         // Reserve details form
                                         <div className="space-y-3.5">
-                                            {!isHotel && (
-                                                <div className="text-center pb-2">
-                                                    <h4 className="text-xs font-extrabold uppercase text-ink-subtle tracking-wider">Reserve Table {selectedTable.label}</h4>
-                                                </div>
-                                            )}
-                                            {isHotel && (
-                                                <div className="flex items-center justify-between">
-                                                    <h4 className="text-xs font-extrabold uppercase text-indigo-600 tracking-wider">Reserve details</h4>
-                                                    <button onClick={() => setShowReserveForm(false)} className="text-xs text-ink-subtle hover:underline font-semibold">Back</button>
-                                                </div>
-                                            )}
+                                            <div className="text-center pb-2">
+                                                <h4 className="text-xs font-extrabold uppercase text-ink-subtle tracking-wider">Reserve Table {selectedTable.label}</h4>
+                                            </div>
                                             <div className="space-y-1">
                                                 <label className="text-xs font-bold text-ink-subtle uppercase">Guest Name</label>
                                                 <input
@@ -449,49 +417,6 @@ export default function CashierTableManager({
                                             >
                                                 Reserve Table
                                             </Button>
-                                        </div>
-                                    ) : (
-                                        // Big T1 label, capacity, and Choice Buttons
-                                        <div className="flex flex-col items-center justify-center py-6 text-center space-y-6">
-                                            <div className="space-y-1">
-                                                <h1 className="text-6xl font-black text-ink tracking-tight uppercase leading-none">
-                                                    {selectedTable.label}
-                                                </h1>
-                                                <p className="text-xs text-ink-subtle font-semibold">
-                                                    {selectedTable.capacity ? `${selectedTable.capacity}-seat table` : 'Dining table'}
-                                                </p>
-                                            </div>
-
-                                            <div>
-                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                                    FREE
-                                                </span>
-                                            </div>
-
-                                            <div className="grid grid-cols-2 gap-4 w-full pt-4">
-                                                <button
-                                                    onClick={handleManualOrder}
-                                                    disabled={isProcessing}
-                                                    className="flex flex-col items-center justify-center gap-3 py-6 px-4 bg-[#ff5a00] hover:bg-[#ff4500] text-white rounded-[28px] font-extrabold text-sm transition-all shadow-md shadow-[#ff5a00]/10 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
-                                                >
-                                                    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center shadow-inner">
-                                                        <ShoppingBag size={18} />
-                                                    </div>
-                                                    <span>Manual Order</span>
-                                                </button>
-
-                                                <button
-                                                    onClick={() => setShowReserveForm(true)}
-                                                    disabled={isProcessing}
-                                                    className="flex flex-col items-center justify-center gap-3 py-6 px-4 bg-[#1d4ed8] hover:bg-[#1e40af] text-white rounded-[28px] font-extrabold text-sm transition-all shadow-md shadow-blue-500/10 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
-                                                >
-                                                    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center shadow-inner">
-                                                        <CalendarClock size={18} />
-                                                    </div>
-                                                    <span>Reserve</span>
-                                                </button>
-                                            </div>
                                         </div>
                                     )}
                                 </div>
