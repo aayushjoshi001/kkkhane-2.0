@@ -119,6 +119,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
                             onExpire={turnstile.handleExpire}
                             onError={turnstile.handleError}
                             options={{ theme: 'light', size: 'normal' }}
+                            injectScript={false}
                         />
                         {turnstile.unavailable && (
                             <p className="text-xs text-ink-muted text-center max-w-xs">

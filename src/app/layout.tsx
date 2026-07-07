@@ -7,6 +7,7 @@ import { unstable_cache } from 'next/cache'
 import { SerwistProvider } from '@serwist/turbopack/react'
 import PwaInstallPrompt from '@/components/shared/PwaInstallPrompt'
 import PwaUpdatePrompt from '@/components/shared/PwaUpdatePrompt'
+import Script from 'next/script'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' })
@@ -119,6 +120,7 @@ export default async function RootLayout({
         bg-canvas text-ink
         antialiased min-h-screen flex flex-col
       `}>
+        <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js" strategy="lazyOnload" />
         <SerwistProvider
           swUrl="/serwist/sw.js"
           disable={process.env.NODE_ENV === 'development'}
