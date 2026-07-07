@@ -118,9 +118,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/payments"  icon={CreditCard}      label="Room Billing"    path={pathname} />
 
                         <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Dining & Tables</SectionLabel>
-                        {dineInEnabled && (
-                            <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"    icon={Grid3X3}         label="Tables & QR"     path={pathname} />
-                        )}
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"    icon={Grid3X3}         label="Tables & QR"     path={pathname} />
                     </>
                 ) : (
                     <>
@@ -134,9 +132,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/orders"      icon={ShoppingBag}     label="Live Orders"     path={pathname} badge="12" />
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/payments"    icon={CreditCard}      label="Payments"        path={pathname} />
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/takeout"     icon={Truck}           label="Takeout & Disp." path={pathname} />
-                        {dineInEnabled && (
-                            <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"      icon={Grid3X3}         label="Tables & QR"     path={pathname} />
-                        )}
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"      icon={Grid3X3}         label="Tables & QR"     path={pathname} />
                         
                         <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Intelligence</SectionLabel>
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/loyalty"     icon={Heart}           label="Loyalty Program" path={pathname} />
