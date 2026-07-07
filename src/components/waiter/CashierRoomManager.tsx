@@ -85,6 +85,9 @@ export default function CashierRoomManager({
         check_out: '',
         guest_count: '2'
     })
+    const [advanceType, setAdvanceType] = useState<'none' | 'full' | 'partial'>('none')
+    const [advanceAmount, setAdvanceAmount] = useState<string>('')
+    const [advancePayMethod, setAdvancePayMethod] = useState<'cash' | 'qr_digital'>('cash')
 
     useEffect(() => {
         setMounted(true)
@@ -126,6 +129,9 @@ export default function CashierRoomManager({
             check_out: formatLocalTime(checkOut),
             guest_count: '1'
         })
+        setAdvanceType('none')
+        setAdvanceAmount('')
+        setAdvancePayMethod('cash')
     }
 
     // Fetch active booking details and manual charges when selected room is occupied
@@ -276,6 +282,23 @@ export default function CashierRoomManager({
             return
         }
 
+        // Calculate advance amount to send
+        const basePrice = selectedRoom.room_types?.base_price || 0
+        const inDate = new Date(bookingForm.check_in)
+        const outDate = new Date(bookingForm.check_out)
+        const diffMs = outDate.getTime() - inDate.getTime()
+        const nights = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)))
+        const fullCost = basePrice * nights
+
+        let resolvedAdvance = 0
+        if (advanceType === 'full') {
+            resolvedAdvance = fullCost
+        } else if (advanceType === 'partial') {
+            resolvedAdvance = Math.max(0, parseFloat(advanceAmount) || 0)
+            if (resolvedAdvance <= 0) { toast.error('Please enter a valid advance amount'); return }
+            if (resolvedAdvance >= fullCost) { toast.error('Partial advance must be less than total room cost'); return }
+        }
+
         setIsProcessing(true)
         try {
             const res = await fetch('/api/bookings', {
@@ -288,13 +311,15 @@ export default function CashierRoomManager({
                     kyc: bookingForm.kyc,
                     check_in: bookingForm.check_in,
                     check_out: bookingForm.check_out,
-                    guest_count: bookingForm.guest_count
+                    guest_count: bookingForm.guest_count,
+                    advance_amount: resolvedAdvance,
+                    advance_payment_method: resolvedAdvance > 0 ? advancePayMethod : 'none',
                 }),
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error)
 
-            toast.success(`Room ${selectedRoom.room_number} booked successfully!`)
+            toast.success(`Room ${selectedRoom.room_number} booked!${resolvedAdvance > 0 ? ` Advance: Rs. ${resolvedAdvance.toLocaleString()}` : ''}`)
             setRooms(prev => prev.map(r => r.id === selectedRoom.id ? { ...r, status: 'occupied' } : r))
             setBookings(prev => [...prev, data.data])
             setBookingFormOpen(false)
@@ -395,7 +420,7 @@ export default function CashierRoomManager({
                     onClick={() => setSelectedRoom(null)}
                 >
                     <div 
-                        className="bg-surface rounded-[24px] border border-hairline shadow-2xl w-full max-w-md overflow-hidden transform transition-all"
+                        className="bg-surface rounded-[24px] border border-hairline shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden transform transition-all"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
@@ -417,66 +442,64 @@ export default function CashierRoomManager({
                         </div>
 
                         {/* Room Management Actions */}
-                        <div className="p-6">
+                        <div className="p-6 overflow-y-auto flex-1">
                             {bookingFormOpen ? (
                                 // Booking input form
-                                <div className="space-y-4">
+                                <div className="space-y-3">
                                     <div className="flex items-center justify-between">
                                         <h4 className="text-xs font-bold uppercase text-brand-600 tracking-wider">New Booking details</h4>
                                         <button onClick={() => setBookingFormOpen(false)} className="text-xs text-ink-subtle hover:underline font-semibold">Back</button>
                                     </div>
-                                    <div className="space-y-3">
-                                        <div>
+                                    <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                                        <div className="col-span-2">
                                             <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Guest Name *</label>
                                             <input
                                                 type="text"
                                                 placeholder="e.g. John Doe"
                                                 value={bookingForm.guest_name}
                                                 onChange={e => setBookingForm(b => ({ ...b, guest_name: e.target.value }))}
-                                                className="w-full px-3 py-2 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                                className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Phone Number *</label>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Phone *</label>
                                             <input
                                                 type="text"
-                                                placeholder="e.g. 9841234567"
+                                                placeholder="9841234567"
                                                 value={bookingForm.guest_phone}
                                                 onChange={e => setBookingForm(b => ({ ...b, guest_phone: e.target.value }))}
-                                                className="w-full px-3 py-2 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                                className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">KYC / ID Details (Optional)</label>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">KYC / ID (Optional)</label>
                                             <input
                                                 type="text"
-                                                placeholder="e.g. Passport, Citizenship No."
+                                                placeholder="Passport / Citizenship"
                                                 value={bookingForm.kyc}
                                                 onChange={e => setBookingForm(b => ({ ...b, kyc: e.target.value }))}
-                                                className="w-full px-3 py-2 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                                className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
                                             />
                                         </div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div>
-                                                <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Check-in *</label>
-                                                <input
-                                                    type="datetime-local"
-                                                    value={bookingForm.check_in}
-                                                    onChange={e => setBookingForm(b => ({ ...b, check_in: e.target.value }))}
-                                                    className="w-full px-3 py-2 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Check-out *</label>
-                                                <input
-                                                    type="datetime-local"
-                                                    value={bookingForm.check_out}
-                                                    onChange={e => setBookingForm(b => ({ ...b, check_out: e.target.value }))}
-                                                    className="w-full px-3 py-2 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
-                                                />
-                                            </div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Check-in *</label>
+                                            <input
+                                                type="datetime-local"
+                                                value={bookingForm.check_in}
+                                                onChange={e => setBookingForm(b => ({ ...b, check_in: e.target.value }))}
+                                                className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                            />
                                         </div>
                                         <div>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Check-out *</label>
+                                            <input
+                                                type="datetime-local"
+                                                value={bookingForm.check_out}
+                                                onChange={e => setBookingForm(b => ({ ...b, check_out: e.target.value }))}
+                                                className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                            />
+                                        </div>
+                                        <div className="col-span-2">
                                             <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Number of Guests * (Max {selectedRoom.room_types?.capacity || 2})</label>
                                             <input
                                                 type="number"
@@ -484,9 +507,88 @@ export default function CashierRoomManager({
                                                 max={selectedRoom.room_types?.capacity || 2}
                                                 value={bookingForm.guest_count}
                                                 onChange={e => setBookingForm(b => ({ ...b, guest_count: e.target.value }))}
-                                                className="w-full px-3 py-2 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                                className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
                                             />
                                         </div>
+
+                                        {/* Advance Payment Section */}
+                                        {(() => {
+                                            const basePrice = selectedRoom.room_types?.base_price || 0
+                                            const inDate = new Date(bookingForm.check_in)
+                                            const outDate = new Date(bookingForm.check_out)
+                                            const diffMs = outDate.getTime() - inDate.getTime()
+                                            const nights = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)))
+                                            const fullCost = basePrice * nights
+                                            return (
+                                                <div className="col-span-2 border border-hairline rounded-2xl p-3 space-y-2 bg-surface-muted/30">
+                                                    <p className="text-[10px] font-black text-ink-subtle uppercase tracking-wider">Advance Payment</p>
+                                                    <div className="grid grid-cols-3 gap-2">
+                                                        {(['none', 'full', 'partial'] as const).map(opt => (
+                                                            <button
+                                                                key={opt}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setAdvanceType(opt)
+                                                                    setAdvanceAmount('')
+                                                                }}
+                                                                className={`py-2 px-1 rounded-xl border-2 text-[10px] font-bold transition-all ${
+                                                                    advanceType === opt
+                                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                                        : 'border-hairline bg-surface text-ink-muted hover:border-brand-300'
+                                                                }`}
+                                                            >
+                                                                {opt === 'none' ? 'No Advance' : opt === 'full' ? `Full (Rs.${fullCost.toLocaleString()})` : 'Partial'}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+
+                                                    {advanceType === 'partial' && (
+                                                        <div>
+                                                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Amount Paid Now</label>
+                                                            <div className="relative">
+                                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                                <input
+                                                                    type="number"
+                                                                    min="1"
+                                                                    max={fullCost - 1}
+                                                                    placeholder="e.g. 500"
+                                                                    value={advanceAmount}
+                                                                    onChange={e => setAdvanceAmount(e.target.value)}
+                                                                    className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                                />
+                                                            </div>
+                                                            {advanceAmount && fullCost > 0 && (
+                                                                <p className="text-[9px] text-amber-600 font-bold mt-1">
+                                                                    Balance due at checkout: Rs. {Math.max(0, fullCost - (parseFloat(advanceAmount) || 0)).toLocaleString()}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {advanceType !== 'none' && (
+                                                        <div>
+                                                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Payment Method</label>
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                {(['cash', 'qr_digital'] as const).map(m => (
+                                                                    <button
+                                                                        key={m}
+                                                                        type="button"
+                                                                        onClick={() => setAdvancePayMethod(m)}
+                                                                        className={`py-2 px-2 rounded-xl border-2 text-[10px] font-bold transition-all ${
+                                                                            advancePayMethod === m
+                                                                                ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                                                : 'border-hairline bg-surface text-ink-muted hover:border-brand-300'
+                                                                        }`}
+                                                                    >
+                                                                        {m === 'cash' ? 'Cash' : 'QR / Digital'}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )
+                                        })()}
                                     </div>
 
                                     <Button
@@ -494,9 +596,9 @@ export default function CashierRoomManager({
                                         block
                                         loading={isProcessing}
                                         onClick={handleCreateBooking}
-                                        className="mt-2.5 font-bold uppercase tracking-wider"
+                                        className="font-bold uppercase tracking-wider"
                                     >
-                                        Booked
+                                        Book Room
                                     </Button>
                                 </div>
                             ) : confirmCloseOpen ? (

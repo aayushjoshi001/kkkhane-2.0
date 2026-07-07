@@ -270,11 +270,15 @@ export default function CashierClient({
             const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
             const total = stayCost + qrOrdersTotal + manualChargesTotal
 
-            // Resolve split amounts
-            const resolvedCash = billingPaymentMethod === 'cash' ? total
+            // Advance already paid at booking
+            const advancePaid = Number(booking.paid_amount) || 0
+            const balanceDue = Math.max(0, total - advancePaid)
+
+            // Resolve split amounts (apply to balance due, not gross total)
+            const resolvedCash = billingPaymentMethod === 'cash' ? balanceDue
                 : billingPaymentMethod === 'qr_digital' ? 0
                 : parseFloat(splitCashAmount) || 0
-            const resolvedQr = billingPaymentMethod === 'qr_digital' ? total
+            const resolvedQr = billingPaymentMethod === 'qr_digital' ? balanceDue
                 : billingPaymentMethod === 'cash' ? 0
                 : parseFloat(splitQrAmount) || 0
 
@@ -295,6 +299,9 @@ export default function CashierClient({
                 manualCharges: billingRoomCharges,
                 manualChargesTotal,
                 total,
+                advancePaid,
+                advanceMethod: booking.advance_payment_method || 'none',
+                balanceDue,
                 bookingId: booking.id,
                 roomId: room.id,
                 paymentMethod: billingPaymentMethod,
@@ -1254,10 +1261,13 @@ export default function CashierClient({
                                                 {(() => {
                                                     const cash = parseFloat(splitCashAmount) || 0
                                                     const qr = parseFloat(splitQrAmount) || 0
-                                                    const diff = Math.abs(cash + qr - total)
+                                                    const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
+                                                    const advancePaid = Number(billingStayBooking?.paid_amount) || 0
+                                                    const balanceDue = Math.max(0, grandTotal - advancePaid)
+                                                    const diff = Math.abs(cash + qr - balanceDue)
                                                     if (diff > 0.01) return (
                                                         <p className="col-span-2 text-[9px] text-rose-500 font-bold text-center">
-                                                            ⚠ Cash + QR must equal {money(total)} (difference: {money(diff)})
+                                                            ⚠ Cash + QR must equal {money(balanceDue)} (difference: {money(diff)})
                                                         </p>
                                                     )
                                                     return (
@@ -1269,15 +1279,40 @@ export default function CashierClient({
                                     })()}
                                 </div>
 
-                                <div className="border-t border-hairline pt-4 flex items-center justify-between mt-2">
-                                    <div>
-                                        <span className="text-[10px] font-bold text-ink-subtle uppercase">Total bill amount</span>
-                                        <p className="text-2xl font-black text-brand-600 tabular-nums">{money(calculateGrandTotal(selectedBillingRoom, billingStayBooking))}</p>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <Button variant="secondary" onClick={() => setSelectedBillingRoom(null)}>Close</Button>
-                                        <Button variant="primary" onClick={() => compileInvoice('room', selectedBillingRoom)} className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs">Generate Invoice</Button>
-                                    </div>
+                                <div className="border-t border-hairline pt-4 mt-2 space-y-2">
+                                    {/* Gross Total + Advance row */}
+                                    {(() => {
+                                        const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
+                                        const advancePaid = Number(billingStayBooking?.paid_amount) || 0
+                                        const balanceDue = Math.max(0, grandTotal - advancePaid)
+                                        return (
+                                            <>
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[10px] font-bold text-ink-subtle uppercase">Total bill amount</span>
+                                                    <span className="text-sm font-black text-ink-muted tabular-nums">{money(grandTotal)}</span>
+                                                </div>
+                                                {advancePaid > 0 && (
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[10px] font-bold text-emerald-600 uppercase flex items-center gap-1">
+                                                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                            Advance Paid ({billingStayBooking?.advance_payment_method === 'qr_digital' ? 'QR/Digital' : 'Cash'})
+                                                        </span>
+                                                        <span className="text-sm font-black text-emerald-600 tabular-nums">− {money(advancePaid)}</span>
+                                                    </div>
+                                                )}
+                                                <div className="flex items-center justify-between pt-1 border-t border-dashed border-hairline">
+                                                    <div>
+                                                        <span className="text-[10px] font-bold text-ink-subtle uppercase">{advancePaid > 0 ? 'Balance Due' : 'Total Due'}</span>
+                                                        <p className="text-2xl font-black text-brand-600 tabular-nums">{money(balanceDue)}</p>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <Button variant="secondary" onClick={() => setSelectedBillingRoom(null)}>Close</Button>
+                                                        <Button variant="primary" onClick={() => compileInvoice('room', selectedBillingRoom)} className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs">Generate Invoice</Button>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )
+                                    })()}
                                 </div>
                             </div>
                         ) : (
@@ -1491,10 +1526,23 @@ export default function CashierClient({
 
                         <div className="border-t border-dashed border-black my-1.5" />
 
-                        {/* Invoice Total */}
-                        <div className="flex justify-between items-center text-xs font-black">
-                            <span className="uppercase">GRAND TOTAL</span>
-                            <span className="text-sm font-black text-black tabular-nums">{money(activeInvoice.total)}</span>
+                        {/* Invoice Total + Advance + Balance */}
+                        <div className="space-y-0.5 text-[10px]">
+                            <div className="flex justify-between font-bold">
+                                <span className="uppercase">Grand Total</span>
+                                <span className="tabular-nums">{money(activeInvoice.total)}</span>
+                            </div>
+                            {activeInvoice.advancePaid > 0 && (
+                                <div className="flex justify-between text-gray-600">
+                                    <span>Advance Paid ({activeInvoice.advanceMethod === 'qr_digital' ? 'QR/Digital' : 'Cash'})</span>
+                                    <span className="tabular-nums">- {money(activeInvoice.advancePaid)}</span>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex justify-between items-center text-xs font-black border-t border-dashed border-black pt-1 mt-1">
+                            <span className="uppercase">{activeInvoice.advancePaid > 0 ? 'BALANCE DUE' : 'TOTAL DUE'}</span>
+                            <span className="text-sm font-black text-black tabular-nums">{money(activeInvoice.balanceDue ?? activeInvoice.total)}</span>
                         </div>
 
                         {/* Payment Method on receipt */}

@@ -10,7 +10,11 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json().catch(() => ({}))
-        const { room_id, guest_name, guest_phone, kyc, check_in, check_out, guest_count } = body
+        const {
+            room_id, guest_name, guest_phone, kyc,
+            check_in, check_out, guest_count,
+            advance_amount, advance_payment_method
+        } = body
 
         if (!room_id || !guest_name || !guest_phone || !check_in || !check_out || !guest_count) {
             return NextResponse.json({ error: 'Missing required booking fields' }, { status: 400 })
@@ -18,7 +22,7 @@ export async function POST(req: Request) {
 
         const supabase = await createAdminClient()
 
-        // 1. Double check room type capacity (validation)
+        // 1. Validate room and capacity
         const { data: room, error: roomError } = await supabase
             .from('rooms')
             .select('*, room_types:type_id(*)')
@@ -35,7 +39,11 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: `Guest count (${guest_count}) exceeds room capacity (${maxCapacity})` }, { status: 400 })
         }
 
-        // 2. Insert booking
+        // 2. Resolve advance amount
+        const paidAmount = Math.max(0, Number(advance_amount) || 0)
+        const advMethod = paidAmount > 0 ? (advance_payment_method || 'cash') : 'none'
+
+        // 3. Insert booking
         const notes = kyc ? `KYC: ${kyc.trim()}` : null
         const { data: booking, error: bookingError } = await supabase
             .from('bookings')
@@ -47,15 +55,17 @@ export async function POST(req: Request) {
                 check_in: new Date(check_in).toISOString(),
                 check_out: new Date(check_out).toISOString(),
                 adults: Number(guest_count),
-                status: 'checked_in', // Mark as checked in immediately on book
-                notes
+                status: 'checked_in',
+                notes,
+                paid_amount: paidAmount,
+                advance_payment_method: advMethod,
             })
             .select()
             .single()
 
         if (bookingError) throw bookingError
 
-        // 3. Update room status to occupied
+        // 4. Update room status to occupied
         const { error: updateError } = await supabase
             .from('rooms')
             .update({ status: 'occupied' })
