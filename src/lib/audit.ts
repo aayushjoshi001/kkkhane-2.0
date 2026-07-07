@@ -20,6 +20,10 @@ export type AuditAction =
     | 'staff_removed'
     | 'shift_corrected'
     | 'report_generated'
+    | 'booking_checked_out'
+    | 'financial_event_created'
+    | 'financial_event_status_changed'
+    | 'financial_event_retried'
 
 async function getIp(): Promise<string | null> {
     try {

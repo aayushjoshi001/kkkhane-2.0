@@ -380,7 +380,10 @@ export default function CashierClient({
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         booking_id: activeInvoice.bookingId,
-                        room_id: activeInvoice.roomId
+                        room_id: activeInvoice.roomId,
+                        total_amount: activeInvoice.total,
+                        cash_paid: activeInvoice.cashPaid,
+                        qr_paid: activeInvoice.qrPaid
                     })
                 })
                 const data = await res.json()

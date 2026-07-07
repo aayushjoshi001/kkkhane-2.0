@@ -2,6 +2,8 @@ import {
     LayoutDashboard, BarChart3, Building2, CreditCard, UtensilsCrossed,
     ShoppingBag, Truck, Users, Clock, DollarSign, Heart, Tag, Package,
     Grid3X3, FileText, Settings, Sparkles, Palette, ChefHat, ClipboardList,
+    Wallet, Landmark, TrendingUp, Receipt, HandCoins, ArrowUpRight, Banknote,
+    PiggyBank, Percent, BookOpen, FileBarChart, Settings2, ShieldCheck, Wrench,
     type LucideIcon,
 } from 'lucide-react'
 
@@ -118,6 +120,27 @@ const MANAGER_GROUPS: CommandGroup[] = [
             { label: 'Homepage', href: '/admin/homepage', icon: Palette, keywords: ['landing', 'site'] },
             { label: 'Brand & Theme', href: '/admin/theme', icon: Palette, keywords: ['colors', 'logo'] },
             { label: 'Settings', href: '/admin/settings', icon: Settings, keywords: ['configuration'] },
+        ],
+    },
+    {
+        heading: 'Finance',
+        items: [
+            { label: 'Finance Dashboard', href: '/admin/finance', icon: LayoutDashboard, keywords: ['overview', 'kpi'] },
+            { label: 'Cash Management', href: '/admin/finance/cash', icon: Wallet, keywords: ['drawer', 'cash in', 'cash out'] },
+            { label: 'Bank Management', href: '/admin/finance/bank', icon: Landmark, keywords: ['bank', 'wallet', 'esewa', 'khalti'] },
+            { label: 'Income', href: '/admin/finance/income', icon: TrendingUp, keywords: ['revenue', 'other income'] },
+            { label: 'Expenses', href: '/admin/finance/expenses', icon: Receipt, keywords: ['bills', 'spending'] },
+            { label: 'Receivables', href: '/admin/finance/receivables', icon: HandCoins, keywords: ['customer credit', 'outstanding'] },
+            { label: 'Payables', href: '/admin/finance/payables', icon: ArrowUpRight, keywords: ['supplier bills', 'outstanding'] },
+            { label: 'Loans', href: '/admin/finance/loans', icon: Banknote, keywords: ['emi', 'interest'] },
+            { label: 'Budget', href: '/admin/finance/budget', icon: PiggyBank, keywords: ['planning', 'variance'] },
+            { label: 'Tax', href: '/admin/finance/tax', icon: Percent, keywords: ['vat', 'pan', 'ird'] },
+            { label: 'Financial Books', href: '/admin/finance/books', icon: BookOpen, keywords: ['daybook', 'ledger'] },
+            { label: 'Financial Statements', href: '/admin/finance/statements', icon: FileBarChart, keywords: ['trial balance', 'profit and loss', 'balance sheet'] },
+            { label: 'Finance Reports', href: '/admin/finance/reports', icon: FileText, keywords: ['sales', 'cash', 'bank'] },
+            { label: 'Finance Administration', href: '/admin/finance/administration', icon: Settings2, keywords: ['chart of accounts', 'voucher types', 'fiscal year'] },
+            { label: 'Finance Audit', href: '/admin/finance/audit', icon: ShieldCheck, keywords: ['audit trail', 'activity'] },
+            { label: 'Finance Tools', href: '/admin/finance/tools', icon: Wrench, keywords: ['import', 'export', 'backup'] },
         ],
     },
 ]
