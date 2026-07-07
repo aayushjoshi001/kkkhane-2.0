@@ -892,7 +892,7 @@ export interface Booking {
 
 // ─── Day Book ───────────────────────────────────────────────
 export type DayBookSessionStatus = 'open' | 'closed'
-export type DayBookEntryType = 'cash_in' | 'cash_out'
+export type DayBookEntryType = 'cash_in' | 'cash_out' | 'bank_in' | 'bank_out'
 export type DayBookEntryCategory =
     | 'order_payment'
     | 'room_deposit'
@@ -903,12 +903,21 @@ export type DayBookEntryCategory =
     | 'advance'
     | 'bank_deposit'
     | 'other'
+    -- Bank categories
+    | 'qr_payment'
+    | 'card'
+    | 'transfer'
+    | 'deposit'
+    | 'withdrawal'
+    | 'bank_charges'
+    | 'transfer_out'
 
 export interface DayBookSession {
     id: string
     restaurant_id: string
     date: string             // ISO date string YYYY-MM-DD
     opening_balance: number
+    opening_bank_balance: number
     status: DayBookSessionStatus
     closed_at: string | null
     closed_by: string | null

@@ -12,6 +12,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}))
     // first_time_opening_balance is only used when there is no prior session at all
     const firstTimeOpeningBalance: number = Number(body.opening_balance ?? 0)
+    const firstTimeOpeningBankBalance: number = Number(body.opening_bank_balance ?? 0)
 
     const supabase = await createAdminClient()
     const today = new Date().toISOString().slice(0, 10) // 'YYYY-MM-DD'
@@ -29,17 +30,9 @@ export async function POST(request: Request) {
     }
 
     // ── 2. Calculate opening balance from yesterday's closing balance ────────
-    //
-    // closing_balance = opening_balance
-    //                 + SUM(cash_in entries)
-    //                 - SUM(cash_out entries)
-    //
-    // If no previous session exists at all, fall back to first_time_opening_balance
-    // supplied in the request body.
-
     const { data: lastSession } = await supabase
         .from('day_book_sessions')
-        .select('id, opening_balance')
+        .select('id, opening_balance, opening_bank_balance')
         .eq('restaurant_id', restaurantId)
         .eq('status', 'closed')
         .lt('date', today)
@@ -48,6 +41,7 @@ export async function POST(request: Request) {
         .maybeSingle()
 
     let openingBalance = firstTimeOpeningBalance
+    let openingBankBalance = firstTimeOpeningBankBalance
 
     if (lastSession) {
         const { data: totals } = await supabase
@@ -55,6 +49,7 @@ export async function POST(request: Request) {
             .select('type, amount')
             .eq('session_id', lastSession.id)
 
+        // Cash calculations
         const cashIn  = (totals ?? [])
             .filter((e) => e.type === 'cash_in')
             .reduce((sum, e) => sum + Number(e.amount), 0)
@@ -64,8 +59,19 @@ export async function POST(request: Request) {
             .reduce((sum, e) => sum + Number(e.amount), 0)
 
         openingBalance = Number(lastSession.opening_balance) + cashIn - cashOut
-        // Guard against negative float drift
         if (openingBalance < 0) openingBalance = 0
+
+        // Bank calculations
+        const bankIn  = (totals ?? [])
+            .filter((e) => e.type === 'bank_in')
+            .reduce((sum, e) => sum + Number(e.amount), 0)
+
+        const bankOut = (totals ?? [])
+            .filter((e) => e.type === 'bank_out')
+            .reduce((sum, e) => sum + Number(e.amount), 0)
+
+        openingBankBalance = Number(lastSession.opening_bank_balance ?? 0) + bankIn - bankOut
+        if (openingBankBalance < 0) openingBankBalance = 0
     }
 
     // ── 3. Create the new session ────────────────────────────────────────────
@@ -75,6 +81,7 @@ export async function POST(request: Request) {
             restaurant_id:   restaurantId,
             date:            today,
             opening_balance: openingBalance,
+            opening_bank_balance: openingBankBalance,
             status:          'open',
             created_by:      currentUser.id,
         })
@@ -194,10 +201,24 @@ export async function GET(request: Request) {
     const closing_balance =
         Number(session.opening_balance) + total_cash_in - total_cash_out
 
+    const total_bank_in = (entries ?? [])
+        .filter((e) => e.type === 'bank_in')
+        .reduce((sum, e) => sum + Number(e.amount), 0)
+
+    const total_bank_out = (entries ?? [])
+        .filter((e) => e.type === 'bank_out')
+        .reduce((sum, e) => sum + Number(e.amount), 0)
+
+    const closing_bank_balance =
+        Number(session.opening_bank_balance ?? 0) + total_bank_in - total_bank_out
+
     const totals = {
         total_cash_in,
         total_cash_out,
         closing_balance,
+        total_bank_in,
+        total_bank_out,
+        closing_bank_balance,
     }
 
     return NextResponse.json({

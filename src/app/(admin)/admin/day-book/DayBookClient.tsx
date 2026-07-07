@@ -12,10 +12,18 @@ import { toast } from 'react-hot-toast'
 interface DayBookClientProps {
     initialSession: DayBookSession | null
     initialEntries: DayBookEntry[]
-    initialTotals: { total_cash_in: number; total_cash_out: number; closing_balance: number }
+    initialTotals: {
+        total_cash_in: number
+        total_cash_out: number
+        closing_balance: number
+        total_bank_in: number
+        total_bank_out: number
+        closing_bank_balance: number
+    }
     todayDate: string   // YYYY-MM-DD
     userRole: string
     previousClosingBalance: number | null
+    previousClosingBankBalance: number | null
 }
 
 const CATEGORY_LABELS: Record<DayBookEntryCategory, string> = {
@@ -28,18 +36,34 @@ const CATEGORY_LABELS: Record<DayBookEntryCategory, string> = {
     advance:          'Advance',
     bank_deposit:     'Bank Deposit',
     other:            'Other',
+    // Bank categories
+    qr_payment:       'QR Payment',
+    card:             'Card Payment',
+    transfer:         'Bank Transfer',
+    deposit:          'Bank Deposit',
+    withdrawal:       'Cash Withdrawal',
+    bank_charges:     'Bank Charges',
+    transfer_out:     'Transfer Out',
 }
 
 const CATEGORY_COLORS: Record<DayBookEntryCategory, string> = {
-    order_payment:   'bg-emerald-50 text-emerald-700',
-    room_deposit:    'bg-blue-50 text-blue-700',
-    booking_payment: 'bg-indigo-50 text-indigo-700',
-    expense:         'bg-red-50 text-red-700',
-    refund:          'bg-orange-50 text-orange-700',
-    salary:          'bg-purple-50 text-purple-700',
-    advance:         'bg-yellow-50 text-yellow-700',
+    order_payment:   'bg-emerald-50 text-emerald-700 border-emerald-100',
+    room_deposit:    'bg-blue-50 text-blue-700 border-blue-100',
+    booking_payment: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+    expense:         'bg-red-50 text-red-700 border-red-100',
+    refund:          'bg-orange-50 text-orange-700 border-orange-100',
+    salary:          'bg-purple-50 text-purple-700 border-purple-100',
+    advance:         'bg-yellow-50 text-yellow-700 border-yellow-100',
     bank_deposit:    'bg-cyan-50 text-cyan-700 border-cyan-100',
-    other:           'bg-gray-100 text-gray-600',
+    other:           'bg-gray-100 text-gray-600 border-gray-200',
+    // Bank categories
+    qr_payment:      'bg-teal-50 text-teal-700 border-teal-100',
+    card:            'bg-sky-50 text-sky-700 border-sky-100',
+    transfer:        'bg-indigo-50 text-indigo-700 border-indigo-100',
+    deposit:         'bg-emerald-50 text-emerald-700 border-emerald-100',
+    withdrawal:      'bg-amber-50 text-amber-700 border-amber-100',
+    bank_charges:    'bg-rose-50 text-rose-700 border-rose-100',
+    transfer_out:    'bg-violet-50 text-violet-700 border-violet-100',
 }
 
 function fmt(amount: number) {
@@ -57,6 +81,7 @@ export default function DayBookClient({
     todayDate,
     userRole,
     previousClosingBalance,
+    previousClosingBankBalance,
 }: DayBookClientProps) {
     const [session, setSession]   = useState<DayBookSession | null>(initialSession)
     const [entries, setEntries]   = useState<DayBookEntry[]>(initialEntries)
@@ -66,6 +91,9 @@ export default function DayBookClient({
     const [isOpeningDay, setIsOpeningDay]       = useState(false)
     const [openingBalanceInput, setOpeningBalanceInput] = useState(
         previousClosingBalance !== null ? String(previousClosingBalance) : ''
+    )
+    const [openingBankBalanceInput, setOpeningBankBalanceInput] = useState(
+        previousClosingBankBalance !== null ? String(previousClosingBankBalance) : ''
     )
     const [isSubmittingOpen, setIsSubmittingOpen] = useState(false)
 
@@ -77,31 +105,54 @@ export default function DayBookClient({
     // Close Day
     const [isClosingDay, setIsClosingDay] = useState(false)
 
+    // Tab state (to switch between Cash and Bank view)
+    const [activeTab, setActiveTab] = useState<'cash' | 'bank'>('cash')
+
     const canManage = ['manager', 'super_admin', 'cashier'].includes(userRole)
 
     // ── Refresh totals from entries ──────────────────────────
-    const recalc = useCallback((updatedEntries: DayBookEntry[], openingBal: number) => {
+    const recalc = useCallback((updatedEntries: DayBookEntry[], openingBal: number, openingBankBal: number) => {
         const cashIn  = updatedEntries.filter(e => e.type === 'cash_in').reduce((s, e) => s + e.amount, 0)
         const cashOut = updatedEntries.filter(e => e.type === 'cash_out').reduce((s, e) => s + e.amount, 0)
-        setTotals({ total_cash_in: cashIn, total_cash_out: cashOut, closing_balance: openingBal + cashIn - cashOut })
+
+        const bankIn  = updatedEntries.filter(e => e.type === 'bank_in').reduce((s, e) => s + e.amount, 0)
+        const bankOut = updatedEntries.filter(e => e.type === 'bank_out').reduce((s, e) => s + e.amount, 0)
+
+        setTotals({
+            total_cash_in: cashIn,
+            total_cash_out: cashOut,
+            closing_balance: openingBal + cashIn - cashOut,
+            total_bank_in: bankIn,
+            total_bank_out: bankOut,
+            closing_bank_balance: openingBankBal + bankIn - bankOut,
+        })
     }, [])
 
     // ── Open Day ─────────────────────────────────────────────
     const handleOpenDay = async () => {
         const bal = parseFloat(openingBalanceInput)
-        if (isNaN(bal) || bal < 0) { toast.error('Enter a valid opening balance'); return }
+        const bankBal = parseFloat(openingBankBalanceInput)
+        if (isNaN(bal) || bal < 0) { toast.error('Enter a valid opening cash balance'); return }
+        if (isNaN(bankBal) || bankBal < 0) { toast.error('Enter a valid opening bank balance'); return }
         setIsSubmittingOpen(true)
         try {
             const res = await fetch('/api/day-book/session', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ opening_balance: bal }),
+                body: JSON.stringify({ opening_balance: bal, opening_bank_balance: bankBal }),
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error)
             setSession(data.data)
             setEntries([])
-            setTotals({ total_cash_in: 0, total_cash_out: 0, closing_balance: bal })
+            setTotals({
+                total_cash_in: 0,
+                total_cash_out: 0,
+                closing_balance: bal,
+                total_bank_in: 0,
+                total_bank_out: 0,
+                closing_bank_balance: bankBal,
+            })
             setIsOpeningDay(false)
             toast.success('Day opened successfully!')
         } catch (e: any) {
@@ -120,6 +171,10 @@ export default function DayBookClient({
             toast.error('Bank name is required for bank deposits');
             return
         }
+        if (['bank_in', 'bank_out'].includes(entryModal.type) && !entryForm.bank_name.trim()) {
+            toast.error('Bank name is required for bank transactions');
+            return
+        }
         if (!entryModal || !session) return
 
         setIsSubmittingEntry(true)
@@ -133,17 +188,46 @@ export default function DayBookClient({
                     amount,
                     description: entryForm.description.trim(),
                     category: entryForm.category,
-                    bank_name: entryForm.category === 'bank_deposit' ? entryForm.bank_name.trim() : null,
+                    bank_name: (entryForm.category === 'bank_deposit' || ['bank_in', 'bank_out'].includes(entryModal.type)) ? entryForm.bank_name.trim() : null,
                 }),
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error)
-            const updated = [data.data, ...entries]
+            
+            let newEntries = [data.data]
+
+            // If cash_out is a bank_deposit, automatically insert a matching bank_in entry of category 'deposit'
+            if (entryModal.type === 'cash_out' && entryForm.category === 'bank_deposit') {
+                try {
+                    const autoRes = await fetch('/api/day-book/entries', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            session_id: session.id,
+                            type: 'bank_in',
+                            amount,
+                            description: `Deposit: ${entryForm.description.trim()}`,
+                            category: 'deposit',
+                            bank_name: entryForm.bank_name.trim(),
+                        }),
+                    })
+                    const autoData = await autoRes.json()
+                    if (autoRes.ok) {
+                        newEntries.push(autoData.data)
+                        toast.success('Cash Out & matching Bank In entries recorded!')
+                    }
+                } catch (autoErr) {
+                    console.error('Failed to auto-create bank entry', autoErr)
+                }
+            } else {
+                toast.success('Entry recorded successfully!')
+            }
+
+            const updated = [...newEntries, ...entries]
             setEntries(updated)
-            recalc(updated, session.opening_balance)
+            recalc(updated, session.opening_balance, session.opening_bank_balance)
             setEntryModal(null)
             setEntryForm({ amount: '', description: '', category: 'other', bank_name: '' })
-            toast.success(`${entryModal.type === 'cash_in' ? 'Cash In' : 'Cash Out'} recorded!`)
         } catch (e: any) {
             toast.error(e.message || 'Failed to add entry')
         } finally {
@@ -159,7 +243,7 @@ export default function DayBookClient({
             if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
             const updated = entries.filter(e => e.id !== id)
             setEntries(updated)
-            recalc(updated, session!.opening_balance)
+            recalc(updated, session!.opening_balance, session!.opening_bank_balance)
             toast.success('Entry deleted')
         } catch (e: any) {
             toast.error(e.message || 'Failed to delete')
@@ -168,7 +252,7 @@ export default function DayBookClient({
 
     // ── Close Day ────────────────────────────────────────────
     const handleCloseDay = async () => {
-        if (!confirm(`Close today's day book? Closing balance will be ${fmt(totals.closing_balance)}.`)) return
+        if (!confirm(`Close today's day book?\n\nClosing Cash: ${fmt(totals.closing_balance)}\nClosing Bank: ${fmt(totals.closing_bank_balance)}`)) return
         setIsClosingDay(true)
         try {
             const res = await fetch('/api/day-book/session', {
@@ -255,13 +339,11 @@ export default function DayBookClient({
                         <BookOpen size={18} className="text-amber-600" /> Open Day Book
                     </h3>
                     <p className="text-sm text-gray-500 mb-5">
-                        {previousClosingBalance !== null
-                            ? `Yesterday's closing balance (${fmt(previousClosingBalance)}) has been pre-filled as today's opening balance.`
-                            : "First time using Day Book — enter your current cash in hand as the opening balance."}
+                        Initialize your cash ledger and bank ledger opening balances. Yesterday's closing balances have been pre-filled if available.
                     </p>
-                    <div className="flex items-end gap-4">
-                        <div className="flex-1 max-w-xs">
-                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Opening Balance (Rs.)</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mb-5">
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Opening Cash Balance (Rs.)</label>
                             <input
                                 type="number"
                                 min="0"
@@ -271,7 +353,27 @@ export default function DayBookClient({
                                 placeholder="0.00"
                                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-lg font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                             />
+                            {previousClosingBalance !== null && (
+                                <span className="text-[11px] text-gray-400 font-semibold mt-1 block">Prefilled: {fmt(previousClosingBalance)}</span>
+                            )}
                         </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Opening Bank Balance (Rs.)</label>
+                            <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={openingBankBalanceInput}
+                                onChange={e => setOpeningBankBalanceInput(e.target.value)}
+                                placeholder="0.00"
+                                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-lg font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                            />
+                            {previousClosingBankBalance !== null && (
+                                <span className="text-[11px] text-gray-400 font-semibold mt-1 block">Prefilled: {fmt(previousClosingBankBalance)}</span>
+                            )}
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3">
                         <button
                             onClick={handleOpenDay}
                             disabled={isSubmittingOpen}
@@ -311,353 +413,616 @@ export default function DayBookClient({
                 </div>
             )}
 
-            {/* ── Summary Cards ── */}
+            {/* ── Summary Cards & Tables ── */}
             {session && (
                 <>
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                        {/* Opening Balance */}
-                        <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                            <div className="flex items-center justify-between mb-3">
-                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Opening Balance</p>
-                                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-                                    <Wallet size={15} className="text-blue-600" />
-                                </div>
-                            </div>
-                            <p className="text-2xl font-black text-gray-900">{fmt(session.opening_balance)}</p>
-                            <p className="text-xs text-gray-400 mt-1">Start of day cash</p>
-                        </div>
-
-                        {/* Cash In */}
-                        <div className="bg-white rounded-2xl border border-emerald-100 p-5 shadow-sm">
-                            <div className="flex items-center justify-between mb-3">
-                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Cash In</p>
-                                <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
-                                    <TrendingUp size={15} className="text-emerald-600" />
-                                </div>
-                            </div>
-                            <p className="text-2xl font-black text-emerald-600">+{fmt(totals.total_cash_in)}</p>
-                            <p className="text-xs text-gray-400 mt-1">
-                                {entries.filter(e => e.type === 'cash_in').length} entries
-                            </p>
-                        </div>
-
-                        {/* Cash Out */}
-                        <div className="bg-white rounded-2xl border border-rose-100 p-5 shadow-sm">
-                            <div className="flex items-center justify-between mb-3">
-                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Cash Out</p>
-                                <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center">
-                                    <TrendingDown size={15} className="text-rose-600" />
-                                </div>
-                            </div>
-                            <p className="text-2xl font-black text-rose-600">−{fmt(totals.total_cash_out)}</p>
-                            <p className="text-xs text-gray-400 mt-1">
-                                {entries.filter(e => e.type === 'cash_out').length} entries
-                            </p>
-                        </div>
-
-                        {/* Closing Balance */}
-                        <div className={`rounded-2xl border p-5 shadow-sm ${isClosed ? 'bg-gray-900 border-gray-700' : 'bg-white border-amber-100'}`}>
-                            <div className="flex items-center justify-between mb-3">
-                                <p className={`text-xs font-bold uppercase tracking-wider ${isClosed ? 'text-white/50' : 'text-gray-400'}`}>
-                                    {isClosed ? 'Closed Balance' : 'Current Balance'}
-                                </p>
-                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isClosed ? 'bg-white/10' : 'bg-amber-50'}`}>
-                                    {isClosed
-                                        ? <Lock size={15} className="text-white/70" />
-                                        : <Wallet size={15} className="text-amber-600" />}
-                                </div>
-                            </div>
-                            <p className={`text-2xl font-black ${isClosed ? 'text-white' : totals.closing_balance >= 0 ? 'text-gray-900' : 'text-rose-600'}`}>
-                                {fmt(totals.closing_balance)}
-                            </p>
-                            <p className={`text-xs mt-1 ${isClosed ? 'text-white/40' : 'text-gray-400'}`}>
-                                {isClosed ? `Closed at ${timeStr(session.closed_at!)}` : 'Auto-calculated'}
-                            </p>
-                        </div>
+                    {/* Tab Navigation */}
+                    <div className="flex border-b border-gray-150 mb-6 gap-2">
+                        <button
+                            onClick={() => setActiveTab('cash')}
+                            className={`px-5 py-3 text-sm font-extrabold border-b-2 transition-all flex items-center gap-2 ${
+                                activeTab === 'cash'
+                                    ? 'border-[#ff5a00] text-[#ff5a00]'
+                                    : 'border-transparent text-gray-400 hover:text-gray-700'
+                            }`}
+                        >
+                            <span>💵</span> Cash Ledger
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('bank')}
+                            className={`px-5 py-3 text-sm font-extrabold border-b-2 transition-all flex items-center gap-2 ${
+                                activeTab === 'bank'
+                                    ? 'border-[#ff5a00] text-[#ff5a00]'
+                                    : 'border-transparent text-gray-400 hover:text-gray-700'
+                            }`}
+                        >
+                            <span>🏦</span> Bank Ledger
+                        </button>
                     </div>
 
-                    {/* ── Closed Notice ── */}
-                    {isClosed && (
-                        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-4 flex items-center gap-3">
-                            <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
-                            <p className="text-sm font-semibold text-emerald-800">
-                                Day closed at {timeStr(session.closed_at!)}. Tomorrow's opening balance will automatically be set to <strong>{fmt(totals.closing_balance)}</strong>.
-                            </p>
-                        </div>
-                    )}
-
-                    {/* ── Bank Deposits Summary ── */}
-                    {hasBankDeposits && (
-                        <div className="bg-white rounded-2xl border border-cyan-100 p-5 shadow-sm space-y-3">
-                            <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-cyan-500" />
-                                <h3 className="font-extrabold text-gray-800 text-sm">Bank Deposits Summary</h3>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                                {Object.entries(bankDeposits).map(([bankName, amount]) => (
-                                    <div key={bankName} className="bg-cyan-50/30 border border-cyan-100/50 rounded-xl px-4 py-3 flex items-center justify-between">
-                                        <div className="min-w-0">
-                                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Bank Name</p>
-                                            <p className="text-sm font-extrabold text-gray-800 truncate">{bankName}</p>
+                    {activeTab === 'cash' ? (
+                        <div className="space-y-6">
+                            {/* Summary Cash Cards */}
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
+                                {/* Opening Cash Balance */}
+                                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Opening Cash Balance</p>
+                                        <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                                            <Wallet size={15} className="text-blue-600" />
                                         </div>
-                                        <span className="text-sm font-black text-cyan-700 tabular-nums shrink-0">{fmt(amount)}</span>
                                     </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
+                                    <p className="text-2xl font-black text-gray-900">{fmt(session.opening_balance)}</p>
+                                    <p className="text-xs text-gray-400 mt-1">Start of day cash</p>
+                                </div>
 
-                    {/* ── Split Screen: Cash In | Cash Out ── */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
-
-                        {/* ── LEFT: Cash In Panel ── */}
-                        <div className="bg-white border-r border-gray-100">
-                            {/* Panel Header */}
-                            <div className="px-5 py-4 border-b border-emerald-100 bg-emerald-50/60 flex items-center justify-between">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
-                                        <ArrowDownCircle size={16} className="text-emerald-600" />
+                                {/* Total Cash In */}
+                                <div className="bg-white rounded-2xl border border-emerald-100 p-5 shadow-sm">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Cash In</p>
+                                        <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
+                                            <TrendingUp size={15} className="text-emerald-600" />
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h3 className="font-extrabold text-emerald-800 text-sm">Cash In</h3>
-                                        <p className="text-xs text-emerald-600 font-semibold">
-                                            {entries.filter(e => e.type === 'cash_in').length} entries · +{fmt(totals.total_cash_in)}
+                                    <p className="text-2xl font-black text-emerald-600">+{fmt(totals.total_cash_in)}</p>
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        {entries.filter(e => e.type === 'cash_in').length} entries
+                                    </p>
+                                </div>
+
+                                {/* Total Cash Out */}
+                                <div className="bg-white rounded-2xl border border-rose-100 p-5 shadow-sm">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Cash Out</p>
+                                        <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center">
+                                            <TrendingDown size={15} className="text-rose-600" />
+                                        </div>
+                                    </div>
+                                    <p className="text-2xl font-black text-rose-600">−{fmt(totals.total_cash_out)}</p>
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        {entries.filter(e => e.type === 'cash_out').length} entries
+                                    </p>
+                                </div>
+
+                                {/* Current Cash Balance */}
+                                <div className={`rounded-2xl border p-5 shadow-sm ${isClosed ? 'bg-gray-900 border-gray-700' : 'bg-white border-amber-100'}`}>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className={`text-xs font-bold uppercase tracking-wider ${isClosed ? 'text-white/50' : 'text-gray-400'}`}>
+                                            {isClosed ? 'Closed Cash Balance' : 'Current Cash Balance'}
                                         </p>
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isClosed ? 'bg-white/10' : 'bg-amber-50'}`}>
+                                            {isClosed
+                                                ? <Lock size={15} className="text-white/70" />
+                                                : <Wallet size={15} className="text-amber-600" />}
+                                        </div>
                                     </div>
+                                    <p className={`text-2xl font-black ${isClosed ? 'text-white' : totals.closing_balance >= 0 ? 'text-gray-900' : 'text-rose-600'}`}>
+                                        {fmt(totals.closing_balance)}
+                                    </p>
+                                    <p className={`text-xs mt-1 ${isClosed ? 'text-white/40' : 'text-gray-400'}`}>
+                                        {isClosed ? `Closed at ${timeStr(session.closed_at!)}` : 'Auto-calculated'}
+                                    </p>
                                 </div>
-                                {session?.status === 'open' && canManage && (
-                                    <button
-                                        onClick={() => { setEntryModal({ type: 'cash_in' }); setEntryForm({ amount: '', description: '', category: 'order_payment', bank_name: '' }) }}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-all"
-                                    >
-                                        <Plus size={13} /> Add
-                                    </button>
-                                )}
                             </div>
 
-                            {/* Cash In Entries */}
-                            {entries.filter(e => e.type === 'cash_in').length === 0 ? (
-                                <div className="py-12 text-center">
-                                    <div className="w-10 h-10 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-3">
-                                        <ArrowDownCircle size={18} className="text-emerald-200" />
-                                    </div>
-                                    <p className="text-xs font-semibold text-gray-400">No cash in entries yet</p>
-                                </div>
-                            ) : (
-                                <div className="divide-y divide-gray-50">
-                                    {entries.filter(e => e.type === 'cash_in').map(entry => (
-                                        <div key={entry.id} className="group flex items-center gap-3 px-5 py-3.5 hover:bg-emerald-50/30 transition-colors">
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-bold text-gray-900 truncate">{entry.description}</p>
-                                                <div className="flex items-center gap-2 mt-1">
-                                                    <span className="text-[11px] text-gray-400 font-medium">
-                                                        <Clock size={10} className="inline mr-0.5" />{timeStr(entry.created_at)}
-                                                    </span>
-                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${CATEGORY_COLORS[entry.category]}`}>
-                                                        {CATEGORY_LABELS[entry.category]}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2 shrink-0">
-                                                <span className="text-sm font-black text-emerald-600 tabular-nums">+{fmt(entry.amount)}</span>
-                                                {!isClosed && canManage && (
-                                                    <button
-                                                        onClick={() => handleDeleteEntry(entry.id)}
-                                                        className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
-                                                    >
-                                                        <Trash2 size={12} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
+                            {/* Closed Cash Notice */}
+                            {isClosed && (
+                                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-4 flex items-center gap-3 animate-fade-in">
+                                    <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+                                    <p className="text-sm font-semibold text-emerald-800">
+                                        Cash ledger closed. Tomorrow's opening cash balance will be <strong>{fmt(totals.closing_balance)}</strong>.
+                                    </p>
                                 </div>
                             )}
 
-                            {/* Cash In Footer Total */}
-                            <div className="px-5 py-3 bg-emerald-50/40 border-t border-emerald-100 flex justify-between items-center">
-                                <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Total Cash In</span>
-                                <span className="text-base font-black text-emerald-700">+{fmt(totals.total_cash_in)}</span>
-                            </div>
-                        </div>
-
-                        {/* ── RIGHT: Cash Out Panel ── */}
-                        <div className="bg-white">
-                            {/* Panel Header */}
-                            <div className="px-5 py-4 border-b border-rose-100 bg-rose-50/60 flex items-center justify-between">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="w-8 h-8 bg-rose-100 rounded-lg flex items-center justify-center">
-                                        <ArrowUpCircle size={16} className="text-rose-600" />
+                            {/* Bank Deposits Summary */}
+                            {hasBankDeposits && (
+                                <div className="bg-white rounded-2xl border border-cyan-100 p-5 shadow-sm space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-2 h-2 rounded-full bg-cyan-500" />
+                                        <h3 className="font-extrabold text-gray-800 text-sm">Bank Deposits Summary</h3>
                                     </div>
-                                    <div>
-                                        <h3 className="font-extrabold text-rose-800 text-sm">Cash Out</h3>
-                                        <p className="text-xs text-rose-600 font-semibold">
-                                            {entries.filter(e => e.type === 'cash_out').length} entries · −{fmt(totals.total_cash_out)}
-                                        </p>
-                                    </div>
-                                </div>
-                                {session?.status === 'open' && canManage && (
-                                    <button
-                                        onClick={() => { setEntryModal({ type: 'cash_out' }); setEntryForm({ amount: '', description: '', category: 'expense', bank_name: '' }) }}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs transition-all"
-                                    >
-                                        <Plus size={13} /> Add
-                                    </button>
-                                )}
-                            </div>
-
-                            {/* Cash Out Entries */}
-                            {entries.filter(e => e.type === 'cash_out').length === 0 ? (
-                                <div className="py-12 text-center">
-                                    <div className="w-10 h-10 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-3">
-                                        <ArrowUpCircle size={18} className="text-rose-200" />
-                                    </div>
-                                    <p className="text-xs font-semibold text-gray-400">No cash out entries yet</p>
-                                </div>
-                            ) : (
-                                <div className="divide-y divide-gray-50">
-                                    {entries.filter(e => e.type === 'cash_out').map(entry => (
-                                        <div key={entry.id} className="group flex items-center gap-3 px-5 py-3.5 hover:bg-rose-50/30 transition-colors">
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-bold text-gray-900 truncate">{entry.description}</p>
-                                                <div className="flex items-center gap-2 mt-1">
-                                                    <span className="text-[11px] text-gray-400 font-medium">
-                                                        <Clock size={10} className="inline mr-0.5" />{timeStr(entry.created_at)}
-                                                    </span>
-                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${CATEGORY_COLORS[entry.category]}`}>
-                                                        {CATEGORY_LABELS[entry.category]}
-                                                    </span>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                        {Object.entries(bankDeposits).map(([bankName, amount]) => (
+                                            <div key={bankName} className="bg-cyan-50/30 border border-cyan-100/50 rounded-xl px-4 py-3 flex items-center justify-between">
+                                                <div className="min-w-0">
+                                                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Bank Name</p>
+                                                    <p className="text-sm font-extrabold text-gray-800 truncate">{bankName}</p>
                                                 </div>
+                                                <span className="text-sm font-black text-cyan-700 tabular-nums shrink-0">{fmt(amount)}</span>
                                             </div>
-                                            <div className="flex items-center gap-2 shrink-0">
-                                                <span className="text-sm font-black text-rose-600 tabular-nums">−{fmt(entry.amount)}</span>
-                                                {!isClosed && canManage && (
-                                                    <button
-                                                        onClick={() => handleDeleteEntry(entry.id)}
-                                                        className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
-                                                    >
-                                                        <Trash2 size={12} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
+                                        ))}
+                                    </div>
                                 </div>
                             )}
 
-                            {/* Cash Out Footer Total */}
-                            <div className="px-5 py-3 bg-rose-50/40 border-t border-rose-100 flex justify-between items-center">
-                                <span className="text-xs font-bold text-rose-700 uppercase tracking-wider">Total Cash Out</span>
-                                <span className="text-base font-black text-rose-700">−{fmt(totals.total_cash_out)}</span>
+                            {/* Split Panels for Cash */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 rounded-2xl overflow-hidden border border-gray-100 shadow-sm animate-fade-in">
+                                {/* Cash In */}
+                                <div className="bg-white border-r border-gray-100">
+                                    <div className="px-5 py-4 border-b border-emerald-100 bg-emerald-50/60 flex items-center justify-between">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
+                                                <ArrowDownCircle size={16} className="text-emerald-600" />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-extrabold text-emerald-800 text-sm">Cash In</h3>
+                                                <p className="text-xs text-emerald-600 font-semibold">
+                                                    {entries.filter(e => e.type === 'cash_in').length} entries · +{fmt(totals.total_cash_in)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        {session?.status === 'open' && canManage && (
+                                            <button
+                                                onClick={() => { setEntryModal({ type: 'cash_in' }); setEntryForm({ amount: '', description: '', category: 'order_payment', bank_name: '' }) }}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-all"
+                                            >
+                                                <Plus size={13} /> Add
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {entries.filter(e => e.type === 'cash_in').length === 0 ? (
+                                        <div className="py-12 text-center">
+                                            <div className="w-10 h-10 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                                                <ArrowDownCircle size={18} className="text-emerald-200" />
+                                            </div>
+                                            <p className="text-xs font-semibold text-gray-400">No cash in entries yet</p>
+                                        </div>
+                                    ) : (
+                                        <div className="divide-y divide-gray-50">
+                                            {entries.filter(e => e.type === 'cash_in').map(entry => (
+                                                <div key={entry.id} className="group flex items-center gap-3 px-5 py-3.5 hover:bg-emerald-50/30 transition-colors">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-bold text-gray-900 truncate">{entry.description}</p>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <span className="text-[11px] text-gray-400 font-medium">
+                                                                <Clock size={10} className="inline mr-0.5" />{timeStr(entry.created_at)}
+                                                            </span>
+                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${CATEGORY_COLORS[entry.category]}`}>
+                                                                {CATEGORY_LABELS[entry.category]}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 shrink-0">
+                                                        <span className="text-sm font-black text-emerald-600 tabular-nums">+{fmt(entry.amount)}</span>
+                                                        {!isClosed && canManage && (
+                                                            <button
+                                                                onClick={() => handleDeleteEntry(entry.id)}
+                                                                className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                                                            >
+                                                                <Trash2 size={12} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    <div className="px-5 py-3 bg-emerald-50/40 border-t border-emerald-100 flex justify-between items-center">
+                                        <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Total Cash In</span>
+                                        <span className="text-base font-black text-emerald-700">+{fmt(totals.total_cash_in)}</span>
+                                    </div>
+                                </div>
+
+                                {/* Cash Out */}
+                                <div className="bg-white">
+                                    <div className="px-5 py-4 border-b border-rose-100 bg-rose-50/60 flex items-center justify-between">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-8 h-8 bg-rose-100 rounded-lg flex items-center justify-center">
+                                                <ArrowUpCircle size={16} className="text-rose-600" />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-extrabold text-rose-800 text-sm">Cash Out</h3>
+                                                <p className="text-xs text-rose-600 font-semibold">
+                                                    {entries.filter(e => e.type === 'cash_out').length} entries · −{fmt(totals.total_cash_out)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        {session?.status === 'open' && canManage && (
+                                            <button
+                                                onClick={() => { setEntryModal({ type: 'cash_out' }); setEntryForm({ amount: '', description: '', category: 'expense', bank_name: '' }) }}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs transition-all"
+                                            >
+                                                <Plus size={13} /> Add
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {entries.filter(e => e.type === 'cash_out').length === 0 ? (
+                                        <div className="py-12 text-center">
+                                            <div className="w-10 h-10 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                                                <ArrowUpCircle size={18} className="text-rose-200" />
+                                            </div>
+                                            <p className="text-xs font-semibold text-gray-400">No cash out entries yet</p>
+                                        </div>
+                                    ) : (
+                                        <div className="divide-y divide-gray-50">
+                                            {entries.filter(e => e.type === 'cash_out').map(entry => (
+                                                <div key={entry.id} className="group flex items-center gap-3 px-5 py-3.5 hover:bg-rose-50/30 transition-colors">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-bold text-gray-900 truncate">{entry.description}</p>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <span className="text-[11px] text-gray-400 font-medium">
+                                                                <Clock size={10} className="inline mr-0.5" />{timeStr(entry.created_at)}
+                                                            </span>
+                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${CATEGORY_COLORS[entry.category]}`}>
+                                                                {CATEGORY_LABELS[entry.category]}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 shrink-0">
+                                                        <span className="text-sm font-black text-rose-600 tabular-nums">−{fmt(entry.amount)}</span>
+                                                        {!isClosed && canManage && (
+                                                            <button
+                                                                onClick={() => handleDeleteEntry(entry.id)}
+                                                                className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                                                            >
+                                                                <Trash2 size={12} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    <div className="px-5 py-3 bg-rose-50/40 border-t border-rose-100 flex justify-between items-center">
+                                        <span className="text-xs font-bold text-rose-700 uppercase tracking-wider">Total Cash Out</span>
+                                        <span className="text-base font-black text-rose-700">−{fmt(totals.total_cash_out)}</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="space-y-6">
+                            {/* Summary Bank Cards */}
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
+                                {/* Opening Bank Balance */}
+                                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Opening Bank Balance</p>
+                                        <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                                            <Wallet size={15} className="text-blue-600" />
+                                        </div>
+                                    </div>
+                                    <p className="text-2xl font-black text-gray-900">{fmt(session.opening_bank_balance ?? 0)}</p>
+                                    <p className="text-xs text-gray-400 mt-1">Start of day bank funds</p>
+                                </div>
+
+                                {/* Total Bank In */}
+                                <div className="bg-white rounded-2xl border border-emerald-100 p-5 shadow-sm">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Bank In</p>
+                                        <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
+                                            <TrendingUp size={15} className="text-emerald-600" />
+                                        </div>
+                                    </div>
+                                    <p className="text-2xl font-black text-emerald-600">+{fmt(totals.total_bank_in)}</p>
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        {entries.filter(e => e.type === 'bank_in').length} entries
+                                    </p>
+                                </div>
+
+                                {/* Total Bank Out */}
+                                <div className="bg-white rounded-2xl border border-rose-100 p-5 shadow-sm">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Bank Out</p>
+                                        <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center">
+                                            <TrendingDown size={15} className="text-rose-600" />
+                                        </div>
+                                    </div>
+                                    <p className="text-2xl font-black text-rose-600">−{fmt(totals.total_bank_out)}</p>
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        {entries.filter(e => e.type === 'bank_out').length} entries
+                                    </p>
+                                </div>
+
+                                {/* Current Bank Balance */}
+                                <div className={`rounded-2xl border p-5 shadow-sm ${isClosed ? 'bg-gray-900 border-gray-700' : 'bg-white border-amber-100'}`}>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className={`text-xs font-bold uppercase tracking-wider ${isClosed ? 'text-white/50' : 'text-gray-400'}`}>
+                                            {isClosed ? 'Closed Bank Balance' : 'Current Bank Balance'}
+                                        </p>
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isClosed ? 'bg-white/10' : 'bg-amber-50'}`}>
+                                            {isClosed
+                                                ? <Lock size={15} className="text-white/70" />
+                                                : <Wallet size={15} className="text-amber-600" />}
+                                        </div>
+                                    </div>
+                                    <p className={`text-2xl font-black ${isClosed ? 'text-white' : totals.closing_bank_balance >= 0 ? 'text-gray-900' : 'text-rose-600'}`}>
+                                        {fmt(totals.closing_bank_balance)}
+                                    </p>
+                                    <p className={`text-xs mt-1 ${isClosed ? 'text-white/40' : 'text-gray-400'}`}>
+                                        {isClosed ? `Closed at ${timeStr(session.closed_at!)}` : 'Auto-calculated'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Closed Bank Notice */}
+                            {isClosed && (
+                                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-4 flex items-center gap-3 animate-fade-in">
+                                    <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+                                    <p className="text-sm font-semibold text-emerald-800">
+                                        Bank ledger closed. Tomorrow's opening bank balance will automatically be set to <strong>{fmt(totals.closing_bank_balance)}</strong>.
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Split Panels for Bank */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 rounded-2xl overflow-hidden border border-gray-100 shadow-sm animate-fade-in">
+                                {/* Bank In */}
+                                <div className="bg-white border-r border-gray-100">
+                                    <div className="px-5 py-4 border-b border-emerald-100 bg-emerald-50/60 flex items-center justify-between">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
+                                                <ArrowDownCircle size={16} className="text-emerald-600" />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-extrabold text-emerald-800 text-sm">Bank In</h3>
+                                                <p className="text-xs text-emerald-600 font-semibold">
+                                                    {entries.filter(e => e.type === 'bank_in').length} entries · +{fmt(totals.total_bank_in)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        {session?.status === 'open' && canManage && (
+                                            <button
+                                                onClick={() => { setEntryModal({ type: 'bank_in' }); setEntryForm({ amount: '', description: '', category: 'qr_payment', bank_name: '' }) }}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-all"
+                                            >
+                                                <Plus size={13} /> Add
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {entries.filter(e => e.type === 'bank_in').length === 0 ? (
+                                        <div className="py-12 text-center">
+                                            <div className="w-10 h-10 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                                                <ArrowDownCircle size={18} className="text-emerald-200" />
+                                            </div>
+                                            <p className="text-xs font-semibold text-gray-400">No bank in entries yet</p>
+                                        </div>
+                                    ) : (
+                                        <div className="divide-y divide-gray-50">
+                                            {entries.filter(e => e.type === 'bank_in').map(entry => (
+                                                <div key={entry.id} className="group flex items-center gap-3 px-5 py-3.5 hover:bg-emerald-50/30 transition-colors">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-bold text-gray-900 truncate">
+                                                            {entry.description}
+                                                        </p>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <span className="text-[11px] text-gray-400 font-medium">
+                                                                <Clock size={10} className="inline mr-0.5" />{timeStr(entry.created_at)}
+                                                            </span>
+                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${CATEGORY_COLORS[entry.category]}`}>
+                                                                {CATEGORY_LABELS[entry.category]}
+                                                            </span>
+                                                            {entry.bank_name && (
+                                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-500">
+                                                                    {entry.bank_name}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 shrink-0">
+                                                        <span className="text-sm font-black text-emerald-600 tabular-nums">+{fmt(entry.amount)}</span>
+                                                        {!isClosed && canManage && (
+                                                            <button
+                                                                onClick={() => handleDeleteEntry(entry.id)}
+                                                                className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                                                            >
+                                                                <Trash2 size={12} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    <div className="px-5 py-3 bg-emerald-50/40 border-t border-emerald-100 flex justify-between items-center">
+                                        <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Total Bank In</span>
+                                        <span className="text-base font-black text-emerald-700">+{fmt(totals.total_bank_in)}</span>
+                                    </div>
+                                </div>
+
+                                {/* Bank Out */}
+                                <div className="bg-white">
+                                    <div className="px-5 py-4 border-b border-rose-100 bg-rose-50/60 flex items-center justify-between">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-8 h-8 bg-rose-100 rounded-lg flex items-center justify-center">
+                                                <ArrowUpCircle size={16} className="text-rose-600" />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-extrabold text-rose-800 text-sm">Bank Out</h3>
+                                                <p className="text-xs text-rose-600 font-semibold">
+                                                    {entries.filter(e => e.type === 'bank_out').length} entries · −{fmt(totals.total_bank_out)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        {session?.status === 'open' && canManage && (
+                                            <button
+                                                onClick={() => { setEntryModal({ type: 'bank_out' }); setEntryForm({ amount: '', description: '', category: 'withdrawal', bank_name: '' }) }}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs transition-all"
+                                            >
+                                                <Plus size={13} /> Add
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {entries.filter(e => e.type === 'bank_out').length === 0 ? (
+                                        <div className="py-12 text-center">
+                                            <div className="w-10 h-10 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                                                <ArrowUpCircle size={18} className="text-rose-200" />
+                                            </div>
+                                            <p className="text-xs font-semibold text-gray-400">No bank out entries yet</p>
+                                        </div>
+                                    ) : (
+                                        <div className="divide-y divide-gray-50">
+                                            {entries.filter(e => e.type === 'bank_out').map(entry => (
+                                                <div key={entry.id} className="group flex items-center gap-3 px-5 py-3.5 hover:bg-rose-50/30 transition-colors">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-bold text-gray-900 truncate">{entry.description}</p>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <span className="text-[11px] text-gray-400 font-medium">
+                                                                <Clock size={10} className="inline mr-0.5" />{timeStr(entry.created_at)}
+                                                            </span>
+                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${CATEGORY_COLORS[entry.category]}`}>
+                                                                {CATEGORY_LABELS[entry.category]}
+                                                            </span>
+                                                            {entry.bank_name && (
+                                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-500">
+                                                                    {entry.bank_name}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 shrink-0">
+                                                        <span className="text-sm font-black text-rose-600 tabular-nums">−{fmt(entry.amount)}</span>
+                                                        {!isClosed && canManage && (
+                                                            <button
+                                                                onClick={() => handleDeleteEntry(entry.id)}
+                                                                className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                                                            >
+                                                                <Trash2 size={12} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    <div className="px-5 py-3 bg-rose-50/40 border-t border-rose-100 flex justify-between items-center">
+                                        <span className="text-xs font-bold text-rose-700 uppercase tracking-wider">Total Bank Out</span>
+                                        <span className="text-base font-black text-rose-700">−{fmt(totals.total_bank_out)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </>
             )}
 
             {/* ── Add Entry Modal ── */}
-            {entryModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
-                        {/* Modal Header */}
-                        <div className={`px-6 py-5 flex items-center justify-between ${entryModal.type === 'cash_in' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
-                            <div className="flex items-center gap-3">
-                                {entryModal.type === 'cash_in'
-                                    ? <ArrowDownCircle size={22} className="text-white" />
-                                    : <ArrowUpCircle size={22} className="text-white" />}
-                                <h3 className="text-white font-extrabold text-lg">
-                                    {entryModal.type === 'cash_in' ? 'Record Cash In' : 'Record Cash Out'}
-                                </h3>
-                            </div>
-                            <button
-                                onClick={() => setEntryModal(null)}
-                                className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors"
-                            >
-                                <X size={16} />
-                            </button>
-                        </div>
+            {entryModal && (() => {
+                const isBankType = ['bank_in', 'bank_out'].includes(entryModal.type)
+                const isIncome = ['cash_in', 'bank_in'].includes(entryModal.type)
+                const allowedCategories = isBankType
+                    ? ['qr_payment', 'card', 'transfer', 'deposit', 'withdrawal', 'bank_charges', 'transfer_out', 'other']
+                    : ['order_payment', 'room_deposit', 'booking_payment', 'expense', 'refund', 'salary', 'advance', 'bank_deposit', 'other']
 
-                        {/* Modal Body */}
-                        <div className="p-6 space-y-5">
-                            {/* Amount */}
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Amount (Rs.) *</label>
-                                <input
-                                    type="number"
-                                    min="0.01"
-                                    step="0.01"
-                                    autoFocus
-                                    value={entryForm.amount}
-                                    onChange={e => setEntryForm(f => ({ ...f, amount: e.target.value }))}
-                                    placeholder="0.00"
-                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xl font-black text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
-                                />
-                            </div>
+                const modalTitle = {
+                    cash_in: 'Record Cash In',
+                    cash_out: 'Record Cash Out',
+                    bank_in: 'Record Bank In',
+                    bank_out: 'Record Bank Out',
+                }[entryModal.type]
 
-                            {/* Description */}
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Description *</label>
-                                <input
-                                    type="text"
-                                    value={entryForm.description}
-                                    onChange={e => setEntryForm(f => ({ ...f, description: e.target.value }))}
-                                    placeholder={entryModal.type === 'cash_in' ? 'e.g. Table 5 cash payment' : 'e.g. Milk and vegetables'}
-                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
-                                />
-                            </div>
-
-                            {/* Category */}
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Category</label>
-                                <div className="relative">
-                                    <select
-                                        value={entryForm.category}
-                                        onChange={e => setEntryForm(f => ({ ...f, category: e.target.value as DayBookEntryCategory }))}
-                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00] appearance-none cursor-pointer"
-                                    >
-                                        {Object.entries(CATEGORY_LABELS).map(([val, label]) => (
-                                            <option key={val} value={val}>{label}</option>
-                                        ))}
-                                    </select>
-                                    <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
+                        <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
+                            {/* Modal Header */}
+                            <div className={`px-6 py-5 flex items-center justify-between ${isIncome ? 'bg-emerald-600' : 'bg-rose-600'}`}>
+                                <div className="flex items-center gap-3">
+                                    {isIncome
+                                        ? <ArrowDownCircle size={22} className="text-white" />
+                                        : <ArrowUpCircle size={22} className="text-white" />}
+                                    <h3 className="text-white font-extrabold text-lg">
+                                        {modalTitle}
+                                    </h3>
                                 </div>
+                                <button
+                                    onClick={() => setEntryModal(null)}
+                                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors"
+                                >
+                                    <X size={16} />
+                                </button>
                             </div>
 
-                            {/* Bank Name (conditional) */}
-                            {entryForm.category === 'bank_deposit' && (
-                                <div className="animate-in fade-in slide-in-from-top-1 duration-150">
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Bank Name *</label>
+                            {/* Modal Body */}
+                            <div className="p-6 space-y-5">
+                                {/* Amount */}
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Amount (Rs.) *</label>
+                                    <input
+                                        type="number"
+                                        min="0.01"
+                                        step="0.01"
+                                        autoFocus
+                                        value={entryForm.amount}
+                                        onChange={e => setEntryForm(f => ({ ...f, amount: e.target.value }))}
+                                        placeholder="0.00"
+                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xl font-black text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                    />
+                                </div>
+
+                                {/* Description */}
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Description *</label>
                                     <input
                                         type="text"
-                                        value={entryForm.bank_name || ''}
-                                        onChange={e => setEntryForm(f => ({ ...f, bank_name: e.target.value }))}
-                                        placeholder="e.g. NIC Asia Bank, Global IME Bank"
+                                        value={entryForm.description}
+                                        onChange={e => setEntryForm(f => ({ ...f, description: e.target.value }))}
+                                        placeholder={isIncome ? 'e.g. Table 5 payment / Guest Deposit' : 'e.g. Supplier payout / Laundry bill'}
                                         className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
                                     />
                                 </div>
-                            )}
-                        </div>
 
-                        {/* Modal Footer */}
-                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
-                            <button
-                                onClick={() => setEntryModal(null)}
-                                className="px-4 py-2.5 text-sm font-bold text-gray-600 hover:text-gray-900 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleAddEntry}
-                                disabled={isSubmittingEntry}
-                                className={`px-6 py-2.5 text-sm font-bold text-white rounded-xl shadow-md transition-all disabled:opacity-50 flex items-center gap-2 ${entryModal.type === 'cash_in' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'}`}
-                            >
-                                {isSubmittingEntry ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                                Add {entryModal.type === 'cash_in' ? 'Cash In' : 'Cash Out'}
-                            </button>
+                                {/* Category */}
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Category</label>
+                                    <div className="relative">
+                                        <select
+                                            value={entryForm.category}
+                                            onChange={e => setEntryForm(f => ({ ...f, category: e.target.value as DayBookEntryCategory }))}
+                                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00] appearance-none cursor-pointer"
+                                        >
+                                            {allowedCategories.map(cat => (
+                                                <option key={cat} value={cat}>{CATEGORY_LABELS[cat as DayBookEntryCategory]}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                    </div>
+                                </div>
+
+                                {/* Bank Name (conditional for Cash Bank Deposit, or default for Bank entries) */}
+                                {(entryForm.category === 'bank_deposit' || isBankType) && (
+                                    <div className="animate-in fade-in slide-in-from-top-1 duration-150">
+                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Bank Name *</label>
+                                        <input
+                                            type="text"
+                                            value={entryForm.bank_name || ''}
+                                            onChange={e => setEntryForm(f => ({ ...f, bank_name: e.target.value }))}
+                                            placeholder="e.g. NIC Asia Bank, Global IME Bank"
+                                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                                <button
+                                    onClick={() => setEntryModal(null)}
+                                    className="px-4 py-2.5 text-sm font-bold text-gray-600 hover:text-gray-900 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleAddEntry}
+                                    disabled={isSubmittingEntry}
+                                    className={`px-6 py-2.5 text-sm font-bold text-white rounded-xl shadow-md transition-all disabled:opacity-50 flex items-center gap-2 ${isIncome ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'}`}
+                                >
+                                    {isSubmittingEntry ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                                    Add {entryModal.type.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
         </div>
     )
 }

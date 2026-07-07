@@ -38,28 +38,37 @@ export default async function DayBookPage() {
     const totalCashIn  = entries.filter(e => e.type === 'cash_in').reduce((s: number, e: any) => s + Number(e.amount), 0)
     const totalCashOut = entries.filter(e => e.type === 'cash_out').reduce((s: number, e: any) => s + Number(e.amount), 0)
     const openingBal   = Number(session?.opening_balance ?? 0)
+
+    const totalBankIn  = entries.filter(e => e.type === 'bank_in').reduce((s: number, e: any) => s + Number(e.amount), 0)
+    const totalBankOut = entries.filter(e => e.type === 'bank_out').reduce((s: number, e: any) => s + Number(e.amount), 0)
+    const openingBankBal = Number(session?.opening_bank_balance ?? 0)
+
     const initialTotals = {
         total_cash_in:    totalCashIn,
         total_cash_out:   totalCashOut,
         closing_balance:  openingBal + totalCashIn - totalCashOut,
+        total_bank_in:    totalBankIn,
+        total_bank_out:   totalBankOut,
+        closing_bank_balance: openingBankBal + totalBankIn - totalBankOut,
     }
 
-    // Get yesterday's closing balance (for auto carry-over on first open)
+    // Get yesterday's closing balances (for auto carry-over on first open)
     let previousClosingBalance: number | null = null
+    let previousClosingBankBalance: number | null = null
     if (!session) {
         // Find the most recent closed session
         const { data: prevSession } = await supabase
             .from('day_book_sessions')
-            .select('id, opening_balance')
+            .select('id, opening_balance, opening_bank_balance')
             .eq('restaurant_id', restaurantId)
             .eq('status', 'closed')
             .lt('date', todayDate)
             .order('date', { ascending: false })
             .limit(1)
-            .single()
+            .maybeSingle()
 
         if (prevSession) {
-            // Calculate its closing balance
+            // Calculate its closing balances
             const { data: prevEntries } = await supabase
                 .from('day_book_entries')
                 .select('type, amount')
@@ -69,6 +78,10 @@ export default async function DayBookPage() {
                 const prevIn  = prevEntries.filter(e => e.type === 'cash_in').reduce((s, e) => s + Number(e.amount), 0)
                 const prevOut = prevEntries.filter(e => e.type === 'cash_out').reduce((s, e) => s + Number(e.amount), 0)
                 previousClosingBalance = Number(prevSession.opening_balance) + prevIn - prevOut
+
+                const prevBankIn  = prevEntries.filter(e => e.type === 'bank_in').reduce((s, e) => s + Number(e.amount), 0)
+                const prevBankOut = prevEntries.filter(e => e.type === 'bank_out').reduce((s, e) => s + Number(e.amount), 0)
+                previousClosingBankBalance = Number(prevSession.opening_bank_balance ?? 0) + prevBankIn - prevBankOut
             }
         }
     }
@@ -81,6 +94,7 @@ export default async function DayBookPage() {
             todayDate={todayDate}
             userRole={currentUser.role}
             previousClosingBalance={previousClosingBalance}
+            previousClosingBankBalance={previousClosingBankBalance}
         />
     )
 }
