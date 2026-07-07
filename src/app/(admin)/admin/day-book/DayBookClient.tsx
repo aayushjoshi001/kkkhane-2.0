@@ -271,6 +271,28 @@ export default function DayBookClient({
         }
     }
 
+    // ── Re-open Day ──────────────────────────────────────────
+    const [isReopeningDay, setIsReopeningDay] = useState(false)
+    const handleReopenDay = async () => {
+        if (!confirm("Are you sure you want to re-open today's day book? This will unlock transactions editing.")) return
+        setIsReopeningDay(true)
+        try {
+            const res = await fetch('/api/day-book/session', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: session!.id, action: 'reopen' }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error)
+            setSession(data.data)
+            toast.success('Day book re-opened successfully!')
+        } catch (e: any) {
+            toast.error(e.message || 'Failed to re-open day book')
+        } finally {
+            setIsReopeningDay(false)
+        }
+    }
+
     // Group bank deposits to show a summarized list of totals per bank name
     const bankDeposits = entries
         .filter(e => e.category === 'bank_deposit' && e.bank_name)
@@ -325,9 +347,20 @@ export default function DayBookClient({
                         </button>
                     )}
                     {isClosed && (
-                        <span className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-600 font-semibold rounded-xl text-sm">
-                            <CheckCircle2 size={15} className="text-emerald-500" /> Day Closed
-                        </span>
+                        <div className="flex items-center gap-2">
+                            <span className="flex items-center gap-2 px-4 py-2.5 bg-gray-150 text-gray-600 font-bold rounded-xl text-sm border border-gray-200">
+                                <CheckCircle2 size={15} className="text-emerald-500" /> Day Closed
+                            </span>
+                            {['manager', 'super_admin'].includes(userRole) && (
+                                <button
+                                    onClick={handleReopenDay}
+                                    disabled={isReopeningDay}
+                                    className="flex items-center gap-1.5 px-3 py-2 bg-[#ff5a00]/10 hover:bg-[#ff5a00]/20 text-[#ff5a00] font-extrabold rounded-xl text-xs border border-[#ff5a00]/20 transition-all"
+                                >
+                                    {isReopeningDay ? <Loader2 size={12} className="animate-spin" /> : 'Re-open'}
+                                </button>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>

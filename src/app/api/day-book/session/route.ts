@@ -128,7 +128,7 @@ export async function PATCH(request: Request) {
     const restaurantId = currentUser.restaurantId
 
     const body = await request.json().catch(() => ({}))
-    const { session_id, notes } = body
+    const { session_id, notes, action } = body
 
     if (!session_id) {
         return NextResponse.json({ error: 'session_id is required' }, { status: 400 })
@@ -136,7 +136,7 @@ export async function PATCH(request: Request) {
 
     const supabase = await createAdminClient()
 
-    // Verify session belongs to this restaurant and is still open
+    // Verify session belongs to this restaurant
     const { data: existing, error: fetchError } = await supabase
         .from('day_book_sessions')
         .select('id, status')
@@ -150,6 +150,37 @@ export async function PATCH(request: Request) {
     if (!existing) {
         return NextResponse.json({ error: 'Session not found' }, { status: 404 })
     }
+
+    // ── Re-open Action ────────────────────────────────────────────────────────
+    if (action === 'reopen') {
+        const allowedRoles = ['manager', 'super_admin']
+        if (!allowedRoles.includes(currentUser.role as string)) {
+            return NextResponse.json(
+                { error: 'Only managers and super admins can re-open the day book' },
+                { status: 403 }
+            )
+        }
+
+        const { data: session, error } = await supabase
+            .from('day_book_sessions')
+            .update({
+                status:    'open',
+                closed_at: null,
+                closed_by: null,
+            })
+            .eq('id', session_id)
+            .eq('restaurant_id', restaurantId)
+            .select()
+            .single()
+
+        if (error) {
+            return NextResponse.json({ error: error.message }, { status: 500 })
+        }
+
+        return NextResponse.json({ success: true, data: session })
+    }
+
+    // ── Close Action ──────────────────────────────────────────────────────────
     if (existing.status === 'closed') {
         return NextResponse.json({ error: 'Session is already closed' }, { status: 409 })
     }
