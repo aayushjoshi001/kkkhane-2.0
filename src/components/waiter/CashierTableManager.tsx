@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { setTableStatus } from '@/app/(staff)/waiter/actions'
 import { createClient } from '@/lib/supabase/client'
-import { Users, X, Check, CalendarClock, ShoppingBag, Eye } from 'lucide-react'
+import { Users, X, Check, CalendarClock, Eye } from 'lucide-react'
 import type { Table, Session } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
@@ -41,6 +41,7 @@ export default function CashierTableManager({
     userId,
     spaceFilter,
     onSwitchToBilling,
+    isHotel,
 }: {
     initialTables: TableWithSession[]
     restaurantId: string
@@ -49,6 +50,7 @@ export default function CashierTableManager({
     userId: string
     spaceFilter: 'all' | 'available' | 'reserved' | 'occupied' | 'dirty'
     onSwitchToBilling: (sessionId: string) => void
+    isHotel: boolean
 }) {
     const [tables, setTables] = useState<TableWithSession[]>(initialTables)
     const [selectedTable, setSelectedTable] = useState<TableWithSession | null>(null)
@@ -191,6 +193,8 @@ export default function CashierTableManager({
         }
         setIsProcessing(false)
     }
+
+
 
     return (
         <div className="w-full">
@@ -358,7 +362,7 @@ export default function CashierTableManager({
                                     </Button>
                                 </div>
                             ) : (
-                                // Available / Reserved / Dirty View: reservation inputs
+                                // Available / Reserved / Dirty View
                                 <div className="space-y-4">
                                     {selectedTable.table_status === 'reserved' ? (
                                         <div className="space-y-4">
@@ -377,7 +381,11 @@ export default function CashierTableManager({
                                             </Button>
                                         </div>
                                     ) : (
+                                        // Reserve details form
                                         <div className="space-y-3.5">
+                                            <div className="text-center pb-2">
+                                                <h4 className="text-xs font-extrabold uppercase text-ink-subtle tracking-wider">Reserve Table {selectedTable.label}</h4>
+                                            </div>
                                             <div className="space-y-1">
                                                 <label className="text-xs font-bold text-ink-subtle uppercase">Guest Name</label>
                                                 <input

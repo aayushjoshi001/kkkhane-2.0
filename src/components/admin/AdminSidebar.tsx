@@ -5,7 +5,8 @@ import Image from 'next/image'
 import {
     Users, UtensilsCrossed, Settings, LogOut, BarChart3, Palette, Grid3X3,
     TrendingUp, ShoppingBag, Tag, Heart, DollarSign, Package,
-    FileText, Truck, Clock, CreditCard, Sparkles, Sun, Moon, X
+    FileText, Truck, Clock, CreditCard, Sparkles, Sun, Moon, X,
+    Bed, CalendarRange, Hotel, BookOpen
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -14,7 +15,7 @@ import { signOutAndRedirect } from '@/lib/auth/signOut'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { useSidebar } from '@/lib/contexts/SidebarContext'
-import { useFeatures } from '@/lib/contexts/FeatureContext'
+import { useFeatures, useBusinessMode } from '@/lib/contexts/FeatureContext'
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))
@@ -32,6 +33,8 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
     // to dine-in being available, matching the same safe default already
     // used on the public restaurant page (src/app/(public)/r/[restaurantSlug]/page.tsx).
     const dineInEnabled = useFeatures().dineInEnabled ?? true
+    const businessMode = useBusinessMode()
+    const isHotel = businessMode === 'hotel'
 
     // Load theme preference on mount
     // eslint-disable-next-line
@@ -104,29 +107,45 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
             <nav className={cn("flex-1 overflow-y-auto py-2 scrollbar-none space-y-1 relative z-10", isCollapsed ? "px-2" : "px-4")}>
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/dashboard"  icon={BarChart3}       label="Overview"        path={pathname} />
                 
-                <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Menu & Catalog</SectionLabel>
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/menu"        icon={UtensilsCrossed} label="Menu Catalog"    path={pathname} />
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/combos"      icon={Sparkles}        label="Combo Offers"    path={pathname} />
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/pricing"     icon={DollarSign}      label="Dynamic Pricing" path={pathname} />
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/promos"      icon={Tag}             label="Promo Codes"     path={pathname} />
+                {isHotel ? (
+                    <>
+                        <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Hospitality</SectionLabel>
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/rooms"     icon={Bed}             label="Rooms & Suites"  path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/bookings"  icon={CalendarRange}   label="Bookings"        path={pathname} />
+                        
+                        <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Room Service</SectionLabel>
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/orders"    icon={ShoppingBag}     label="Service Orders"  path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/payments"  icon={CreditCard}      label="Room Billing"    path={pathname} />
 
-                <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Live Operations</SectionLabel>
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/orders"      icon={ShoppingBag}     label="Live Orders"     path={pathname} badge="12" />
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/payments"    icon={CreditCard}      label="Payments"        path={pathname} />
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/takeout"     icon={Truck}           label="Takeout & Disp." path={pathname} />
-                {dineInEnabled && (
-                    <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"      icon={Grid3X3}         label="Tables & QR"     path={pathname} />
+                        <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Dining & Tables</SectionLabel>
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"    icon={Grid3X3}         label="Tables & QR"     path={pathname} />
+                    </>
+                ) : (
+                    <>
+                        <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Menu & Catalog</SectionLabel>
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/menu"        icon={UtensilsCrossed} label="Menu Catalog"    path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/combos"      icon={Sparkles}        label="Combo Offers"    path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/pricing"     icon={DollarSign}      label="Dynamic Pricing" path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/promos"      icon={Tag}             label="Promo Codes"     path={pathname} />
+
+                        <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Live Operations</SectionLabel>
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/orders"      icon={ShoppingBag}     label="Live Orders"     path={pathname} badge="12" />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/payments"    icon={CreditCard}      label="Payments"        path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/takeout"     icon={Truck}           label="Takeout & Disp." path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"      icon={Grid3X3}         label="Tables & QR"     path={pathname} />
+                        
+                        <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Intelligence</SectionLabel>
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/loyalty"     icon={Heart}           label="Loyalty Program" path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/reports"     icon={FileText}        label="EOD Reports"     path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/analytics"   icon={TrendingUp}      label="Analytics"       path={pathname} />
+                    </>
                 )}
-                
-                <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Intelligence</SectionLabel>
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/loyalty"     icon={Heart}           label="Loyalty Program" path={pathname} />
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/reports"     icon={FileText}        label="EOD Reports"     path={pathname} />
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/analytics"   icon={TrendingUp}      label="Analytics"       path={pathname} />
 
                 <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Resources</SectionLabel>
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/ingredients" icon={Package}         label="Inventory"       path={pathname} />
+                {!isHotel && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/ingredients" icon={Package}         label="Inventory"       path={pathname} />}
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/staff"       icon={Users}           label="Staff Members"   path={pathname} />
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/shifts"      icon={Clock}           label="Schedule"        path={pathname} />
+                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/day-book"    icon={BookOpen}        label="Day Book"        path={pathname} />
 
                 <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Settings</SectionLabel>
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/homepage"    icon={Palette}         label="Homepage Setup"  path={pathname} />

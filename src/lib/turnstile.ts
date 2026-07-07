@@ -1,4 +1,7 @@
 export async function verifyTurnstileToken(token: string | null | undefined): Promise<boolean> {
+    if (process.env.NODE_ENV === 'development') {
+        return true
+    }
     if (!token) return false
 
     const secretKey = process.env.TURNSTILE_SECRET_KEY

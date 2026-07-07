@@ -133,11 +133,18 @@ export default function TablePageClient({
     const searchParams = useSearchParams()
     const isWaiter = searchParams?.get('w') === '1'
 
+    const [isMounted, setIsMounted] = useState(false)
+    useEffect(() => {
+        setIsMounted(true)
+    }, [])
+
     const totalItems = useHydratedStore(useCartStore, (s) => s.totalItems)
-    const cartCount = totalItems ? totalItems() : 0
+    const cartCount = isMounted && totalItems ? totalItems() : 0
 
     const allOrders = useHydratedStore(useActiveOrders, (s) => s.orders) || []
-    const currentTableOrders = allOrders.filter(o => o.slug === tableData.qr_token && o.type === 'dine_in' && (!o.sessionToken || o.sessionToken === liveSessionToken))
+    const currentTableOrders = isMounted
+        ? allOrders.filter(o => o.slug === tableData.qr_token && o.type === 'dine_in' && (!o.sessionToken || o.sessionToken === liveSessionToken))
+        : []
 
     const checkIpStatus = async () => {
         setVerifyingIp(true)

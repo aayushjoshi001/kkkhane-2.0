@@ -841,3 +841,107 @@ export const HOMEPAGE_TEMPLATES: Record<HomepageTemplate, {
         icon: '🏛️'
     }
 }
+
+// ────────────────────────────────────────────────
+// Hotel Types
+// ────────────────────────────────────────────────
+
+export type RoomStatus = 'available' | 'occupied' | 'dirty' | 'maintenance'
+export type BookingStatus = 'pending' | 'checked_in' | 'checked_out' | 'cancelled'
+
+export interface RoomType {
+    id: string
+    restaurant_id: string
+    name: string
+    description: string | null
+    base_price: number
+    capacity: number
+    created_at: string
+}
+
+export interface Room {
+    id: string
+    restaurant_id: string
+    room_number: string
+    floor: string | null
+    status: RoomStatus
+    type_id: string | null
+    created_at: string
+    room_types?: RoomType | null
+}
+
+export interface Booking {
+    id: string
+    restaurant_id: string
+    room_id: string
+    guest_name: string
+    guest_phone: string | null
+    guest_email: string | null
+    check_in: string
+    check_out: string
+    adults: number
+    children: number
+    status: BookingStatus
+    total_amount: number
+    paid_amount: number
+    notes: string | null
+    created_at: string
+    rooms?: Room | null
+}
+
+// ─── Day Book ───────────────────────────────────────────────
+export type DayBookSessionStatus = 'open' | 'closed'
+export type DayBookEntryType = 'cash_in' | 'cash_out' | 'bank_in' | 'bank_out'
+export type DayBookEntryCategory =
+    | 'order_payment'
+    | 'room_deposit'
+    | 'booking_payment'
+    | 'expense'
+    | 'refund'
+    | 'salary'
+    | 'advance'
+    | 'bank_deposit'
+    | 'other'
+    // Bank categories
+    | 'qr_payment'
+    | 'card'
+    | 'transfer'
+    | 'deposit'
+    | 'withdrawal'
+    | 'bank_charges'
+    | 'transfer_out'
+
+export interface DayBookSession {
+    id: string
+    restaurant_id: string
+    date: string             // ISO date string YYYY-MM-DD
+    opening_balance: number
+    opening_bank_balance: number
+    status: DayBookSessionStatus
+    closed_at: string | null
+    closed_by: string | null
+    notes: string | null
+    created_by: string | null
+    created_at: string
+    updated_at: string
+}
+
+export interface DayBookEntry {
+    id: string
+    session_id: string
+    restaurant_id: string
+    type: DayBookEntryType
+    amount: number
+    description: string
+    category: DayBookEntryCategory
+    reference_id: string | null
+    bank_name: string | null
+    created_by: string | null
+    created_at: string
+}
+
+export interface DayBookTotals {
+    total_cash_in: number
+    total_cash_out: number
+    closing_balance: number
+}
