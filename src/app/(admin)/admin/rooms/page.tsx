@@ -11,12 +11,13 @@ export default async function RoomsPage() {
 
     const adminSupabase = await createAdminClient()
     
-    // Fetch rooms and room types with safety
+    // Fetch rooms, room types, and restaurant slug
     let rooms: Room[] = []
     let roomTypes: RoomType[] = []
+    let restaurantSlug = ''
 
     try {
-        const [roomsRes, typesRes] = await Promise.all([
+        const [roomsRes, typesRes, restRes] = await Promise.all([
             adminSupabase
                 .from('rooms')
                 .select('*, room_types:type_id(*)')
@@ -26,11 +27,17 @@ export default async function RoomsPage() {
                 .from('room_types')
                 .select('*')
                 .eq('restaurant_id', restaurantId)
-                .order('name', { ascending: true })
+                .order('name', { ascending: true }),
+            adminSupabase
+                .from('restaurants')
+                .select('slug')
+                .eq('id', restaurantId)
+                .single()
         ])
 
         rooms = (roomsRes.data as unknown as Room[]) || []
         roomTypes = typesRes.data || []
+        restaurantSlug = restRes.data?.slug || ''
     } catch (e) {
         console.error("Failed to load rooms data from DB", e)
     }
@@ -40,6 +47,7 @@ export default async function RoomsPage() {
             initialRooms={rooms} 
             roomTypes={roomTypes} 
             restaurantId={restaurantId} 
+            restaurantSlug={restaurantSlug}
         />
     )
 }
