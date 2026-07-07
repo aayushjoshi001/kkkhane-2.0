@@ -381,6 +381,17 @@ export async function placeOrder(
                 ])
             }
         }
+
+        // Fire QStash background event for non-blocking receipts & 3rd party integrations
+        if (process.env.QSTASH_TOKEN) {
+            import('@/lib/qstash').then(({ qstash }) => {
+                const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+                qstash?.publishJSON({
+                    url: `${baseUrl}/api/webhooks/qstash/order-processed`,
+                    body: { orderId: result.order_id, restaurantId: sessionData.restaurant_id }
+                }).catch(err => console.error('[QStash] Order webhook publish error:', err))
+            })
+        }
     }
 
     // Purge the cart/menu page caches for this session
