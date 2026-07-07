@@ -889,3 +889,49 @@ export interface Booking {
     created_at: string
     rooms?: Room | null
 }
+
+// ─── Day Book ───────────────────────────────────────────────
+export type DayBookSessionStatus = 'open' | 'closed'
+export type DayBookEntryType = 'cash_in' | 'cash_out'
+export type DayBookEntryCategory =
+    | 'order_payment'
+    | 'room_deposit'
+    | 'booking_payment'
+    | 'expense'
+    | 'refund'
+    | 'salary'
+    | 'advance'
+    | 'other'
+
+export interface DayBookSession {
+    id: string
+    restaurant_id: string
+    date: string             // ISO date string YYYY-MM-DD
+    opening_balance: number
+    status: DayBookSessionStatus
+    closed_at: string | null
+    closed_by: string | null
+    notes: string | null
+    created_by: string | null
+    created_at: string
+    updated_at: string
+}
+
+export interface DayBookEntry {
+    id: string
+    session_id: string
+    restaurant_id: string
+    type: DayBookEntryType
+    amount: number
+    description: string
+    category: DayBookEntryCategory
+    reference_id: string | null
+    created_by: string | null
+    created_at: string
+}
+
+export interface DayBookTotals {
+    total_cash_in: number
+    total_cash_out: number
+    closing_balance: number
+}
