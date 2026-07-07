@@ -714,11 +714,11 @@ export default function CashierRoomManager({
                     onClick={() => setSelectedRoom(null)}
                 >
                     <div 
-                        className="bg-surface w-full max-w-2xl rounded-[28px] shadow-2xl overflow-hidden border border-hairline p-6 space-y-6 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+                        className="bg-surface w-full max-w-2xl rounded-[28px] shadow-2xl overflow-hidden border border-hairline flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200"
                         onClick={e => e.stopPropagation()}
                     >
-                        {/* Drawer Header */}
-                        <div className="flex items-center justify-between border-b border-hairline pb-4">
+                        {/* Drawer Header - sticky */}
+                        <div className="flex items-center justify-between border-b border-hairline px-6 py-4 flex-shrink-0">
                             <div>
                                 <div className="flex items-center gap-2">
                                     <Bed size={20} className="text-blue-500" />
@@ -736,6 +736,8 @@ export default function CashierRoomManager({
                             </button>
                         </div>
 
+                        {/* Scrollable content area */}
+                        <div className="overflow-y-auto flex-1 px-6 py-4">
                         {loadingBooking ? (
                             <div className="py-12 flex flex-col items-center justify-center gap-3">
                                 <Loader2 size={32} className="animate-spin text-brand-500" />
@@ -885,40 +887,41 @@ export default function CashierRoomManager({
                                         </div>
                                     )}
                                 </div>
-
-                                {/* Drawer Footer (Checkout and Total Billing) */}
-                                <div className="border-t border-hairline pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-2">
-                                    <div>
-                                        <span className="text-[10px] font-bold text-ink-subtle uppercase">Total bill amount</span>
-                                        <p className="text-2xl font-black text-brand-600 tabular-nums">{money(grandTotal)}</p>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <Button
-                                            variant="secondary"
-                                            onClick={() => setSelectedRoom(null)}
-                                            className="px-5 font-bold"
-                                        >
-                                            Close
-                                        </Button>
-                                        <Button
-                                            variant="danger"
-                                            icon={CreditCard}
-                                            onClick={() => {
-                                                if (onGoToBilling) onGoToBilling(selectedRoom)
-                                                setSelectedRoom(null)
-                                            }}
-                                            className="px-6 font-bold"
-                                        >
-                                            Go to Billing
-                                        </Button>
-                                    </div>
-                                </div>
                             </div>
                         ) : (
-                            <div className="p-8 text-center border border-dashed border-hairline-strong rounded-xl">
+                            <div className="py-8 text-center border border-dashed border-hairline-strong rounded-xl">
                                 <p className="text-sm text-ink-subtle">No active booking session found.</p>
                             </div>
                         )}
+                        </div>
+
+                        {/* Drawer Footer (Checkout and Total Billing) - sticky */}
+                        <div className="border-t border-hairline px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-shrink-0 bg-surface">
+                            <div>
+                                <span className="text-[10px] font-bold text-ink-subtle uppercase">Total bill amount</span>
+                                <p className="text-2xl font-black text-brand-600 tabular-nums">{money(grandTotal)}</p>
+                            </div>
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="secondary"
+                                    onClick={() => setSelectedRoom(null)}
+                                    className="px-5 font-bold"
+                                >
+                                    Close
+                                </Button>
+                                <Button
+                                    variant="danger"
+                                    icon={CreditCard}
+                                    onClick={() => {
+                                        if (onGoToBilling) onGoToBilling(selectedRoom)
+                                        setSelectedRoom(null)
+                                    }}
+                                    className="px-6 font-bold"
+                                >
+                                    Go to Billing
+                                </Button>
+                            </div>
+                        </div>
                     </div>
                 </div>,
                 document.body

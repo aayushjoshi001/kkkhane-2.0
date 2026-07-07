@@ -253,7 +253,9 @@ export default function CashierClient({
     const compileInvoice = (type: 'room' | 'table', item: any) => {
         if (type === 'room') {
             const room = item
-            const booking = bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
+            // Prefer the freshly fetched billingStayBooking (newest checked_in via API)
+            // This avoids showing stale data from a previous booking session
+            const booking = billingStayBooking ?? bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
             if (!booking) return
             
             const price = room.room_types?.base_price || 0
