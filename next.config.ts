@@ -57,7 +57,12 @@ const nextConfig: NextConfig = {
               `script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`,
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://*.supabase.co https://images.unsplash.com https://*.tile.openstreetmap.org",
-              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://nominatim.openstreetmap.org https://challenges.cloudflare.com",
+              // QZ Tray (thermal printer bridge) runs a local WebSocket server on the
+              // till/kitchen device itself, port-scanning 8181-8185. It also connects
+              // via the localhost.qz.io hostname (resolves to loopback) so a page
+              // served over HTTPS can open a "secure" wss:// handshake to it without
+              // being blocked as mixed content — both host forms need to be allowed.
+              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://nominatim.openstreetmap.org https://challenges.cloudflare.com ws://localhost:* wss://localhost:* ws://localhost.qz.io:* wss://localhost.qz.io:*",
               "font-src 'self' https://fonts.gstatic.com",
               "media-src 'self' blob:",
               "frame-src 'self' https://challenges.cloudflare.com",
