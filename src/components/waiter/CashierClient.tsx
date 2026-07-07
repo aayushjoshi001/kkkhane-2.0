@@ -1217,12 +1217,22 @@ export default function CashierClient({
                     onClick={() => setActiveInvoice(null)}
                 >
                     <div 
-                        className="bg-white w-full max-w-xl rounded-3xl shadow-2xl border border-gray-200 p-8 space-y-6 text-black print-container my-8"
+                        className="bg-white w-full max-w-sm p-5 space-y-4 text-black print-container font-mono text-[11px] shadow-2xl relative border-t-8 border-brand-500"
                         onClick={e => e.stopPropagation()}
                     >
-                        {/* CSS media print override */}
+                        {/* CSS media print override for POS thermal printer */}
                         <style>{`
+                            @page {
+                                size: 80mm auto;
+                                margin: 0;
+                            }
                             @media print {
+                                html, body {
+                                    background: #fff !important;
+                                    color: #000 !important;
+                                    margin: 0 !important;
+                                    padding: 0 !important;
+                                }
                                 body * {
                                     visibility: hidden !important;
                                 }
@@ -1230,17 +1240,21 @@ export default function CashierClient({
                                     visibility: visible !important;
                                 }
                                 .print-container {
-                                    position: absolute;
-                                    left: 0;
-                                    top: 0;
-                                    width: 100% !important;
-                                    max-width: 100% !important;
+                                    position: absolute !important;
+                                    left: 0 !important;
+                                    top: 0 !important;
+                                    width: 72mm !important; /* standard safe area for 80mm roll */
+                                    max-width: 72mm !important;
                                     border: none !important;
+                                    border-top: none !important;
                                     box-shadow: none !important;
-                                    padding: 0 !important;
+                                    padding: 2mm 0 4mm 0 !important;
                                     margin: 0 !important;
-                                    background: white !important;
-                                    color: black !important;
+                                    background: #fff !important;
+                                    color: #000 !important;
+                                    font-family: monospace !important;
+                                    font-size: 11px !important;
+                                    line-height: 1.3 !important;
                                 }
                                 .print-actions {
                                     display: none !important;
@@ -1249,113 +1263,132 @@ export default function CashierClient({
                         `}</style>
 
                         {/* Invoice Header */}
-                        <div className="text-center space-y-1 border-b border-gray-100 pb-4">
-                            <h2 className="text-2xl font-black tracking-tight text-gray-900">INVOICE</h2>
-                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Kkhane Hotel &amp; Restaurant</p>
-                            <p className="text-[10px] text-gray-400">Invoice ID: INV-{activeInvoice.id.slice(0,8).toUpperCase()}</p>
-                            <p className="text-[10px] text-gray-400">Date: {new Date().toLocaleString()}</p>
+                        <div className="text-center space-y-0.5">
+                            <h2 className="text-sm font-black tracking-tight text-black uppercase">KKHANE HOTEL &amp; RESTAURANT</h2>
+                            <p className="text-[10px] text-gray-600">Lalitpur, Nepal · Tel: 01-5500000</p>
+                            <div className="border-t border-dashed border-black my-1.5" />
+                            <p className="font-bold text-[11px] uppercase tracking-wider">*** INVOICE ***</p>
+                            <p className="text-[9px] text-gray-500 font-mono">No: INV-{activeInvoice.id.slice(0,8).toUpperCase()}</p>
+                            <p className="text-[9px] text-gray-500 font-mono">Date: {new Date().toLocaleString()}</p>
                         </div>
+
+                        <div className="border-t border-dashed border-black my-1.5" />
 
                         {/* Guest / Table Info */}
-                        <div className="grid grid-cols-2 gap-4 text-xs bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                            <div>
-                                <p className="text-[9px] font-bold text-gray-400 uppercase">Billed To</p>
-                                <p className="font-extrabold text-gray-800 text-sm mt-0.5">{activeInvoice.guestName || 'Valued Guest'}</p>
-                                {activeInvoice.guestPhone && <p className="font-semibold text-gray-500">{activeInvoice.guestPhone}</p>}
+                        <div className="space-y-0.5 text-[10px]">
+                            <div className="flex justify-between">
+                                <span className="font-bold">GUEST:</span>
+                                <span>{activeInvoice.guestName || 'Walk-in Customer'}</span>
                             </div>
-                            <div className="text-right">
-                                <p className="text-[9px] font-bold text-gray-400 uppercase">Reference</p>
-                                <p className="font-extrabold text-brand-600 text-sm mt-0.5">{activeInvoice.label}</p>
-                                {activeInvoice.roomType && <p className="font-semibold text-gray-500">{activeInvoice.roomType}</p>}
+                            {activeInvoice.guestPhone && (
+                                <div className="flex justify-between">
+                                    <span className="font-bold">PHONE:</span>
+                                    <span>{activeInvoice.guestPhone}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between">
+                                <span className="font-bold">REF:</span>
+                                <span className="font-bold uppercase text-brand-600">{activeInvoice.label}</span>
                             </div>
+                            {activeInvoice.roomType && (
+                                <div className="flex justify-between">
+                                    <span className="font-bold">TYPE:</span>
+                                    <span>{activeInvoice.roomType}</span>
+                                </div>
+                            )}
                         </div>
+
+                        <div className="border-t border-dashed border-black my-1.5" />
 
                         {/* Line Items */}
-                        <div className="space-y-4">
-                            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Itemized charges</h4>
+                        <div className="space-y-1">
+                            <div className="flex justify-between text-[10px] font-bold pb-1 border-b border-dashed border-black">
+                                <span className="w-1/2 text-left">DESC</span>
+                                <span className="w-12 text-center">QTY</span>
+                                <span className="w-16 text-right">RATE</span>
+                                <span className="w-16 text-right text-black">AMT</span>
+                            </div>
                             
-                            <table className="w-full text-xs text-left border-collapse">
-                                <thead>
-                                    <tr className="border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase">
-                                        <th className="py-2">Description</th>
-                                        <th className="py-2 text-center">Qty / Nights</th>
-                                        <th className="py-2 text-right">Unit Price</th>
-                                        <th className="py-2 text-right">Amount</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-50 text-gray-700">
-                                    {/* Stay Charge (if room) */}
-                                    {activeInvoice.type === 'room' && (
-                                        <tr>
-                                            <td className="py-3 font-semibold text-gray-900">Room Stay ({activeInvoice.roomType})</td>
-                                            <td className="py-3 text-center font-semibold">{activeInvoice.nights}</td>
-                                            <td className="py-3 text-right tabular-nums">{money(activeInvoice.basePrice)}</td>
-                                            <td className="py-3 text-right font-extrabold text-gray-900 tabular-nums">{money(activeInvoice.stayCost)}</td>
-                                        </tr>
-                                    )}
+                            <div className="divide-y divide-dashed divide-gray-200 text-[10px] space-y-1 pt-1.5">
+                                {/* Stay Charge (if room) */}
+                                {activeInvoice.type === 'room' && (
+                                    <div className="flex justify-between py-0.5">
+                                        <span className="w-1/2 text-left truncate">Room Stay ({activeInvoice.nights}n)</span>
+                                        <span className="w-12 text-center">{activeInvoice.nights}</span>
+                                        <span className="w-16 text-right">{money(activeInvoice.basePrice)}</span>
+                                        <span className="w-16 text-right font-bold text-black">{money(activeInvoice.stayCost)}</span>
+                                    </div>
+                                )}
 
-                                    {/* Additional charges */}
-                                    {activeInvoice.manualCharges && activeInvoice.manualCharges.map((c: any) => (
-                                        <tr key={c.id}>
-                                            <td className="py-3 capitalize text-gray-900">
-                                                {c.description} <span className="text-[8px] bg-amber-50 text-amber-700 border border-amber-100 rounded px-1 ml-1 font-bold">{c.charge_type}</span>
-                                            </td>
-                                            <td className="py-3 text-center font-semibold">1</td>
-                                            <td className="py-3 text-right tabular-nums">{money(c.amount)}</td>
-                                            <td className="py-3 text-right font-extrabold text-gray-900 tabular-nums">{money(c.amount)}</td>
-                                        </tr>
-                                    ))}
+                                {/* Additional charges */}
+                                {activeInvoice.manualCharges && activeInvoice.manualCharges.map((c: any) => (
+                                    <div key={c.id} className="flex justify-between py-0.5">
+                                        <span className="w-1/2 text-left truncate capitalize">{c.description}</span>
+                                        <span className="w-12 text-center">1</span>
+                                        <span className="w-16 text-right">{money(c.amount)}</span>
+                                        <span className="w-16 text-right font-bold text-black">{money(c.amount)}</span>
+                                    </div>
+                                ))}
 
-                                    {/* QR / Session order items */}
-                                    {activeInvoice.type === 'room' ? (
-                                        activeInvoice.qrOrders && activeInvoice.qrOrders.map((item: any, idx: number) => (
-                                            <tr key={idx}>
-                                                <td className="py-3 text-gray-900">Food Order: {item.name}</td>
-                                                <td className="py-3 text-center font-semibold">{item.quantity}</td>
-                                                <td className="py-3 text-right tabular-nums">{money(item.unitPrice)}</td>
-                                                <td className="py-3 text-right font-extrabold text-gray-900 tabular-nums">{money(item.unitPrice * item.quantity)}</td>
-                                            </tr>
-                                        ))
-                                    ) : (
-                                        activeInvoice.qrOrders && activeInvoice.qrOrders.map((item: any, idx: number) => (
-                                            <tr key={idx}>
-                                                <td className="py-3 text-gray-900">{item.name}</td>
-                                                <td className="py-3 text-center font-semibold">{item.quantity}</td>
-                                                <td className="py-3 text-right tabular-nums">{money(item.unitPrice)}</td>
-                                                <td className="py-3 text-right font-extrabold text-gray-900 tabular-nums">{money(item.unitPrice * item.quantity)}</td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
+                                {/* QR / Session order items */}
+                                {activeInvoice.type === 'room' ? (
+                                    activeInvoice.qrOrders && activeInvoice.qrOrders.map((item: any, idx: number) => (
+                                        <div key={idx} className="flex justify-between py-0.5">
+                                            <span className="w-1/2 text-left truncate">Food: {item.name}</span>
+                                            <span className="w-12 text-center">{item.quantity}</span>
+                                            <span className="w-16 text-right">{money(item.unitPrice)}</span>
+                                            <span className="w-16 text-right font-bold text-black">{money(item.unitPrice * item.quantity)}</span>
+                                        </div>
+                                    ))
+                                ) : (
+                                    activeInvoice.qrOrders && activeInvoice.qrOrders.map((item: any, idx: number) => (
+                                        <div key={idx} className="flex justify-between py-0.5">
+                                            <span className="w-1/2 text-left truncate">{item.name}</span>
+                                            <span className="w-12 text-center">{item.quantity}</span>
+                                            <span className="w-16 text-right">{money(item.unitPrice)}</span>
+                                            <span className="w-16 text-right font-bold text-black">{money(item.unitPrice * item.quantity)}</span>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
                         </div>
+
+                        <div className="border-t border-dashed border-black my-1.5" />
 
                         {/* Invoice Total */}
-                        <div className="border-t border-gray-100 pt-4 flex justify-between items-center text-right">
-                            <span className="text-sm font-bold text-gray-400 uppercase">Grand Total Amount</span>
-                            <span className="text-2xl font-black text-gray-900 tabular-nums">{money(activeInvoice.total)}</span>
+                        <div className="flex justify-between items-center text-xs font-black">
+                            <span className="uppercase">GRAND TOTAL</span>
+                            <span className="text-sm font-black text-black tabular-nums">{money(activeInvoice.total)}</span>
                         </div>
 
-                        {/* Invoice Footer Actions */}
-                        <div className="flex gap-3 pt-4 border-t border-gray-50 print-actions">
+                        <div className="border-t border-dashed border-black my-1.5" />
+
+                        {/* Thermal Printer Welcome Greeting */}
+                        <div className="text-center text-[9px] text-gray-500 uppercase tracking-widest leading-normal pt-1 pb-2">
+                            <p>*** THANK YOU! ***</p>
+                            <p>WE HOPE TO SEE YOU AGAIN</p>
+                        </div>
+
+                        {/* Invoice Footer Actions (Print, Mark Paid, Close) */}
+                        <div className="flex gap-2 pt-3 border-t border-gray-100 print-actions flex-wrap">
                             <Button 
                                 variant="secondary" 
                                 onClick={() => setActiveInvoice(null)}
-                                className="font-bold flex-1 text-xs"
+                                className="font-bold flex-1 text-[10px] py-1.5 min-w-[70px]"
                             >
                                 Cancel
                             </Button>
                             <button
                                 onClick={() => window.print()}
-                                className="flex-1 py-2.5 px-4 border border-gray-300 rounded-xl text-xs font-bold text-gray-700 bg-white hover:bg-gray-50 transition active:scale-95 text-center flex items-center justify-center gap-1.5 shadow-sm"
+                                className="flex-1 py-1.5 px-3 border border-gray-300 rounded-xl text-[10px] font-bold text-gray-700 bg-white hover:bg-gray-50 transition active:scale-95 text-center flex items-center justify-center gap-1.5 shadow-sm min-w-[70px]"
                             >
-                                Print Invoice
+                                Print Bill
                             </button>
                             <Button 
                                 variant="primary" 
                                 loading={isSettlingInvoice}
                                 onClick={handleMarkPaid}
-                                className="font-bold flex-1 bg-emerald-600 hover:bg-emerald-700 border-emerald-600 hover:border-emerald-700 text-xs text-white"
+                                className="font-bold flex-1 bg-emerald-600 hover:bg-emerald-700 border-emerald-600 hover:border-emerald-700 text-[10px] text-white py-1.5 min-w-[70px]"
                             >
                                 Mark Paid
                             </Button>
