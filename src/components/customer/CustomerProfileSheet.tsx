@@ -9,6 +9,7 @@ import { signUpCustomerWithEmail, loginWithEmail, sendPhoneOtp, verifyPhoneOtp }
 import { toast } from 'react-hot-toast'
 import { createBrowserClient } from '@supabase/ssr'
 import { Turnstile } from '@marsidev/react-turnstile'
+import { useTurnstile, TURNSTILE_SITE_KEY } from '@/lib/hooks/useTurnstile'
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))
@@ -49,7 +50,7 @@ export default function CustomerProfileSheet({ isOpen, onClose, restaurantId }: 
     const [name, setName] = useState('')
     const [otpToken, setOtpToken] = useState('')
     
-    const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+    const turnstile = useTurnstile()
     const [loading, setLoading] = useState(false)
     const [showOtpInput, setShowOtpInput] = useState(false)
 
@@ -76,13 +77,13 @@ export default function CustomerProfileSheet({ isOpen, onClose, restaurantId }: 
                     if (!email) throw new Error('Email is required')
                     if (!password || password.length < 6) throw new Error('Password must be at least 6 characters')
                     
-                    const res = await signUpCustomerWithEmail(email, password, phone, name, restaurantId, turnstileToken)
+                    const res = await signUpCustomerWithEmail(email, password, phone, name, restaurantId, turnstile.token)
                     if (res.error) throw new Error(res.error)
                     toast.success('Account created successfully!')
                     setIsLoggedIn(true)
                 } else {
                     if (!email || !password) throw new Error('Email and password are required')
-                    const res = await loginWithEmail(email, password, turnstileToken)
+                    const res = await loginWithEmail(email, password, turnstile.token)
                     if (res.error) throw new Error(res.error)
                     toast.success('Successfully logged in!')
                     setIsLoggedIn(true)
@@ -241,19 +242,26 @@ export default function CustomerProfileSheet({ isOpen, onClose, restaurantId }: 
                                             </div>
                                         )}
                                         
-                                        {!showOtpInput && authMethod === 'email' && process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
-                                            <div className="flex justify-center mb-2">
-                                                <Turnstile 
-                                                    siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY} 
-                                                    onSuccess={(token) => setTurnstileToken(token)}
+                                        {!showOtpInput && authMethod === 'email' && TURNSTILE_SITE_KEY && (
+                                            <div className="flex flex-col items-center gap-2 mb-2">
+                                                <Turnstile
+                                                    siteKey={TURNSTILE_SITE_KEY}
+                                                    onSuccess={turnstile.handleSuccess}
+                                                    onExpire={turnstile.handleExpire}
+                                                    onError={turnstile.handleError}
                                                     options={{ theme: 'light', size: 'normal' }}
                                                 />
+                                                {turnstile.unavailable && (
+                                                    <p className="text-xs text-ink-muted text-center max-w-xs">
+                                                        Security check is taking longer than usual. You can still continue.
+                                                    </p>
+                                                )}
                                             </div>
                                         )}
-                                        
-                                        <button 
+
+                                        <button
                                             onClick={handleAuthSubmit}
-                                            disabled={loading || (!showOtpInput && authMethod === 'email' && !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && !turnstileToken)}
+                                            disabled={loading || (!showOtpInput && authMethod === 'email' && turnstile.isBlocking)}
                                             className="w-full bg-brand-500 text-white font-black py-4 rounded-xl shadow-lg shadow-brand-500/25 hover:bg-brand-600 active:scale-[0.98] transition-all disabled:opacity-70"
                                         >
                                             {loading ? 'Processing...' : showOtpInput ? 'Verify Code' : authMethod === 'phone' ? 'Send OTP Code' : authMode === 'signup' ? 'Create Account' : 'Sign In'}

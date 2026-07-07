@@ -1,8 +1,9 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useActionState } from 'react'
 import Link from 'next/link'
 import { Turnstile } from '@marsidev/react-turnstile'
+import { useTurnstile, TURNSTILE_SITE_KEY } from '@/lib/hooks/useTurnstile'
 import { forgotPasswordAction } from './actions'
 import AuthHero from '@/components/shared/AuthHero'
 import { Mail, ArrowLeft, CheckCircle2, ArrowRight } from 'lucide-react'
@@ -11,7 +12,7 @@ const initialState = { error: null as string | null, success: false }
 
 export default function ForgotPasswordPage() {
     const [state, formAction, isPending] = useActionState(forgotPasswordAction, initialState)
-    const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+    const turnstile = useTurnstile()
 
     const inputClasses = "h-[52px] w-full rounded-[14px] border border-hairline-strong bg-surface pl-12 pr-4 text-[15px] outline-none text-ink placeholder:text-ink-subtle focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all"
     const labelClasses = "text-[13px] font-semibold text-ink flex gap-1 mb-1.5"
@@ -49,7 +50,7 @@ export default function ForgotPasswordPage() {
                                 </div>
 
                                 <form action={formAction} className="w-full flex flex-col gap-5">
-                                    <input type="hidden" name="cf-turnstile-response" value={turnstileToken || ''} />
+                                    <input type="hidden" name="cf-turnstile-response" value={turnstile.token || ''} />
                                     {state.error && (
                                         <div className="bg-red-50 text-red-700 px-4 py-3 rounded-[14px] text-sm border border-red-100 font-medium text-center">
                                             {state.error}
@@ -74,19 +75,26 @@ export default function ForgotPasswordPage() {
                                         </div>
                                     </div>
                                     
-                                    {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
-                                        <div className="flex justify-center mt-2">
-                                            <Turnstile 
-                                                siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY} 
-                                                onSuccess={(token) => setTurnstileToken(token)}
+                                    {TURNSTILE_SITE_KEY && (
+                                        <div className="flex flex-col items-center gap-2 mt-2">
+                                            <Turnstile
+                                                siteKey={TURNSTILE_SITE_KEY}
+                                                onSuccess={turnstile.handleSuccess}
+                                                onExpire={turnstile.handleExpire}
+                                                onError={turnstile.handleError}
                                                 options={{ theme: 'light', size: 'normal' }}
                                             />
+                                            {turnstile.unavailable && (
+                                                <p className="text-xs text-ink-muted text-center max-w-xs">
+                                                    Security check is taking longer than usual. You can still continue.
+                                                </p>
+                                            )}
                                         </div>
                                     )}
 
                                     <button
                                         type="submit"
-                                        disabled={isPending || (!!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && !turnstileToken)}
+                                        disabled={isPending || turnstile.isBlocking}
                                         className="w-full bg-brand-500 hover:bg-brand-600 text-white h-[52px] rounded-[14px] text-[16px] font-semibold shadow-lg shadow-[#ff5a00]/25 transition-all hover:scale-[1.01] flex items-center justify-center gap-2 mt-2 disabled:opacity-70 disabled:cursor-not-allowed"
                                     >
                                         {isPending ? (

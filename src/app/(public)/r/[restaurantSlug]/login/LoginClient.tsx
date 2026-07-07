@@ -8,6 +8,7 @@ import Image from 'next/image'
 import { ArrowLeft, ArrowRight, Loader2, Phone, ShieldCheck } from 'lucide-react'
 import Link from 'next/link'
 import { Turnstile } from '@marsidev/react-turnstile'
+import { useTurnstile, TURNSTILE_SITE_KEY } from '@/lib/hooks/useTurnstile'
 import { sendPhoneOtp } from '@/app/api/customer/auth/actions'
 
 export default function LoginClient({ restaurant }: { restaurant: any }) {
@@ -15,7 +16,7 @@ export default function LoginClient({ restaurant }: { restaurant: any }) {
     const [otp, setOtp] = useState('')
     const [step, setStep] = useState<'phone' | 'otp'>('phone')
     const [loading, setLoading] = useState(false)
-    const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+    const turnstile = useTurnstile()
     const router = useRouter()
     const supabase = createClient()
 
@@ -31,7 +32,7 @@ export default function LoginClient({ restaurant }: { restaurant: any }) {
         const formattedPhone = phone.startsWith('+') ? phone : `+977${phone}`
         
         try {
-            const res = await sendPhoneOtp(formattedPhone, turnstileToken)
+            const res = await sendPhoneOtp(formattedPhone, turnstile.token)
             if (res?.error) throw new Error(res.error)
             
             setStep('otp')
@@ -117,19 +118,26 @@ export default function LoginClient({ restaurant }: { restaurant: any }) {
                                 />
                             </div>
                             
-                            {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
-                                <div className="flex justify-center mt-4">
-                                    <Turnstile 
-                                        siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY} 
-                                        onSuccess={(token) => setTurnstileToken(token)}
+                            {TURNSTILE_SITE_KEY && (
+                                <div className="flex flex-col items-center gap-2 mt-4">
+                                    <Turnstile
+                                        siteKey={TURNSTILE_SITE_KEY}
+                                        onSuccess={turnstile.handleSuccess}
+                                        onExpire={turnstile.handleExpire}
+                                        onError={turnstile.handleError}
                                         options={{ theme: 'light', size: 'normal' }}
                                     />
+                                    {turnstile.unavailable && (
+                                        <p className="text-xs text-ink-muted text-center max-w-xs">
+                                            Security check is taking longer than usual. You can still continue.
+                                        </p>
+                                    )}
                                 </div>
                             )}
 
                             <button
                                 type="submit"
-                                disabled={loading || phone.length < 10 || (!!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && !turnstileToken)}
+                                disabled={loading || phone.length < 10 || turnstile.isBlocking}
                                 className="w-full bg-brand-500 text-white font-bold py-3.5 rounded-xl hover:bg-brand-600 active:scale-[0.98] transition-all disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2 shadow-lg shadow-brand-500/25"
                             >
                                 {loading ? <Loader2 size={20} className="animate-spin" /> : 'Continue'}

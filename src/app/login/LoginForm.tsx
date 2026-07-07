@@ -7,13 +7,14 @@ import { loginAction } from './actions'
 import { createClient } from '@/lib/supabase/client'
 import { Eye, EyeOff, Lock, Mail, ArrowRight } from 'lucide-react'
 import { Turnstile } from '@marsidev/react-turnstile'
+import { useTurnstile, TURNSTILE_SITE_KEY } from '@/lib/hooks/useTurnstile'
 
 const initialState = { error: null as string | null }
 
 export function LoginForm({ redirectTo }: { redirectTo: string }) {
     const [state, formAction, isPending] = useActionState(loginAction, initialState)
     const [showPassword, setShowPassword] = useState(false)
-    const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+    const turnstile = useTurnstile()
     const [isGoogleLoading, setIsGoogleLoading] = useState(false)
     const [googleError, setGoogleError] = useState<string | null>(null)
 
@@ -52,7 +53,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
 
             <form action={formAction} className="w-full flex flex-col gap-5">
                 <input type="hidden" name="redirect" value={redirectTo} />
-                <input type="hidden" name="cf-turnstile-response" value={turnstileToken || ''} />
+                <input type="hidden" name="cf-turnstile-response" value={turnstile.token || ''} />
 
                 {state?.error && (
                     <div className="bg-red-50 text-red-700 px-4 py-3 rounded-xl text-sm border border-red-100 font-medium text-center">
@@ -110,19 +111,26 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
                     </Link>
                 </div>
                 
-                {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
-                    <div className="flex justify-center mb-2">
-                        <Turnstile 
-                            siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY} 
-                            onSuccess={(token) => setTurnstileToken(token)}
+                {TURNSTILE_SITE_KEY && (
+                    <div className="flex flex-col items-center gap-2 mb-2">
+                        <Turnstile
+                            siteKey={TURNSTILE_SITE_KEY}
+                            onSuccess={turnstile.handleSuccess}
+                            onExpire={turnstile.handleExpire}
+                            onError={turnstile.handleError}
                             options={{ theme: 'light', size: 'normal' }}
                         />
+                        {turnstile.unavailable && (
+                            <p className="text-xs text-ink-muted text-center max-w-xs">
+                                Security check is taking longer than usual. You can still continue.
+                            </p>
+                        )}
                     </div>
                 )}
 
                 <button
                     type="submit"
-                    disabled={isPending || (!!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && !turnstileToken)}
+                    disabled={isPending || turnstile.isBlocking}
                     className="w-full bg-brand-500 hover:bg-brand-400 text-white h-14 rounded-2xl text-base font-extrabold shadow-[0_8px_24px_rgba(251,99,3,0.3)] hover:shadow-[0_12px_32px_rgba(251,99,3,0.4)] transition-all hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2 mt-1 disabled:opacity-70 disabled:pointer-events-none focus-ring"
                 >
                     {isPending ? (

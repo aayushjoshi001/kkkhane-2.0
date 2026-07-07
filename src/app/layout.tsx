@@ -109,6 +109,8 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <link rel="preconnect" href="https://challenges.cloudflare.com" />
+        <link rel="dns-prefetch" href="https://challenges.cloudflare.com" />
         <style dangerouslySetInnerHTML={{ __html: themeToCSS(theme) }} />
       </head>
       <body className={`
