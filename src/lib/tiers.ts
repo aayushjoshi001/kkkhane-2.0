@@ -124,6 +124,15 @@ const MODE_FEATURES: Record<BusinessMode, {
         serviceRequestsEnabled: false,
         quickServeItems: [],
     },
+    hotel: {
+        dineInEnabled: false,
+        takeoutEnabled: false,
+        waiterSessionEnabled: false,
+        waiterOrderConfirmation: false,
+        splitBillingEnabled: false,
+        serviceRequestsEnabled: true,
+        quickServeItems: ['Water', 'Towel', 'Housekeeping'],
+    },
 }
 
 /** Build the full features_v2 object for a given tier + business mode (Nepal defaults). */

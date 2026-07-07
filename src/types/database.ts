@@ -842,3 +842,50 @@ export const HOMEPAGE_TEMPLATES: Record<HomepageTemplate, {
         icon: '🏛️'
     }
 }
+
+// ────────────────────────────────────────────────
+// Hotel Types
+// ────────────────────────────────────────────────
+
+export type RoomStatus = 'available' | 'occupied' | 'dirty' | 'maintenance'
+export type BookingStatus = 'pending' | 'checked_in' | 'checked_out' | 'cancelled'
+
+export interface RoomType {
+    id: string
+    restaurant_id: string
+    name: string
+    description: string | null
+    base_price: number
+    capacity: number
+    created_at: string
+}
+
+export interface Room {
+    id: string
+    restaurant_id: string
+    room_number: string
+    floor: string | null
+    status: RoomStatus
+    type_id: string | null
+    created_at: string
+    room_types?: RoomType | null
+}
+
+export interface Booking {
+    id: string
+    restaurant_id: string
+    room_id: string
+    guest_name: string
+    guest_phone: string | null
+    guest_email: string | null
+    check_in: string
+    check_out: string
+    adults: number
+    children: number
+    status: BookingStatus
+    total_amount: number
+    paid_amount: number
+    notes: string | null
+    created_at: string
+    rooms?: Room | null
+}

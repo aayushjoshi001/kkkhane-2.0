@@ -4,7 +4,7 @@ import { formatCurrency } from '@/lib/utils'
 import {
     TrendingUp, ShoppingBag, Users, AlertTriangle, Clock, UserCheck,
     ArrowRight, CheckCircle2, ChevronRight, UtensilsCrossed, QrCode, Tag, ClipboardList, Boxes, Inbox,
-    Rocket, BarChart3, Receipt, Wallet, MoreHorizontal
+    Rocket, BarChart3, Receipt, Wallet, MoreHorizontal, Bed, CalendarRange, Hotel, Settings
 } from 'lucide-react'
 import { getCurrentUser } from '@/lib/auth'
 import Link from 'next/link'
@@ -12,6 +12,7 @@ import { redirect } from 'next/navigation'
 import EmptyState from '@/components/ui/EmptyState'
 import { StatusBadge } from '@/components/ui/Badge'
 import { StatCardSkeleton, RowSkeleton } from '@/components/ui/Skeleton'
+import { getBusinessMode } from '@/lib/businessMode'
 
 export const revalidate = 0
 
@@ -25,11 +26,23 @@ export default async function AdminDashboardPage() {
     // One fast, single-row query gates the whole shell — everything else below
     // streams in independently instead of blocking on 13 queries up front.
     const adminSupabase = await createAdminClient()
-    const { data: restaurantSettings } = await adminSupabase
-        .from('settings')
-        .select('business_hours, features_v2')
-        .eq('restaurant_id', restaurantId)
-        .maybeSingle()
+    const [restaurantSettingsRes, restaurantRes] = await Promise.all([
+        adminSupabase
+            .from('settings')
+            .select('business_hours, features_v2')
+            .eq('restaurant_id', restaurantId)
+            .maybeSingle(),
+        adminSupabase
+            .from('restaurants')
+            .select('business_type')
+            .eq('id', restaurantId)
+            .single()
+    ])
+
+    const restaurantSettings = restaurantSettingsRes.data
+    const restaurant = restaurantRes.data
+    const businessMode = restaurant?.business_type ? getBusinessMode(restaurant.business_type) : 'dine_in'
+    const isHotel = businessMode === 'hotel'
 
     const currencyFeatures = restaurantSettings?.features_v2 as { currency?: string; currencySymbol?: string | null; dineInEnabled?: boolean } | null
     const money: Money = (amount) => formatCurrency(amount, currencyFeatures?.currency, currencyFeatures?.currencySymbol)
@@ -45,12 +58,12 @@ export default async function AdminDashboardPage() {
         <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
             {/* Premium Header */}
             <div className="relative overflow-hidden rounded-[2rem] bg-[#0a0a0a] text-white p-8 sm:p-12 shadow-2xl animate-fade-up">
-                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-brand-500 opacity-20 blur-[120px] rounded-full translate-x-1/3 -translate-y-1/4 pointer-events-none" />
+                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#ff5a00] opacity-20 blur-[120px] rounded-full translate-x-1/3 -translate-y-1/4 pointer-events-none" />
                 <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-blue-500 opacity-20 blur-[100px] rounded-full -translate-x-1/3 translate-y-1/4 pointer-events-none" />
 
                 <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
                     <div>
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface/10 backdrop-blur-md border border-white/10 mb-6 text-sm font-medium text-white/90">
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/10 mb-6 text-sm font-medium text-white/90">
                             <span className="relative flex h-2.5 w-2.5">
                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
@@ -61,12 +74,12 @@ export default async function AdminDashboardPage() {
                             {greeting}, <span className="capitalize">{name}</span>.
                         </h1>
                         <p className="text-white/60 text-[16px] max-w-xl leading-relaxed">
-                            Here&apos;s what&apos;s happening at your restaurant today.
+                            Here&apos;s what&apos;s happening at your {isHotel ? 'hotel' : 'restaurant'} today.
                         </p>
                     </div>
                     <div className="shrink-0 flex flex-wrap gap-3">
-                        <Link href="/admin/orders" className="bg-brand-500 hover:bg-brand-600 text-white px-7 py-3.5 rounded-[16px] font-semibold transition-all duration-300 hover:scale-105 shadow-[0_0_20px_rgba(255,90,0,0.3)] hover:shadow-[0_0_30px_rgba(255,90,0,0.5)] flex items-center gap-2">
-                            <ShoppingBag size={18} /> View Orders
+                        <Link href="/admin/orders" className="bg-[#ff5a00] hover:bg-[#ff4500] text-white px-7 py-3.5 rounded-[16px] font-semibold transition-all duration-300 hover:scale-105 shadow-[0_0_20px_rgba(255,90,0,0.3)] hover:shadow-[0_0_30px_rgba(255,90,0,0.5)] flex items-center gap-2">
+                            <ShoppingBag size={18} /> View {isHotel ? 'Room Service' : 'Orders'}
                         </Link>
                     </div>
                 </div>
@@ -75,44 +88,59 @@ export default async function AdminDashboardPage() {
             {/* KPI Cards — own query, own boundary */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 animate-fade-up" style={{ animationDelay: '0.1s' }}>
                 <Suspense fallback={<KpiGridSkeleton />}>
-                    <KpiCardsSection restaurantId={restaurantId} money={money} />
+                    <KpiCardsSection restaurantId={restaurantId} money={money} isHotel={isHotel} />
                 </Suspense>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">
                     <Suspense fallback={<PipelineCardSkeleton />}>
-                        <PipelineTableSection restaurantId={restaurantId} money={money} />
+                        <PipelineTableSection restaurantId={restaurantId} money={money} isHotel={isHotel} />
                     </Suspense>
 
                     <Suspense fallback={null}>
-                        <OnboardingChecklistSection
-                            restaurantId={restaurantId}
-                            dineInEnabled={dineInEnabled}
-                            hasBusinessHours={!!restaurantSettings?.business_hours}
-                        />
+                        {!isHotel && (
+                            <OnboardingChecklistSection
+                                restaurantId={restaurantId}
+                                dineInEnabled={dineInEnabled}
+                                hasBusinessHours={!!restaurantSettings?.business_hours}
+                            />
+                        )}
                     </Suspense>
                 </div>
 
                 <div className="space-y-6">
                     <Suspense fallback={null}>
-                        <LowStockAlertSection restaurantId={restaurantId} />
+                        {!isHotel && <LowStockAlertSection restaurantId={restaurantId} />}
                     </Suspense>
 
                     {/* Quick Actions Grid — static; only the Promotions badge needs a query */}
-                    <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.3s' }}>
-                        <h3 className="text-[1.15rem] font-bold text-ink mb-5 flex items-center gap-2">
-                            <Rocket size={18} className="text-brand-500" /> Quick Actions
+                    <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.3s' }}>
+                        <h3 className="text-[1.15rem] font-bold text-gray-900 mb-5 flex items-center gap-2">
+                            <Rocket size={18} className="text-[#ff5a00]" /> Quick Actions
                         </h3>
                         <div className="grid grid-cols-2 gap-3">
-                            <QuickAction href="/admin/menu" icon={UtensilsCrossed} label="Edit Menu" />
-                            <QuickAction href="/admin/tables" icon={QrCode} label="Tables & QR" />
-                            <Suspense fallback={<QuickAction href="/admin/promos" icon={Tag} label="Promotions" />}>
-                                <PromoQuickAction restaurantId={restaurantId} />
-                            </Suspense>
-                            <QuickAction href="/admin/staff" icon={Users} label="Manage Staff" />
-                            <QuickAction href="/admin/ingredients" icon={Boxes} label="Inventory" />
-                            <QuickAction href="/admin/reports" icon={BarChart3} label="Reports" />
+                            {isHotel ? (
+                                <>
+                                    <QuickAction href="/admin/rooms" icon={Bed} label="Edit Rooms" />
+                                    <QuickAction href="/admin/bookings" icon={CalendarRange} label="Bookings" />
+                                    <QuickAction href="/admin/payments" icon={Receipt} label="Room Billing" />
+                                    <QuickAction href="/admin/staff" icon={Users} label="Manage Staff" />
+                                    <QuickAction href="/admin/reports" icon={BarChart3} label="Reports" />
+                                    <QuickAction href="/admin/settings" icon={Settings} label="Settings" />
+                                </>
+                            ) : (
+                                <>
+                                    <QuickAction href="/admin/menu" icon={UtensilsCrossed} label="Edit Menu" />
+                                    <QuickAction href="/admin/tables" icon={QrCode} label="Tables & QR" />
+                                    <Suspense fallback={<QuickAction href="/admin/promos" icon={Tag} label="Promotions" />}>
+                                        <PromoQuickAction restaurantId={restaurantId} />
+                                    </Suspense>
+                                    <QuickAction href="/admin/staff" icon={Users} label="Manage Staff" />
+                                    <QuickAction href="/admin/ingredients" icon={Boxes} label="Inventory" />
+                                    <QuickAction href="/admin/reports" icon={BarChart3} label="Reports" />
+                                </>
+                            )}
                         </div>
                     </div>
 
@@ -125,17 +153,17 @@ export default async function AdminDashboardPage() {
     )
 }
 
-async function KpiCardsSection({ restaurantId, money }: { restaurantId: string; money: Money }) {
+async function KpiCardsSection({ restaurantId, money, isHotel = false }: { restaurantId: string; money: Money; isHotel?: boolean }) {
     const adminSupabase = await createAdminClient()
     const now = new Date().toISOString()
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
     const [
-        { count: totalOrdersToday },
-        { count: activeSessionCount },
-        { data: todayOrders },
-        { count: activeShiftCount },
+        ordersCountRes,
+        sessionsCountRes,
+        todayOrdersRes,
+        activeShiftCountRes,
     ] = await Promise.all([
         adminSupabase.from('orders').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).gte('placed_at', today.toISOString()),
         adminSupabase.from('sessions').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).eq('status', 'active').gt('expires_at', now),
@@ -143,7 +171,37 @@ async function KpiCardsSection({ restaurantId, money }: { restaurantId: string; 
         adminSupabase.from('staff_shifts').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).is('clock_out', null),
     ])
 
-    const totalRevenueToday = (todayOrders || []).filter(o => o.status === 'delivered').reduce((s, o) => s + (o.total_amount || 0), 0)
+    const totalOrdersToday = ordersCountRes.count || 0
+    const activeSessionCount = sessionsCountRes.count || 0
+    const todayOrders = todayOrdersRes.data || []
+    const activeShiftCount = activeShiftCountRes.count || 0
+
+    const totalRevenueToday = todayOrders.filter(o => o.status === 'delivered').reduce((s, o) => s + (o.total_amount || 0), 0)
+
+    if (isHotel) {
+        let occupiedRooms = 0
+        let totalRooms = 0
+        let checkedInBookings = 0
+        try {
+            const [roomsOcc, roomsTotal, bookingsActive] = await Promise.all([
+                adminSupabase.from('rooms').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).eq('status', 'occupied'),
+                adminSupabase.from('rooms').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId),
+                adminSupabase.from('bookings').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).eq('status', 'checked_in')
+            ])
+            occupiedRooms = roomsOcc.count || 0
+            totalRooms = roomsTotal.count || 0
+            checkedInBookings = bookingsActive.count || 0
+        } catch (e) {}
+
+        return (
+            <>
+                <KpiCard title="Revenue Today" value={money(totalRevenueToday)} icon={Wallet} trend="Room service + POS" trendUp={true} color="brand" />
+                <KpiCard title="Checked In" value={String(checkedInBookings)} icon={UserCheck} trend="Active stays" trendUp={true} color="blue" />
+                <KpiCard title="Occupancy" value={`${occupiedRooms}/${totalRooms}`} icon={Bed} trend="Occupied / Total" trendUp={true} color="green" />
+                <KpiCard title="Staff On Shift" value={String(activeShiftCount || 0)} icon={Clock} trend="Clocked in right now" trendUp={true} color="purple" />
+            </>
+        )
+    }
 
     return (
         <>
@@ -163,10 +221,97 @@ function KpiGridSkeleton() {
     )
 }
 
-async function PipelineTableSection({ restaurantId, money }: { restaurantId: string; money: Money }) {
+async function PipelineTableSection({ restaurantId, money, isHotel = false }: { restaurantId: string; money: Money; isHotel?: boolean }) {
     const adminSupabase = await createAdminClient()
     const today = new Date()
     today.setHours(0, 0, 0, 0)
+
+    if (isHotel) {
+        let recentBookings: any[] = []
+        try {
+            const { data } = await adminSupabase
+                .from('bookings')
+                .select('id, guest_name, check_in, check_out, status, total_amount, rooms(room_number)')
+                .eq('restaurant_id', restaurantId)
+                .order('created_at', { ascending: false })
+                .limit(8)
+            recentBookings = data || []
+        } catch (e) {}
+
+        const bookingPipeline = { pending: 0, checked_in: 0, checked_out: 0, cancelled: 0 }
+        for (const b of recentBookings) {
+            const s = b.status as keyof typeof bookingPipeline
+            if (s in bookingPipeline) bookingPipeline[s]++
+        }
+
+        return (
+            <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                <div className="px-6 py-5 border-b border-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-50/50">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-[#ff5a00]/10 rounded-xl text-[#ff5a00]">
+                            <CalendarRange size={20} />
+                        </div>
+                        <h2 className="text-[1.15rem] font-bold text-gray-900">Recent Bookings</h2>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 bg-white px-3 py-2 rounded-xl border border-gray-100 shadow-sm">
+                        <PipelineBadge label="Pending" count={bookingPipeline.pending} color="yellow" />
+                        <PipelineBadge label="Checked In" count={bookingPipeline.checked_in} color="blue" />
+                        <PipelineBadge label="Checked Out" count={bookingPipeline.checked_out} color="green" />
+                    </div>
+                </div>
+
+                <div className="p-0 overflow-x-auto">
+                    <table className="w-full text-left border-collapse min-w-[500px]">
+                        <thead>
+                            <tr className="text-[12px] uppercase tracking-wider font-semibold text-gray-400 bg-gray-50/30">
+                                <th className="px-6 py-4 border-b border-gray-100">Guest Name</th>
+                                <th className="px-6 py-4 border-b border-gray-100">Room</th>
+                                <th className="px-6 py-4 border-b border-gray-100">Stay Dates</th>
+                                <th className="px-6 py-4 border-b border-gray-100">Status</th>
+                                <th className="px-6 py-4 border-b border-gray-100 text-right">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {recentBookings.map(booking => {
+                                const roomNumber = (booking.rooms as unknown as { room_number: string } | null)?.room_number || '—'
+                                const checkInDate = new Date(booking.check_in).toLocaleDateString([], { month: 'short', day: 'numeric' })
+                                const checkOutDate = new Date(booking.check_out).toLocaleDateString([], { month: 'short', day: 'numeric' })
+                                return (
+                                    <tr key={booking.id} className="group hover:bg-gray-50/50 transition-colors cursor-pointer">
+                                        <td className="px-6 py-4">
+                                            <span className="font-bold text-gray-900 group-hover:text-[#ff5a00] transition-colors">{booking.guest_name}</span>
+                                        </td>
+                                        <td className="px-6 py-4 text-[14px] text-gray-500 font-medium">
+                                            Room {roomNumber}
+                                        </td>
+                                        <td className="px-6 py-4 text-[13px] text-gray-500 font-medium">
+                                            {checkInDate} - {checkOutDate}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <StatusBadge status={booking.status === 'checked_in' ? 'ready' : booking.status === 'checked_out' ? 'delivered' : booking.status} />
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <span className="text-[15px] font-bold text-gray-900 tabular">{money(booking.total_amount)}</span>
+                                        </td>
+                                    </tr>
+                                )
+                            })}
+                        </tbody>
+                    </table>
+                    {recentBookings.length === 0 && (
+                        <div className="p-10">
+                            <EmptyState icon={CalendarRange} title="No bookings yet" description="All room reservations will show up here." />
+                        </div>
+                    )}
+                </div>
+                <div className="bg-gray-50/50 px-6 py-4 border-t border-gray-100 text-center">
+                    <Link href="/admin/bookings" className="text-[14px] font-semibold text-[#ff5a00] hover:text-[#e04f00] flex items-center justify-center gap-1.5 transition-colors">
+                        View all bookings <ArrowRight size={16} />
+                    </Link>
+                </div>
+            </div>
+        )
+    }
 
     const [{ data: todayOrders }, { data: recentOrders }] = await Promise.all([
         adminSupabase.from('orders').select('status').eq('restaurant_id', restaurantId).gte('placed_at', today.toISOString()),
@@ -180,15 +325,15 @@ async function PipelineTableSection({ restaurantId, money }: { restaurantId: str
     }
 
     return (
-        <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
-            <div className="px-6 py-5 border-b border-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-surface-muted/50">
+        <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
+            <div className="px-6 py-5 border-b border-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-50/50">
                 <div className="flex items-center gap-3">
-                    <div className="p-2 bg-brand-500/10 rounded-xl text-brand-500">
+                    <div className="p-2 bg-[#ff5a00]/10 rounded-xl text-[#ff5a00]">
                         <BarChart3 size={20} />
                     </div>
-                    <h2 className="text-[1.15rem] font-bold text-ink">Today&apos;s Pipeline</h2>
+                    <h2 className="text-[1.15rem] font-bold text-gray-900">Today&apos;s Pipeline</h2>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 bg-surface px-3 py-2 rounded-xl border border-hairline shadow-sm">
+                <div className="flex flex-wrap items-center gap-2 bg-white px-3 py-2 rounded-xl border border-gray-100 shadow-sm">
                     <PipelineBadge label="Pending" count={pipeline.pending} color="yellow" />
                     <PipelineBadge label="Preparing" count={pipeline.preparing} color="blue" />
                     <PipelineBadge label="Ready" count={pipeline.ready} color="green" />
@@ -198,27 +343,27 @@ async function PipelineTableSection({ restaurantId, money }: { restaurantId: str
             <div className="p-0 overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[500px]">
                     <thead>
-                        <tr className="text-[12px] uppercase tracking-wider font-semibold text-ink-subtle bg-surface-muted/30">
-                            <th className="px-6 py-4 border-b border-hairline">Order ID</th>
-                            <th className="px-6 py-4 border-b border-hairline">Time</th>
-                            <th className="px-6 py-4 border-b border-hairline">Status</th>
-                            <th className="px-6 py-4 border-b border-hairline text-right">Amount</th>
+                        <tr className="text-[12px] uppercase tracking-wider font-semibold text-gray-400 bg-gray-50/30">
+                            <th className="px-6 py-4 border-b border-gray-100">Order ID</th>
+                            <th className="px-6 py-4 border-b border-gray-100">Time</th>
+                            <th className="px-6 py-4 border-b border-gray-100">Status</th>
+                            <th className="px-6 py-4 border-b border-gray-100 text-right">Amount</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                         {recentOrders?.map(order => (
-                            <tr key={order.id} className="group hover:bg-surface-muted/50 transition-colors cursor-pointer">
+                            <tr key={order.id} className="group hover:bg-gray-50/50 transition-colors cursor-pointer">
                                 <td className="px-6 py-4">
-                                    <span className="font-mono text-[13px] font-bold text-ink group-hover:text-brand-500 transition-colors">#{order.id.substring(0, 6).toUpperCase()}</span>
+                                    <span className="font-mono text-[13px] font-bold text-gray-900 group-hover:text-[#ff5a00] transition-colors">#{order.id.substring(0, 6).toUpperCase()}</span>
                                 </td>
-                                <td className="px-6 py-4 text-[14px] text-ink-subtle font-medium tabular">
+                                <td className="px-6 py-4 text-[14px] text-gray-500 font-medium tabular">
                                     {new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                 </td>
                                 <td className="px-6 py-4">
                                     <StatusBadge status={order.status} />
                                 </td>
                                 <td className="px-6 py-4 text-right">
-                                    <span className="text-[15px] font-bold text-ink tabular">{money(order.total_amount)}</span>
+                                    <span className="text-[15px] font-bold text-gray-900 tabular">{money(order.total_amount)}</span>
                                 </td>
                             </tr>
                         ))}
@@ -230,8 +375,8 @@ async function PipelineTableSection({ restaurantId, money }: { restaurantId: str
                     </div>
                 )}
             </div>
-            <div className="bg-surface-muted/50 px-6 py-4 border-t border-hairline text-center">
-                <Link href="/admin/orders" className="text-[14px] font-semibold text-brand-500 hover:text-brand-700 flex items-center justify-center gap-1.5 transition-colors">
+            <div className="bg-gray-50/50 px-6 py-4 border-t border-gray-100 text-center">
+                <Link href="/admin/orders" className="text-[14px] font-semibold text-[#ff5a00] hover:text-[#e04f00] flex items-center justify-center gap-1.5 transition-colors">
                     View all orders <ArrowRight size={16} />
                 </Link>
             </div>
@@ -241,7 +386,7 @@ async function PipelineTableSection({ restaurantId, money }: { restaurantId: str
 
 function PipelineCardSkeleton() {
     return (
-        <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 space-y-3">
+        <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 space-y-3">
             <RowSkeleton /><RowSkeleton /><RowSkeleton />
         </div>
     )
@@ -278,29 +423,29 @@ async function OnboardingChecklistSection({
     if (doneSteps >= totalSteps) return null
 
     return (
-        <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.3s' }}>
-            <div className="relative bg-gradient-to-br from-brand-500/5 to-white px-6 pt-6 pb-6 border-b border-gray-50">
+        <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.3s' }}>
+            <div className="relative bg-gradient-to-br from-[#ff5a00]/5 to-white px-6 pt-6 pb-6 border-b border-gray-50">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
                     <div className="flex items-start gap-4">
-                        <div className="p-3 bg-brand-500 text-white rounded-2xl shadow-[0_4px_15px_rgba(255,90,0,0.25)]">
+                        <div className="p-3 bg-[#ff5a00] text-white rounded-2xl shadow-[0_4px_15px_rgba(255,90,0,0.25)]">
                             <Rocket size={24} />
                         </div>
                         <div>
-                            <h2 className="text-[1.25rem] font-bold text-ink">Setup your restaurant</h2>
-                            <p className="text-[14px] text-ink-subtle mt-1">Complete these steps to start taking orders.</p>
+                            <h2 className="text-[1.25rem] font-bold text-gray-900">Setup your restaurant</h2>
+                            <p className="text-[14px] text-gray-500 mt-1">Complete these steps to start taking orders.</p>
                         </div>
                     </div>
                     <div className="text-right flex-shrink-0">
-                        <div className="text-3xl font-extrabold text-ink tracking-tight tabular-nums">
-                            {doneSteps}<span className="text-ink-subtle text-xl font-semibold">/{totalSteps}</span>
+                        <div className="text-3xl font-extrabold text-gray-900 tracking-tight tabular-nums">
+                            {doneSteps}<span className="text-gray-400 text-xl font-semibold">/{totalSteps}</span>
                         </div>
-                        <div className="text-[13px] font-semibold text-brand-500 mt-1 bg-brand-500/10 px-2.5 py-0.5 rounded-full inline-block">
+                        <div className="text-[13px] font-semibold text-[#ff5a00] mt-1 bg-[#ff5a00]/10 px-2.5 py-0.5 rounded-full inline-block">
                             {progressPct}% Completed
                         </div>
                     </div>
                 </div>
-                <div className="mt-6 h-2 w-full rounded-full bg-surface-muted overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-[#ff9a00] transition-all duration-700 ease-out" style={{ width: `${progressPct}%` }} />
+                <div className="mt-6 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                    <div className="h-full rounded-full bg-gradient-to-r from-[#ff5a00] to-[#ff9a00] transition-all duration-700 ease-out" style={{ width: `${progressPct}%` }} />
                 </div>
             </div>
             <ul className="divide-y divide-gray-50">
@@ -308,18 +453,18 @@ async function OnboardingChecklistSection({
                     const Icon = step.icon
                     return (
                         <li key={i}>
-                            <Link href={step.href} className={`group block flex items-center gap-4 px-6 py-4 transition-all hover:bg-surface-muted/50 ${step.done ? 'opacity-60' : ''}`}>
-                                <div className={`p-2.5 rounded-xl transition-colors ${step.done ? 'bg-green-100 text-green-600' : 'bg-brand-50 text-brand-500 group-hover:bg-brand-500 group-hover:text-white'}`}>
+                            <Link href={step.href} className={`group block flex items-center gap-4 px-6 py-4 transition-all hover:bg-gray-50/50 ${step.done ? 'opacity-60' : ''}`}>
+                                <div className={`p-2.5 rounded-xl transition-colors ${step.done ? 'bg-green-100 text-green-600' : 'bg-orange-50 text-[#ff5a00] group-hover:bg-[#ff5a00] group-hover:text-white'}`}>
                                     {step.done ? <CheckCircle2 size={20} /> : <Icon size={20} />}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className={`text-[15px] font-bold leading-tight ${step.done ? 'text-ink-subtle line-through' : 'text-ink group-hover:text-brand-500 transition-colors'}`}>{step.label}</p>
-                                    <p className="text-[13px] text-ink-subtle mt-0.5 truncate">{step.desc}</p>
+                                    <p className={`text-[15px] font-bold leading-tight ${step.done ? 'text-gray-500 line-through' : 'text-gray-900 group-hover:text-[#ff5a00] transition-colors'}`}>{step.label}</p>
+                                    <p className="text-[13px] text-gray-500 mt-0.5 truncate">{step.desc}</p>
                                 </div>
                                 {step.done ? (
                                     <span className="text-[13px] font-bold text-green-600">Done</span>
                                 ) : (
-                                    <ChevronRight size={18} className="text-gray-300 group-hover:text-brand-500 group-hover:translate-x-1 transition-all" />
+                                    <ChevronRight size={18} className="text-gray-300 group-hover:text-[#ff5a00] group-hover:translate-x-1 transition-all" />
                                 )}
                             </Link>
                         </li>
@@ -341,7 +486,7 @@ async function LowStockAlertSection({ restaurantId }: { restaurantId: string }) 
     if (lowStock.length === 0) return null
 
     return (
-        <div className="bg-surface rounded-[24px] border border-red-100 shadow-[0_8px_30px_rgb(220,38,38,0.06)] overflow-hidden relative group animate-fade-up" style={{ animationDelay: '0.2s' }}>
+        <div className="bg-white rounded-[24px] border border-red-100 shadow-[0_8px_30px_rgb(220,38,38,0.06)] overflow-hidden relative group animate-fade-up" style={{ animationDelay: '0.2s' }}>
             <div className="absolute top-0 left-0 w-1 h-full bg-red-500" />
             <div className="p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -354,12 +499,12 @@ async function LowStockAlertSection({ restaurantId }: { restaurantId: string }) 
                 <div className="space-y-3 mb-4">
                     {lowStock.slice(0, 4).map(i => (
                         <div key={i.id} className="flex items-center justify-between">
-                            <span className="text-[14px] font-medium text-ink-muted">{i.name}</span>
+                            <span className="text-[14px] font-medium text-gray-700">{i.name}</span>
                             <span className="text-[13px] font-bold text-red-600">{i.stock_quantity} {i.unit} left</span>
                         </div>
                     ))}
                     {lowStock.length > 4 && (
-                        <p className="text-[13px] text-ink-subtle italic text-center pt-1">+{lowStock.length - 4} more items</p>
+                        <p className="text-[13px] text-gray-500 italic text-center pt-1">+{lowStock.length - 4} more items</p>
                     )}
                 </div>
                 <Link href="/admin/ingredients" className="w-full inline-block text-center bg-red-50 hover:bg-red-100 text-red-700 font-semibold text-[14px] py-2.5 rounded-xl transition-colors">
@@ -391,18 +536,18 @@ async function ActiveStaffSection({ restaurantId }: { restaurantId: string }) {
     }>
 
     return (
-        <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.4s' }}>
+        <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.4s' }}>
             <div className="px-6 py-5 border-b border-gray-50 flex items-center justify-between">
-                <h3 className="text-[1.15rem] font-bold text-ink flex items-center gap-2">
+                <h3 className="text-[1.15rem] font-bold text-gray-900 flex items-center gap-2">
                     <UserCheck size={18} className="text-green-500" /> Active Staff
                 </h3>
-                <Link href="/admin/shifts" className="p-1 text-ink-subtle hover:text-brand-500 hover:bg-brand-50 rounded-lg transition-colors">
+                <Link href="/admin/shifts" className="p-1 text-gray-400 hover:text-[#ff5a00] hover:bg-orange-50 rounded-lg transition-colors">
                     <MoreHorizontal size={20} />
                 </Link>
             </div>
             <div className="divide-y divide-gray-50 p-2">
                 {shifts.length === 0 ? (
-                    <div className="p-8 text-center text-ink-subtle">
+                    <div className="p-8 text-center text-gray-400">
                         <Clock size={32} className="mx-auto mb-3 opacity-20" />
                         <p className="text-[14px] font-medium">No staff clocked in</p>
                     </div>
@@ -411,17 +556,17 @@ async function ActiveStaffSection({ restaurantId }: { restaurantId: string }) {
                         const roleName = (s.users?.roles as unknown as { name: string } | null)?.name || ''
                         const since = new Date(s.clock_in).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
                         return (
-                            <div key={s.id} className="flex items-center gap-4 p-3 hover:bg-surface-muted rounded-xl transition-colors">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 border border-hairline-strong flex items-center justify-center text-ink-muted font-bold text-[15px] shadow-sm">
+                            <div key={s.id} className="flex items-center gap-4 p-3 hover:bg-gray-50 rounded-xl transition-colors">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 border border-gray-200 flex items-center justify-center text-gray-600 font-bold text-[15px] shadow-sm">
                                     {(s.users?.full_name || '?')[0].toUpperCase()}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-[14px] font-bold text-ink truncate">{s.users?.full_name || '—'}</p>
-                                    <p className="text-[12px] text-ink-subtle capitalize font-medium">{roleName.replace('_', ' ')}</p>
+                                    <p className="text-[14px] font-bold text-gray-900 truncate">{s.users?.full_name || '—'}</p>
+                                    <p className="text-[12px] text-gray-500 capitalize font-medium">{roleName.replace('_', ' ')}</p>
                                 </div>
                                 <div className="text-right shrink-0">
                                     <span className="inline-block w-2 h-2 rounded-full bg-green-500 mb-1" />
-                                    <p className="text-[11px] font-bold text-ink-subtle">{since}</p>
+                                    <p className="text-[11px] font-bold text-gray-400">{since}</p>
                                 </div>
                             </div>
                         )
@@ -434,7 +579,7 @@ async function ActiveStaffSection({ restaurantId }: { restaurantId: string }) {
 
 function ActiveStaffCardSkeleton() {
     return (
-        <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 space-y-3">
+        <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 space-y-3">
             <RowSkeleton /><RowSkeleton />
         </div>
     )
@@ -442,7 +587,7 @@ function ActiveStaffCardSkeleton() {
 
 function KpiCard({ title, value, icon: Icon, trend, trendUp, color }: { title: string, value: string, icon: any, trend: string, trendUp: boolean, color: 'brand' | 'blue' | 'green' | 'purple' }) {
     const colors = {
-        brand: 'from-brand-500 to-[#ff9a00] text-brand-500 bg-brand-500/10',
+        brand: 'from-[#ff5a00] to-[#ff9a00] text-[#ff5a00] bg-[#ff5a00]/10',
         blue: 'from-blue-500 to-cyan-500 text-blue-500 bg-blue-500/10',
         green: 'from-green-500 to-emerald-500 text-green-500 bg-green-500/10',
         purple: 'from-purple-500 to-pink-500 text-purple-500 bg-purple-500/10'
@@ -450,7 +595,7 @@ function KpiCard({ title, value, icon: Icon, trend, trendUp, color }: { title: s
     const c = colors[color]
 
     return (
-        <div className="group relative bg-surface rounded-[24px] p-6 border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1 overflow-hidden">
+        <div className="group relative bg-white rounded-[24px] p-6 border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1 overflow-hidden">
             <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${c.split(' ')[0]} ${c.split(' ')[1]} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
 
             <div className="flex items-center justify-between mb-4">
@@ -458,13 +603,13 @@ function KpiCard({ title, value, icon: Icon, trend, trendUp, color }: { title: s
                     <Icon size={24} />
                 </div>
                 {/* Micro trend indicator */}
-                <div className={`flex items-center gap-1 text-[12px] font-bold px-2 py-1 rounded-full ${trendUp ? 'bg-green-50 text-green-600' : 'bg-surface-muted text-ink-subtle'}`}>
+                <div className={`flex items-center gap-1 text-[12px] font-bold px-2 py-1 rounded-full ${trendUp ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-500'}`}>
                     {trendUp && <TrendingUp size={12} />} {trend}
                 </div>
             </div>
 
-            <h3 className="text-ink-subtle text-[14px] font-medium mb-1">{title}</h3>
-            <p className="text-3xl font-extrabold text-ink tracking-tight tabular-nums">{value}</p>
+            <h3 className="text-gray-500 text-[14px] font-medium mb-1">{title}</h3>
+            <p className="text-3xl font-extrabold text-gray-900 tracking-tight tabular-nums">{value}</p>
         </div>
     )
 }
@@ -476,9 +621,9 @@ function PipelineBadge({ label, count, color }: { label: string, count: number, 
         green: 'bg-green-100 text-green-800',
     }
     return (
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-muted border border-hairline">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-100">
             <span className={`w-2 h-2 rounded-full ${colors[color].split(' ')[0].replace('100', '500')}`} />
-            <span className="text-[12px] font-bold text-ink-muted">{label}</span>
+            <span className="text-[12px] font-bold text-gray-600">{label}</span>
             <span className={`text-[12px] font-bold px-1.5 py-0.5 rounded-md ${colors[color]} leading-none tabular-nums`}>{count}</span>
         </div>
     )
@@ -486,11 +631,11 @@ function PipelineBadge({ label, count, color }: { label: string, count: number, 
 
 function QuickAction({ href, icon: Icon, label, badge }: { href: string, icon: any, label: string, badge?: number | null }) {
     return (
-        <Link href={href} className="group relative flex flex-col items-center justify-center gap-3 p-4 rounded-[16px] bg-surface-muted hover:bg-brand-500/5 border border-transparent hover:border-brand-500/20 transition-all duration-300 hover:scale-[1.02]">
-            <div className="text-ink-subtle group-hover:text-brand-500 transition-colors">
+        <Link href={href} className="group relative flex flex-col items-center justify-center gap-3 p-4 rounded-[16px] bg-gray-50 hover:bg-[#ff5a00]/5 border border-transparent hover:border-[#ff5a00]/20 transition-all duration-300 hover:scale-[1.02]">
+            <div className="text-gray-400 group-hover:text-[#ff5a00] transition-colors">
                 <Icon size={24} />
             </div>
-            <span className="text-[13px] font-bold text-ink-muted group-hover:text-ink">{label}</span>
+            <span className="text-[13px] font-bold text-gray-700 group-hover:text-gray-900">{label}</span>
             {badge !== undefined && badge !== null && badge > 0 && (
                 <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full shadow-sm ring-2 ring-white">
                     {badge > 9 ? '9+' : badge}
