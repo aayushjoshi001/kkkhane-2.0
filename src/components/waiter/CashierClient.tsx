@@ -6,17 +6,26 @@ import { createClient } from '@/lib/supabase/client'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { markDeliveredAndCashPaid } from '@/app/(staff)/waiter/order-actions'
 import { updateTakeoutStatusAction } from '@/app/(admin)/admin/takeout/actions'
+import { closeSession } from '@/app/(staff)/waiter/actions'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
 import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X } from 'lucide-react'
 import PaymentVerificationFeed, { type PaymentClaim } from './PaymentVerificationFeed'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import Button from '@/components/ui/Button'
 
-type OrderItem = { quantity: number; menu_items: { name: string } | null }
+type OrderItem = { 
+    id?: string
+    quantity: number
+    status?: string
+    unit_price?: number
+    menu_items: { name: string } | null 
+}
 type TableRef = { label?: string } | null
 
 export type UnpaidOrder = {
     id: string
+    status?: string
     total_amount: number
     delivered_at: string | null
     payment_status: string
@@ -38,7 +47,7 @@ export type ActiveOrder = {
     customer_phone?: string | null
     delivery_address?: string | null
     sessions: { id: string; tables: TableRef } | null
-    order_items?: { id: string; quantity: number; status: string; unit_price?: number; menu_items: { name: string } | null }[]
+    order_items?: OrderItem[]
 }
 
 import CashierTableManager, { type TableWithSession } from './CashierTableManager'
@@ -54,6 +63,7 @@ interface Props {
     tables: TableWithSession[]
     rooms?: any[]
     isHotel?: boolean
+    initialBookings?: any[]
 }
 
 function tableLabel(sessions: { tables: TableRef } | null): string {
@@ -70,6 +80,7 @@ export default function CashierClient({
     tables,
     rooms = [],
     isHotel = false,
+    initialBookings = [],
 }: Props) {
     const [unpaid, setUnpaid] = useState<UnpaidOrder[]>(initialUnpaid)
     const money = useCurrency()
@@ -85,13 +96,282 @@ export default function CashierClient({
     const [roomsFilter, setRoomsFilter] = useState<'all' | 'available' | 'reserve' | 'occupied' | 'dirty' | 'closed'>('all')
     const [highlightSessionId, setHighlightSessionId] = useState<string | null>(null)
     const [selectedOrder, setSelectedOrder] = useState<ActiveOrder | null>(null)
+    
+    // Stays and Billing states
+    const [roomsState, setRoomsState] = useState<any[]>(rooms)
+    const [bookings, setBookings] = useState<any[]>(initialBookings)
+    const [billingSubTab, setBillingSubTab] = useState<'rooms' | 'tables'>('rooms')
+    const [selectedBillingRoom, setSelectedBillingRoom] = useState<any | null>(null)
+    const [selectedBillingTable, setSelectedBillingTable] = useState<any | null>(null)
+    const [activeInvoice, setActiveInvoice] = useState<any | null>(null)
+    const [isSettlingInvoice, setIsSettlingInvoice] = useState(false)
+
+    // For stay billing detail states
+    const [loadingStayDetails, setLoadingStayDetails] = useState(false)
+    const [billingStayBooking, setBillingStayBooking] = useState<any | null>(null)
+    const [billingRoomCharges, setBillingRoomCharges] = useState<any[]>([])
+
     const [mounted, setMounted] = useState(false)
+
+    // Sync rooms state when prop changes
+    useEffect(() => {
+        setRoomsState(rooms)
+    }, [rooms])
+
+    // Realtime subscriptions for rooms
+    useRestaurantTable(restaurantId, 'rooms', (payload) => {
+        if (payload.eventType === 'UPDATE') {
+            const updatedRoom = payload.new as any
+            setRoomsState((prev: any[]) => prev.map(r => r.id === updatedRoom.id ? { ...r, status: updatedRoom.status } : r))
+            setSelectedBillingRoom((prev: any) => {
+                if (!prev) return null
+                return prev.id === updatedRoom.id ? { ...prev, status: updatedRoom.status } : prev
+            })
+        }
+    })
+
+    // Realtime subscriptions for bookings
+    useRestaurantTable(restaurantId, 'bookings', (payload) => {
+        if (payload.eventType === 'INSERT') {
+            setBookings((prev: any[]) => [...prev, payload.new])
+        } else if (payload.eventType === 'UPDATE') {
+            const b = payload.new as any
+            setBookings((prev: any[]) => prev.map(item => item.id === b.id ? b : item))
+            if (billingStayBooking?.id === b.id) {
+                setBillingStayBooking(b)
+            }
+        }
+    })
+
+    // Load booking stay details and manual charges when room is selected
+    useEffect(() => {
+        if (selectedBillingRoom) {
+            const booking = bookings.find(b => b.room_id === selectedBillingRoom.id && b.status === 'checked_in')
+            if (booking) {
+                setBillingStayBooking(booking)
+                setLoadingStayDetails(true)
+                fetch(`/api/rooms/charges?bookingId=${booking.id}`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            setBillingRoomCharges(data.data || [])
+                        }
+                    })
+                    .catch(err => console.error("Error loading room charges:", err))
+                    .finally(() => setLoadingStayDetails(false))
+            } else {
+                setBillingStayBooking(null)
+                setBillingRoomCharges([])
+            }
+        } else {
+            setBillingStayBooking(null)
+            setBillingRoomCharges([])
+        }
+    }, [selectedBillingRoom, bookings])
+
+    const formatDateTime = (dateStr: string) => {
+        if (!dateStr) return '-'
+        return new Date(dateStr).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        })
+    }
+
+    const calculateStayCost = (room: any, booking: any) => {
+        if (!room || !booking) return 0
+        const price = room.room_types?.base_price || 0
+        const inDate = new Date(booking.check_in)
+        const outDate = new Date(booking.check_out)
+        const diffMs = outDate.getTime() - inDate.getTime()
+        const nights = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)))
+        return price * nights
+    }
+
+    const getRoomQrOrders = (room: any) => {
+        if (!room) return []
+        const matchingTable = tables.find(t => t.label === room.room_number || t.label === 'Room ' + room.room_number)
+        if (!matchingTable?.activeSession) return []
+
+        const sessionId = matchingTable.activeSession.id
+        const allActive = active.filter(o => o.session_id === sessionId)
+        const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
+        const combinedOrders = [...allActive, ...allUnpaid]
+
+        const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
+        for (const order of combinedOrders) {
+            const orderItems = order.order_items || []
+            for (const item of orderItems) {
+                items.push({
+                    name: item.menu_items?.name || 'Item',
+                    quantity: item.quantity || 0,
+                    unitPrice: Number(item.unit_price ?? 0),
+                    status: item.status || order.status || 'unknown'
+                })
+            }
+        }
+        return items
+    }
+
+    const getTableSessionItems = (table: any) => {
+        if (!table || !table.activeSession) return []
+        const sessionId = table.activeSession.id
+        const allActive = active.filter(o => o.session_id === sessionId)
+        const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
+        const combinedOrders = [...allActive, ...allUnpaid]
+
+        const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
+        for (const order of combinedOrders) {
+            const orderItems = order.order_items || []
+            for (const item of orderItems) {
+                items.push({
+                    name: item.menu_items?.name || 'Item',
+                    quantity: item.quantity || 0,
+                    unitPrice: Number(item.unit_price ?? 0),
+                    status: item.status || order.status || 'unknown'
+                })
+            }
+        }
+        return items
+    }
+
+    const calculateGrandTotal = (room: any, booking: any) => {
+        const stayCost = calculateStayCost(room, booking)
+        const qrOrdersTotal = getRoomQrOrders(room).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
+        const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
+        return stayCost + qrOrdersTotal + manualChargesTotal
+    }
+
+    const compileInvoice = (type: 'room' | 'table', item: any) => {
+        if (type === 'room') {
+            const room = item
+            const booking = bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
+            if (!booking) return
+            
+            const price = room.room_types?.base_price || 0
+            const inDate = new Date(booking.check_in)
+            const outDate = new Date(booking.check_out)
+            const diffMs = outDate.getTime() - inDate.getTime()
+            const nights = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)))
+            const stayCost = price * nights
+
+            const matchingTable = tables.find(t => t.label === room.room_number || t.label === 'Room ' + room.room_number)
+            const sessionOrders = matchingTable?.activeSession ? getRoomQrOrders(room) : []
+            const qrOrdersTotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
+
+            const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
+            const total = stayCost + qrOrdersTotal + manualChargesTotal
+
+            setActiveInvoice({
+                type: 'room',
+                id: room.id,
+                label: `Room ${room.room_number}`,
+                roomType: room.room_types?.name || 'Deluxe',
+                guestName: booking.guest_name,
+                guestPhone: booking.guest_phone,
+                checkIn: booking.check_in,
+                checkOut: booking.check_out,
+                nights,
+                basePrice: price,
+                stayCost,
+                qrOrders: getRoomQrOrders(room),
+                qrOrdersTotal,
+                manualCharges: billingRoomCharges,
+                manualChargesTotal,
+                total,
+                bookingId: booking.id,
+                roomId: room.id
+            })
+        } else {
+            const table = item
+            const sessionOrders = getTableSessionItems(table)
+            const total = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
+
+            setActiveInvoice({
+                type: 'table',
+                id: table.id,
+                label: `Table ${table.label}`,
+                guestName: `Table Guest`,
+                guestPhone: null,
+                checkIn: table.activeSession.opened_at,
+                checkOut: new Date().toISOString(),
+                nights: 0,
+                basePrice: 0,
+                stayCost: 0,
+                qrOrders: sessionOrders,
+                qrOrdersTotal: total,
+                manualCharges: [],
+                manualChargesTotal: 0,
+                total,
+                sessionId: table.activeSession.id
+            })
+        }
+    }
+
+    const handleMarkPaid = async () => {
+        if (!activeInvoice) return
+        setIsSettlingInvoice(true)
+        try {
+            // Settle all unpaid orders associated with this room or table
+            const sessionId = activeInvoice.type === 'room' 
+                ? (tables.find(t => t.label === activeInvoice.label.replace('Room ', '') || t.label === activeInvoice.label)?.activeSession?.id)
+                : activeInvoice.sessionId
+
+            if (sessionId) {
+                const sessionOrders = active.filter(o => o.session_id === sessionId)
+                const sessionUnpaid = unpaid.filter(o => o.session_id === sessionId)
+                const allUnpaid = [...sessionOrders, ...sessionUnpaid]
+
+                for (const order of allUnpaid) {
+                    if (order.payment_status === 'unpaid') {
+                        const res = await markDeliveredAndCashPaid(order.id)
+                        if (res.error) {
+                            throw new Error(res.error)
+                        }
+                    }
+                }
+            }
+
+            if (activeInvoice.type === 'room') {
+                const res = await fetch(`/api/bookings/checkout`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        booking_id: activeInvoice.bookingId,
+                        room_id: activeInvoice.roomId
+                    })
+                })
+                const data = await res.json()
+                if (!res.ok) throw new Error(data.error || 'Failed to checkout booking')
+
+                toast.success('Room billing settled and guest checked out successfully!')
+            } else {
+                const res = await closeSession(activeInvoice.sessionId)
+                if (res.error) throw new Error(res.error)
+
+                toast.success('Table session settled and closed successfully!')
+            }
+
+            setActiveInvoice(null)
+            setSelectedBillingRoom(null)
+            setSelectedBillingTable(null)
+        } catch (e: any) {
+            toast.error(e.message || 'Failed to settle invoice')
+        } finally {
+            setIsSettlingInvoice(false)
+        }
+    }
     
     // Set default active tab correctly
     useEffect(() => {
         setMounted(true)
         if (isHotel) {
             setActiveTab('rooms')
+            setBillingSubTab('rooms')
+        } else {
+            setBillingSubTab('tables')
         }
     }, [isHotel])
 
@@ -487,79 +767,110 @@ export default function CashierClient({
                             userId={userId}
                             onPendingCountChange={setPendingClaims}
                         />
-
-                        {/* Unpaid Bills — main cashier action */}
+                        {/* Awaiting Payment section */}
                         <div>
-                            <h2 className="text-sm font-semibold text-ink-muted mb-3 flex items-center gap-2">
-                                <Receipt size={14} className="text-red-400" />
-                                Awaiting Payment
-                                {unpaid.length > 0 && (
-                                    <span className="ml-1 bg-red-100 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded-full">{unpaid.length}</span>
-                                )}
-                            </h2>
+                            {isHotel && (
+                                <div className="border-b border-hairline pb-3 mb-4 flex items-center justify-between">
+                                    <h2 className="text-sm font-semibold text-ink-muted flex items-center gap-2">
+                                        <Receipt size={14} className="text-red-400" />
+                                        Awaiting Settlement
+                                    </h2>
+                                    <div className="flex bg-surface-muted p-1 rounded-xl border border-hairline">
+                                        <button
+                                            onClick={() => setBillingSubTab('rooms')}
+                                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                                billingSubTab === 'rooms' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
+                                            }`}
+                                        >
+                                            Rooms ({roomsState.filter(r => r.status === 'occupied').length})
+                                        </button>
+                                        <button
+                                            onClick={() => setBillingSubTab('tables')}
+                                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                                billingSubTab === 'tables' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
+                                            }`}
+                                        >
+                                            Tables ({tables.filter(t => t.activeSession !== null).length})
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
-                            {unpaidBySession.length === 0 ? (
+                            {!isHotel && (
+                                <h2 className="text-sm font-semibold text-ink-muted mb-4 flex items-center gap-2">
+                                    <Receipt size={14} className="text-red-400" />
+                                    Awaiting Payment
+                                </h2>
+                            )}
+
+                            {((isHotel && billingSubTab === 'rooms') ? roomsState.filter(r => r.status === 'occupied') : tables.filter(t => t.activeSession !== null)).length === 0 ? (
                                 <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-10 text-center">
                                     <CheckCircle size={32} className="mx-auto text-emerald-300 mb-2" />
                                     <p className="text-sm font-medium text-ink-subtle">All bills settled</p>
-                                    <p className="text-xs text-gray-300 mt-1">No pending payments right now</p>
+                                    <p className="text-xs text-gray-300 mt-1">No pending payments in this category</p>
                                 </div>
                             ) : (
-                                <div className="space-y-3">
-                                    {unpaidBySession.map(([sessionKey, { label, orders: tableOrders, total }]) => (
-                                        <div 
-                                            key={sessionKey} 
-                                            className={`bg-surface rounded-2xl border-2 shadow-sm overflow-hidden transition-all duration-500 ${
-                                                sessionKey === highlightSessionId 
-                                                    ? 'border-[var(--brand-500)] ring-2 ring-brand-500/20 scale-[1.01]' 
-                                                    : 'border-red-200'
-                                            }`}
-                                        >
-                                            <div className="px-4 py-3 bg-red-50 border-b border-red-100 flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-2 h-2 rounded-full bg-red-400" />
-                                                    <span className="font-bold text-sm text-red-800">Table {label}</span>
-                                                </div>
-                                                <span className="text-base font-bold text-red-700 tabular-nums">{money(total)}</span>
-                                            </div>
-
-                                            <div className="px-4 py-3 space-y-3">
-                                                {tableOrders.map(order => (
-                                                    <div key={order.id} className="flex items-start gap-3">
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="text-xs text-ink-subtle mb-1 font-mono">#{order.id.substring(0, 6).toUpperCase()}</p>
-                                                            <ul className="text-sm text-ink-muted space-y-0.5">
-                                                                {order.order_items.map((item, i) => (
-                                                                    <li key={i} className="flex gap-1.5">
-                                                                        <span className="text-xs text-ink-subtle tabular-nums shrink-0">{item.quantity}×</span>
-                                                                        <span className="truncate">{(item.menu_items as { name?: string } | null)?.name}</span>
-                                                                    </li>
-                                                                ))}
-                                                            </ul>
-                                                        </div>
-                                                        <div className="flex flex-col items-end gap-2 shrink-0">
-                                                            <span className="text-sm font-semibold text-ink tabular-nums">{money(order.total_amount)}</span>
-                                                            <button
-                                                                onClick={() => handleCashPay(order.id)}
-                                                                disabled={processingId === order.id}
-                                                                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-xl active:scale-95 disabled:opacity-50 transition"
-                                                            >
-                                                                {processingId === order.id ? <Loader2 size={12} className="animate-spin" /> : <Banknote size={12} />}
-                                                                Cash
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-
-                                            {tableOrders.length > 1 && (
-                                                <div className="px-4 py-2.5 bg-surface-muted border-t border-hairline flex items-center justify-between">
-                                                    <span className="text-xs text-ink-subtle">{tableOrders.length} orders · table total</span>
-                                                    <span className="text-sm font-bold text-ink tabular-nums">{money(total)}</span>
-                                                </div>
-                                            )}
+                                <div>
+                                    {isHotel && billingSubTab === 'rooms' ? (
+                                        // Occupied Rooms Grid
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                            {roomsState.filter(r => r.status === 'occupied').map(room => {
+                                                const booking = bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
+                                                const stayCost = calculateStayCost(room, booking)
+                                                const qrOrdersTotal = getRoomQrOrders(room).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
+                                                const total = stayCost + qrOrdersTotal
+                                                
+                                                return (
+                                                    <button
+                                                        key={room.id}
+                                                        onClick={() => setSelectedBillingRoom(room)}
+                                                        className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
+                                                    >
+                                                        <span className="text-lg font-black text-ink block leading-tight">
+                                                            Room {room.room_number}
+                                                        </span>
+                                                        {booking && (
+                                                            <span className="text-[10px] font-bold text-ink-subtle mt-1.5 truncate max-w-full">
+                                                                {booking.guest_name}
+                                                            </span>
+                                                        )}
+                                                        <span className="text-[11px] font-extrabold text-brand-650 mt-1">
+                                                            {money(total)}
+                                                        </span>
+                                                        <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">
+                                                            Awaiting Pay
+                                                        </span>
+                                                    </button>
+                                                )
+                                            })}
                                         </div>
-                                    ))}
+                                    ) : (
+                                        // Occupied Tables Grid
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                            {tables.filter(t => t.activeSession !== null).map(table => {
+                                                const sessionItems = getTableSessionItems(table)
+                                                const total = sessionItems.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
+                                                
+                                                return (
+                                                    <button
+                                                        key={table.id}
+                                                        onClick={() => setSelectedBillingTable(table)}
+                                                        className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
+                                                    >
+                                                        <span className="text-lg font-black text-ink block leading-tight">
+                                                            Table {table.label}
+                                                        </span>
+                                                        <span className="text-[11px] font-extrabold text-brand-650 mt-1">
+                                                            {money(total)}
+                                                        </span>
+                                                        <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">
+                                                            {sessionItems.length} items unpaid
+                                                        </span>
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -737,6 +1048,317 @@ export default function CashierClient({
                                     </button>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* Billing Stay Details modal */}
+            {mounted && selectedBillingRoom && createPortal(
+                <div 
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-300"
+                    onClick={() => setSelectedBillingRoom(null)}
+                >
+                    <div 
+                        className="bg-surface w-full max-w-2xl rounded-[28px] shadow-2xl overflow-hidden border border-hairline p-6 space-y-6 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between border-b border-hairline pb-4">
+                            <div>
+                                <h3 className="text-lg font-black text-ink">Room {selectedBillingRoom.room_number} stays details</h3>
+                                <p className="text-xs text-ink-subtle mt-0.5">{selectedBillingRoom.room_types?.name} • Floor {selectedBillingRoom.floor || 'N/A'}</p>
+                            </div>
+                            <button onClick={() => setSelectedBillingRoom(null)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink"><X size={16} /></button>
+                        </div>
+
+                        {loadingStayDetails ? (
+                            <div className="py-12 flex flex-col items-center justify-center gap-3">
+                                <Loader2 size={32} className="animate-spin text-brand-500" />
+                                <p className="text-xs text-ink-subtle font-semibold">Loading details...</p>
+                            </div>
+                        ) : billingStayBooking ? (
+                            <div className="space-y-6">
+                                <div className="grid grid-cols-2 gap-4 bg-surface-muted/50 border border-hairline rounded-2xl p-4 text-xs">
+                                    <div className="space-y-1.5">
+                                        <p className="text-[10px] font-bold text-ink-subtle uppercase">Guest</p>
+                                        <p className="font-extrabold text-ink text-sm">{billingStayBooking.guest_name}</p>
+                                        <p className="font-semibold text-ink-muted">{billingStayBooking.guest_phone}</p>
+                                    </div>
+                                    <div className="space-y-1 text-right border-l border-hairline pl-4">
+                                        <p className="text-[10px] font-bold text-ink-subtle uppercase">Stay schedule</p>
+                                        <p className="font-semibold text-ink-muted">In: {formatDateTime(billingStayBooking.check_in)}</p>
+                                        <p className="font-semibold text-ink-muted">Out: {formatDateTime(billingStayBooking.check_out)}</p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Stay billing breakdown</h4>
+                                    <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-gray-100 bg-surface">
+                                        <div className="flex justify-between items-center p-4 text-xs">
+                                            <div>
+                                                <p className="font-extrabold text-ink">Room Stay Cost</p>
+                                                <p className="text-[10px] text-ink-subtle">{money(selectedBillingRoom.room_types?.base_price || 0)} / Night</p>
+                                            </div>
+                                            <span className="font-extrabold text-ink-muted tabular-nums">{money(calculateStayCost(selectedBillingRoom, billingStayBooking))}</span>
+                                        </div>
+
+                                        {getRoomQrOrders(selectedBillingRoom).length > 0 && (
+                                            <div className="p-4 space-y-2">
+                                                <p className="font-extrabold text-xs text-indigo-650 font-semibold">QR Room service orders</p>
+                                                <div className="space-y-1.5 pl-3 border-l-2 border-indigo-100">
+                                                    {getRoomQrOrders(selectedBillingRoom).map((item, idx) => (
+                                                        <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
+                                                            <span>{item.name} ({item.quantity}×)</span>
+                                                            <span className="tabular-nums font-semibold">{money(item.unitPrice * item.quantity)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {billingRoomCharges.length > 0 && (
+                                            <div className="p-4 space-y-2">
+                                                <p className="font-extrabold text-xs text-amber-650 font-semibold">Additional stay charges</p>
+                                                <div className="space-y-1.5 pl-3 border-l-2 border-amber-100">
+                                                    {billingRoomCharges.map((c) => (
+                                                        <div key={c.id} className="flex justify-between text-[10px] text-ink-muted">
+                                                            <span className="capitalize">{c.description} ({c.charge_type})</span>
+                                                            <span className="tabular-nums font-semibold">{money(c.amount)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="border-t border-hairline pt-4 flex items-center justify-between mt-2">
+                                    <div>
+                                        <span className="text-[10px] font-bold text-ink-subtle uppercase">Total bill amount</span>
+                                        <p className="text-2xl font-black text-brand-600 tabular-nums">{money(calculateGrandTotal(selectedBillingRoom, billingStayBooking))}</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Button variant="secondary" onClick={() => setSelectedBillingRoom(null)}>Close</Button>
+                                        <Button variant="primary" onClick={() => compileInvoice('room', selectedBillingRoom)} className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs">Generate Invoice</Button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="p-8 text-center border border-dashed border-hairline-strong rounded-xl">
+                                <p className="text-sm text-ink-subtle">No active booking session found.</p>
+                            </div>
+                        )}
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* Billing Table Details modal */}
+            {mounted && selectedBillingTable && createPortal(
+                <div 
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-300"
+                    onClick={() => setSelectedBillingTable(null)}
+                >
+                    <div 
+                        className="bg-surface w-full max-w-2xl rounded-[28px] shadow-2xl overflow-hidden border border-hairline p-6 space-y-6 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between border-b border-hairline pb-4">
+                            <div>
+                                <h3 className="text-lg font-black text-ink">Table {selectedBillingTable.label} details</h3>
+                                <p className="text-xs text-ink-subtle mt-0.5">Capacity: {selectedBillingTable.capacity} Seats</p>
+                            </div>
+                            <button onClick={() => setSelectedBillingTable(null)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink"><X size={16} /></button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Session order items</h4>
+                            {getTableSessionItems(selectedBillingTable).length > 0 ? (
+                                <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-gray-100 bg-surface p-4 space-y-2">
+                                    {getTableSessionItems(selectedBillingTable).map((item, idx) => (
+                                        <div key={idx} className="flex justify-between items-center py-1.5 text-xs">
+                                            <div>
+                                                <p className="font-extrabold text-ink">{item.name}</p>
+                                                <p className="text-[10px] text-ink-subtle">Qty: {item.quantity} × {money(item.unitPrice)}</p>
+                                            </div>
+                                            <span className="font-extrabold text-ink-muted tabular-nums">{money(item.unitPrice * item.quantity)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="p-8 text-center border border-dashed border-hairline-strong rounded-xl text-xs text-ink-subtle font-semibold">
+                                    No items ordered in this session yet
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="border-t border-hairline pt-4 flex items-center justify-between mt-2">
+                            <div>
+                                <span className="text-[10px] font-bold text-ink-subtle uppercase">Total session bill</span>
+                                <p className="text-2xl font-black text-brand-600 tabular-nums">
+                                    {money(getTableSessionItems(selectedBillingTable).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0))}
+                                </p>
+                            </div>
+                            <div className="flex gap-2">
+                                <Button variant="secondary" onClick={() => setSelectedBillingTable(null)}>Close</Button>
+                                <Button variant="primary" onClick={() => compileInvoice('table', selectedBillingTable)} className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs">Generate Invoice</Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* Invoice Preview Overlay modal */}
+            {mounted && activeInvoice && createPortal(
+                <div 
+                    className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200"
+                    onClick={() => setActiveInvoice(null)}
+                >
+                    <div 
+                        className="bg-white w-full max-w-xl rounded-3xl shadow-2xl border border-gray-200 p-8 space-y-6 text-black print-container my-8"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* CSS media print override */}
+                        <style>{`
+                            @media print {
+                                body * {
+                                    visibility: hidden !important;
+                                }
+                                .print-container, .print-container * {
+                                    visibility: visible !important;
+                                }
+                                .print-container {
+                                    position: absolute;
+                                    left: 0;
+                                    top: 0;
+                                    width: 100% !important;
+                                    max-width: 100% !important;
+                                    border: none !important;
+                                    box-shadow: none !important;
+                                    padding: 0 !important;
+                                    margin: 0 !important;
+                                    background: white !important;
+                                    color: black !important;
+                                }
+                                .print-actions {
+                                    display: none !important;
+                                }
+                            }
+                        `}</style>
+
+                        {/* Invoice Header */}
+                        <div className="text-center space-y-1 border-b border-gray-100 pb-4">
+                            <h2 className="text-2xl font-black tracking-tight text-gray-900">INVOICE</h2>
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Kkhane Hotel &amp; Restaurant</p>
+                            <p className="text-[10px] text-gray-400">Invoice ID: INV-{activeInvoice.id.slice(0,8).toUpperCase()}</p>
+                            <p className="text-[10px] text-gray-400">Date: {new Date().toLocaleString()}</p>
+                        </div>
+
+                        {/* Guest / Table Info */}
+                        <div className="grid grid-cols-2 gap-4 text-xs bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                            <div>
+                                <p className="text-[9px] font-bold text-gray-400 uppercase">Billed To</p>
+                                <p className="font-extrabold text-gray-800 text-sm mt-0.5">{activeInvoice.guestName || 'Valued Guest'}</p>
+                                {activeInvoice.guestPhone && <p className="font-semibold text-gray-500">{activeInvoice.guestPhone}</p>}
+                            </div>
+                            <div className="text-right">
+                                <p className="text-[9px] font-bold text-gray-400 uppercase">Reference</p>
+                                <p className="font-extrabold text-brand-600 text-sm mt-0.5">{activeInvoice.label}</p>
+                                {activeInvoice.roomType && <p className="font-semibold text-gray-500">{activeInvoice.roomType}</p>}
+                            </div>
+                        </div>
+
+                        {/* Line Items */}
+                        <div className="space-y-4">
+                            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Itemized charges</h4>
+                            
+                            <table className="w-full text-xs text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase">
+                                        <th className="py-2">Description</th>
+                                        <th className="py-2 text-center">Qty / Nights</th>
+                                        <th className="py-2 text-right">Unit Price</th>
+                                        <th className="py-2 text-right">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50 text-gray-700">
+                                    {/* Stay Charge (if room) */}
+                                    {activeInvoice.type === 'room' && (
+                                        <tr>
+                                            <td className="py-3 font-semibold text-gray-900">Room Stay ({activeInvoice.roomType})</td>
+                                            <td className="py-3 text-center font-semibold">{activeInvoice.nights}</td>
+                                            <td className="py-3 text-right tabular-nums">{money(activeInvoice.basePrice)}</td>
+                                            <td className="py-3 text-right font-extrabold text-gray-900 tabular-nums">{money(activeInvoice.stayCost)}</td>
+                                        </tr>
+                                    )}
+
+                                    {/* Additional charges */}
+                                    {activeInvoice.manualCharges && activeInvoice.manualCharges.map((c: any) => (
+                                        <tr key={c.id}>
+                                            <td className="py-3 capitalize text-gray-900">
+                                                {c.description} <span className="text-[8px] bg-amber-50 text-amber-700 border border-amber-100 rounded px-1 ml-1 font-bold">{c.charge_type}</span>
+                                            </td>
+                                            <td className="py-3 text-center font-semibold">1</td>
+                                            <td className="py-3 text-right tabular-nums">{money(c.amount)}</td>
+                                            <td className="py-3 text-right font-extrabold text-gray-900 tabular-nums">{money(c.amount)}</td>
+                                        </tr>
+                                    ))}
+
+                                    {/* QR / Session order items */}
+                                    {activeInvoice.type === 'room' ? (
+                                        activeInvoice.qrOrders && activeInvoice.qrOrders.map((item: any, idx: number) => (
+                                            <tr key={idx}>
+                                                <td className="py-3 text-gray-900">Food Order: {item.name}</td>
+                                                <td className="py-3 text-center font-semibold">{item.quantity}</td>
+                                                <td className="py-3 text-right tabular-nums">{money(item.unitPrice)}</td>
+                                                <td className="py-3 text-right font-extrabold text-gray-900 tabular-nums">{money(item.unitPrice * item.quantity)}</td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        activeInvoice.qrOrders && activeInvoice.qrOrders.map((item: any, idx: number) => (
+                                            <tr key={idx}>
+                                                <td className="py-3 text-gray-900">{item.name}</td>
+                                                <td className="py-3 text-center font-semibold">{item.quantity}</td>
+                                                <td className="py-3 text-right tabular-nums">{money(item.unitPrice)}</td>
+                                                <td className="py-3 text-right font-extrabold text-gray-900 tabular-nums">{money(item.unitPrice * item.quantity)}</td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Invoice Total */}
+                        <div className="border-t border-gray-100 pt-4 flex justify-between items-center text-right">
+                            <span className="text-sm font-bold text-gray-400 uppercase">Grand Total Amount</span>
+                            <span className="text-2xl font-black text-gray-900 tabular-nums">{money(activeInvoice.total)}</span>
+                        </div>
+
+                        {/* Invoice Footer Actions */}
+                        <div className="flex gap-3 pt-4 border-t border-gray-50 print-actions">
+                            <Button 
+                                variant="secondary" 
+                                onClick={() => setActiveInvoice(null)}
+                                className="font-bold flex-1 text-xs"
+                            >
+                                Cancel
+                            </Button>
+                            <button
+                                onClick={() => window.print()}
+                                className="flex-1 py-2.5 px-4 border border-gray-300 rounded-xl text-xs font-bold text-gray-700 bg-white hover:bg-gray-50 transition active:scale-95 text-center flex items-center justify-center gap-1.5 shadow-sm"
+                            >
+                                Print Invoice
+                            </button>
+                            <Button 
+                                variant="primary" 
+                                loading={isSettlingInvoice}
+                                onClick={handleMarkPaid}
+                                className="font-bold flex-1 bg-emerald-600 hover:bg-emerald-700 border-emerald-600 hover:border-emerald-700 text-xs text-white"
+                            >
+                                Mark Paid
+                            </Button>
                         </div>
                     </div>
                 </div>,

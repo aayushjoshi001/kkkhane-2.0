@@ -19,6 +19,7 @@ export default async function CashierPage() {
         restaurantData,
         { data: rooms },
         mode,
+        { data: bookings },
     ] = await Promise.all([
         // Delivered but not yet paid — ready for cashier
         adminSupabase
@@ -83,7 +84,14 @@ export default async function CashierPage() {
             .order('room_number', { ascending: true }),
 
         // Get restaurant mode
-        getRestaurantMode(restaurantId)
+        getRestaurantMode(restaurantId),
+
+        // All active checked-in bookings
+        adminSupabase
+            .from('bookings')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('status', 'checked_in')
     ])
 
     const activeSessionsByTable = Object.fromEntries(
@@ -108,6 +116,7 @@ export default async function CashierPage() {
             tables={mappedTables as any}
             rooms={rooms || []}
             isHotel={isHotel}
+            initialBookings={(bookings || [])}
         />
     )
 }
