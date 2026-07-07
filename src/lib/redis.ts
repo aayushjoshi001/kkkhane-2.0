@@ -1,4 +1,5 @@
 import { Redis } from '@upstash/redis'
+import { revalidateTag } from 'next/cache'
 
 // Circuit breaker: if Upstash is unreachable (e.g., wrong URL or offline),
 // we disable it in memory to prevent spamming the console and adding latency
@@ -70,9 +71,16 @@ export async function fetchWithCache<T>(
 }
 
 /**
- * Invalidates a specific cache key
+ * Invalidates a specific cache key in both Redis (L2) and Next.js (L1).
+ * It dynamically derives the Next.js cache tag by replacing colons with hyphens.
  */
 export async function invalidateCache(key: string): Promise<void> {
+    try {
+        revalidateTag(key.replace(':', '-'))
+    } catch (e) {
+        console.warn(`revalidateTag failed for ${key}`, e)
+    }
+
     const redis = getRedis()
     if (!redis) return
 

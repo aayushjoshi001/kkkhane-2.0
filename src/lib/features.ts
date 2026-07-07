@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import type { Settings, Restaurant } from '@/types/database'
 import { getBusinessMode, type BusinessMode } from '@/lib/businessMode'
 import { fetchWithCache, invalidateCache } from '@/lib/redis'
+import { unstable_cache } from 'next/cache'
 
 /**
  * Fetch features_v2 flags for a restaurant.
@@ -11,15 +12,22 @@ import { fetchWithCache, invalidateCache } from '@/lib/redis'
  * was previously hitting the DB on every kitchen/waiter/admin page load.
  */
 export async function getRestaurantFeatures(restaurantId: string): Promise<Settings['features_v2'] | null> {
-    return fetchWithCache(`features:${restaurantId}`, async () => {
-        const supabase = await createAdminClient()
-        const { data } = await supabase
-            .from('settings')
-            .select('features_v2')
-            .eq('restaurant_id', restaurantId)
-            .single()
-        return data?.features_v2 ?? null
-    }, 60)
+    const fetcher = unstable_cache(
+        async () => {
+            return fetchWithCache(`features:${restaurantId}`, async () => {
+                const supabase = await createAdminClient()
+                const { data } = await supabase
+                    .from('settings')
+                    .select('features_v2')
+                    .eq('restaurant_id', restaurantId)
+                    .single()
+                return data?.features_v2 ?? null
+            }, 86400)
+        },
+        [`features-${restaurantId}`],
+        { tags: [`features-${restaurantId}`], revalidate: 3600 }
+    )
+    return fetcher()
 }
 
 /**
@@ -27,15 +35,22 @@ export async function getRestaurantFeatures(restaurantId: string): Promise<Setti
  * Cached for 30 seconds — same rationale as getRestaurantFeatures.
  */
 export async function getRestaurantMode(restaurantId: string): Promise<BusinessMode> {
-    return fetchWithCache(`mode:${restaurantId}`, async () => {
-        const supabase = await createAdminClient()
-        const { data } = await supabase
-            .from('restaurants')
-            .select('business_type')
-            .eq('id', restaurantId)
-            .single()
-        return getBusinessMode(data?.business_type)
-    }, 60)
+    const fetcher = unstable_cache(
+        async () => {
+            return fetchWithCache(`mode:${restaurantId}`, async () => {
+                const supabase = await createAdminClient()
+                const { data } = await supabase
+                    .from('restaurants')
+                    .select('business_type')
+                    .eq('id', restaurantId)
+                    .single()
+                return getBusinessMode(data?.business_type)
+            }, 86400)
+        },
+        [`mode-${restaurantId}`],
+        { tags: [`mode-${restaurantId}`], revalidate: 3600 }
+    )
+    return fetcher()
 }
 
 /**
@@ -43,15 +58,22 @@ export async function getRestaurantMode(restaurantId: string): Promise<BusinessM
  * Cached for 30 seconds — changes rarely and rides a hot customer page path.
  */
 export async function getMenuLayout(restaurantId: string): Promise<'grid' | 'list'> {
-    return fetchWithCache(`menu-layout:${restaurantId}`, async () => {
-        const supabase = await createAdminClient()
-        const { data } = await supabase
-            .from('settings')
-            .select('theme')
-            .eq('restaurant_id', restaurantId)
-            .single()
-        return (data?.theme as { menuLayout?: string } | null)?.menuLayout === 'list' ? 'list' : 'grid'
-    }, 60)
+    const fetcher = unstable_cache(
+        async () => {
+            return fetchWithCache(`menu-layout:${restaurantId}`, async () => {
+                const supabase = await createAdminClient()
+                const { data } = await supabase
+                    .from('settings')
+                    .select('theme')
+                    .eq('restaurant_id', restaurantId)
+                    .single()
+                return (data?.theme as { menuLayout?: string } | null)?.menuLayout === 'list' ? 'list' : 'grid'
+            }, 86400)
+        },
+        [`menu-layout-${restaurantId}`],
+        { tags: [`menu-layout-${restaurantId}`], revalidate: 3600 }
+    )
+    return fetcher()
 }
 
 /**
@@ -102,9 +124,7 @@ export async function updateFeaturesAction(restaurantId: string, features: Parti
 
     if (error) return { error: error.message }
     
-    // Invalidate caches
     await invalidateCache(`features:${restaurantId}`)
-    await invalidateCache(`menu-layout:${restaurantId}`)
     
     return { success: true }
 }
