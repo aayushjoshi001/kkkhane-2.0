@@ -6,6 +6,7 @@ import { Save, Type, Palette, Image as ImageIcon, Upload, X, RefreshCw, External
 import type { Settings } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import { updateThemeAction, updateBrandingAction } from '@/app/(admin)/admin/theme/actions'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 
 // Mirror the font/radius mapping used by the root layout (src/app/layout.tsx)
 // so the live preview matches exactly what customers will see once published.
@@ -148,20 +149,22 @@ export default function ThemeCustomizer({
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center bg-surface p-6 rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)]">
-                <div>
-                    <h1 className="text-h1 font-extrabold text-ink tracking-tight">Brand & Theme</h1>
-                    <p className="text-sm font-medium text-ink-subtle mt-1 max-w-2xl">Configure the look and feel of your customer-facing ordering app.</p>
-                </div>
-                <button
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="bg-brand-500 hover:bg-brand-600 text-white px-6 py-3 rounded-[var(--r-md)] font-bold flex items-center gap-2 shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 focus-ring"
-                >
-                    <Save size={18} />
-                    {isSaving ? 'Saving...' : 'Publish Changes'}
-                </button>
-            </div>
+            <PremiumPageHeader
+                title="Brand & Theme"
+                description="Configure the look and feel of your customer-facing ordering app."
+                icon={<Palette size={18} />}
+                color="orange"
+                actions={
+                    <button
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className="bg-white text-black hover:bg-white/90 px-6 py-3 rounded-full font-bold flex items-center gap-2 hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50"
+                    >
+                        <Save size={18} />
+                        {isSaving ? 'Saving...' : 'Publish Changes'}
+                    </button>
+                }
+            />
 
             {/* Logo */}
             <div className="bg-surface p-6 rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)] space-y-5">

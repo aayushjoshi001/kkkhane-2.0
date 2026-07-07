@@ -83,10 +83,19 @@ async function fetchMenuDataFromDb(restaurantId: string) {
         }
 }
 
+import { unstable_cache } from 'next/cache'
+
 export async function getCachedMenuData(restaurantId: string) {
-    return fetchWithCache(
-        `menu-data:${restaurantId}`,
-        () => fetchMenuDataFromDb(restaurantId),
-        300 // 5 minutes TTL
+    const fetcher = unstable_cache(
+        async () => {
+            return fetchWithCache(
+                `menu-data:${restaurantId}`,
+                () => fetchMenuDataFromDb(restaurantId),
+                86400 // 1 day in Redis
+            )
+        },
+        [`menu-data-${restaurantId}`],
+        { tags: [`menu-data-${restaurantId}`], revalidate: 3600 } // 1 hour Next.js cache
     )
+    return fetcher()
 }

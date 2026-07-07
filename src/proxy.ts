@@ -54,7 +54,11 @@ export async function proxy(request: NextRequest) {
         if (limiter) {
             try {
                 const ip = getRequestIp(request)
-                const { success } = await limiter.limit(ip)
+                // Race the ratelimiter against a 500ms timeout to avoid 5s cold start latency
+                const timeoutPromise = new Promise<{ success: boolean }>((resolve) => 
+                    setTimeout(() => resolve({ success: true }), 500)
+                )
+                const { success } = await Promise.race([limiter.limit(ip), timeoutPromise])
                 if (!success) {
                     console.log(`[PROXY_LOG] Rate limited: ${pathname}`);
                     return new NextResponse('Too many requests. Please slow down.', {

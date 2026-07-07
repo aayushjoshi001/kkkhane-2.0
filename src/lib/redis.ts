@@ -1,4 +1,5 @@
 import { Redis } from '@upstash/redis'
+import { revalidateTag } from 'next/cache'
 
 // Circuit breaker: if Upstash is unreachable (e.g., wrong URL or offline),
 // we disable it in memory to prevent spamming the console and adding latency
@@ -47,7 +48,12 @@ export async function fetchWithCache<T>(
     }
 
     try {
-        const cached = await redis.get<T>(key)
+        // Enforce a strict 500ms timeout on Redis calls. 
+        // If Upstash is cold-starting, it can take 3-5 seconds. A cache should never slow down the app.
+        const timeoutPromise = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Redis timeout')), 500)
+        )
+        const cached = await Promise.race([redis.get<T>(key), timeoutPromise])
         if (cached) {
             return cached
         }
@@ -55,12 +61,18 @@ export async function fetchWithCache<T>(
         handleRedisError(err, 'get', key)
     }
 
-    // Cache Miss or Error: Fetch fresh data
+    // Cache Miss or Error (or Timeout): Fetch fresh data
     const freshData = await fetcher()
 
     try {
         if (freshData && !redisDisabled) {
-            await redis.set(key, freshData, { ex: ttlSeconds })
+            const timeoutPromise = new Promise<never>((_, reject) => 
+                setTimeout(() => reject(new Error('Redis set timeout')), 500)
+            )
+            await Promise.race([
+                redis.set(key, freshData, { ex: ttlSeconds }),
+                timeoutPromise
+            ])
         }
     } catch (err) {
         handleRedisError(err, 'set', key)
@@ -70,9 +82,16 @@ export async function fetchWithCache<T>(
 }
 
 /**
- * Invalidates a specific cache key
+ * Invalidates a specific cache key in both Redis (L2) and Next.js (L1).
+ * It dynamically derives the Next.js cache tag by replacing colons with hyphens.
  */
 export async function invalidateCache(key: string): Promise<void> {
+    try {
+        revalidateTag(key.replace(':', '-'), 'max')
+    } catch (e) {
+        console.warn(`revalidateTag failed for ${key}`, e)
+    }
+
     const redis = getRedis()
     if (!redis) return
 
