@@ -1,5 +1,6 @@
 import { MarketingNav, MarketingFooter, Eyebrow } from '@/components/marketing'
 import ContactForm from '@/components/marketing/ContactForm'
+import ContactMapMount from '@/components/marketing/ContactMapMount'
 
 export default function ContactPage() {
     return (
@@ -75,17 +76,10 @@ export default function ContactPage() {
                         <p className="text-ink-subtle font-medium mt-3">Visit our headquarters in the heart of Kathmandu.</p>
                     </div>
                     <div className="w-full h-[450px] rounded-[2.5rem] overflow-hidden shadow-2xl border-8 border-gray-50 relative group">
-                        <iframe 
-                            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d113032.64621376918!2d85.2506553888373!3d27.708942726359302!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x39eb198a307baabf%3A0xb5137c1bf18db1ea!2sKathmandu%2044600%2C%20Nepal!5e0!3m2!1sen!2sus!4v1716301234567!5m2!1sen!2sus" 
-                            width="100%" 
-                            height="100%" 
-                            style={{ border: 0 }} 
-                            allowFullScreen 
-                            loading="lazy" 
-                            referrerPolicy="no-referrer-when-downgrade"
-                            className="filter grayscale contrast-[1.1] hover:grayscale-0 transition-all duration-1000 ease-in-out z-0"
-                        />
-                        
+                        <div className="absolute inset-0 z-0">
+                            <ContactMapMount />
+                        </div>
+
                         {/* Premium Glassmorphic Overlay */}
                         <div className="absolute top-6 left-6 md:top-8 md:left-8 bg-surface/80 backdrop-blur-xl p-5 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-white/50 z-10 transform transition-transform group-hover:-translate-y-1">
                             <div className="flex items-center gap-3 mb-2">

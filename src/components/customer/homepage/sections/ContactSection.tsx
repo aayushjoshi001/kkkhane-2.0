@@ -18,7 +18,7 @@ export default function ContactSection({
     primary?: string
 }) {
     const c = contact || {}
-    const hasContactInfo = c.phone || c.email || c.map_address || c.review_link || c.map_embed_url
+    const hasContactInfo = c.phone || c.email || c.map_address || c.review_link
 
     if (c.enabled === false || !hasContactInfo) return null
 
@@ -28,9 +28,9 @@ export default function ContactSection({
                 <h2 className="text-3xl font-bold text-center mb-12 text-ink">Visit Us</h2>
                 <div className="grid md:grid-cols-2 gap-8 items-stretch">
                     {/* Map */}
-                    {(c.map_address || c.map_embed_url) && (
+                    {c.map_address && (
                         <div className="rounded-2xl overflow-hidden shadow-sm min-h-[260px] bg-surface-muted relative z-10 flex">
-                            <OpenStreetMap address={c.map_address} embedUrl={c.map_embed_url} />
+                            <OpenStreetMap address={c.map_address} />
                         </div>
                     )}
 

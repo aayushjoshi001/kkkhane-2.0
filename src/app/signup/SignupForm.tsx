@@ -7,6 +7,7 @@ import { registerUserAction } from './actions'
 import { Eye, EyeOff, Lock, Mail, ArrowRight, User } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Turnstile } from '@marsidev/react-turnstile'
+import { useTurnstile, TURNSTILE_SITE_KEY } from '@/lib/hooks/useTurnstile'
 
 export default function SignupForm() {
     const router = useRouter()
@@ -14,7 +15,7 @@ export default function SignupForm() {
     const [error, setError] = useState<string | null>(null)
     const [showPassword, setShowPassword] = useState(false)
     const [isGoogleLoading, setIsGoogleLoading] = useState(false)
-    const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+    const turnstile = useTurnstile()
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
@@ -115,21 +116,28 @@ export default function SignupForm() {
                     </div>
                 </div>
 
-                <input type="hidden" name="cf-turnstile-response" value={turnstileToken || ''} />
+                <input type="hidden" name="cf-turnstile-response" value={turnstile.token || ''} />
 
-                {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
-                    <div className="flex justify-center mt-2 mb-2">
-                        <Turnstile 
-                            siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY} 
-                            onSuccess={(token) => setTurnstileToken(token)}
+                {TURNSTILE_SITE_KEY && (
+                    <div className="flex flex-col items-center gap-2 mt-2 mb-2">
+                        <Turnstile
+                            siteKey={TURNSTILE_SITE_KEY}
+                            onSuccess={turnstile.handleSuccess}
+                            onExpire={turnstile.handleExpire}
+                            onError={turnstile.handleError}
                             options={{ theme: 'light', size: 'normal' }}
                         />
+                        {turnstile.unavailable && (
+                            <p className="text-xs text-ink-muted text-center max-w-xs">
+                                Security check is taking longer than usual. You can still continue.
+                            </p>
+                        )}
                     </div>
                 )}
 
                 <button
                     type="submit"
-                    disabled={isPending || (!!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && !turnstileToken)}
+                    disabled={isPending || turnstile.isBlocking}
                     className="w-full bg-brand-500 hover:bg-brand-600 text-white h-[52px] rounded-[14px] text-[16px] font-semibold shadow-lg shadow-[#ff5a00]/25 transition-all hover:scale-[1.01] flex items-center justify-center gap-2 mt-2 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
                     {isPending ? (

@@ -24,6 +24,7 @@ export default function Logo({ className = 'h-8', variant = 'default' }: LogoPro
             height={96}
             priority
             className={`${className} w-auto object-contain select-none`}
+            style={{ width: 'auto' }}
         />
     )
 }

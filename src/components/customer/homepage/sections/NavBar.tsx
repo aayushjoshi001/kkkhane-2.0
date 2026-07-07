@@ -16,7 +16,7 @@ export default function NavBar({
                 {/* Brand: logo + name */}
                 <div className="flex items-center gap-2.5 min-w-0">
                     {config.logo_url ? (
-                        <Image src={config.logo_url} alt={name || 'Logo'} width={160} height={36} className="h-9 w-auto max-w-[160px] object-contain" />
+                        <Image src={config.logo_url} alt={name || 'Logo'} width={160} height={36} className="h-9 w-auto max-w-[160px] object-contain" style={{ width: 'auto' }} />
                     ) : (
                         name && <span className="font-bold text-lg truncate" style={{ color: config.theme_secondary }}>{name}</span>
                     )}
