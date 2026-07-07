@@ -76,7 +76,7 @@ export async function fetchWithCache<T>(
  */
 export async function invalidateCache(key: string): Promise<void> {
     try {
-        revalidateTag(key.replace(':', '-'))
+        revalidateTag(key.replace(':', '-'), 'max')
     } catch (e) {
         console.warn(`revalidateTag failed for ${key}`, e)
     }
