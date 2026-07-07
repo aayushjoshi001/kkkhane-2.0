@@ -13,9 +13,33 @@ export async function POST(request: Request) {
     // first_time_opening_balance is only used when there is no prior session at all
     const firstTimeOpeningBalance: number = Number(body.opening_balance ?? 0)
     const firstTimeOpeningBankBalance: number = Number(body.opening_bank_balance ?? 0)
+    
+    // Accept client local date if provided to handle timezones robustly
+    const today = body.date ?? new Date().toISOString().slice(0, 10) // 'YYYY-MM-DD'
 
     const supabase = await createAdminClient()
-    const today = new Date().toISOString().slice(0, 10) // 'YYYY-MM-DD'
+
+    // ── 0. Prevent opening a new day if a previous day is still open ──────────
+    const { data: openSession, error: checkOpenError } = await supabase
+        .from('day_book_sessions')
+        .select('date')
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'open')
+        .lt('date', today)
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+    if (checkOpenError) {
+        return NextResponse.json({ error: checkOpenError.message }, { status: 500 })
+    }
+
+    if (openSession) {
+        return NextResponse.json(
+            { error: `Cannot open a new day book session. The session for ${openSession.date} is still open. Please close it before opening a new day.` },
+            { status: 400 }
+        )
+    }
 
     // ── 1. Return existing session if already opened today ──────────────────
     const { data: existing } = await supabase

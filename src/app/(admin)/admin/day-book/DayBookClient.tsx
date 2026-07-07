@@ -139,7 +139,7 @@ export default function DayBookClient({
             const res = await fetch('/api/day-book/session', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ opening_balance: bal, opening_bank_balance: bankBal }),
+                body: JSON.stringify({ opening_balance: bal, opening_bank_balance: bankBal, date: todayDate }),
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error)
