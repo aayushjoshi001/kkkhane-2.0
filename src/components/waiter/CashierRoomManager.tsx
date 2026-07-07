@@ -553,7 +553,7 @@ export default function CashierRoomManager({
                                     </div>
                                     <div className="flex gap-3 pt-2">
                                         <Button variant="secondary" block onClick={() => setConfirmDirtyOpen(false)}>Cancel</Button>
-                                        <Button variant="warning" block loading={isProcessing} onClick={() => handleStatusChange(selectedRoom.id, 'dirty')}>Confirm Dirty</Button>
+                                        <Button variant="secondary" block loading={isProcessing} onClick={() => handleStatusChange(selectedRoom.id, 'dirty')}>Confirm Dirty</Button>
                                     </div>
                                 </div>
                             ) : (
@@ -593,7 +593,7 @@ export default function CashierRoomManager({
                                                 Closed
                                             </Button>
                                             <Button
-                                                variant="warning"
+                                                variant="secondary"
                                                 icon={RefreshCw}
                                                 block
                                                 onClick={() => setConfirmDirtyOpen(true)}
