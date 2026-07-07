@@ -37,7 +37,7 @@ export default function CashierRoomManager({
     tables,
     activeOrders,
     unpaidOrders,
-    onSwitchToBilling,
+    onGoToBilling,
 }: {
     initialRooms: RoomWithTypes[]
     restaurantId: string
@@ -45,7 +45,7 @@ export default function CashierRoomManager({
     tables: TableWithSession[]
     activeOrders: any[]
     unpaidOrders: any[]
-    onSwitchToBilling: (sessionId?: string) => void
+    onGoToBilling?: (room: any) => void
 }) {
     const [rooms, setRooms] = useState<RoomWithTypes[]>(initialRooms)
     const [selectedRoom, setSelectedRoom] = useState<RoomWithTypes | null>(null)
@@ -824,11 +824,13 @@ export default function CashierRoomManager({
                                         <Button
                                             variant="danger"
                                             icon={CreditCard}
-                                            loading={isProcessing}
-                                            onClick={handleCheckout}
+                                            onClick={() => {
+                                                if (onGoToBilling) onGoToBilling(selectedRoom)
+                                                setSelectedRoom(null)
+                                            }}
                                             className="px-6 font-bold"
                                         >
-                                            Checkout &amp; Go to Billing
+                                            Go to Billing
                                         </Button>
                                     </div>
                                 </div>

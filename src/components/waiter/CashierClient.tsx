@@ -592,9 +592,10 @@ export default function CashierClient({
                             tables={tables}
                             activeOrders={active}
                             unpaidOrders={unpaid}
-                            onSwitchToBilling={(sessionId) => {
+                            onGoToBilling={(room) => {
                                 setActiveTab('billing')
-                                setHighlightSessionId(sessionId || null)
+                                setBillingSubTab('rooms')
+                                setSelectedBillingRoom(room)
                             }}
                         />
                     </div>
