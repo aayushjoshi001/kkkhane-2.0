@@ -208,7 +208,7 @@ export default function CashierClient({
 
     const totalUnpaid = unpaid.reduce((s, o) => s + (o.total_amount ?? 0), 0)
 
-    const tabs = isHotel ? [
+    const tabs: { id: 'rooms' | 'tables' | 'space' | 'takeaway' | 'billing'; label: string }[] = isHotel ? [
         { id: 'rooms', label: 'Rooms' },
         { id: 'tables', label: 'Tables' },
         { id: 'takeaway', label: 'Takeaway/Delivery' },

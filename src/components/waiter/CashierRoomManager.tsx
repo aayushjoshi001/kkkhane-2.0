@@ -56,7 +56,10 @@ export default function CashierRoomManager({
         if (payload.eventType === 'UPDATE') {
             const updatedRoom = payload.new as any
             setRooms(prev => prev.map(r => r.id === updatedRoom.id ? { ...r, status: updatedRoom.status } : r))
-            setSelectedRoom(prev => prev?.id === updatedRoom.id ? { ...prev, status: updatedRoom.status } : prev)
+            setSelectedRoom(prev => {
+                if (!prev) return null
+                return prev.id === updatedRoom.id ? { ...prev, status: updatedRoom.status } : prev
+            })
         }
     })
 
