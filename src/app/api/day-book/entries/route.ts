@@ -24,9 +24,9 @@ export async function POST(request: Request) {
     if (!session_id) {
         return NextResponse.json({ error: 'session_id is required' }, { status: 400 })
     }
-    if (type !== 'cash_in' && type !== 'cash_out') {
+    if (type !== 'cash_in' && type !== 'cash_out' && type !== 'bank_in' && type !== 'bank_out') {
         return NextResponse.json(
-            { error: 'type must be "cash_in" or "cash_out"' },
+            { error: 'type must be "cash_in", "cash_out", "bank_in" or "bank_out"' },
             { status: 400 }
         )
     }
