@@ -13,6 +13,9 @@ import type { OrderStatus, OrderItemStatus, Order, OrderItem, OrderItemModifier,
 import { setOrderItemsStatus, getKitchenOrders } from '@/app/(staff)/kitchen/actions'
 import { rollUpOrderStatus } from '@/lib/orderRollup'
 import EmptyState from '@/components/ui/EmptyState'
+import { usePrinter } from '@/lib/print/usePrinter'
+import { buildKotTicket } from '@/lib/print/templates/kotTicket'
+import KotPrintFallback from './KotPrintFallback'
 
 export type KitchenOrderItem = OrderItem & {
     menu_item_id?: string
@@ -70,6 +73,28 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
     const money = useCurrency()
     const supabaseRef = useRef(createClient())
+    const { print: printKot } = usePrinter('kot')
+    // Queued, not a single slot — QZ Tray being down for the whole shift means
+    // every order fails to print at once, and a single slot would silently
+    // drop all but the most recent order's fallback ticket.
+    const [kotFallbackQueue, setKotFallbackQueue] = useState<KitchenOrder[]>([])
+    const dequeueKotFallback = useCallback(() => setKotFallbackQueue(q => q.slice(1)), [])
+
+    // Auto-print the KOT. Falls back to a browser print if QZ Tray isn't
+    // connected/trusted on this kitchen screen yet. Called as a plain
+    // function (never from inside a setState updater — React 18 StrictMode
+    // double-invokes those in dev, which would double-print every ticket).
+    const printKotWithFallback = useCallback((order: KitchenOrder) => {
+        void printKot(buildKotTicket(order)).then((result) => {
+            if (result.ok) return
+            setKotFallbackQueue(q => [...q, order])
+            toast.error(
+                result.status === 'no-printer-selected'
+                    ? 'No KOT printer set — printed via browser instead. Set one in Printer Settings.'
+                    : 'KOT printer not connected — printed via browser instead.'
+            )
+        })
+    }, [printKot])
 
     // Resync: fetch fresh orders from DB on mount and whenever the realtime
     // channel reconnects. This recovers any orders missed during a disconnect
@@ -109,8 +134,10 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             // Delay sound + toast 400ms to avoid false alarms: if needs_confirmation=true
             // arrives on a follow-up UPDATE the order will be removed before the 400ms fires.
             setTimeout(() => {
+                let stillPresent = false
                 setOrders(cur => {
                     if (!cur.some(o => o.id === order.id)) return cur // already removed — was a false alarm
+                    stillPresent = true
                     playNewOrder().catch(() => {})
                     const tbl = order.sessions?.tables?.label
                     const isTakeout = order.order_type === 'takeout'
@@ -127,6 +154,9 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
                     ), { duration: 6000, position: 'top-right' })
                     return cur
                 })
+                // Outside the updater — a setState updater can run twice under
+                // React 18 StrictMode, and printing is a real side effect.
+                if (stillPresent) printKotWithFallback(order)
             }, 400)
         } else if (payload.eventType === 'UPDATE') {
             const newStatus = payload.new.status as string
@@ -160,6 +190,10 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
                         </div>
                     </div>
                 ), { duration: 6000, position: 'top-right' })
+                // This path covers orders that only become kitchen-visible via an
+                // UPDATE (e.g. a takeout/delivery order leaving needs_confirmation) —
+                // it needs its own auto-print call, same as the INSERT path above.
+                printKotWithFallback(fresh)
             }
         }
     }, resync)
@@ -237,6 +271,8 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
 
     return (
         <div className="h-full flex flex-col bg-[#FBF7F3]">
+            <KotPrintFallback order={kotFallbackQueue[0] ?? null} onDone={dequeueKotFallback} />
+
             {/* Mobile: tab bar */}
             <div className="lg:hidden shrink-0 bg-surface border-b border-hairline px-2 sm:px-4">
                 <div className="max-w-2xl mx-auto grid grid-cols-3">

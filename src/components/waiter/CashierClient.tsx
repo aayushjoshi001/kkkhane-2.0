@@ -13,6 +13,8 @@ import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, Sh
 import PaymentVerificationFeed, { type PaymentClaim } from './PaymentVerificationFeed'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import Button from '@/components/ui/Button'
+import { usePrinter } from '@/lib/print/usePrinter'
+import { buildInvoiceTicket } from '@/lib/print/templates/invoiceTicket'
 
 type OrderItem = { 
     id?: string
@@ -84,6 +86,7 @@ export default function CashierClient({
 }: Props) {
     const [unpaid, setUnpaid] = useState<UnpaidOrder[]>(initialUnpaid)
     const money = useCurrency()
+    const { print: printInvoice } = usePrinter('invoice')
     const [active, setActive] = useState<ActiveOrder[]>(initialActive)
     const [processingId, setProcessingId] = useState<string | null>(null)
     const [pendingClaims, setPendingClaims] = useState(
@@ -403,6 +406,19 @@ export default function CashierClient({
                 if (res.error) throw new Error(res.error)
 
                 toast.success('Table session settled and closed successfully!')
+            }
+
+            // Auto-print the invoice. Falls back to the browser print dialog
+            // (this modal is already styled for it) if QZ Tray isn't
+            // connected/trusted on this till yet.
+            const printResult = await printInvoice(buildInvoiceTicket(activeInvoice, money))
+            if (!printResult.ok) {
+                toast.error(
+                    printResult.status === 'no-printer-selected'
+                        ? 'No invoice printer set — opening browser print instead.'
+                        : 'Invoice printer not connected — opening browser print instead.'
+                )
+                window.print()
             }
 
             setActiveInvoice(null)

@@ -1,0 +1,134 @@
+// Builds the ESC/POS byte stream for a settled table/room invoice — the
+// thermal-print equivalent of the receipt markup in CashierClient.tsx's
+// invoice modal. Kept in sync with that JSX; if the on-screen receipt layout
+// changes, mirror the change here too.
+
+import { EscPosBuilder, LINE_WIDTH } from '../escpos'
+
+export interface InvoiceLineItem {
+    name: string
+    quantity: number
+    unitPrice: number
+    status?: string
+}
+
+export interface InvoiceManualCharge {
+    id: string
+    description: string
+    amount: number
+}
+
+export interface ActiveInvoice {
+    type: 'room' | 'table'
+    id: string
+    label: string
+    roomType?: string
+    guestName: string
+    guestPhone?: string | null
+    nights: number
+    basePrice: number
+    stayCost: number
+    qrOrders: InvoiceLineItem[]
+    qrOrdersTotal: number
+    manualCharges: InvoiceManualCharge[]
+    manualChargesTotal: number
+    total: number
+    advancePaid?: number
+    advanceMethod?: string
+    balanceDue?: number
+    paymentMethod?: 'cash' | 'qr_digital' | 'both'
+    cashPaid?: number
+    qrPaid?: number
+}
+
+const COL = { desc: 18, qty: 4, rate: 9, amt: 11 }
+
+export function buildInvoiceTicket(
+    invoice: ActiveInvoice,
+    money: (amount: number) => string,
+    restaurantName = 'KKHANE HOTEL & RESTAURANT'
+): Uint8Array {
+    const b = new EscPosBuilder().init()
+
+    b.align('center').bold(true).line(restaurantName).bold(false)
+    b.line('*** INVOICE ***')
+    b.line(`No: INV-${invoice.id.slice(0, 8).toUpperCase()}`)
+    b.line(`Date: ${new Date().toLocaleString()}`)
+    b.divider()
+
+    b.align('left')
+    b.line(`GUEST: ${invoice.guestName || 'Walk-in Customer'}`)
+    if (invoice.guestPhone) b.line(`PHONE: ${invoice.guestPhone}`)
+    b.line(`REF: ${invoice.label.toUpperCase()}`)
+    if (invoice.roomType) b.line(`TYPE: ${invoice.roomType}`)
+    b.divider()
+
+    b.bold(true)
+    b.columns([
+        { text: 'DESC', width: COL.desc },
+        { text: 'QTY', width: COL.qty, align: 'center' },
+        { text: 'RATE', width: COL.rate, align: 'right' },
+        { text: 'AMT', width: COL.amt, align: 'right' },
+    ])
+    b.bold(false)
+
+    if (invoice.type === 'room' && invoice.stayCost > 0) {
+        b.columns([
+            { text: `Room Stay (${invoice.nights}n)`, width: COL.desc },
+            { text: String(invoice.nights), width: COL.qty, align: 'center' },
+            { text: money(invoice.basePrice), width: COL.rate, align: 'right' },
+            { text: money(invoice.stayCost), width: COL.amt, align: 'right' },
+        ])
+    }
+
+    for (const charge of invoice.manualCharges) {
+        b.columns([
+            { text: charge.description, width: COL.desc },
+            { text: '1', width: COL.qty, align: 'center' },
+            { text: money(charge.amount), width: COL.rate, align: 'right' },
+            { text: money(charge.amount), width: COL.amt, align: 'right' },
+        ])
+    }
+
+    for (const item of invoice.qrOrders) {
+        const name = invoice.type === 'room' ? `Food: ${item.name}` : item.name
+        b.columns([
+            { text: name, width: COL.desc },
+            { text: String(item.quantity), width: COL.qty, align: 'center' },
+            { text: money(item.unitPrice), width: COL.rate, align: 'right' },
+            { text: money(item.unitPrice * item.quantity), width: COL.amt, align: 'right' },
+        ])
+    }
+
+    b.divider()
+    b.bold(true)
+    b.columns([{ text: 'GRAND TOTAL', width: LINE_WIDTH - 14 }, { text: money(invoice.total), width: 14, align: 'right' }])
+    b.bold(false)
+
+    if (invoice.advancePaid && invoice.advancePaid > 0) {
+        const label = `Advance (${invoice.advanceMethod === 'qr_digital' ? 'QR/Digital' : 'Cash'})`
+        b.columns([{ text: label, width: LINE_WIDTH - 14 }, { text: `-${money(invoice.advancePaid)}`, width: 14, align: 'right' }])
+    }
+
+    b.divider()
+    b.size({ doubleHeight: true }).bold(true)
+    const dueLabel = invoice.advancePaid && invoice.advancePaid > 0 ? 'BALANCE DUE' : 'TOTAL DUE'
+    b.line(`${dueLabel}: ${money(invoice.balanceDue ?? invoice.total)}`)
+    b.size({}).bold(false)
+
+    if (invoice.paymentMethod) {
+        const label = invoice.paymentMethod === 'cash' ? 'CASH' : invoice.paymentMethod === 'qr_digital' ? 'QR / DIGITAL' : 'SPLIT'
+        b.line(`Payment: ${label}`)
+        if (invoice.paymentMethod === 'both') {
+            b.line(`  Cash: ${money(invoice.cashPaid ?? 0)}`)
+            b.line(`  QR/Digital: ${money(invoice.qrPaid ?? 0)}`)
+        }
+    }
+
+    b.divider()
+    b.align('center')
+    b.line('*** THANK YOU! ***')
+    b.line('WE HOPE TO SEE YOU AGAIN')
+
+    return b.cut().build()
+}

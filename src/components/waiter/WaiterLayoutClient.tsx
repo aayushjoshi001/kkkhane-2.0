@@ -4,6 +4,7 @@ import { ReactNode, useState, useEffect } from 'react'
 import { LogOut, LogIn, Loader2 } from 'lucide-react'
 import Logo from '@/components/shared/Logo'
 import SoundEnableButton from '@/components/shared/SoundEnableButton'
+import PrinterSettingsButton from '@/components/shared/PrinterSettingsButton'
 import { signOutAndRedirect } from '@/lib/auth/signOut'
 import { setCustomNotificationSound } from '@/lib/audio'
 import { useRouter } from 'next/navigation'
@@ -110,6 +111,7 @@ export default function WaiterLayoutClient({
                     {/* Right */}
                     <div className="flex items-center gap-1.5 md:gap-2.5 shrink-0">
                         <CommandHint />
+                        {commandRole === 'cashier' && <PrinterSettingsButton role="invoice" variant="light" />}
                         <SoundEnableButton variant="light" />
                         {staffName && (
                             <div className="hidden md:flex items-center gap-2">
