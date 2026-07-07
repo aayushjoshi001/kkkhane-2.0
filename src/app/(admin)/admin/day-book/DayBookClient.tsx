@@ -449,25 +449,25 @@ export default function DayBookClient({
             {/* ── Summary Cards & Tables ── */}
             {session && (
                 <>
-                    {/* Tab Navigation */}
-                    <div className="border-b border-gray-150 mb-6">
-                        <div className="grid grid-cols-2 max-w-md w-full">
+                    {/* Tab Navigation (Segmented Capsule Control) */}
+                    <div className="flex justify-center mb-8 animate-fade-in">
+                        <div className="flex bg-gray-100 p-1 rounded-2xl border border-gray-200/40 max-w-md w-full gap-1">
                             <button
                                 onClick={() => setActiveTab('cash')}
-                                className={`py-3 text-sm font-extrabold border-b-2 text-center transition-all ${
+                                className={`flex-1 py-2.5 text-sm font-extrabold rounded-xl text-center transition-all ${
                                     activeTab === 'cash'
-                                        ? 'border-[#ff5a00] text-[#ff5a00]'
-                                        : 'border-transparent text-gray-400 hover:text-gray-700'
+                                        ? 'bg-[#ff5a00] text-white shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50'
                                 }`}
                             >
                                 Cash Ledger
                             </button>
                             <button
                                 onClick={() => setActiveTab('bank')}
-                                className={`py-3 text-sm font-extrabold border-b-2 text-center transition-all ${
+                                className={`flex-1 py-2.5 text-sm font-extrabold rounded-xl text-center transition-all ${
                                     activeTab === 'bank'
-                                        ? 'border-[#ff5a00] text-[#ff5a00]'
-                                        : 'border-transparent text-gray-400 hover:text-gray-700'
+                                        ? 'bg-[#ff5a00] text-white shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50'
                                 }`}
                             >
                                 Bank Ledger
