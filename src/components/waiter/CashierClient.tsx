@@ -309,6 +309,13 @@ export default function CashierClient({
                             initialRooms={rooms}
                             restaurantId={restaurantId}
                             roomsFilter={roomsFilter}
+                            tables={tables}
+                            activeOrders={active}
+                            unpaidOrders={unpaid}
+                            onSwitchToBilling={(sessionId) => {
+                                setActiveTab('billing')
+                                setHighlightSessionId(sessionId || null)
+                            }}
                         />
                     </div>
                 )}
