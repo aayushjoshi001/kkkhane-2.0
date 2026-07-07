@@ -321,7 +321,7 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                                         {config.logo_url ? (
                                             <div className="flex flex-col items-center">
                                                 <div className="relative group">
-                                                    <Image src={config.logo_url} alt="Logo" width={240} height={100} className="h-28 w-auto object-contain drop-shadow-md bg-surface p-4 rounded-xl border border-hairline" />
+                                                    <Image src={config.logo_url} alt="Logo" width={240} height={100} className="h-28 w-auto object-contain drop-shadow-md bg-surface p-4 rounded-xl border border-hairline" style={{ width: 'auto' }} />
                                                     <button onClick={() => patchAndSave({ logo_url: null })} className="absolute -top-3 -right-3 w-8 h-8 bg-danger-bg text-danger-fg rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-md border-2 border-white">
                                                         <X size={14} />
                                                     </button>
@@ -461,7 +461,7 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                                             <label className="block text-[11px] font-bold text-ink uppercase tracking-wider mb-3">Chef / Restaurant Image</label>
                                             {config.about?.image_url ? (
                                                 <div className="relative group inline-block">
-                                                    <Image src={config.about.image_url} alt="About" width={320} height={200} className="h-48 w-auto object-cover rounded-xl border border-hairline shadow-sm" />
+                                                    <Image src={config.about.image_url} alt="About" width={320} height={200} className="h-48 w-auto object-cover rounded-xl border border-hairline shadow-sm" style={{ width: 'auto' }} />
                                                     <button onClick={() => patchAndSave({ about: { ...DEFAULT_CONFIG.about!, ...config.about, image_url: '' } })} className="absolute -top-3 -right-3 w-8 h-8 bg-danger-bg text-danger-fg rounded-full flex items-center justify-center shadow-md border-2 border-white hover:scale-110 transition-transform">
                                                         <X size={14} />
                                                     </button>
@@ -618,12 +618,8 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                                             <TextField label="Email Address" value={config.contact?.email || ''} onChange={(v) => patchContact({ email: v })} placeholder="hello@restaurant.com" />
                                         </div>
                                         <TextField label="Physical Address" value={config.contact?.map_address || ''} onChange={(v) => patchContact({ map_address: v })} placeholder="123 Culinary Ave, Food City" />
-                                        
-                                        <div className="p-5 bg-blue-50/50 border border-blue-100 rounded-[var(--r-lg)] space-y-4">
-                                            <TextField label="Google Maps Embed URL (Optional)" value={config.contact?.map_embed_url || ''} onChange={(v) => patchContact({ map_embed_url: v })} placeholder="<iframe src='...'> link" />
-                                            <p className="text-xs text-blue-600/80 font-medium leading-relaxed">If left blank, a map will automatically be generated using your Physical Address above.</p>
-                                        </div>
-                                        
+                                        <p className="text-xs text-ink-subtle -mt-2">A map is generated automatically from this address — no embed code needed.</p>
+
                                         <TextField label="Google Reviews Link" value={config.contact?.review_link || ''} onChange={(v) => patchContact({ review_link: v })} placeholder="https://g.page/r/..." />
                                     </div>
                                 </div>

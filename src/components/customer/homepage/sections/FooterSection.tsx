@@ -23,7 +23,7 @@ export default function FooterSection({
         <footer className="bg-ink text-white py-10 px-4">
             <div className="max-w-6xl mx-auto flex flex-col items-center gap-5 text-center">
                 {logoUrl ? (
-                    <Image src={logoUrl} alt={restaurantName || 'Logo'} width={200} height={48} className="h-12 w-auto object-contain" />
+                    <Image src={logoUrl} alt={restaurantName || 'Logo'} width={200} height={48} className="h-12 w-auto object-contain" style={{ width: 'auto' }} />
                 ) : (
                     restaurantName && <p className="text-lg font-semibold">{restaurantName}</p>
                 )}
