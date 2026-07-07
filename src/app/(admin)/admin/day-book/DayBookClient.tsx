@@ -450,27 +450,29 @@ export default function DayBookClient({
             {session && (
                 <>
                     {/* Tab Navigation */}
-                    <div className="flex border-b border-gray-150 mb-6 gap-2">
-                        <button
-                            onClick={() => setActiveTab('cash')}
-                            className={`px-5 py-3 text-sm font-extrabold border-b-2 transition-all flex items-center gap-2 ${
-                                activeTab === 'cash'
-                                    ? 'border-[#ff5a00] text-[#ff5a00]'
-                                    : 'border-transparent text-gray-400 hover:text-gray-700'
-                            }`}
-                        >
-                            <span>💵</span> Cash Ledger
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('bank')}
-                            className={`px-5 py-3 text-sm font-extrabold border-b-2 transition-all flex items-center gap-2 ${
-                                activeTab === 'bank'
-                                    ? 'border-[#ff5a00] text-[#ff5a00]'
-                                    : 'border-transparent text-gray-400 hover:text-gray-700'
-                            }`}
-                        >
-                            <span>🏦</span> Bank Ledger
-                        </button>
+                    <div className="border-b border-gray-150 mb-6">
+                        <div className="grid grid-cols-2 max-w-md w-full">
+                            <button
+                                onClick={() => setActiveTab('cash')}
+                                className={`py-3 text-sm font-extrabold border-b-2 text-center transition-all ${
+                                    activeTab === 'cash'
+                                        ? 'border-[#ff5a00] text-[#ff5a00]'
+                                        : 'border-transparent text-gray-400 hover:text-gray-700'
+                                }`}
+                            >
+                                Cash Ledger
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('bank')}
+                                className={`py-3 text-sm font-extrabold border-b-2 text-center transition-all ${
+                                    activeTab === 'bank'
+                                        ? 'border-[#ff5a00] text-[#ff5a00]'
+                                        : 'border-transparent text-gray-400 hover:text-gray-700'
+                                }`}
+                            >
+                                Bank Ledger
+                            </button>
+                        </div>
                     </div>
 
                     {activeTab === 'cash' ? (
