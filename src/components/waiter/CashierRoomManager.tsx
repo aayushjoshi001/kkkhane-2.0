@@ -896,31 +896,58 @@ export default function CashierRoomManager({
                         </div>
 
                         {/* Drawer Footer (Checkout and Total Billing) - sticky */}
-                        <div className="border-t border-hairline px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-shrink-0 bg-surface">
-                            <div>
-                                <span className="text-[10px] font-bold text-ink-subtle uppercase">Total bill amount</span>
-                                <p className="text-2xl font-black text-brand-600 tabular-nums">{money(grandTotal)}</p>
-                            </div>
-                            <div className="flex gap-2">
-                                <Button
-                                    variant="secondary"
-                                    onClick={() => setSelectedRoom(null)}
-                                    className="px-5 font-bold"
-                                >
-                                    Close
-                                </Button>
-                                <Button
-                                    variant="danger"
-                                    icon={CreditCard}
-                                    onClick={() => {
-                                        if (onGoToBilling) onGoToBilling(selectedRoom)
-                                        setSelectedRoom(null)
-                                    }}
-                                    className="px-6 font-bold"
-                                >
-                                    Go to Billing
-                                </Button>
-                            </div>
+                        <div className="border-t border-hairline px-6 py-4 flex flex-col gap-2.5 flex-shrink-0 bg-surface">
+                            {(() => {
+                                const advancePaid = Number(activeBooking?.paid_amount) || 0
+                                const balanceDue = Math.max(0, grandTotal - advancePaid)
+                                return (
+                                    <>
+                                        {advancePaid > 0 && (
+                                            <div className="flex flex-col gap-1 text-xs border-b border-dashed border-hairline pb-2">
+                                                <div className="flex justify-between text-ink-subtle font-semibold">
+                                                    <span>Total Bill Amount:</span>
+                                                    <span className="tabular-nums">{money(grandTotal)}</span>
+                                                </div>
+                                                <div className="flex justify-between text-emerald-600 font-bold">
+                                                    <span className="flex items-center gap-1">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                        Advance Paid ({activeBooking?.advance_payment_method === 'qr_digital' ? 'QR/Digital' : 'Cash'}):
+                                                    </span>
+                                                    <span className="tabular-nums">- {money(advancePaid)}</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                            <div>
+                                                <span className="text-[10px] font-bold text-ink-subtle uppercase">
+                                                    {advancePaid > 0 ? 'Balance due at checkout' : 'Total bill amount'}
+                                                </span>
+                                                <p className="text-2xl font-black text-brand-600 tabular-nums">{money(balanceDue)}</p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    variant="secondary"
+                                                    onClick={() => setSelectedRoom(null)}
+                                                    className="px-5 font-bold"
+                                                >
+                                                    Close
+                                                </Button>
+                                                <Button
+                                                    variant="danger"
+                                                    icon={CreditCard}
+                                                    onClick={() => {
+                                                        if (onGoToBilling) onGoToBilling(selectedRoom)
+                                                        setSelectedRoom(null)
+                                                    }}
+                                                    className="px-6 font-bold"
+                                                >
+                                                    Go to Billing
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </>
+                                )
+                            })()}
                         </div>
                     </div>
                 </div>,
