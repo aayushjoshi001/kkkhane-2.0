@@ -333,7 +333,7 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantId, res
             )}
 
             {/* Quick Actions Drawer for Selected Room */}
-            {selectedRoom && (
+            {selectedRoom && !isAddRoomOpen && !isAddTypeOpen && (
                 <div className="fixed bottom-6 right-6 z-40 bg-white border border-gray-200 rounded-3xl p-6 shadow-2xl w-full max-w-sm animate-in slide-in-from-bottom duration-300 max-h-[85vh] overflow-y-auto">
                     <div className="flex items-start justify-between mb-4 border-b border-gray-50 pb-3">
                         <div>
