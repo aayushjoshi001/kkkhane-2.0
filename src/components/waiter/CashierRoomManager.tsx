@@ -31,7 +31,10 @@ const STATUS_CONFIG = {
 }
 
 export default function CashierRoomManager({
-    initialRooms,
+    rooms,
+    setRooms,
+    bookings,
+    setBookings,
     restaurantId,
     roomsFilter,
     tables,
@@ -39,7 +42,10 @@ export default function CashierRoomManager({
     unpaidOrders,
     onGoToBilling,
 }: {
-    initialRooms: RoomWithTypes[]
+    rooms: RoomWithTypes[]
+    setRooms: React.Dispatch<React.SetStateAction<any[]>>
+    bookings: any[]
+    setBookings: React.Dispatch<React.SetStateAction<any[]>>
     restaurantId: string
     roomsFilter: 'all' | 'available' | 'reserve' | 'occupied' | 'dirty' | 'closed'
     tables: TableWithSession[]
@@ -47,7 +53,6 @@ export default function CashierRoomManager({
     unpaidOrders: any[]
     onGoToBilling?: (room: any) => void
 }) {
-    const [rooms, setRooms] = useState<RoomWithTypes[]>(initialRooms)
     const [selectedRoom, setSelectedRoom] = useState<RoomWithTypes | null>(null)
     const [activeBooking, setActiveBooking] = useState<any | null>(null)
     const [loadingBooking, setLoadingBooking] = useState(false)
@@ -291,6 +296,7 @@ export default function CashierRoomManager({
 
             toast.success(`Room ${selectedRoom.room_number} booked successfully!`)
             setRooms(prev => prev.map(r => r.id === selectedRoom.id ? { ...r, status: 'occupied' } : r))
+            setBookings(prev => [...prev, data.data])
             setBookingFormOpen(false)
             setSelectedRoom(null)
         } catch (e: any) {
@@ -328,35 +334,6 @@ export default function CashierRoomManager({
             setShowAddChargeForm(false)
         } catch (e: any) {
             toast.error(e.message || 'Failed to add charge')
-        } finally {
-            setIsProcessing(false)
-        }
-    }
-
-    // Checkout guest helper
-    const handleCheckout = async () => {
-        if (!selectedRoom || !activeBooking) return
-        setIsProcessing(true)
-        try {
-            const res = await fetch(`/api/bookings/checkout`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    booking_id: activeBooking.id,
-                    room_id: selectedRoom.id
-                })
-            })
-            const data = await res.json()
-            if (!res.ok) throw new Error(data.error)
-            
-            toast.success(`Guest checked out! Room ${selectedRoom.room_number} set to cleaning.`)
-            setRooms(prev => prev.map(r => r.id === selectedRoom.id ? { ...r, status: 'dirty' } : r))
-            
-            // Redirect to billing tab
-            onSwitchToBilling(qrOrdersDetails?.sessionId)
-            setSelectedRoom(null)
-        } catch (e: any) {
-            toast.error(e.message || 'Checkout failed')
         } finally {
             setIsProcessing(false)
         }

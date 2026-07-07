@@ -586,7 +586,10 @@ export default function CashierClient({
                         </div>
 
                         <CashierRoomManager
-                            initialRooms={rooms}
+                            rooms={roomsState}
+                            setRooms={setRoomsState}
+                            bookings={bookings}
+                            setBookings={setBookings}
                             restaurantId={restaurantId}
                             roomsFilter={roomsFilter}
                             tables={tables}
