@@ -120,7 +120,6 @@ export default async function RootLayout({
         bg-canvas text-ink
         antialiased min-h-screen flex flex-col
       `}>
-        <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js" strategy="lazyOnload" />
         <SerwistProvider
           swUrl="/serwist/sw.js"
           disable={process.env.NODE_ENV === 'development'}

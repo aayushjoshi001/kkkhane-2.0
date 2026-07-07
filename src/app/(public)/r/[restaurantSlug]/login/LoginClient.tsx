@@ -126,7 +126,7 @@ export default function LoginClient({ restaurant }: { restaurant: any }) {
                                         onExpire={turnstile.handleExpire}
                                         onError={turnstile.handleError}
                                         options={{ theme: 'light', size: 'normal' }}
-                                        injectScript={false}
+                                        scriptOptions={{ appendTo: 'body' }}
                                     />
                                     {turnstile.unavailable && (
                                         <p className="text-xs text-ink-muted text-center max-w-xs">
