@@ -41,6 +41,7 @@ export default function CashierTableManager({
     userId,
     spaceFilter,
     onSwitchToBilling,
+    isHotel,
 }: {
     initialTables: TableWithSession[]
     restaurantId: string
@@ -49,6 +50,7 @@ export default function CashierTableManager({
     userId: string
     spaceFilter: 'all' | 'available' | 'reserved' | 'occupied' | 'dirty'
     onSwitchToBilling: (sessionId: string) => void
+    isHotel: boolean
 }) {
     const [tables, setTables] = useState<TableWithSession[]>(initialTables)
     const [selectedTable, setSelectedTable] = useState<TableWithSession | null>(null)
@@ -402,13 +404,20 @@ export default function CashierTableManager({
                                                 Release Reservation
                                             </Button>
                                         </div>
-                                    ) : showReserveForm ? (
+                                    ) : (showReserveForm || !isHotel) ? (
                                         // Reserve details form
                                         <div className="space-y-3.5">
-                                            <div className="flex items-center justify-between">
-                                                <h4 className="text-xs font-extrabold uppercase text-indigo-600 tracking-wider">Reserve details</h4>
-                                                <button onClick={() => setShowReserveForm(false)} className="text-xs text-ink-subtle hover:underline font-semibold">Back</button>
-                                            </div>
+                                            {!isHotel && (
+                                                <div className="text-center pb-2">
+                                                    <h4 className="text-xs font-extrabold uppercase text-ink-subtle tracking-wider">Reserve Table {selectedTable.label}</h4>
+                                                </div>
+                                            )}
+                                            {isHotel && (
+                                                <div className="flex items-center justify-between">
+                                                    <h4 className="text-xs font-extrabold uppercase text-indigo-600 tracking-wider">Reserve details</h4>
+                                                    <button onClick={() => setShowReserveForm(false)} className="text-xs text-ink-subtle hover:underline font-semibold">Back</button>
+                                                </div>
+                                            )}
                                             <div className="space-y-1">
                                                 <label className="text-xs font-bold text-ink-subtle uppercase">Guest Name</label>
                                                 <input

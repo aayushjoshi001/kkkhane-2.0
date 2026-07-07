@@ -376,6 +376,7 @@ export default function CashierClient({
                                 setActiveTab('billing')
                                 setHighlightSessionId(sessionId)
                             }}
+                            isHotel={isHotel}
                         />
                     </div>
                 )}
