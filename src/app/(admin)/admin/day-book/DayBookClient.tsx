@@ -427,7 +427,7 @@ export default function DayBookClient({
                                 </div>
                                 {session?.status === 'open' && canManage && (
                                     <button
-                                        onClick={() => { setEntryModal({ type: 'cash_in' }); setEntryForm({ amount: '', description: '', category: 'order_payment' }) }}
+                                        onClick={() => { setEntryModal({ type: 'cash_in' }); setEntryForm({ amount: '', description: '', category: 'order_payment', bank_name: '' }) }}
                                         className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-all"
                                     >
                                         <Plus size={13} /> Add
@@ -498,7 +498,7 @@ export default function DayBookClient({
                                 </div>
                                 {session?.status === 'open' && canManage && (
                                     <button
-                                        onClick={() => { setEntryModal({ type: 'cash_out' }); setEntryForm({ amount: '', description: '', category: 'expense' }) }}
+                                        onClick={() => { setEntryModal({ type: 'cash_out' }); setEntryForm({ amount: '', description: '', category: 'expense', bank_name: '' }) }}
                                         className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs transition-all"
                                     >
                                         <Plus size={13} /> Add
@@ -629,7 +629,7 @@ export default function DayBookClient({
                                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Bank Name *</label>
                                     <input
                                         type="text"
-                                        value={entryForm.bank_name}
+                                        value={entryForm.bank_name || ''}
                                         onChange={e => setEntryForm(f => ({ ...f, bank_name: e.target.value }))}
                                         placeholder="e.g. NIC Asia Bank, Global IME Bank"
                                         className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
