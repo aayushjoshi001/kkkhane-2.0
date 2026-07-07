@@ -1,6 +1,13 @@
 import { Redis } from '@upstash/redis'
 
+// Circuit breaker: if Upstash is unreachable (e.g., wrong URL or offline),
+// we disable it in memory to prevent spamming the console and adding latency
+// to every single request.
+let redisDisabled = false
+
 export const getRedis = (): Redis | null => {
+    if (redisDisabled) return null
+    
     try {
         if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
             return null
@@ -8,6 +15,17 @@ export const getRedis = (): Redis | null => {
         return Redis.fromEnv()
     } catch (e) {
         return null
+    }
+}
+
+function handleRedisError(err: any, operation: string, key: string) {
+    if (err instanceof Error && err.message.includes('fetch failed')) {
+        if (!redisDisabled) {
+            console.warn(`[Circuit Breaker] Upstash Redis is unreachable (${err.message}). Caching disabled for this instance.`)
+            redisDisabled = true
+        }
+    } else {
+        console.warn(`Redis ${operation} error for ${key}:`, err)
     }
 }
 
@@ -23,7 +41,7 @@ export async function fetchWithCache<T>(
 ): Promise<T> {
     const redis = getRedis()
     
-    // Fallback if Redis is not configured or throws on init
+    // Fallback if Redis is not configured or disabled by circuit breaker
     if (!redis) {
         return fetcher()
     }
@@ -34,19 +52,18 @@ export async function fetchWithCache<T>(
             return cached
         }
     } catch (err) {
-        console.warn(`Redis get error for ${key}:`, err)
-        // fail open
+        handleRedisError(err, 'get', key)
     }
 
     // Cache Miss or Error: Fetch fresh data
     const freshData = await fetcher()
 
     try {
-        if (freshData) {
+        if (freshData && !redisDisabled) {
             await redis.set(key, freshData, { ex: ttlSeconds })
         }
     } catch (err) {
-        console.warn(`Redis set error for ${key}:`, err)
+        handleRedisError(err, 'set', key)
     }
 
     return freshData
@@ -62,6 +79,6 @@ export async function invalidateCache(key: string): Promise<void> {
     try {
         await redis.del(key)
     } catch (err) {
-        console.warn(`Redis del error for ${key}:`, err)
+        handleRedisError(err, 'del', key)
     }
 }
