@@ -2,6 +2,7 @@ import { requireRole } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import CashierClient, { type UnpaidOrder, type ActiveOrder } from '@/components/waiter/CashierClient'
 import { type PaymentClaim } from '@/components/waiter/PaymentVerificationFeed'
+import { getRestaurantMode } from '@/lib/features'
 
 export const revalidate = 0
 
@@ -16,6 +17,8 @@ export default async function CashierPage() {
         { data: activeSessions },
         { data: paymentClaims },
         restaurantData,
+        { data: rooms },
+        mode,
     ] = await Promise.all([
         // Delivered but not yet paid — ready for cashier
         adminSupabase
@@ -71,6 +74,16 @@ export default async function CashierPage() {
             .select('slug')
             .eq('id', restaurantId)
             .single(),
+
+        // All active rooms
+        adminSupabase
+            .from('rooms')
+            .select('*, room_types:type_id(*)')
+            .eq('restaurant_id', restaurantId)
+            .order('room_number', { ascending: true }),
+
+        // Get restaurant mode
+        getRestaurantMode(restaurantId)
     ])
 
     const activeSessionsByTable = Object.fromEntries(
@@ -82,6 +95,7 @@ export default async function CashierPage() {
     })) || []
 
     const restaurantSlug = restaurantData?.data?.slug || ''
+    const isHotel = mode === 'hotel'
 
     return (
         <CashierClient
@@ -92,6 +106,8 @@ export default async function CashierPage() {
             initialActive={(activeOrders || []) as unknown as ActiveOrder[]}
             initialClaims={(paymentClaims || []) as unknown as PaymentClaim[]}
             tables={mappedTables as any}
+            rooms={rooms || []}
+            isHotel={isHotel}
         />
     )
 }

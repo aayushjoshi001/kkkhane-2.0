@@ -42,6 +42,7 @@ export type ActiveOrder = {
 }
 
 import CashierTableManager, { type TableWithSession } from './CashierTableManager'
+import CashierRoomManager from './CashierRoomManager'
 
 interface Props {
     restaurantId: string
@@ -51,13 +52,25 @@ interface Props {
     initialActive: ActiveOrder[]
     initialClaims: PaymentClaim[]
     tables: TableWithSession[]
+    rooms?: any[]
+    isHotel?: boolean
 }
 
 function tableLabel(sessions: { tables: TableRef } | null): string {
     return (sessions?.tables as { label?: string } | null)?.label ?? '?'
 }
 
-export default function CashierClient({ restaurantId, restaurantSlug, userId, initialUnpaid, initialActive, initialClaims, tables }: Props) {
+export default function CashierClient({ 
+    restaurantId, 
+    restaurantSlug, 
+    userId, 
+    initialUnpaid, 
+    initialActive, 
+    initialClaims, 
+    tables,
+    rooms = [],
+    isHotel = false,
+}: Props) {
     const [unpaid, setUnpaid] = useState<UnpaidOrder[]>(initialUnpaid)
     const money = useCurrency()
     const [active, setActive] = useState<ActiveOrder[]>(initialActive)
@@ -66,15 +79,21 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
         initialClaims.filter(c => !c.staff_verified && !c.staff_rejected).length
     )
     const supabaseRef = useRef(createClient())
-    const [activeTab, setActiveTab] = useState<'space' | 'takeaway' | 'billing'>('billing')
+    const [activeTab, setActiveTab] = useState<'rooms' | 'tables' | 'space' | 'takeaway' | 'billing'>('billing')
     const [takeawaySubTab, setTakeawaySubTab] = useState<'takeaway' | 'delivery'>('takeaway')
     const [spaceFilter, setSpaceFilter] = useState<'all' | 'available' | 'reserved' | 'occupied' | 'dirty'>('all')
+    const [roomsFilter, setRoomsFilter] = useState<'all' | 'available' | 'reserve' | 'occupied' | 'dirty' | 'closed'>('all')
     const [highlightSessionId, setHighlightSessionId] = useState<string | null>(null)
     const [selectedOrder, setSelectedOrder] = useState<ActiveOrder | null>(null)
     const [mounted, setMounted] = useState(false)
+    
+    // Set default active tab correctly
     useEffect(() => {
         setMounted(true)
-    }, [])
+        if (isHotel) {
+            setActiveTab('rooms')
+        }
+    }, [isHotel])
 
     const spaceCounts = useMemo(() => {
         let all = tables.length
@@ -91,6 +110,16 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
         }
         return { all, available, reserved, occupied, dirty }
     }, [tables])
+
+    const roomsCounts = useMemo(() => {
+        let all = rooms.length
+        let available = rooms.filter(r => r.status === 'available').length
+        let reserve = 0 // dummy count for reserve status
+        let occupied = rooms.filter(r => r.status === 'occupied').length
+        let dirty = rooms.filter(r => r.status === 'dirty').length
+        let closed = rooms.filter(r => r.status === 'maintenance').length
+        return { all, available, reserve, occupied, dirty, closed }
+    }, [rooms])
 
     useRestaurantTable(restaurantId, 'orders', async (payload) => {
         const supabase = supabaseRef.current
@@ -179,16 +208,21 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
 
     const totalUnpaid = unpaid.reduce((s, o) => s + (o.total_amount ?? 0), 0)
 
-    const tabs = [
+    const tabs = isHotel ? [
+        { id: 'rooms', label: 'Rooms' },
+        { id: 'tables', label: 'Tables' },
+        { id: 'takeaway', label: 'Takeaway/Delivery' },
+        { id: 'billing', label: 'Billing' },
+    ] : [
         { id: 'space', label: 'Space' },
         { id: 'takeaway', label: 'Takeaway/Delivery' },
         { id: 'billing', label: 'Billing' },
-    ] as const
+    ]
 
     return (
         <div className="space-y-5">
             {/* Cashier Tab Navigation */}
-            <div className="grid grid-cols-3 border-b border-hairline mb-4 bg-surface sticky top-14 z-20 -mx-3 px-3 md:mx-0 md:px-0">
+            <div className={`grid ${isHotel ? 'grid-cols-4' : 'grid-cols-3'} border-b border-hairline mb-4 bg-surface sticky top-14 z-20 -mx-3 px-3 md:mx-0 md:px-0`}>
                 {tabs.map((tab) => {
                     const isActive = activeTab === tab.id
                     return (
@@ -224,7 +258,62 @@ export default function CashierClient({ restaurantId, restaurantSlug, userId, in
 
             {/* Tab Contents */}
             <div>
-                {activeTab === 'space' && (
+                {activeTab === 'rooms' && (
+                    <div className="flex flex-col gap-4 w-full">
+                        {/* Sticky Sub-tabs / Filters for Rooms */}
+                        <div className="sticky top-28 z-20 bg-canvas -mx-3 px-3 md:mx-0 md:px-0 py-2 border-b border-hairline flex items-center w-full justify-center">
+                            <div className="grid grid-cols-6 gap-1.5 sm:gap-2.5 w-full">
+                                {([
+                                    { key: 'all', label: 'ALL', count: roomsCounts.all },
+                                    { key: 'available', label: 'Available', count: roomsCounts.available },
+                                    { key: 'reserve', label: 'Reserve', count: roomsCounts.reserve },
+                                    { key: 'occupied', label: 'Occupied', count: roomsCounts.occupied },
+                                    { key: 'dirty', label: 'Dirty', count: roomsCounts.dirty },
+                                    { key: 'closed', label: 'Closed', count: roomsCounts.closed }
+                                ] as const).map(({ key, label, count }) => {
+                                    const isActive = roomsFilter === key
+                                    const activeColors = {
+                                        all: 'bg-[var(--color-primary)] text-white',
+                                        available: 'bg-emerald-500 text-white',
+                                        reserve: 'bg-blue-500 text-white',
+                                        occupied: 'bg-indigo-500 text-white',
+                                        dirty: 'bg-amber-500 text-white',
+                                        closed: 'bg-rose-500 text-white',
+                                    }
+                                    
+                                     return (
+                                        <button
+                                            key={key}
+                                            onClick={() => setRoomsFilter(key)}
+                                            className={`relative flex items-center justify-center gap-1.5 py-2 px-1 sm:py-2.5 sm:px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 w-full whitespace-nowrap ${
+                                                isActive 
+                                                    ? activeColors[key] 
+                                                    : 'bg-surface border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink-muted shadow-sm'
+                                            }`}
+                                        >
+                                            {count > 0 && (
+                                                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md min-w-[18px] text-center ${
+                                                    isActive ? 'bg-surface/20 text-white' : 'bg-red-100 text-red-700'
+                                                }`}>
+                                                    {count}
+                                                </span>
+                                            )}
+                                            <span>{label}</span>
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        </div>
+
+                        <CashierRoomManager
+                            initialRooms={rooms}
+                            restaurantId={restaurantId}
+                            roomsFilter={roomsFilter}
+                        />
+                    </div>
+                )}
+
+                {(activeTab === 'space' || activeTab === 'tables') && (
                     <div className="flex flex-col gap-4 w-full">
                         {/* Sticky Sub-tabs / Filters */}
                         <div className="sticky top-28 z-20 bg-canvas -mx-3 px-3 md:mx-0 md:px-0 py-2 border-b border-hairline flex items-center w-full justify-center">
