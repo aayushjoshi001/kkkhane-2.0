@@ -149,23 +149,32 @@ export default function CashierClient({
     // Load booking stay details and manual charges when room is selected
     useEffect(() => {
         if (selectedBillingRoom) {
-            const booking = bookings.find(b => b.room_id === selectedBillingRoom.id && b.status === 'checked_in')
-            if (booking) {
-                setBillingStayBooking(booking)
-                setLoadingStayDetails(true)
-                fetch(`/api/rooms/charges?bookingId=${booking.id}`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.success) {
-                            setBillingRoomCharges(data.data || [])
-                        }
-                    })
-                    .catch(err => console.error("Error loading room charges:", err))
-                    .finally(() => setLoadingStayDetails(false))
-            } else {
-                setBillingStayBooking(null)
-                setBillingRoomCharges([])
-            }
+            // Always clear first so UI doesn't flash stale data
+            setBillingStayBooking(null)
+            setBillingRoomCharges([])
+            setLoadingStayDetails(true)
+
+            // Fetch newest checked_in booking from API (ORDER BY created_at DESC)
+            // This prevents showing old/orphaned bookings that were never checked out
+            fetch(`/api/rooms/booking?roomId=${selectedBillingRoom.id}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success && data.data) {
+                        const booking = data.data
+                        setBillingStayBooking(booking)
+                        // Now fetch charges for this specific (newest) booking
+                        return fetch(`/api/rooms/charges?bookingId=${booking.id}`)
+                            .then(r => r.json())
+                            .then(chargesData => {
+                                if (chargesData.success) setBillingRoomCharges(chargesData.data || [])
+                            })
+                    } else {
+                        setBillingStayBooking(null)
+                        setBillingRoomCharges([])
+                    }
+                })
+                .catch(err => console.error('Error loading billing data:', err))
+                .finally(() => setLoadingStayDetails(false))
         } else {
             setBillingStayBooking(null)
             setBillingRoomCharges([])

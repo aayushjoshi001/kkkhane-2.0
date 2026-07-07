@@ -39,11 +39,20 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: `Guest count (${guest_count}) exceeds room capacity (${maxCapacity})` }, { status: 400 })
         }
 
-        // 2. Resolve advance amount
+        // 2. Auto-cancel any existing orphaned checked_in bookings for this room
+        // This prevents old/unchecked-out bookings from poisoning the billing data
+        await supabase
+            .from('bookings')
+            .update({ status: 'cancelled', notes: 'Auto-cancelled: new booking created without checkout' })
+            .eq('room_id', room_id)
+            .eq('restaurant_id', currentUser.restaurantId)
+            .in('status', ['checked_in', 'pending'])
+
+        // 3. Resolve advance amount
         const paidAmount = Math.max(0, Number(advance_amount) || 0)
         const advMethod = paidAmount > 0 ? (advance_payment_method || 'cash') : 'none'
 
-        // 3. Insert booking
+        // 4. Insert booking
         const notes = kyc ? `KYC: ${kyc.trim()}` : null
         const { data: booking, error: bookingError } = await supabase
             .from('bookings')
