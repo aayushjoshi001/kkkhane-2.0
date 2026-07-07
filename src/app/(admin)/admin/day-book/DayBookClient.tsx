@@ -942,9 +942,12 @@ export default function DayBookClient({
             {entryModal && (() => {
                 const isBankType = ['bank_in', 'bank_out'].includes(entryModal.type)
                 const isIncome = ['cash_in', 'bank_in'].includes(entryModal.type)
-                const allowedCategories = isBankType
-                    ? ['qr_payment', 'card', 'transfer', 'deposit', 'withdrawal', 'bank_charges', 'transfer_out', 'other']
-                    : ['order_payment', 'room_deposit', 'booking_payment', 'expense', 'refund', 'salary', 'advance', 'bank_deposit', 'other']
+                const allowedCategories = {
+                    cash_in: ['order_payment', 'room_deposit', 'booking_payment', 'withdrawal', 'refund', 'other'],
+                    cash_out: ['expense', 'salary', 'advance', 'bank_deposit', 'refund', 'other'],
+                    bank_in: ['qr_payment', 'card', 'transfer', 'deposit', 'other'],
+                    bank_out: ['withdrawal', 'transfer_out', 'bank_charges', 'other'],
+                }[entryModal.type]
 
                 const modalTitle = {
                     cash_in: 'Record Cash In',
