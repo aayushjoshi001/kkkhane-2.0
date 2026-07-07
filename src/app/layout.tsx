@@ -7,6 +7,7 @@ import { unstable_cache } from 'next/cache'
 import { SerwistProvider } from '@serwist/turbopack/react'
 import PwaInstallPrompt from '@/components/shared/PwaInstallPrompt'
 import PwaUpdatePrompt from '@/components/shared/PwaUpdatePrompt'
+import Script from 'next/script'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' })
