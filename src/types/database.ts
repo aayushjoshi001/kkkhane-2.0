@@ -11,7 +11,11 @@ export type PaymentStatus = 'unpaid' | 'pending' | 'paid' | 'refunded' | 'failed
 // 'owner' has no corresponding row in the `roles` table (custom_access_token_hook
 // derives app_role from roles.name) — it's kept here because auth.ts and the
 // billing actions already branch on it defensively for legacy/edge-case JWTs.
-export type RoleName = 'super_admin' | 'manager' | 'kitchen' | 'waiter' | 'cashier' | 'customer' | 'owner'
+// finance_manager/accountant/receptionist were added for the Finance module's
+// permission structure (see finance_role_permissions) — they exist as real
+// `roles` rows but are not yet granted /admin/finance access (still gated to
+// super_admin/manager only); that enforcement wiring is a later phase.
+export type RoleName = 'super_admin' | 'manager' | 'kitchen' | 'waiter' | 'cashier' | 'customer' | 'owner' | 'finance_manager' | 'accountant' | 'receptionist'
 export type PricingRuleType = 'percentage_off' | 'fixed_price' | 'amount_off'
 export type PromoType = 'percentage_off' | 'amount_off' | 'free_item' | 'bogo'
 export type LoyaltyTier = 'bronze' | 'silver' | 'gold' | 'platinum'
@@ -884,6 +888,8 @@ export interface Booking {
     status: BookingStatus
     total_amount: number
     paid_amount: number
+    payment_status: 'unpaid' | 'partial' | 'paid' | 'refunded'
+    advance_payment_method: 'cash' | 'qr_digital' | 'none' | null
     notes: string | null
     created_at: string
     rooms?: Room | null
@@ -944,4 +950,516 @@ export interface DayBookTotals {
     total_cash_in: number
     total_cash_out: number
     closing_balance: number
+}
+
+// ─── Finance: Cash Management ──────────────────────────────
+export type CashTransactionType = 'cash_in' | 'cash_out' | 'opening' | 'closing' | 'transfer_in' | 'transfer_out' | 'adjustment'
+export type FinanceRecordStatus = 'draft' | 'posted' | 'void'
+export type CashCountStatus = 'draft' | 'reconciled' | 'flagged'
+
+export interface CashDrawer {
+    id: string
+    restaurant_id: string
+    name: string
+    location: string | null
+    opening_balance: number
+    is_active: boolean
+    created_by: string | null
+    created_at: string
+    updated_at: string
+}
+
+export interface CashTransaction {
+    id: string
+    restaurant_id: string
+    drawer_id: string
+    type: CashTransactionType
+    amount: number
+    description: string
+    counterparty_drawer_id: string | null
+    shift_id: string | null
+    status: FinanceRecordStatus
+    created_by: string | null
+    created_at: string
+    cash_drawers?: CashDrawer | null
+}
+
+export interface CashCount {
+    id: string
+    restaurant_id: string
+    drawer_id: string
+    counted_total: number
+    expected_total: number | null
+    variance: number | null
+    denominations: Record<string, number> | null
+    notes: string | null
+    status: CashCountStatus
+    counted_by: string | null
+    created_at: string
+    cash_drawers?: CashDrawer | null
+}
+
+// ─── Finance: Bank Management ──────────────────────────────
+export type BankAccountType = 'bank' | 'wallet'
+export type WalletProvider = 'esewa' | 'khalti' | 'fonepay' | 'connectips'
+export type BankTransactionType = 'deposit' | 'withdrawal' | 'transfer_in' | 'transfer_out'
+export type BankReconciliationStatus = 'draft' | 'reconciled' | 'flagged'
+
+export interface BankAccount {
+    id: string
+    restaurant_id: string
+    name: string
+    account_type: BankAccountType
+    wallet_provider: WalletProvider | null
+    bank_name: string | null
+    account_number: string | null
+    opening_balance: number
+    is_active: boolean
+    created_by: string | null
+    created_at: string
+    updated_at: string
+}
+
+export interface BankTransaction {
+    id: string
+    restaurant_id: string
+    bank_account_id: string
+    type: BankTransactionType
+    amount: number
+    description: string
+    counterparty_account_id: string | null
+    status: FinanceRecordStatus
+    created_by: string | null
+    created_at: string
+    bank_accounts?: BankAccount | null
+}
+
+export interface BankReconciliation {
+    id: string
+    restaurant_id: string
+    bank_account_id: string
+    statement_date: string
+    statement_balance: number
+    book_balance: number | null
+    variance: number | null
+    notes: string | null
+    status: BankReconciliationStatus
+    reconciled_by: string | null
+    created_at: string
+    bank_accounts?: BankAccount | null
+}
+
+// ─── Finance: Income & Expenses ────────────────────────────
+export interface IncomeCategory {
+    id: string
+    restaurant_id: string
+    name: string
+    description: string | null
+    is_active: boolean
+    created_by: string | null
+    created_at: string
+}
+
+export interface IncomeEntry {
+    id: string
+    restaurant_id: string
+    category_id: string
+    amount: number
+    description: string
+    bank_account_id: string | null
+    cash_drawer_id: string | null
+    status: FinanceRecordStatus
+    created_by: string | null
+    created_at: string
+    income_categories?: IncomeCategory | null
+}
+
+export interface ExpenseCategory {
+    id: string
+    restaurant_id: string
+    name: string
+    description: string | null
+    is_active: boolean
+    created_by: string | null
+    created_at: string
+}
+
+export type ExpenseStatus = 'pending' | 'approved' | 'rejected' | 'paid'
+export type RecurrenceInterval = 'weekly' | 'monthly' | 'quarterly' | 'yearly'
+
+export interface Expense {
+    id: string
+    restaurant_id: string
+    category_id: string
+    amount: number
+    description: string
+    vendor_name: string | null
+    bank_account_id: string | null
+    cash_drawer_id: string | null
+    is_recurring: boolean
+    recurrence_interval: RecurrenceInterval | null
+    status: ExpenseStatus
+    approved_by: string | null
+    approved_at: string | null
+    created_by: string | null
+    created_at: string
+    expense_categories?: ExpenseCategory | null
+}
+
+export interface ExpenseAttachment {
+    id: string
+    restaurant_id: string
+    expense_id: string
+    file_url: string
+    file_name: string | null
+    uploaded_by: string | null
+    created_at: string
+}
+
+// ─── Finance: Receivables & Payables ───────────────────────
+export interface CustomerCreditAccount {
+    id: string
+    restaurant_id: string
+    loyalty_member_id: string | null
+    customer_name: string
+    customer_phone: string | null
+    credit_limit: number
+    is_active: boolean
+    created_by: string | null
+    created_at: string
+}
+
+export type ReceivableTransactionType = 'charge' | 'payment'
+
+export interface ReceivableTransaction {
+    id: string
+    restaurant_id: string
+    customer_credit_account_id: string
+    type: ReceivableTransactionType
+    amount: number
+    description: string
+    status: FinanceRecordStatus
+    created_by: string | null
+    created_at: string
+    customer_credit_accounts?: CustomerCreditAccount | null
+}
+
+export interface Supplier {
+    id: string
+    restaurant_id: string
+    name: string
+    contact_person: string | null
+    phone: string | null
+    email: string | null
+    address: string | null
+    is_active: boolean
+    created_by: string | null
+    created_at: string
+    updated_at: string
+}
+
+export type SupplierBillStatus = 'unpaid' | 'partial' | 'paid'
+
+export interface SupplierBill {
+    id: string
+    restaurant_id: string
+    supplier_id: string
+    bill_number: string | null
+    amount: number
+    description: string | null
+    due_date: string | null
+    status: SupplierBillStatus
+    created_by: string | null
+    created_at: string
+    suppliers?: Supplier | null
+}
+
+export interface SupplierPayment {
+    id: string
+    restaurant_id: string
+    supplier_id: string
+    bill_id: string | null
+    amount: number
+    description: string | null
+    status: FinanceRecordStatus
+    created_by: string | null
+    created_at: string
+    suppliers?: Supplier | null
+    supplier_bills?: SupplierBill | null
+}
+
+// ─── Finance: Loans ─────────────────────────────────────────
+export type LoanStatus = 'active' | 'closed'
+
+export interface Loan {
+    id: string
+    restaurant_id: string
+    lender_name: string
+    principal_amount: number
+    interest_rate: number | null
+    start_date: string
+    tenure_months: number | null
+    notes: string | null
+    status: LoanStatus
+    created_by: string | null
+    created_at: string
+    updated_at: string
+}
+
+export interface LoanPayment {
+    id: string
+    restaurant_id: string
+    loan_id: string
+    amount: number
+    principal_component: number | null
+    interest_component: number | null
+    payment_date: string
+    status: FinanceRecordStatus
+    created_by: string | null
+    created_at: string
+    loans?: Loan | null
+}
+
+export type LoanEmiStatus = 'pending' | 'paid' | 'overdue'
+
+export interface LoanEmiSchedule {
+    id: string
+    restaurant_id: string
+    loan_id: string
+    installment_no: number
+    due_date: string
+    amount: number
+    status: LoanEmiStatus
+    created_at: string
+    loans?: Loan | null
+}
+
+// ─── Finance: Budget ────────────────────────────────────────
+export interface BudgetCategory {
+    id: string
+    restaurant_id: string
+    name: string
+    linked_expense_category_id: string | null
+    linked_income_category_id: string | null
+    is_active: boolean
+    created_by: string | null
+    created_at: string
+}
+
+export type BudgetPeriodType = 'monthly' | 'quarterly' | 'yearly'
+export type BudgetStatus = 'draft' | 'active' | 'closed'
+
+export interface Budget {
+    id: string
+    restaurant_id: string
+    name: string
+    period_type: BudgetPeriodType
+    start_date: string
+    end_date: string
+    status: BudgetStatus
+    created_by: string | null
+    created_at: string
+}
+
+export interface BudgetLine {
+    id: string
+    restaurant_id: string
+    budget_id: string
+    category_id: string
+    planned_amount: number
+    created_at: string
+    budget_categories?: BudgetCategory | null
+}
+
+// ─── Finance: Tax ───────────────────────────────────────────
+export type TaxType = 'vat' | 'pan' | 'other'
+
+export interface TaxConfiguration {
+    id: string
+    restaurant_id: string
+    name: string
+    tax_type: TaxType
+    rate_percent: number | null
+    is_active: boolean
+    created_by: string | null
+    created_at: string
+}
+
+export type TaxFilingStatus = 'draft' | 'filed'
+
+export interface TaxFiling {
+    id: string
+    restaurant_id: string
+    tax_configuration_id: string
+    period_start: string
+    period_end: string
+    ird_reference: string | null
+    notes: string | null
+    status: TaxFilingStatus
+    filed_by: string | null
+    filed_at: string | null
+    created_at: string
+    tax_configurations?: TaxConfiguration | null
+}
+
+// ─── Finance: Administration ───────────────────────────────
+export type AccountType = 'asset' | 'liability' | 'equity' | 'income' | 'expense'
+
+export interface ChartOfAccount {
+    id: string
+    restaurant_id: string
+    code: string
+    name: string
+    account_type: AccountType
+    parent_id: string | null
+    is_active: boolean
+    created_by: string | null
+    created_at: string
+    updated_at: string
+    parent?: ChartOfAccount | null
+}
+
+export type VoucherCategory = 'receipt' | 'payment' | 'journal' | 'contra'
+
+export interface VoucherType {
+    id: string
+    restaurant_id: string
+    name: string
+    voucher_category: VoucherCategory
+    prefix: string
+    is_active: boolean
+    created_by: string | null
+    created_at: string
+}
+
+export type FinancePaymentMethodCategory = 'cash' | 'bank' | 'wallet'
+
+export interface FinancePaymentMethod {
+    id: string
+    restaurant_id: string
+    name: string
+    category: FinancePaymentMethodCategory
+    is_active: boolean
+    created_by: string | null
+    created_at: string
+}
+
+export interface ApprovalLevel {
+    id: string
+    restaurant_id: string
+    name: string
+    level_order: number
+    min_amount: number
+    max_amount: number | null
+    role_required: string
+    is_active: boolean
+    created_by: string | null
+    created_at: string
+}
+
+export type FiscalYearStatus = 'open' | 'closed'
+
+export interface FiscalYear {
+    id: string
+    restaurant_id: string
+    name: string
+    start_date: string
+    end_date: string
+    is_current: boolean
+    status: FiscalYearStatus
+    created_at: string
+}
+
+export interface AccountingPeriod {
+    id: string
+    restaurant_id: string
+    fiscal_year_id: string
+    name: string
+    start_date: string
+    end_date: string
+    status: FiscalYearStatus
+    created_at: string
+    fiscal_years?: FiscalYear | null
+}
+
+export type RoundingMode = 'nearest' | 'up' | 'down' | 'none'
+
+export interface FinanceSettings {
+    restaurant_id: string
+    base_currency: string
+    default_tax_rate: number
+    fiscal_year_start_month: number
+    rounding_mode: RoundingMode
+    updated_at: string
+}
+
+// ─── Finance: Financial Event Engine (Phase 2, Step 1) ─────
+export const FINANCIAL_EVENT_TYPES = [
+    'RESTAURANT_SALE', 'HOTEL_CHECKOUT', 'BOOKING_ADVANCE',
+    'INVENTORY_PURCHASE', 'SUPPLIER_PAYMENT', 'SALARY_PAYMENT',
+    'CASH_DEPOSIT', 'CASH_WITHDRAWAL', 'BANK_TRANSFER',
+    'EXPENSE_PAYMENT', 'OTHER_INCOME', 'LOAN_RECEIVED',
+    'LOAN_REPAYMENT', 'OWNER_INVESTMENT', 'OWNER_WITHDRAWAL',
+    'REFUND', 'ADJUSTMENT',
+] as const
+export type FinancialEventType = typeof FINANCIAL_EVENT_TYPES[number]
+
+export const FINANCIAL_EVENT_STATUSES = ['PENDING', 'PROCESSING', 'PROCESSED', 'FAILED', 'REVERSED'] as const
+export type FinancialEventStatus = typeof FINANCIAL_EVENT_STATUSES[number]
+
+export interface FinancialEvent {
+    id: string
+    event_code: string
+    event_type: FinancialEventType
+    source_module: string
+    source_id: string | null
+    restaurant_id: string
+    branch_id: string | null
+    business_date: string
+    accounting_date: string
+    amount: number
+    currency: string
+    payment_method_id: string | null
+    customer_id: string | null
+    supplier_id: string | null
+    employee_id: string | null
+    reference_number: string | null
+    description: string | null
+    metadata: Record<string, unknown> | null
+    status: FinancialEventStatus
+    retry_count: number
+    created_by: string | null
+    processed_at: string | null
+    created_at: string
+    updated_at: string
+    suppliers?: Supplier | null
+    finance_payment_methods?: FinancePaymentMethod | null
+}
+
+// ─── Audit Logs (existing table — src/lib/audit.ts) ────────
+export interface AuditLog {
+    id: string
+    restaurant_id: string
+    user_id: string | null
+    action: string
+    entity_type: string
+    entity_id: string | null
+    old_value: Record<string, unknown> | null
+    new_value: Record<string, unknown> | null
+    ip_address: string | null
+    created_at: string
+}
+
+export interface FinanceRolePermission {
+    id: string
+    restaurant_id: string
+    role_name: string
+    module: string
+    can_view: boolean
+    can_create: boolean
+    can_edit: boolean
+    can_delete: boolean
+    can_approve: boolean
+    created_by: string | null
+    created_at: string
 }

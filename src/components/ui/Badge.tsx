@@ -79,6 +79,19 @@ const STATUS: Record<string, { tone: Tone; label: string }> = {
     reserved: { tone: 'info', label: 'Reserved' },
     dirty: { tone: 'warning', label: 'Needs cleaning' },
     active: { tone: 'success', label: 'Active' },
+    // Finance
+    draft: { tone: 'neutral', label: 'Draft' },
+    posted: { tone: 'success', label: 'Posted' },
+    void: { tone: 'danger', label: 'Void' },
+    partial: { tone: 'warning', label: 'Partial' },
+    open: { tone: 'info', label: 'Open' },
+    approved: { tone: 'success', label: 'Approved' },
+    // Financial Event Engine — statusMeta() lowercases its lookup key, so these
+    // match regardless of the uppercase PENDING/PROCESSING/... values stored on
+    // financial_events.status. 'pending' and 'failed' are already covered above.
+    processing: { tone: 'info', label: 'Processing' },
+    processed: { tone: 'success', label: 'Processed' },
+    reversed: { tone: 'neutral', label: 'Reversed' },
 }
 
 export function statusMeta(status: string): { tone: Tone; label: string } {
