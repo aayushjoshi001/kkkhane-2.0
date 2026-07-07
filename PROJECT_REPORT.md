@@ -19,7 +19,7 @@ The system is role-based, meaning different users (super admin, manager, cashier
 
 | Layer | Technology |
 |-------|-----------|
-| **Framework** | Next.js 15 (App Router, React Server Components) |
+| **Framework** | Next.js 16 (App Router, React Server Components) |
 | **Language** | TypeScript (strict mode) |
 | **Styling** | Tailwind CSS v4 with custom design tokens |
 | **Database** | PostgreSQL via Supabase |
@@ -59,7 +59,7 @@ The database uses PostgreSQL with Row Level Security (RLS) for multi-tenant isol
 | `menu_items` | Dishes with price, description, images |
 | `menu_item_variations` | Size/type variants (e.g. Small/Large) with individual prices |
 | `menu_item_pairings` | Recommended item pairings |
-| `combo_offers` | Bundled meal combos with discounted pricing |
+| `combo_items` | Bundled meal combos with discounted pricing |
 | `tables` | Dining tables with QR slug identifiers |
 | `sessions` | Active table sessions (open when occupied, closed on bill paid) |
 | `orders` | Customer orders (dine-in, takeout, delivery) |
@@ -103,7 +103,7 @@ The database uses PostgreSQL with Row Level Security (RLS) for multi-tenant isol
 - **Composite unique indexes** (e.g. one open session per table, one booking per room at a time)
 - **Partial indexes** for performance (e.g. index only on open/active records)
 - **Audit trail** via `audit.ts` — sensitive actions are logged
-- **61 migration files** tracking every schema change
+- **62 migration files** tracking every schema change
 
 ---
 
@@ -503,7 +503,7 @@ The admin panel is for **managers and owners**. It has a collapsible sidebar wit
 
 **Features:**
 - View all restaurants on the platform
-- Manage subscription tiers (Free, Pro, Enterprise)
+- Manage subscription tiers (Free, Basic, Pro, Enterprise)
 - View subscription payment history
 - Manually upgrade/downgrade restaurant plans
 - Platform-wide settings and configurations
@@ -741,13 +741,14 @@ The system is a fully installable PWA:
 
 ## 9. Subscription Tiers
 
-The platform has multiple pricing tiers for restaurants:
+The platform has four pricing tiers for restaurants, defined as the single source of truth in `lib/tiers.ts`:
 
-| Tier | Features |
-|------|---------|
-| **Free** | Basic ordering, limited tables |
-| **Pro** | Full features, unlimited tables, analytics, loyalty |
-| **Enterprise** | All Pro features + hotel mode, custom branding, priority support |
+| Tier | Limits (staff / menu items / tables) | Features |
+|------|---------------------------------------|---------|
+| **Free** | 3 / 20 / 10 | Promo codes, service requests, split billing. No takeout, loyalty, dynamic pricing, ingredient tracking, or staff shifts. |
+| **Basic** | 10 / 100 / 30 | Everything in Free, plus takeout ordering. |
+| **Pro** | 50 / 500 / 100 | Everything in Basic, plus loyalty, dynamic pricing, ingredient tracking, staff shifts. |
+| **Enterprise** | 999 / 9999 / 999 | Everything in Pro, plus multi-language support and hotel mode. |
 
 Super Admin manages subscriptions, and each restaurant's feature access is gated by their tier via `lib/tiers.ts` and `lib/features.ts`.
 
