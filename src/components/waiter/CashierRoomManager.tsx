@@ -631,11 +631,11 @@ export default function CashierRoomManager({
             {/* Bottom Drawer (Sheet) for Booked (Occupied) Room Click */}
             {mounted && selectedRoom && selectedRoom.status === 'occupied' && createPortal(
                 <div 
-                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-end justify-center animate-in fade-in duration-300"
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-300"
                     onClick={() => setSelectedRoom(null)}
                 >
                     <div 
-                        className="bg-surface w-full max-w-2xl rounded-t-[32px] shadow-2xl overflow-hidden border-t border-hairline transform transition-all duration-300 translate-y-0 p-6 space-y-6 max-h-[90vh] overflow-y-auto"
+                        className="bg-surface w-full max-w-2xl rounded-[28px] shadow-2xl overflow-hidden border border-hairline p-6 space-y-6 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200"
                         onClick={e => e.stopPropagation()}
                     >
                         {/* Drawer Header */}
