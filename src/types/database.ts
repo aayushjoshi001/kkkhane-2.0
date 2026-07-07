@@ -901,6 +901,7 @@ export type DayBookEntryCategory =
     | 'refund'
     | 'salary'
     | 'advance'
+    | 'bank_deposit'
     | 'other'
 
 export interface DayBookSession {
@@ -926,6 +927,7 @@ export interface DayBookEntry {
     description: string
     category: DayBookEntryCategory
     reference_id: string | null
+    bank_name: string | null
     created_by: string | null
     created_at: string
 }

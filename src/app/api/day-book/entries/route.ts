@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     const restaurantId = currentUser.restaurantId
 
     const body = await request.json().catch(() => ({}))
-    const { session_id, type, amount, description, category, reference_id } = body
+    const { session_id, type, amount, description, category, reference_id, bank_name } = body
 
     // ── Validate required fields ─────────────────────────────────────────────
     if (!session_id) {
@@ -44,6 +44,10 @@ export async function POST(request: Request) {
             { error: 'description is required and must be between 1 and 500 characters' },
             { status: 400 }
         )
+    }
+
+    if (category === 'bank_deposit' && (!bank_name || !bank_name.trim())) {
+        return NextResponse.json({ error: 'bank_name is required for bank deposits' }, { status: 400 })
     }
 
     const supabase = await createAdminClient()
@@ -79,6 +83,7 @@ export async function POST(request: Request) {
             amount:        parsedAmount,
             description:   description.trim(),
             category:      category ?? 'other',
+            bank_name:     category === 'bank_deposit' ? bank_name.trim() : null,
             ...(reference_id ? { reference_id } : {}),
             created_by:    currentUser.id,
         })
@@ -94,7 +99,6 @@ export async function POST(request: Request) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /api/day-book/entries  — Delete an entry (manager / super_admin only)
-// Body: { entry_id: string }
 // ─────────────────────────────────────────────────────────────────────────────
 export async function DELETE(request: Request) {
     const currentUser = await getCurrentUser()
@@ -109,8 +113,14 @@ export async function DELETE(request: Request) {
         )
     }
 
-    const body = await request.json().catch(() => ({}))
-    const { entry_id } = body
+    // Read ID from query string or body
+    const { searchParams } = new URL(request.url)
+    let entry_id = searchParams.get('id')
+
+    if (!entry_id) {
+        const body = await request.json().catch(() => ({}))
+        entry_id = body.entry_id
+    }
 
     if (!entry_id) {
         return NextResponse.json({ error: 'entry_id is required' }, { status: 400 })
