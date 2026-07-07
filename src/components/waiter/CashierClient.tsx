@@ -110,7 +110,9 @@ export default function CashierClient({
     const [loadingStayDetails, setLoadingStayDetails] = useState(false)
     const [billingStayBooking, setBillingStayBooking] = useState<any | null>(null)
     const [billingRoomCharges, setBillingRoomCharges] = useState<any[]>([])
-    const [billingPaymentMethod, setBillingPaymentMethod] = useState<'cash' | 'qr_digital'>('cash')
+    const [billingPaymentMethod, setBillingPaymentMethod] = useState<'cash' | 'qr_digital' | 'both'>('cash')
+    const [splitCashAmount, setSplitCashAmount] = useState<string>('')
+    const [splitQrAmount, setSplitQrAmount] = useState<string>('')
 
     const [mounted, setMounted] = useState(false)
 
@@ -168,6 +170,8 @@ export default function CashierClient({
             setBillingStayBooking(null)
             setBillingRoomCharges([])
             setBillingPaymentMethod('cash')
+            setSplitCashAmount('')
+            setSplitQrAmount('')
         }
     }, [selectedBillingRoom, bookings])
 
@@ -266,6 +270,14 @@ export default function CashierClient({
             const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
             const total = stayCost + qrOrdersTotal + manualChargesTotal
 
+            // Resolve split amounts
+            const resolvedCash = billingPaymentMethod === 'cash' ? total
+                : billingPaymentMethod === 'qr_digital' ? 0
+                : parseFloat(splitCashAmount) || 0
+            const resolvedQr = billingPaymentMethod === 'qr_digital' ? total
+                : billingPaymentMethod === 'cash' ? 0
+                : parseFloat(splitQrAmount) || 0
+
             setActiveInvoice({
                 type: 'room',
                 id: room.id,
@@ -284,7 +296,10 @@ export default function CashierClient({
                 manualChargesTotal,
                 total,
                 bookingId: booking.id,
-                roomId: room.id
+                roomId: room.id,
+                paymentMethod: billingPaymentMethod,
+                cashPaid: resolvedCash,
+                qrPaid: resolvedQr,
             })
         } else {
             const table = item
@@ -1150,10 +1165,10 @@ export default function CashierClient({
                                 {/* Payment Method Selector */}
                                 <div className="pt-4">
                                     <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Payment Method</p>
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div className="grid grid-cols-3 gap-2">
                                         <button
                                             onClick={() => setBillingPaymentMethod('cash')}
-                                            className={`flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                            className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
                                                 billingPaymentMethod === 'cash'
                                                     ? 'border-brand-500 bg-brand-50 text-brand-600'
                                                     : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
@@ -1164,7 +1179,7 @@ export default function CashierClient({
                                         </button>
                                         <button
                                             onClick={() => setBillingPaymentMethod('qr_digital')}
-                                            className={`flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                            className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
                                                 billingPaymentMethod === 'qr_digital'
                                                     ? 'border-brand-500 bg-brand-50 text-brand-600'
                                                     : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
@@ -1173,7 +1188,85 @@ export default function CashierClient({
                                             <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
                                             QR / Digital
                                         </button>
+                                        <button
+                                            onClick={() => {
+                                                setBillingPaymentMethod('both')
+                                                setSplitCashAmount('')
+                                                setSplitQrAmount('')
+                                            }}
+                                            className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                billingPaymentMethod === 'both'
+                                                    ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                    : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                            }`}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></svg>
+                                            Both
+                                        </button>
                                     </div>
+
+                                    {/* Split amount inputs — shown only when Both is selected */}
+                                    {billingPaymentMethod === 'both' && (() => {
+                                        const total = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
+                                        return (
+                                            <div className="mt-3 grid grid-cols-2 gap-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl">
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash Amount</label>
+                                                    <div className="relative">
+                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max={total}
+                                                            placeholder="0.00"
+                                                            value={splitCashAmount}
+                                                            onChange={e => {
+                                                                const v = e.target.value
+                                                                setSplitCashAmount(v)
+                                                                const cash = parseFloat(v) || 0
+                                                                setSplitQrAmount(Math.max(0, total - cash).toFixed(2))
+                                                            }}
+                                                            className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">QR / Digital Amount</label>
+                                                    <div className="relative">
+                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max={total}
+                                                            placeholder="0.00"
+                                                            value={splitQrAmount}
+                                                            onChange={e => {
+                                                                const v = e.target.value
+                                                                setSplitQrAmount(v)
+                                                                const qr = parseFloat(v) || 0
+                                                                setSplitCashAmount(Math.max(0, total - qr).toFixed(2))
+                                                            }}
+                                                            className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                {/* Balance check */}
+                                                {(() => {
+                                                    const cash = parseFloat(splitCashAmount) || 0
+                                                    const qr = parseFloat(splitQrAmount) || 0
+                                                    const diff = Math.abs(cash + qr - total)
+                                                    if (diff > 0.01) return (
+                                                        <p className="col-span-2 text-[9px] text-rose-500 font-bold text-center">
+                                                            ⚠ Cash + QR must equal {money(total)} (difference: {money(diff)})
+                                                        </p>
+                                                    )
+                                                    return (
+                                                        <p className="col-span-2 text-[9px] text-emerald-600 font-bold text-center">✓ Amounts balanced</p>
+                                                    )
+                                                })()}
+                                            </div>
+                                        )
+                                    })()}
                                 </div>
 
                                 <div className="border-t border-hairline pt-4 flex items-center justify-between mt-2">
@@ -1403,6 +1496,32 @@ export default function CashierClient({
                             <span className="uppercase">GRAND TOTAL</span>
                             <span className="text-sm font-black text-black tabular-nums">{money(activeInvoice.total)}</span>
                         </div>
+
+                        {/* Payment Method on receipt */}
+                        {activeInvoice.paymentMethod && (
+                            <div className="space-y-0.5 pt-1 text-[10px]">
+                                <div className="flex justify-between">
+                                    <span className="font-bold uppercase">Payment</span>
+                                    <span className="font-bold uppercase">
+                                        {activeInvoice.paymentMethod === 'cash' ? 'CASH'
+                                            : activeInvoice.paymentMethod === 'qr_digital' ? 'QR / DIGITAL'
+                                            : 'SPLIT'}
+                                    </span>
+                                </div>
+                                {activeInvoice.paymentMethod === 'both' && (
+                                    <>
+                                        <div className="flex justify-between text-gray-600">
+                                            <span>· Cash</span>
+                                            <span className="tabular-nums">{money(activeInvoice.cashPaid)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-gray-600">
+                                            <span>· QR / Digital</span>
+                                            <span className="tabular-nums">{money(activeInvoice.qrPaid)}</span>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
 
                         <div className="border-t border-dashed border-black my-1.5" />
 
