@@ -13,18 +13,16 @@ L.Icon.Default.mergeOptions({
     shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 })
 
-export default function OpenStreetMap({ address, embedUrl }: { address?: string, embedUrl?: string }) {
+export default function OpenStreetMap({ address }: { address?: string }) {
     const [coords, setCoords] = useState<[number, number] | null>(null)
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        // If they provided a raw iframe embed URL, we don't need to geocode.
-        // We will just render an iframe.
-        if (embedUrl || !address) {
+        if (!address) {
             setLoading(false)
             return
         }
-        
+
         // Simple Nominatim geocoding for open-source mapping without API keys
         fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`)
             .then(res => res.json())
@@ -35,18 +33,7 @@ export default function OpenStreetMap({ address, embedUrl }: { address?: string,
             })
             .catch(console.error)
             .finally(() => setLoading(false))
-    }, [address, embedUrl])
-
-    if (embedUrl) {
-        return (
-            <iframe
-                src={embedUrl}
-                title="Map"
-                className="w-full h-full min-h-[260px] border-0"
-                loading="lazy"
-            />
-        )
-    }
+    }, [address])
 
     if (loading) return <div className="w-full h-full min-h-[260px] flex items-center justify-center bg-surface-muted text-ink-subtle animate-pulse">Finding location...</div>
     if (!coords) return <div className="w-full h-full min-h-[260px] flex items-center justify-center bg-surface-muted text-ink-subtle">Map unavailable for this address</div>

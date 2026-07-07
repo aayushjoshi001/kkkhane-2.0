@@ -793,7 +793,6 @@ export interface HomepageConfig {
         enabled?: boolean
         review_link?: string
         map_address?: string
-        map_embed_url?: string
         phone?: string
         email?: string
     }
