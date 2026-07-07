@@ -590,16 +590,6 @@ export default function CashierRoomManager({
                                             )
                                         })()}
                                     </div>
-
-                                    <Button
-                                        variant="primary"
-                                        block
-                                        loading={isProcessing}
-                                        onClick={handleCreateBooking}
-                                        className="font-bold uppercase tracking-wider"
-                                    >
-                                        Book Room
-                                    </Button>
                                 </div>
                             ) : confirmCloseOpen ? (
                                 // Confirm Close Modal
@@ -613,10 +603,6 @@ export default function CashierRoomManager({
                                             This will mark the room as Closed/Maintenance. Only available rooms can be booked.
                                         </p>
                                     </div>
-                                    <div className="flex gap-3 pt-2">
-                                        <Button variant="secondary" block onClick={() => setConfirmCloseOpen(false)}>Cancel</Button>
-                                        <Button variant="danger" block loading={isProcessing} onClick={() => handleStatusChange(selectedRoom.id, 'maintenance')}>Confirm Close</Button>
-                                    </div>
                                 </div>
                             ) : confirmDirtyOpen ? (
                                 // Confirm Dirty Modal
@@ -629,10 +615,6 @@ export default function CashierRoomManager({
                                         <p className="text-xs text-ink-subtle mt-1 px-4">
                                             This will set the room to Cleaning/Dirty. Staff must mark it cleaned before booking.
                                         </p>
-                                    </div>
-                                    <div className="flex gap-3 pt-2">
-                                        <Button variant="secondary" block onClick={() => setConfirmDirtyOpen(false)}>Cancel</Button>
-                                        <Button variant="secondary" block loading={isProcessing} onClick={() => handleStatusChange(selectedRoom.id, 'dirty')}>Confirm Dirty</Button>
                                     </div>
                                 </div>
                             ) : (
@@ -688,20 +670,52 @@ export default function CashierRoomManager({
                                                     Current Status: <span className="uppercase font-black text-brand-600">{selectedRoom.status === 'dirty' ? 'Cleaning Required' : 'Closed for Maintenance'}</span>
                                                 </p>
                                             </div>
-                                            <Button
-                                                variant="success"
-                                                icon={Check}
-                                                block
-                                                loading={isProcessing}
-                                                onClick={() => handleStatusChange(selectedRoom.id, 'available')}
-                                            >
-                                                ✓ Make Available (Clean/Open)
-                                            </Button>
+
                                         </div>
                                     )}
                                 </div>
                             )}
                         </div>
+
+                        {/* Footer (Sticky actions) */}
+                        {(bookingFormOpen || confirmCloseOpen || confirmDirtyOpen || selectedRoom.status !== 'available') ? (
+                            <div className="border-t border-hairline px-6 py-4 flex-shrink-0 bg-surface">
+                                {bookingFormOpen && (
+                                    <Button
+                                        variant="primary"
+                                        block
+                                        loading={isProcessing}
+                                        onClick={handleCreateBooking}
+                                        className="font-bold uppercase tracking-wider"
+                                    >
+                                        Book Room
+                                    </Button>
+                                )}
+                                {confirmCloseOpen && (
+                                    <div className="flex gap-3">
+                                        <Button variant="secondary" block onClick={() => setConfirmCloseOpen(false)}>Cancel</Button>
+                                        <Button variant="danger" block loading={isProcessing} onClick={() => handleStatusChange(selectedRoom.id, 'maintenance')}>Confirm Close</Button>
+                                    </div>
+                                )}
+                                {confirmDirtyOpen && (
+                                    <div className="flex gap-3">
+                                        <Button variant="secondary" block onClick={() => setConfirmDirtyOpen(false)}>Cancel</Button>
+                                        <Button variant="secondary" block loading={isProcessing} onClick={() => handleStatusChange(selectedRoom.id, 'dirty')} className="bg-brand-500 text-white hover:bg-brand-600 hover:border-brand-600">Confirm Dirty</Button>
+                                    </div>
+                                )}
+                                {selectedRoom.status !== 'available' && !bookingFormOpen && !confirmCloseOpen && !confirmDirtyOpen && (
+                                    <Button
+                                        variant="success"
+                                        icon={Check}
+                                        block
+                                        loading={isProcessing}
+                                        onClick={() => handleStatusChange(selectedRoom.id, 'available')}
+                                    >
+                                        ✓ Make Available (Clean/Open)
+                                    </Button>
+                                )}
+                            </div>
+                        ) : null}
                     </div>
                 </div>,
                 document.body

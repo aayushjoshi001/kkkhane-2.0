@@ -1113,10 +1113,10 @@ export default function CashierClient({
                     onClick={() => setSelectedBillingRoom(null)}
                 >
                     <div 
-                        className="bg-surface w-full max-w-2xl rounded-[28px] shadow-2xl overflow-hidden border border-hairline p-6 space-y-6 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+                        className="bg-surface w-full max-w-2xl rounded-[28px] shadow-2xl overflow-hidden border border-hairline flex flex-col max-h-[90vh] md:max-h-[85vh] animate-in zoom-in-95 duration-200"
                         onClick={e => e.stopPropagation()}
                     >
-                        <div className="flex items-center justify-between border-b border-hairline pb-4">
+                        <div className="flex items-center justify-between border-b border-hairline px-6 py-4 bg-surface-muted/50 flex-shrink-0">
                             <div>
                                 <h3 className="text-lg font-black text-ink">Room {selectedBillingRoom.room_number} stays details</h3>
                                 <p className="text-xs text-ink-subtle mt-0.5">{selectedBillingRoom.room_types?.name} • Floor {selectedBillingRoom.floor || 'N/A'}</p>
@@ -1125,12 +1125,13 @@ export default function CashierClient({
                         </div>
 
                         {loadingStayDetails ? (
-                            <div className="py-12 flex flex-col items-center justify-center gap-3">
+                            <div className="p-6 flex-1 flex flex-col items-center justify-center gap-3">
                                 <Loader2 size={32} className="animate-spin text-brand-500" />
                                 <p className="text-xs text-ink-subtle font-semibold">Loading details...</p>
                             </div>
                         ) : billingStayBooking ? (
-                            <div className="space-y-6">
+                            <>
+                                <div className="space-y-6 p-6 overflow-y-auto flex-1">
                                 <div className="grid grid-cols-2 gap-4 bg-surface-muted/50 border border-hairline rounded-2xl p-4 text-xs">
                                     <div className="space-y-1.5">
                                         <p className="text-[10px] font-bold text-ink-subtle uppercase">Guest</p>
@@ -1294,8 +1295,8 @@ export default function CashierClient({
                                         )
                                     })()}
                                 </div>
-
-                                <div className="border-t border-hairline pt-4 mt-2 space-y-2">
+                            </div>
+                            <div className="border-t border-hairline px-6 py-4 flex-shrink-0 bg-surface">
                                     {/* Gross Total + Advance row */}
                                     {(() => {
                                         const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
@@ -1330,10 +1331,12 @@ export default function CashierClient({
                                         )
                                     })()}
                                 </div>
-                            </div>
+                            </>
                         ) : (
-                            <div className="p-8 text-center border border-dashed border-hairline-strong rounded-xl">
-                                <p className="text-sm text-ink-subtle">No active booking session found.</p>
+                            <div className="p-6 flex-1 flex items-center justify-center">
+                                <div className="p-8 text-center border border-dashed border-hairline-strong rounded-xl w-full">
+                                    <p className="text-sm text-ink-subtle">No active booking session found.</p>
+                                </div>
                             </div>
                         )}
                     </div>
