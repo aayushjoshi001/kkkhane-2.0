@@ -48,7 +48,12 @@ export async function fetchWithCache<T>(
     }
 
     try {
-        const cached = await redis.get<T>(key)
+        // Enforce a strict 500ms timeout on Redis calls. 
+        // If Upstash is cold-starting, it can take 3-5 seconds. A cache should never slow down the app.
+        const timeoutPromise = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Redis timeout')), 500)
+        )
+        const cached = await Promise.race([redis.get<T>(key), timeoutPromise])
         if (cached) {
             return cached
         }
@@ -56,12 +61,18 @@ export async function fetchWithCache<T>(
         handleRedisError(err, 'get', key)
     }
 
-    // Cache Miss or Error: Fetch fresh data
+    // Cache Miss or Error (or Timeout): Fetch fresh data
     const freshData = await fetcher()
 
     try {
         if (freshData && !redisDisabled) {
-            await redis.set(key, freshData, { ex: ttlSeconds })
+            const timeoutPromise = new Promise<never>((_, reject) => 
+                setTimeout(() => reject(new Error('Redis set timeout')), 500)
+            )
+            await Promise.race([
+                redis.set(key, freshData, { ex: ttlSeconds }),
+                timeoutPromise
+            ])
         }
     } catch (err) {
         handleRedisError(err, 'set', key)
