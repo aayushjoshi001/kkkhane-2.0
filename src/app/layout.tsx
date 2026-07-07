@@ -4,6 +4,7 @@ import { ConfirmModal } from '@/components/shared/ConfirmModal'
 import type { Viewport } from 'next'
 import { createAdminClient } from '@/lib/supabase/server'
 import { unstable_cache } from 'next/cache'
+import { SerwistProvider } from '@serwist/turbopack/react'
 import PwaInstallPrompt from '@/components/shared/PwaInstallPrompt'
 import PwaUpdatePrompt from '@/components/shared/PwaUpdatePrompt'
 import './globals.css'
@@ -116,7 +117,13 @@ export default async function RootLayout({
         bg-canvas text-ink
         antialiased min-h-screen flex flex-col
       `}>
-        {children}
+        <SerwistProvider
+          swUrl="/serwist/sw.js"
+          disable={process.env.NODE_ENV === 'development'}
+          reloadOnOnline
+        >
+          {children}
+        </SerwistProvider>
         <PwaInstallPrompt />
         <PwaUpdatePrompt />
         {/* Global Overlays */}

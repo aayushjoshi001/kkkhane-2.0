@@ -1,58 +1,13 @@
 import type { NextConfig } from 'next'
-import withPWAInit from 'next-pwa'
+import { withSerwist } from '@serwist/turbopack'
 import { withSentryConfig } from '@sentry/nextjs'
 
-const withPWA = withPWAInit({
-  dest: 'public',
-  register: true,
-  skipWaiting: true,
-  disable: process.env.NODE_ENV === 'development',
-  runtimeCaching: [
-    // Static Next.js assets — cache first, long TTL
-    {
-      urlPattern: /^\/_next\/static\/.*/i,
-      handler: 'CacheFirst',
-      options: {
-        cacheName: 'next-static',
-        expiration: { maxEntries: 200, maxAgeSeconds: 86400 },
-      },
-    },
-    // Supabase Storage images — cache first, 24h TTL
-    {
-      urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/v1\/object\/public\/.*/i,
-      handler: 'CacheFirst',
-      options: {
-        cacheName: 'supabase-images',
-        expiration: { maxEntries: 100, maxAgeSeconds: 86400 },
-      },
-    },
-    // Kitchen & waiter pages — network only (must never show stale order state)
-    {
-      urlPattern: /^\/(kitchen|waiter)(\/|$)/i,
-      handler: 'NetworkOnly',
-    },
-    // Menu & order status pages — network first with 10s timeout, fallback to cache
-    {
-      urlPattern: /^\/t\/.*/i,
-      handler: 'NetworkFirst',
-      options: {
-        cacheName: 'customer-pages',
-        networkTimeoutSeconds: 10,
-        expiration: { maxEntries: 50, maxAgeSeconds: 3600 },
-      },
-    },
-    // Admin pages — network first, short cache window
-    {
-      urlPattern: /^\/admin\/.*/i,
-      handler: 'NetworkFirst',
-      options: {
-        cacheName: 'admin-pages',
-        networkTimeoutSeconds: 10,
-        expiration: { maxEntries: 30, maxAgeSeconds: 300 },
-      },
-    },
-  ],
-})
+// Replaces next-pwa, which never actually generated a service worker in this
+// project — it only hooks in via Next's `webpack()` config function, which
+// Turbopack (this project's bundler, `turbopack: {}` below) never calls.
+// @serwist/turbopack instead compiles the worker with esbuild and serves it
+// via a Route Handler (src/app/serwist/[path]/route.ts) — bundler-agnostic. The actual
+// runtimeCaching/fallbacks config now lives in src/sw.ts, not here.
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -119,11 +74,11 @@ const nextConfig: NextConfig = {
   turbopack: {},
 }
 
-const pwaConfig = withPWA(nextConfig as any)
+const serwistConfig = withSerwist(nextConfig)
 
 // withSentryConfig uploads source maps at build time when SENTRY_AUTH_TOKEN is set.
 // Skipped silently in dev/when token is absent.
-const prodConfig = withSentryConfig(pwaConfig, {
+const prodConfig = withSentryConfig(serwistConfig, {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
   authToken: process.env.SENTRY_AUTH_TOKEN,
@@ -137,5 +92,7 @@ const prodConfig = withSentryConfig(pwaConfig, {
   },
 })
 
-// Completely bypass Webpack-based wrappers in development to maximize Turbopack speed
-export default process.env.NODE_ENV === 'development' ? nextConfig : prodConfig
+// Sentry's source-map upload is webpack-based and slow/unnecessary in dev.
+// Serwist itself is Turbopack-native (no webpack involved, see src/sw.ts),
+// so — unlike the old next-pwa setup — it's applied in both branches.
+export default process.env.NODE_ENV === 'development' ? serwistConfig : prodConfig
