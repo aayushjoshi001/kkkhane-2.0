@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { useRouter } from 'next/navigation'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { setTableStatus, openSession } from '@/app/(staff)/waiter/actions'
 import { createClient } from '@/lib/supabase/client'
@@ -53,6 +54,7 @@ export default function CashierTableManager({
     const [tables, setTables] = useState<TableWithSession[]>(initialTables)
     const [selectedTable, setSelectedTable] = useState<TableWithSession | null>(null)
     const [isProcessing, setIsProcessing] = useState(false)
+    const router = useRouter()
     const [mounted, setMounted] = useState(false)
     const money = useCurrency()
 
@@ -207,7 +209,8 @@ export default function CashierTableManager({
                 toast.error(res.error)
             } else if (res.success && res.session) {
                 toast.success(`Session opened for Table ${selectedTable.label}`)
-                onSwitchToBilling(res.session.id)
+                // Redirect waiter/cashier to the table's menu ordering page in waiter mode
+                router.push(`/t/${selectedTable.qr_token}?s=${res.session.session_token}&w=1`)
                 setSelectedTable(null)
             }
         } catch {
