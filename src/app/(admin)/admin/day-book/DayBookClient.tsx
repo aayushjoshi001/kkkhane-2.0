@@ -450,13 +450,13 @@ export default function DayBookClient({
             {session && (
                 <>
                     {/* Tab Navigation (Segmented Capsule Control) */}
-                    <div className="flex justify-center mb-8 animate-fade-in">
-                        <div className="flex bg-gray-100 p-1 rounded-2xl border border-gray-200/40 max-w-md w-full gap-1">
+                    <div className="mb-8 animate-fade-in">
+                        <div className="flex bg-gray-100 p-1.5 rounded-2xl border border-gray-200/40 w-full gap-1.5">
                             <button
                                 onClick={() => setActiveTab('cash')}
-                                className={`flex-1 py-2.5 text-sm font-extrabold rounded-xl text-center transition-all ${
+                                className={`flex-1 py-3 text-sm font-extrabold rounded-xl text-center transition-all ${
                                     activeTab === 'cash'
-                                        ? 'bg-[#ff5a00] text-white shadow-sm'
+                                        ? 'bg-[#ff5a00] text-white shadow-sm shadow-[#ff5a00]/10'
                                         : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50'
                                 }`}
                             >
@@ -464,9 +464,9 @@ export default function DayBookClient({
                             </button>
                             <button
                                 onClick={() => setActiveTab('bank')}
-                                className={`flex-1 py-2.5 text-sm font-extrabold rounded-xl text-center transition-all ${
+                                className={`flex-1 py-3 text-sm font-extrabold rounded-xl text-center transition-all ${
                                     activeTab === 'bank'
-                                        ? 'bg-[#ff5a00] text-white shadow-sm'
+                                        ? 'bg-[#ff5a00] text-white shadow-sm shadow-[#ff5a00]/10'
                                         : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50'
                                 }`}
                             >
