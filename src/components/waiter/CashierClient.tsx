@@ -110,6 +110,7 @@ export default function CashierClient({
     const [loadingStayDetails, setLoadingStayDetails] = useState(false)
     const [billingStayBooking, setBillingStayBooking] = useState<any | null>(null)
     const [billingRoomCharges, setBillingRoomCharges] = useState<any[]>([])
+    const [billingPaymentMethod, setBillingPaymentMethod] = useState<'cash' | 'qr_digital'>('cash')
 
     const [mounted, setMounted] = useState(false)
 
@@ -166,6 +167,7 @@ export default function CashierClient({
         } else {
             setBillingStayBooking(null)
             setBillingRoomCharges([])
+            setBillingPaymentMethod('cash')
         }
     }, [selectedBillingRoom, bookings])
 
@@ -1134,6 +1136,35 @@ export default function CashierClient({
                                                 </div>
                                             </div>
                                         )}
+                                    </div>
+                                </div>
+
+                                {/* Payment Method Selector */}
+                                <div className="pt-4">
+                                    <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Payment Method</p>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button
+                                            onClick={() => setBillingPaymentMethod('cash')}
+                                            className={`flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                billingPaymentMethod === 'cash'
+                                                    ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                    : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                            }`}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+                                            Cash
+                                        </button>
+                                        <button
+                                            onClick={() => setBillingPaymentMethod('qr_digital')}
+                                            className={`flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                billingPaymentMethod === 'qr_digital'
+                                                    ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                    : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                            }`}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
+                                            QR / Digital
+                                        </button>
                                     </div>
                                 </div>
 
