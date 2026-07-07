@@ -348,6 +348,14 @@ export default function CashierClient({
                 const data = await res.json()
                 if (!res.ok) throw new Error(data.error || 'Failed to checkout booking')
 
+                // Immediately update local state so UI reflects changes without refresh
+                setBookings(prev => prev.map(b =>
+                    b.id === activeInvoice.bookingId ? { ...b, status: 'checked_out' } : b
+                ))
+                setRoomsState(prev => prev.map(r =>
+                    r.id === activeInvoice.roomId ? { ...r, status: 'dirty' } : r
+                ))
+
                 toast.success('Room billing settled and guest checked out successfully!')
             } else {
                 const res = await closeSession(activeInvoice.sessionId)
