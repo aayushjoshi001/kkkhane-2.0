@@ -333,6 +333,7 @@ export interface Settings {
         bsDateEnabled: boolean
         // Notification
         notificationSoundUrl?: string | null
+        financeEnabled?: boolean
     }
     business_hours: BusinessHours | null
     updated_at: string

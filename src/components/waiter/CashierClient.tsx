@@ -1251,6 +1251,8 @@ export default function CashierClient({
                                     {/* Split amount inputs — shown only when Both is selected */}
                                     {billingPaymentMethod === 'both' && (() => {
                                         const total = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
+                                        const advancePaid = Number(billingStayBooking?.paid_amount) || 0
+                                        const balanceDue = Math.max(0, total - advancePaid)
                                         return (
                                             <div className="mt-3 grid grid-cols-2 gap-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl">
                                                 <div>
@@ -1260,14 +1262,14 @@ export default function CashierClient({
                                                         <input
                                                             type="number"
                                                             min="0"
-                                                            max={total}
+                                                            max={balanceDue}
                                                             placeholder="0.00"
                                                             value={splitCashAmount}
                                                             onChange={e => {
                                                                 const v = e.target.value
                                                                 setSplitCashAmount(v)
                                                                 const cash = parseFloat(v) || 0
-                                                                setSplitQrAmount(Math.max(0, total - cash).toFixed(2))
+                                                                setSplitQrAmount(Math.max(0, balanceDue - cash).toFixed(2))
                                                             }}
                                                             className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
                                                         />
@@ -1280,14 +1282,14 @@ export default function CashierClient({
                                                         <input
                                                             type="number"
                                                             min="0"
-                                                            max={total}
+                                                            max={balanceDue}
                                                             placeholder="0.00"
                                                             value={splitQrAmount}
                                                             onChange={e => {
                                                                 const v = e.target.value
                                                                 setSplitQrAmount(v)
                                                                 const qr = parseFloat(v) || 0
-                                                                setSplitCashAmount(Math.max(0, total - qr).toFixed(2))
+                                                                setSplitCashAmount(Math.max(0, balanceDue - qr).toFixed(2))
                                                             }}
                                                             className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
                                                         />

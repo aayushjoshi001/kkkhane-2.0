@@ -1,7 +1,20 @@
 import { ReactNode } from 'react'
-import FinanceNav from '@/components/finance/FinanceNav'
+import { redirect } from 'next/navigation'
+import { getCurrentUser } from '@/lib/auth'
+import { getRestaurantFeatures } from '@/lib/features'
+import { FinanceUnderDevelopment } from '@/components/finance'
 
-export default function FinanceLayout({ children }: { children: ReactNode }) {
+export default async function FinanceLayout({ children }: { children: ReactNode }) {
+    const currentUser = await getCurrentUser()
+    
+    // Check if user has access to finance (super_admin bypasses check, manager checked via feature flag)
+    if (currentUser.role !== 'super_admin') {
+        const features = await getRestaurantFeatures(currentUser.restaurantId)
+        if (!features?.financeEnabled) {
+            redirect('/admin/dashboard')
+        }
+    }
+
     return (
         <div className="space-y-5">
             <div className="bg-surface p-5 md:p-6 rounded-[var(--radius-card)] border border-hairline shadow-sm space-y-4">
@@ -11,9 +24,8 @@ export default function FinanceLayout({ children }: { children: ReactNode }) {
                         Structure preview — automatic posting, cross-module sync, and calculations arrive in a later phase.
                     </p>
                 </div>
-                <FinanceNav />
             </div>
-            {children}
+            <FinanceUnderDevelopment />
         </div>
     )
 }

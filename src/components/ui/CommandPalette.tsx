@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Search, CornerDownLeft } from 'lucide-react'
 import { COMMAND_OPEN_EVENT } from './CommandHint'
 import { getCommandsForRole } from './commandPaletteConfig'
+import { useFeatures } from '@/lib/contexts/FeatureContext'
 
 export type CommandPaletteTheme = 'light' | 'dark'
 
@@ -19,22 +20,22 @@ interface Props {
 // Theme tokens kept in one place so the palette tracks the site's design system.
 const THEMES = {
     light: {
-        overlay: 'bg-ink/50',
-        panel: 'bg-surface border-hairline ring-1 ring-black/[0.04]',
+        overlay: 'bg-black/10 dark:bg-black/40',
+        panel: 'bg-surface border-hairline',
         divider: 'border-hairline',
         icon: 'text-ink-subtle',
         input: 'text-ink placeholder:text-ink-subtle',
-        empty: 'text-ink-muted',
+        empty: 'text-ink-subtle',
         heading: 'text-ink-subtle',
-        item: 'text-ink-muted aria-selected:bg-brand-50 aria-selected:text-brand-700',
-        itemIcon: 'text-ink-subtle group-aria-selected:text-brand-700',
-        enterHint: 'text-brand-600',
-        footer: 'border-hairline text-ink-subtle',
-        kbd: 'border-hairline-strong bg-surface-muted text-ink-subtle',
+        item: 'text-ink-muted aria-selected:bg-surface-muted aria-selected:text-ink',
+        itemIcon: 'text-ink-subtle group-aria-selected:text-brand-500',
+        enterHint: 'text-brand-500',
+        footer: 'border-hairline bg-surface-muted/50 text-ink-subtle',
+        kbd: 'border-hairline-strong bg-surface text-ink-subtle',
     },
     dark: {
         overlay: 'bg-black/60',
-        panel: 'bg-dark-surface border-dark-border ring-1 ring-white/[0.06]',
+        panel: 'bg-dark border-dark-border',
         divider: 'border-dark-border',
         icon: 'text-dark-muted',
         input: 'text-dark-ink placeholder:text-dark-muted',
@@ -52,7 +53,20 @@ export function CommandPalette({ role, theme = 'light' }: Props) {
     const [open, setOpen] = useState(false)
     const router = useRouter()
     const t = THEMES[theme]
+    
+    const features = useFeatures()
+    const financeEnabled = !!features?.financeEnabled
+    
     const groups = getCommandsForRole(role)
+    const filteredGroups = groups.map(group => {
+        if (group.heading === 'Finance') {
+            return {
+                ...group,
+                items: financeEnabled ? group.items : []
+            }
+        }
+        return group
+    }).filter(group => group.items.length > 0)
 
     useEffect(() => {
         const down = (e: KeyboardEvent) => {
@@ -106,7 +120,7 @@ export function CommandPalette({ role, theme = 'light' }: Props) {
                         No results found.
                     </Command.Empty>
 
-                    {groups.map((group, gi) => (
+                    {filteredGroups.map((group, gi) => (
                         <Command.Group
                             key={group.heading}
                             heading={group.heading}

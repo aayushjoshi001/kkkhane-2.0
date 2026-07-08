@@ -17,6 +17,7 @@ export interface CreateTenantInput {
     contactPhone?: string
     address?: string
     subscriptionTier: Tier
+    businessType?: string
 }
 
 function normalizeSlug(value: string) {
@@ -33,17 +34,26 @@ export async function getAllRestaurants() {
     try {
         const { data, error } = await supabase
             .from('restaurants')
-            .select('*')
+            .select('*, settings(features_v2)')
             .order('created_at', { ascending: false })
 
         if (error) {
             console.error('getAllRestaurants error:', error)
             return { error: error.message, data: null }
         }
+
+        const enrichedRestaurants = (data || []).map(r => {
+            const settingsObj = Array.isArray(r.settings) ? r.settings[0] : r.settings
+            const features = settingsObj?.features_v2 || {}
+            return {
+                ...r,
+                financeEnabled: !!features.financeEnabled
+            }
+        })
         
         // If we have data, fetch owner emails separately if needed
-        if (data && data.length > 0) {
-            const ownerIds = data.filter(r => r.owner_id).map(r => r.owner_id)
+        if (enrichedRestaurants.length > 0) {
+            const ownerIds = enrichedRestaurants.filter(r => r.owner_id).map(r => r.owner_id)
             
             if (ownerIds.length > 0) {
                 // Fetch each owner's email individually to avoid listUsers() pagination cap
@@ -56,7 +66,7 @@ export async function getAllRestaurants() {
                 )
 
                 return {
-                    data: data.map(r => ({
+                    data: enrichedRestaurants.map(r => ({
                         ...r,
                         users: r.owner_id ? { email: emailMap.get(r.owner_id) || null } : null
                     }))
@@ -64,7 +74,7 @@ export async function getAllRestaurants() {
             }
         }
         
-        return { data }
+        return { data: enrichedRestaurants }
     } catch (err) {
         console.error('getAllRestaurants exception:', err)
         return { error: 'Failed to fetch restaurants', data: null }
@@ -106,6 +116,32 @@ export async function updateSubscriptionTier(
 
     if (error) return { error: error.message }
 
+    // Downgrade protection: if changing to a non-enterprise tier, disable financeEnabled feature
+    if (tier !== 'enterprise') {
+        const { data: settingsRow } = await supabase
+            .from('settings')
+            .select('features_v2')
+            .eq('restaurant_id', restaurantId)
+            .maybeSingle()
+
+        const features = settingsRow?.features_v2 || {}
+        if (features.financeEnabled) {
+            const merged = { ...features, financeEnabled: false }
+            await supabase
+                .from('settings')
+                .update({ features_v2: merged })
+                .eq('restaurant_id', restaurantId)
+            
+            // Invalidate Redis cache dynamically to avoid top-level module resolution issues
+            try {
+                const { invalidateCache } = await import('@/lib/redis')
+                await invalidateCache(`features:${restaurantId}`)
+            } catch (err) {
+                console.error('Failed to invalidate feature cache during downgrade:', err)
+            }
+        }
+    }
+
     revalidatePath('/admin/super-admin')
     return { success: true }
 }
@@ -129,6 +165,7 @@ export async function createTenantWithOwner(input: CreateTenantInput) {
     const contactPhone = validatedInput.contactPhone?.trim() || null
     const address = validatedInput.address?.trim() || null
     const subscriptionTier: Tier = validatedInput.subscriptionTier || 'free'
+    const businessType = validatedInput.businessType || null
 
     const supabase = await createAdminClient()
 
@@ -172,6 +209,7 @@ export async function createTenantWithOwner(input: CreateTenantInput) {
         contactPhone,
         address,
         tier: subscriptionTier,
+        businessType,
         seedSample: true,
     })
 
@@ -746,4 +784,16 @@ export async function getPlatformAnalytics() {
         restaurantStats: restaurantStatsArray,
         tenantsByMonth,
     }
+}
+
+export async function toggleRestaurantFinance(restaurantId: string, enabled: boolean) {
+    await requireRole('super_admin')
+    
+    // We import features dynamically or just execute updateFeaturesAction
+    const { updateFeaturesAction } = await import('@/lib/features')
+    const result = await updateFeaturesAction(restaurantId, { financeEnabled: enabled })
+    if (result.error) return { error: result.error }
+
+    revalidatePath('/admin/super-admin')
+    return { success: true }
 }

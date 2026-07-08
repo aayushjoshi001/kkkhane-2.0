@@ -9,3 +9,5 @@ export type { SectionTab, SectionTabsProps } from './SectionTabs'
 export { default as PlaceholderChart } from './PlaceholderChart'
 export type { PlaceholderChartProps } from './PlaceholderChart'
 export { default as FinanceNav } from './FinanceNav'
+export { default as FinanceUnderDevelopment } from './FinanceUnderDevelopment'
+
