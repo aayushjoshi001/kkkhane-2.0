@@ -1,10 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { 
-    Plus, Filter, Bed, Brush, Wrench, CheckCircle2, ChevronRight, Download, Loader2, X, Users, Calendar, Phone, FileText,
-    Wallet, Landmark, Receipt, ArrowUpRight, Banknote, PiggyBank, TrendingUp, Percent, BookOpen
-} from 'lucide-react'
+import { Plus, Filter, Bed, Brush, Wrench, CheckCircle2, ChevronRight, Download, Loader2, X, Users, Calendar, Phone, FileText } from 'lucide-react'
 import type { Room, RoomType, RoomStatus } from '@/types/database'
 import EmptyState from '@/components/ui/EmptyState'
 import { QRCodeCanvas } from 'qrcode.react'
@@ -111,6 +108,14 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantId, res
         return stayCost + qrOrdersTotal + manualChargesTotal
     }
 
+    // The QR session whose orders are folded into the bill — sent to the
+    // checkout API so it can settle those orders and close the session.
+    const getRoomSessionId = (room: any) => {
+        if (!room) return null
+        const matchingTable = tables.find(t => t.label === room.room_number || t.label === 'Room ' + room.room_number)
+        return matchingTable?.activeSession?.id ?? null
+    }
+
     const handleCheckoutSettle = async () => {
         if (!selectedBillingRoom || !billingStayBooking) return
         
@@ -135,18 +140,20 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantId, res
                     room_id: selectedBillingRoom.id,
                     total_amount: total,
                     cash_paid: resolvedCash,
-                    qr_paid: resolvedQr
+                    qr_paid: resolvedQr,
+                    session_id: getRoomSessionId(selectedBillingRoom)
                 })
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || 'Failed to checkout booking')
 
             toast.success('Room billing settled and guest checked out successfully!')
+
+            // Update local state — keyed off the billing room, since the room
+            // details modal (selectedRoom) may already have been closed.
+            setRooms(prev => prev.map(r => r.id === selectedBillingRoom.id ? { ...r, status: 'dirty' } : r))
             setSelectedBillingRoom(null)
             setBillingStayBooking(null)
-            
-            // Update local state
-            setRooms(prev => prev.map(r => r.id === selectedRoom!.id ? { ...r, status: 'dirty' } : r))
             setSelectedRoom(null)
         } catch (err: any) {
             toast.error(err.message || 'Failed to checkout')
@@ -164,7 +171,6 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantId, res
     // Active Booking (occupied room check-in details)
     const [activeBooking, setActiveBooking] = useState<any | null>(null)
     const [loadingBooking, setLoadingBooking] = useState(false)
-    const [isCheckingOut, setIsCheckingOut] = useState(false)
 
     const [roomForm, setRoomForm] = useState({ room_number: '', floor: '', type_id: '' })
     const [typeForm, setTypeForm] = useState({ name: '', base_price: '', capacity: '2', description: '' })
@@ -374,32 +380,6 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantId, res
             toast.error(e.message || 'Failed to book room')
         } finally {
             setIsSubmittingBooking(false)
-        }
-    }
-
-    // Checkout guest handler
-    const handleCheckout = async (bookingId: string) => {
-        if (!confirm(`Are you sure you want to check out guest from Room ${selectedRoom?.room_number}?`)) return
-        setIsCheckingOut(true)
-        try {
-            const res = await fetch('/api/bookings/checkout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    booking_id: bookingId,
-                    room_id: selectedRoom!.id
-                })
-            })
-            const data = await res.json()
-            if (!res.ok) throw new Error(data.error)
-
-            setRooms(prev => prev.map(r => r.id === selectedRoom!.id ? { ...r, status: 'dirty' } : r))
-            setSelectedRoom(prev => prev ? { ...prev, status: 'dirty' } : null)
-            toast.success('Guest checked out successfully! Room status set to Dirty.')
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to checkout guest')
-        } finally {
-            setIsCheckingOut(false)
         }
     }
 
