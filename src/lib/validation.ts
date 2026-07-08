@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod'
+import { ONBOARDING_BUSINESS_TYPES } from '@/lib/businessMode'
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // UUID & Common Types
@@ -189,7 +190,7 @@ export const CreateTenantSchema = z.object({
   contactPhone: PHONE.optional(),
   address: z.string().max(500).optional(),
   subscriptionTier: z.enum(['free', 'basic', 'pro', 'enterprise']).default('free'),
-  businessType: z.string().optional()
+  businessType: z.enum(ONBOARDING_BUSINESS_TYPES).optional()
 })
 
 export const UpdateTenantSchema = z.object({
@@ -224,7 +225,7 @@ export const PublicSignupSchema = CreateTenantSchema.extend({
 // requiring an actual VAT number once "VAT Registered" is checked.
 export const OnboardingRestaurantSchema = PublicSignupSchema
   .omit({ ownerFullName: true, ownerEmail: true, ownerPassword: true })
-  .extend({ businessType: z.string().max(50).optional() })
+  .extend({ businessType: z.enum(ONBOARDING_BUSINESS_TYPES).optional() })
   .superRefine((data, ctx) => {
     if (data.vatRegistered && !data.vatNumber) {
       ctx.addIssue({ code: 'custom', path: ['vatNumber'], message: 'VAT number is required when VAT registered is checked' })

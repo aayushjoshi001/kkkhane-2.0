@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/server'
+import type { BillingTable, BillingOrder } from '@/components/admin/RoomBillingModal'
 import { getCurrentUser } from '@/lib/auth'
 import RoomsClient from './RoomsClient'
 import type { Room, RoomType } from '@/types/database'
@@ -15,8 +16,8 @@ export default async function RoomsPage() {
     let rooms: Room[] = []
     let roomTypes: RoomType[] = []
     let restaurantSlug = ''
-    let tablesMapped: any[] = []
-    let activeOrders: any[] = []
+    let tablesMapped: BillingTable[] = []
+    let activeOrders: BillingOrder[] = []
 
     try {
         const [roomsRes, typesRes, restRes, tablesRes, activeSessionsRes, activeOrdersRes] = await Promise.all([
@@ -60,7 +61,7 @@ export default async function RoomsPage() {
         rooms = (roomsRes.data as unknown as Room[]) || []
         roomTypes = typesRes.data || []
         restaurantSlug = restRes.data?.slug || ''
-        activeOrders = activeOrdersRes.data || []
+        activeOrders = (activeOrdersRes.data as unknown as BillingOrder[]) || []
 
         const activeSessions = activeSessionsRes.data || []
         const activeSessionsByTable = Object.fromEntries(
