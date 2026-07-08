@@ -21,6 +21,10 @@ The House Cafe is a full-stack web application designed for a premium coffee sho
 * **Icons**: Lucide React
 * **Language**: TypeScript
 
+## 🧭 Development
+
+New to the codebase or setting up a feature branch? See **[DEV_WORKFLOW.md](./DEV_WORKFLOW.md)** — the team's end-to-end workflow for branching, local vs. production Supabase, migrations, PR review, and deploys.
+
 ## 📁 Project Structure
 ```
 ├── app/
