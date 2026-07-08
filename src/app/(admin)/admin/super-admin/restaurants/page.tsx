@@ -19,6 +19,7 @@ interface Restaurant {
     max_menu_items: number
     created_at: string
     users?: { email: string } | null
+    financeEnabled?: boolean
 }
 
 export default async function RestaurantsPage() {
@@ -32,8 +33,8 @@ export default async function RestaurantsPage() {
     return (
         <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
             <PremiumPageHeader 
-                title="Restaurants" 
-                description="Create, suspend, and manage all restaurant tenants and their subscriptions." 
+                title="Businesses" 
+                description="Create, suspend, and manage all business tenants (restaurants and hotels) and their subscriptions." 
                 icon={<Building2 size={18} />}
                 color="purple"
             />

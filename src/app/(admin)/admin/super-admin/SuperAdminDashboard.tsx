@@ -2,8 +2,8 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Building2, ShoppingBag, Crown, Ban, CheckCircle, Loader2, ChevronDown, Plus, X, Store, UserRound, Mail, KeyRound, Phone, MapPin, Check, CreditCard, AlertTriangle, Search, Filter } from 'lucide-react'
-import { createTenantWithOwner, suspendRestaurant, updateSubscriptionTier, sendPasswordResetEmail, updateOwnerContact, recordSubscriptionPayment } from './actions'
+import { Building2, ShoppingBag, Crown, Ban, CheckCircle, Loader2, ChevronDown, Plus, X, Store, UserRound, Mail, KeyRound, Phone, MapPin, Check, CreditCard, AlertTriangle, Search, Filter, Wallet } from 'lucide-react'
+import { createTenantWithOwner, suspendRestaurant, updateSubscriptionTier, sendPasswordResetEmail, updateOwnerContact, recordSubscriptionPayment, toggleRestaurantFinance } from './actions'
 import { toast } from 'react-hot-toast'
 
 interface Restaurant {
@@ -19,6 +19,8 @@ interface Restaurant {
     max_menu_items: number
     created_at: string
     users?: { email: string } | null
+    financeEnabled?: boolean
+    business_type?: string | null
 }
 
 interface SaasMetrics {
@@ -72,6 +74,7 @@ export default function SuperAdminDashboard({
         contactPhone: '',
         address: '',
         subscriptionTier: 'free' as 'free' | 'basic' | 'pro' | 'enterprise',
+        businessType: 'Restaurant',
     })
     const router = useRouter()
 
@@ -138,6 +141,7 @@ export default function SuperAdminDashboard({
             contactPhone: '',
             address: '',
             subscriptionTier: 'free',
+            businessType: 'Restaurant',
         })
     }
 
@@ -193,6 +197,24 @@ export default function SuperAdminDashboard({
                 )
             )
             toast.success(`Tier changed to ${tier}`)
+        } else {
+            toast.error(res.error || 'Failed')
+        }
+        setLoading(null)
+    }
+
+    const handleFinanceToggle = async (id: string, enabled: boolean) => {
+        setLoading(id)
+        const res = await toggleRestaurantFinance(id, enabled)
+        if (res.success) {
+            setItems(prev =>
+                prev.map(r =>
+                    r.id === id
+                        ? { ...r, financeEnabled: enabled }
+                        : r
+                )
+            )
+            toast.success(enabled ? 'Finance feature activated' : 'Finance feature deactivated')
         } else {
             toast.error(res.error || 'Failed')
         }
@@ -323,7 +345,7 @@ export default function SuperAdminDashboard({
             <div className="bg-surface rounded-[24px] shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-hairline overflow-hidden animate-fade-up" style={{ animationDelay: '0.3s' }}>
                 <div className="px-6 py-5 border-b border-gray-50 bg-surface-muted/50 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div>
-                        <h2 className="text-[1.15rem] font-bold text-ink">All Restaurants</h2>
+                        <h2 className="text-[1.15rem] font-bold text-ink">All Businesses</h2>
                         <p className="text-[13px] text-ink-subtle mt-0.5">Manage tenants, tiers, and suspension</p>
                     </div>
                     <button
@@ -385,6 +407,11 @@ export default function SuperAdminDashboard({
                                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${TIER_COLORS[restaurant.subscription_tier] || TIER_COLORS.free}`}>
                                         {(restaurant.subscription_tier || 'free').toUpperCase()}
                                     </span>
+                                    {restaurant.business_type && (
+                                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-400 dark:border-indigo-900/60">
+                                            {restaurant.business_type}
+                                        </span>
+                                    )}
                                     {restaurant.is_suspended && (
                                         <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
                                             SUSPENDED
@@ -448,6 +475,31 @@ export default function SuperAdminDashboard({
                                     <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" />
                                 </div>
 
+                                {/* Finance Toggle */}
+                                <div 
+                                    className={`flex items-center gap-2 px-3 py-2 border rounded-lg bg-surface transition-all ${
+                                        restaurant.subscription_tier === 'enterprise' 
+                                            ? 'border-hairline-strong' 
+                                            : 'border-hairline opacity-50 bg-surface-muted/30'
+                                    }`}
+                                    title={restaurant.subscription_tier !== 'enterprise' ? "Available on Enterprise tier only" : "Toggle Finance Feature"}
+                                >
+                                    <Wallet size={14} className={restaurant.financeEnabled ? "text-amber-500" : "text-ink-subtle"} />
+                                    <span className="text-xs font-semibold text-ink-muted hidden sm:inline">Finance</span>
+                                    <label className={`relative inline-flex items-center group ${
+                                        restaurant.subscription_tier === 'enterprise' ? 'cursor-pointer' : 'cursor-not-allowed'
+                                    }`}>
+                                        <input
+                                            type="checkbox"
+                                            className="sr-only peer"
+                                            checked={restaurant.financeEnabled || false}
+                                            disabled={loading === restaurant.id || restaurant.subscription_tier !== 'enterprise'}
+                                            onChange={(e) => handleFinanceToggle(restaurant.id, e.target.checked)}
+                                        />
+                                        <div className="w-9 h-5 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500 peer-checked:border-amber-500 shadow-inner group-hover:shadow-md transition-all peer-disabled:opacity-40"></div>
+                                    </label>
+                                </div>
+
                                 {/* Suspend/Reactivate */}
                                 <button
                                     onClick={() => handleSuspend(restaurant.id, !restaurant.is_suspended)}
@@ -474,7 +526,11 @@ export default function SuperAdminDashboard({
                 {filteredItems.length === 0 && (
                     <div className="p-12 text-center text-ink-subtle">
                         <Building2 size={40} className="mx-auto mb-3" />
-                        <p>No restaurants registered yet</p>
+                        <p>
+                            {items.length === 0 
+                                ? "No businesses registered yet" 
+                                : "No businesses found matching your search or filters"}
+                        </p>
                     </div>
                 )}
             </div>
@@ -658,6 +714,23 @@ export default function SuperAdminDashboard({
                                         <option value="basic">Basic</option>
                                         <option value="pro">Pro</option>
                                         <option value="enterprise">Enterprise</option>
+                                    </select>
+                                </Field>
+
+                                <Field label="Business type *" icon={<Building2 size={16} />}>
+                                    <select
+                                        value={createForm.businessType}
+                                        onChange={(e) => handleCreateFormChange('businessType', e.target.value)}
+                                        className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                    >
+                                        <option value="Restaurant">Restaurant (Dine-in)</option>
+                                        <option value="Resort/Hotel">Resort/Hotel (Hospitality & Room Billing)</option>
+                                        <option value="Cafe">Cafe (Counter Service)</option>
+                                        <option value="FastFood">Fast Food (Counter Service)</option>
+                                        <option value="Bakery">Bakery (Counter Service)</option>
+                                        <option value="Fine Dining">Fine Dining (Dine-in)</option>
+                                        <option value="Bar">Bar (Bar Service)</option>
+                                        <option value="Cloud Kitchen">Cloud Kitchen (Delivery Only)</option>
                                     </select>
                                 </Field>
                             </div>

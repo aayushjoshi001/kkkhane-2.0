@@ -11,13 +11,15 @@ export default async function RoomsPage() {
 
     const adminSupabase = await createAdminClient()
     
-    // Fetch rooms, room types, and restaurant slug
+    // Fetch rooms, room types, tables, sessions and active orders with safety
     let rooms: Room[] = []
     let roomTypes: RoomType[] = []
     let restaurantSlug = ''
+    let tablesMapped: any[] = []
+    let activeOrders: any[] = []
 
     try {
-        const [roomsRes, typesRes, restRes] = await Promise.all([
+        const [roomsRes, typesRes, restRes, tablesRes, activeSessionsRes, activeOrdersRes] = await Promise.all([
             adminSupabase
                 .from('rooms')
                 .select('*, room_types:type_id(*)')
@@ -32,12 +34,42 @@ export default async function RoomsPage() {
                 .from('restaurants')
                 .select('slug')
                 .eq('id', restaurantId)
-                .single()
+                .single(),
+            adminSupabase
+                .from('tables')
+                .select('id, label, capacity, table_status, cleaning_claimed_by, cleaning_claimed_at, qr_token')
+                .eq('restaurant_id', restaurantId)
+                .eq('is_active', true)
+                .order('label', { ascending: true }),
+            adminSupabase
+                .from('sessions')
+                .select('id, table_id, restaurant_id, status, opened_at, session_token')
+                .eq('restaurant_id', restaurantId)
+                .eq('status', 'active'),
+            adminSupabase
+                .from('orders')
+                .select(`
+                    id, status, total_amount, placed_at, session_id, order_type, customer_name, customer_phone, delivery_address, payment_status,
+                    sessions ( id, tables ( label ) ),
+                    order_items ( id, quantity, status, unit_price, menu_items ( name ) )
+                `)
+                .eq('restaurant_id', restaurantId)
+                .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
         ])
 
         rooms = (roomsRes.data as unknown as Room[]) || []
         roomTypes = typesRes.data || []
         restaurantSlug = restRes.data?.slug || ''
+        activeOrders = activeOrdersRes.data || []
+
+        const activeSessions = activeSessionsRes.data || []
+        const activeSessionsByTable = Object.fromEntries(
+            activeSessions.map(s => [s.table_id, s])
+        )
+        tablesMapped = (tablesRes.data || []).map(t => ({
+            ...t,
+            activeSession: activeSessionsByTable[t.id] || null
+        }))
     } catch (e) {
         console.error("Failed to load rooms data from DB", e)
     }
@@ -48,6 +80,8 @@ export default async function RoomsPage() {
             roomTypes={roomTypes} 
             restaurantId={restaurantId} 
             restaurantSlug={restaurantSlug}
+            tables={tablesMapped}
+            activeOrders={activeOrders}
         />
     )
 }

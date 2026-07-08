@@ -62,7 +62,7 @@ export default function SuperAdminSidebar({ userRole = 'super_admin', userAvatar
                 <NavItem isCollapsed={isCollapsed} href={`${BASE}/analytics`} icon={BarChart3}       label="Analytics" path={pathname} />
 
                 <SectionLabel isCollapsed={isCollapsed}>Tenants</SectionLabel>
-                <NavItem isCollapsed={isCollapsed} href={`${BASE}/restaurants`} icon={Building2}  label="Restaurants" path={pathname} />
+                <NavItem isCollapsed={isCollapsed} href={`${BASE}/restaurants`} icon={Building2}  label="Businesses" path={pathname} />
                 <NavItem isCollapsed={isCollapsed} href={`${BASE}/payments`}    icon={CreditCard} label="Payments"    path={pathname} />
 
                 <SectionLabel isCollapsed={isCollapsed}>Operations</SectionLabel>

@@ -34,7 +34,7 @@ const SUPER_ADMIN_GROUPS: CommandGroup[] = [
     {
         heading: 'Network',
         items: [
-            { label: 'Restaurants', href: `${SUPER_BASE}/restaurants`, icon: Building2, keywords: ['tenants', 'outlets'] },
+            { label: 'Businesses', href: `${SUPER_BASE}/restaurants`, icon: Building2, keywords: ['tenants', 'outlets', 'restaurants', 'hotels'] },
             { label: 'Payments', href: `${SUPER_BASE}/payments`, icon: CreditCard, keywords: ['billing', 'revenue'] },
         ],
     },

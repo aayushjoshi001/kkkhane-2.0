@@ -188,7 +188,8 @@ export const CreateTenantSchema = z.object({
   ownerPassword: z.string().min(8, 'Password must be 8+ characters').max(128),
   contactPhone: PHONE.optional(),
   address: z.string().max(500).optional(),
-  subscriptionTier: z.enum(['free', 'basic', 'pro', 'enterprise']).default('free')
+  subscriptionTier: z.enum(['free', 'basic', 'pro', 'enterprise']).default('free'),
+  businessType: z.string().optional()
 })
 
 export const UpdateTenantSchema = z.object({

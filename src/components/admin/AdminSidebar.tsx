@@ -33,6 +33,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
     // to dine-in being available, matching the same safe default already
     // used on the public restaurant page (src/app/(public)/r/[restaurantSlug]/page.tsx).
     const dineInEnabled = useFeatures().dineInEnabled ?? true
+    const financeEnabled = !!useFeatures().financeEnabled
     const businessMode = useBusinessMode()
     const isHotel = businessMode === 'hotel'
 
@@ -147,8 +148,12 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/shifts"      icon={Clock}           label="Schedule"        path={pathname} />
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/day-book"    icon={BookOpen}        label="Day Book"        path={pathname} />
 
-                <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Finance</SectionLabel>
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/finance"     icon={Wallet}          label="Finance"         path={pathname} />
+                {financeEnabled && (
+                    <>
+                        <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Finance</SectionLabel>
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/finance"     icon={Wallet}          label="Finance"         path={pathname} />
+                    </>
+                )}
 
                 <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Settings</SectionLabel>
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/homepage"    icon={Palette}         label="Homepage Setup"  path={pathname} />
