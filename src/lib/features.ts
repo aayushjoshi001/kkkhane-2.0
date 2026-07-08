@@ -1,6 +1,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/auth'
 import type { Settings, Restaurant } from '@/types/database'
 import { getBusinessMode, type BusinessMode } from '@/lib/businessMode'
 import { fetchWithCache, invalidateCache } from '@/lib/redis'
@@ -106,6 +107,18 @@ export async function checkPlanLimit(restaurantId: string, resource: 'menu_items
  * Update features_v2 flags (admin only).
  */
 export async function updateFeaturesAction(restaurantId: string, features: Partial<Settings['features_v2']>) {
+    // 'use server' makes this a public endpoint — it must enforce its own auth:
+    // super admins can update any restaurant; managers only their own.
+    const currentUser = await getCurrentUser()
+    const isSuperAdmin = currentUser.role === 'super_admin'
+    if (!isSuperAdmin && !(currentUser.role === 'manager' && currentUser.restaurantId === restaurantId)) {
+        return { error: 'Unauthorized' }
+    }
+    // financeEnabled is the enterprise-tier gate; only super admins may flip it.
+    if (!isSuperAdmin && 'financeEnabled' in features) {
+        return { error: 'Unauthorized' }
+    }
+
     const supabase = await createAdminClient()
 
     // Merge with existing features

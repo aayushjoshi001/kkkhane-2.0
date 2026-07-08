@@ -11,7 +11,7 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json().catch(() => ({}))
-        const { booking_id, room_id, total_amount, cash_paid, qr_paid } = body
+        const { booking_id, room_id, total_amount, cash_paid, qr_paid, session_id } = body
 
         if (!booking_id || !room_id) {
             return NextResponse.json({ error: 'Missing booking_id or room_id' }, { status: 400 })
@@ -70,6 +70,33 @@ export async function POST(req: Request) {
 
         if (roomError) throw roomError
 
+        // 3. If the room's QR session was folded into this bill, settle its
+        // orders and close the session so the cashier can't collect them again.
+        if (session_id) {
+            const { data: session } = await supabase
+                .from('sessions')
+                .select('id')
+                .eq('id', session_id)
+                .eq('restaurant_id', currentUser.restaurantId)
+                .maybeSingle()
+
+            if (session) {
+                const now = new Date().toISOString()
+                await supabase
+                    .from('orders')
+                    .update({ payment_status: 'paid', paid_at: now })
+                    .eq('session_id', session_id)
+                    .eq('restaurant_id', currentUser.restaurantId)
+                    .neq('status', 'cancelled')
+                    .neq('payment_status', 'paid')
+                await supabase
+                    .from('sessions')
+                    .update({ status: 'closed', closed_at: now })
+                    .eq('id', session_id)
+                    .eq('status', 'active')
+            }
+        }
+
         void logAudit({
             restaurantId: currentUser.restaurantId,
             userId: currentUser.id,
@@ -82,6 +109,7 @@ export async function POST(req: Request) {
                 payment_status: paymentStatus,
                 cash_paid: Number(cash_paid) || 0,
                 qr_paid: Number(qr_paid) || 0,
+                session_id: session_id || null,
             },
         })
 

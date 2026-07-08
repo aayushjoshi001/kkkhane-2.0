@@ -37,13 +37,13 @@ export default async function RoomsPage() {
                 .single(),
             adminSupabase
                 .from('tables')
-                .select('id, label, capacity, table_status, cleaning_claimed_by, cleaning_claimed_at, qr_token')
+                .select('id, label, capacity, table_status, cleaning_claimed_by, cleaning_claimed_at')
                 .eq('restaurant_id', restaurantId)
                 .eq('is_active', true)
                 .order('label', { ascending: true }),
             adminSupabase
                 .from('sessions')
-                .select('id, table_id, restaurant_id, status, opened_at, session_token')
+                .select('id, table_id, restaurant_id, status, opened_at')
                 .eq('restaurant_id', restaurantId)
                 .eq('status', 'active'),
             adminSupabase

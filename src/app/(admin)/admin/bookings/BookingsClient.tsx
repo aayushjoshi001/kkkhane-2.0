@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { 
+import {
     Plus, Filter, Calendar, Phone, Mail, User, ShieldAlert, CreditCard, ChevronRight, RefreshCw,
-    X, Loader2, Wallet, Landmark, Receipt, ArrowUpRight, Banknote, PiggyBank, TrendingUp, Percent, BookOpen
+    X, Loader2
 } from 'lucide-react'
 import type { Booking, Room, BookingStatus } from '@/types/database'
 import EmptyState from '@/components/ui/EmptyState'
@@ -111,6 +111,14 @@ export default function BookingsClient({ initialBookings, rooms, restaurantId, t
         return stayCost + qrOrdersTotal + manualChargesTotal
     }
 
+    // The QR session whose orders are folded into the bill — sent to the
+    // checkout API so it can settle those orders and close the session.
+    const getRoomSessionId = (room: any) => {
+        if (!room) return null
+        const matchingTable = tables.find(t => t.label === room.room_number || t.label === 'Room ' + room.room_number)
+        return matchingTable?.activeSession?.id ?? null
+    }
+
     const handleCheckout = async () => {
         if (!selectedBillingRoom || !billingStayBooking) return
         
@@ -135,7 +143,8 @@ export default function BookingsClient({ initialBookings, rooms, restaurantId, t
                     room_id: selectedBillingRoom.id,
                     total_amount: total,
                     cash_paid: resolvedCash,
-                    qr_paid: resolvedQr
+                    qr_paid: resolvedQr,
+                    session_id: getRoomSessionId(selectedBillingRoom)
                 })
             })
             const data = await res.json()
