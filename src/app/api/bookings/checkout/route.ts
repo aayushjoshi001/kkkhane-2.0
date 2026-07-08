@@ -97,6 +97,35 @@ export async function POST(req: Request) {
             }
         }
 
+        // 4. Settle any dining sessions linked to this booking via booking_id
+        // (e.g. hotel guest ordered from the restaurant and session was linked)
+        const { data: linkedSessions } = await supabase
+            .from('sessions')
+            .select('id')
+            .eq('booking_id', booking_id)
+            .eq('status', 'active')
+
+        if (linkedSessions && linkedSessions.length > 0) {
+            const now = new Date().toISOString()
+            const linkedIds = linkedSessions.map(s => s.id)
+            for (const sid of linkedIds) {
+                // Skip if already handled above
+                if (sid === session_id) continue
+                await supabase
+                    .from('orders')
+                    .update({ payment_status: 'paid', paid_at: now })
+                    .eq('session_id', sid)
+                    .eq('restaurant_id', currentUser.restaurantId)
+                    .neq('status', 'cancelled')
+                    .neq('payment_status', 'paid')
+                await supabase
+                    .from('sessions')
+                    .update({ status: 'closed', closed_at: now })
+                    .eq('id', sid)
+                    .eq('status', 'active')
+            }
+        }
+
         void logAudit({
             restaurantId: currentUser.restaurantId,
             userId: currentUser.id,

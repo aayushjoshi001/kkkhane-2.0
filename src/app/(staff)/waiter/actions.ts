@@ -204,3 +204,53 @@ export async function markTableClean(
     revalidatePath('/waiter')
     return { success: true }
 }
+
+export async function findBookingByPhone(phone: string, restaurantId: string) {
+    const adminSupabase = await createAdminClient()
+    const cleanPhone = phone.trim()
+    const { data: booking, error } = await adminSupabase
+        .from('bookings')
+        .select('id, guest_name, guest_phone, status, room_id, rooms(room_number)')
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'checked_in')
+        .eq('guest_phone', cleanPhone)
+        .maybeSingle()
+
+    if (error) {
+        console.error('[findBookingByPhone] Error:', error)
+        return { error: 'Failed to search booking' }
+    }
+    return { success: true, booking }
+}
+
+export async function getActiveBookings(restaurantId: string) {
+    const adminSupabase = await createAdminClient()
+    const { data: bookings, error } = await adminSupabase
+        .from('bookings')
+        .select('id, guest_name, guest_phone, status, room_id, rooms(room_number)')
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'checked_in')
+        .order('check_in', { ascending: false })
+
+    if (error) {
+        console.error('[getActiveBookings] Error:', error)
+        return { error: 'Failed to fetch active bookings' }
+    }
+    return { success: true, bookings }
+}
+
+export async function linkSessionToBooking(sessionId: string, bookingId: string) {
+    const adminSupabase = await createAdminClient()
+    const { error } = await adminSupabase
+        .from('sessions')
+        .update({ booking_id: bookingId })
+        .eq('id', sessionId)
+
+    if (error) {
+        console.error('[linkSessionToBooking] Error:', error)
+        return { error: error.message }
+    }
+    revalidatePath('/waiter')
+    return { success: true }
+}
+

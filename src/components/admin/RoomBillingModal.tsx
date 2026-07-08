@@ -111,12 +111,31 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const matchingTable = tables.find(t => t.label === room.room_number || t.label === 'Room ' + room.room_number)
     const sessionId = matchingTable?.activeSession?.id ?? null
 
+    // Orders from the room's own QR session
     const qrOrderItems: BillingOrderItem[] = sessionId
         ? activeOrders.filter(o => o.session_id === sessionId).flatMap(o => o.order_items || [])
         : []
 
+    // Also fetch orders from dining sessions linked via booking_id
+    // (e.g. hotel guest ordered from restaurant tables via waiter panel)
+    const [linkedDiningOrders, setLinkedDiningOrders] = useState<BillingOrderItem[]>([])
+    useEffect(() => {
+        if (!booking) return
+        let cancelled = false
+        fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!cancelled && data.success) {
+                    setLinkedDiningOrders(data.items || [])
+                }
+            })
+            .catch(err => console.error('Error loading linked dining orders:', err))
+        return () => { cancelled = true }
+    }, [booking])
+
+    const allServiceOrderItems = [...qrOrderItems, ...linkedDiningOrders]
     const stayCost = booking ? calculateStayCost(room, booking) : 0
-    const qrOrdersTotal = qrOrderItems.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
+    const qrOrdersTotal = allServiceOrderItems.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
     const manualChargesTotal = charges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
     const grandTotal = stayCost + qrOrdersTotal + manualChargesTotal
     const advancePaid = Number(booking?.paid_amount) || 0
@@ -216,11 +235,11 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         <span className="font-extrabold text-gray-600 tabular-nums">{money(stayCost)}</span>
                                     </div>
 
-                                    {qrOrderItems.length > 0 && (
+                                    {allServiceOrderItems.length > 0 && (
                                         <div className="p-4 space-y-2">
-                                            <p className="font-extrabold text-xs text-indigo-600">QR Room service orders</p>
+                                            <p className="font-extrabold text-xs text-indigo-600">Service Orders (QR + Dining)</p>
                                             <div className="space-y-1.5 pl-3 border-l-2 border-indigo-100">
-                                                {qrOrderItems.map((item, idx) => (
+                                                {allServiceOrderItems.map((item, idx) => (
                                                     <div key={item.id || idx} className="flex justify-between text-[10px] text-gray-600">
                                                         <span>{item.menu_items?.name || 'Item'} ({item.quantity}×)</span>
                                                         <span className="tabular-nums font-semibold">{money(item.unit_price * item.quantity)}</span>
