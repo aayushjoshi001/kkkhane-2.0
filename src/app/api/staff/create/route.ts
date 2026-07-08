@@ -2,6 +2,8 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { CreateStaffSchema } from '@/lib/validation'
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { getRestaurantFeatures } from '@/lib/features'
+import { FINANCE_GATED_ROLES } from '@/types/database'
 import { TIER_LIMITS, type Tier } from '@/lib/tiers'
 
 export async function POST(req: NextRequest) {
@@ -60,6 +62,23 @@ export async function POST(req: NextRequest) {
                 { error: 'Cannot create staff for a different restaurant.' },
                 { status: 403 }
             )
+        }
+
+        // Finance-plan gate: these roles only exist for the enterprise finance
+        // feature, so block creation while it is disabled.
+        const { data: createRole } = await supabase
+            .from('roles')
+            .select('name')
+            .eq('id', role_id)
+            .single()
+        if (createRole && (FINANCE_GATED_ROLES as readonly string[]).includes(createRole.name)) {
+            const features = await getRestaurantFeatures(restaurant_id)
+            if (!features?.financeEnabled) {
+                return NextResponse.json(
+                    { error: 'This role requires the Enterprise Finance plan' },
+                    { status: 403 }
+                )
+            }
         }
 
         // Verify restaurant exists

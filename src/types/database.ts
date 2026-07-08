@@ -16,6 +16,10 @@ export type PaymentStatus = 'unpaid' | 'pending' | 'paid' | 'refunded' | 'failed
 // `roles` rows but are not yet granted /admin/finance access (still gated to
 // super_admin/manager only); that enforcement wiring is a later phase.
 export type RoleName = 'super_admin' | 'manager' | 'kitchen' | 'waiter' | 'cashier' | 'customer' | 'owner' | 'finance_manager' | 'accountant' | 'receptionist'
+
+// Roles that require the restaurant's financeEnabled feature (enterprise
+// finance plan) before they can be assigned or invited.
+export const FINANCE_GATED_ROLES: readonly RoleName[] = ['finance_manager', 'accountant', 'receptionist']
 export type PricingRuleType = 'percentage_off' | 'fixed_price' | 'amount_off'
 export type PromoType = 'percentage_off' | 'amount_off' | 'free_item' | 'bogo'
 export type LoyaltyTier = 'bronze' | 'silver' | 'gold' | 'platinum'

@@ -118,6 +118,12 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/orders"    icon={ShoppingBag}     label="Service Orders"  path={pathname} />
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/payments"  icon={CreditCard}      label="Room Billing"    path={pathname} />
 
+                        <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Menu & Catalog</SectionLabel>
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/menu"        icon={UtensilsCrossed} label="Menu Catalog"    path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/combos"      icon={Sparkles}        label="Combo Offers"    path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/pricing"     icon={DollarSign}      label="Dynamic Pricing" path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/promos"      icon={Tag}             label="Promo Codes"     path={pathname} />
+
                         <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Dining & Tables</SectionLabel>
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"    icon={Grid3X3}         label="Tables & QR"     path={pathname} />
                     </>

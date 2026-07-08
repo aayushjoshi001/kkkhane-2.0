@@ -2,6 +2,8 @@
 
 import { createAdminClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/auth'
+import { getRestaurantFeatures } from '@/lib/features'
+import { FINANCE_GATED_ROLES } from '@/types/database'
 import { revalidatePath } from 'next/cache'
 
 export async function updateStaffRoleAction(userId: string, targetRoleId: number) {
@@ -22,6 +24,20 @@ export async function updateStaffRoleAction(userId: string, targetRoleId: number
     // Managers cannot elevate anyone to super_admin (role_id: 1)
     if (currentUser.role === 'manager' && targetRoleId === 1) {
         return { error: 'Managers cannot assign super admin role' }
+    }
+
+    // Finance-plan gate: these roles only exist for the enterprise finance
+    // feature, so block assignment while it is disabled.
+    const { data: targetRole } = await supabase
+        .from('roles')
+        .select('name')
+        .eq('id', targetRoleId)
+        .single()
+    if (targetRole && (FINANCE_GATED_ROLES as readonly string[]).includes(targetRole.name)) {
+        const features = await getRestaurantFeatures(currentUser.restaurantId)
+        if (!features?.financeEnabled) {
+            return { error: 'This role requires the Enterprise Finance plan' }
+        }
     }
 
     const { error } = await supabase
