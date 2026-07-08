@@ -10,6 +10,8 @@ import { createInvitationAction, revokeInvitationAction, resendInvitationAction 
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import { fetchStaffData } from '@/lib/swr-fetchers'
+import { useFeatures } from '@/lib/contexts/FeatureContext'
+import { FINANCE_GATED_ROLES } from '@/types/database'
 
 type StaffMember = {
     id: string
@@ -454,8 +456,16 @@ export default function StaffManager({
         }
     }
 
-    // Business Logic: Only super_admin can assign super_admin
-    const availableRoles = roles.filter(r => r.name !== 'customer' && (currentUserRole === 'super_admin' || r.name !== 'super_admin'))
+    const { financeEnabled } = useFeatures()
+
+    // Business Logic: only super_admin can assign super_admin, and the
+    // finance/receptionist roles require the enterprise finance plan.
+    const availableRoles = roles.filter(r => {
+        if (r.name === 'customer') return false
+        if (r.name === 'super_admin' && currentUserRole !== 'super_admin') return false
+        if (!financeEnabled && (FINANCE_GATED_ROLES as readonly string[]).includes(r.name)) return false
+        return true
+    })
 
     const formatInviteStatus = (invitation: Invitation) => {
         if (invitation.status === 'pending' && new Date(invitation.expires_at) < new Date()) return 'expired'
@@ -542,7 +552,7 @@ export default function StaffManager({
                     className="rounded-[var(--r-md)] border border-hairline bg-surface px-4 py-2.5 text-sm font-bold text-ink outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] sm:w-56"
                 >
                     <option value="all">All Roles</option>
-                    {roles.map(r => (
+                    {availableRoles.map(r => (
                         <option key={r.id} value={r.id.toString()}>{formatRoleName(r.name)}</option>
                     ))}
                 </select>

@@ -2,6 +2,8 @@
 
 import { createAdminClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/auth'
+import { getRestaurantFeatures } from '@/lib/features'
+import { FINANCE_GATED_ROLES } from '@/types/database'
 import { revalidatePath } from 'next/cache'
 import { randomBytes, createHash } from 'crypto'
 import { checkRateLimit } from '@/lib/ratelimit'
@@ -40,6 +42,20 @@ export async function createInvitationAction(input: { email: string; roleId: num
     if (rateLimitError) return { error: rateLimitError }
 
     const supabase = await createAdminClient()
+
+    // Finance-plan gate: these roles only exist for the enterprise finance
+    // feature, so block invitations while it is disabled.
+    const { data: inviteRole } = await supabase
+        .from('roles')
+        .select('name')
+        .eq('id', input.roleId)
+        .single()
+    if (inviteRole && (FINANCE_GATED_ROLES as readonly string[]).includes(inviteRole.name)) {
+        const features = await getRestaurantFeatures(currentUser.restaurantId)
+        if (!features?.financeEnabled) {
+            return { error: 'This role requires the Enterprise Finance plan' }
+        }
+    }
 
     // A department, if picked, must belong to this same restaurant
     if (input.departmentId) {
