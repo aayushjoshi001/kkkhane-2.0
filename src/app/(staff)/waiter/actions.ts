@@ -256,10 +256,11 @@ export async function linkSessionToBooking(sessionId: string, bookingId: string)
 }
 
 export async function getStaffMenu(restaurantId: string) {
+    const supabase = await createServerClient()
     const adminSupabase = await createAdminClient()
     
     // Check if staff user
-    const { data: { user } } = await adminSupabase.auth.getUser()
+    const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'Unauthorized' }
 
     try {
@@ -280,10 +281,11 @@ export async function placeStaffOrder(
     items: any[],
     customerNote?: string
 ) {
+    const supabase = await createServerClient()
     const adminSupabase = await createAdminClient()
     
     // Check if staff user
-    const { data: { user } } = await adminSupabase.auth.getUser()
+    const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'Unauthorized' }
 
     // Resolve session (UUID vs token)
