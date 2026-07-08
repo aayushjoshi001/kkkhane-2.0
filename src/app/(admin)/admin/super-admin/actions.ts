@@ -441,7 +441,7 @@ export async function getSaasMetricsFull() {
     }
     // Enrich with restaurant names
     const restaurantIds = Object.keys(orderCountMap)
-    let restaurantNames: Record<string, string> = {}
+    const restaurantNames: Record<string, string> = {}
     if (restaurantIds.length > 0) {
         const { data: rNames } = await supabase.from('restaurants').select('id, name').in('id', restaurantIds)
         for (const r of (rNames || []) as Array<{ id: string; name: string }>) {

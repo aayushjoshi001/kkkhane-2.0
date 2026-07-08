@@ -1,23 +1,23 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Filter, Bed, Brush, Wrench, CheckCircle2, ChevronRight, Download, Loader2, X, Users, Calendar, Phone, FileText } from 'lucide-react'
-import type { Room, RoomType, RoomStatus } from '@/types/database'
+import { Plus, Filter, Bed, Brush, Wrench, CheckCircle2, ChevronRight, Download, Loader2, X, Users, Calendar, Phone } from 'lucide-react'
+import type { Room, RoomType, RoomStatus, Booking } from '@/types/database'
 import EmptyState from '@/components/ui/EmptyState'
 import { QRCodeCanvas } from 'qrcode.react'
 import { toast } from 'react-hot-toast'
-import { createPortal } from 'react-dom'
+import RoomBillingModal, { type BillingTable, type BillingOrder } from '@/components/admin/RoomBillingModal'
 
 interface RoomsClientProps {
     initialRooms: Room[]
     roomTypes: RoomType[]
     restaurantId: string
     restaurantSlug: string
-    tables?: any[]
-    activeOrders?: any[]
+    tables?: BillingTable[]
+    activeOrders?: BillingOrder[]
 }
 
-export default function RoomsClient({ initialRooms, roomTypes, restaurantId, restaurantSlug, tables = [], activeOrders = [] }: RoomsClientProps) {
+export default function RoomsClient({ initialRooms, roomTypes, restaurantSlug, tables = [], activeOrders = [] }: RoomsClientProps) {
     const [rooms, setRooms] = useState<Room[]>(initialRooms)
     const [roomTypesList, setRoomTypesList] = useState<RoomType[]>(roomTypes)
     
@@ -26,141 +26,8 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantId, res
     const [filterType, setFilterType] = useState<string>('all')
     const [selectedRoom, setSelectedRoom] = useState<Room | null>(null)
 
-    // States for Checkout/Stay details popup
-    const [selectedBillingRoom, setSelectedBillingRoom] = useState<any | null>(null)
-    const [billingStayBooking, setBillingStayBooking] = useState<any | null>(null)
-    const [billingRoomCharges, setBillingRoomCharges] = useState<any[]>([])
-    const [loadingStayDetails, setLoadingStayDetails] = useState(false)
-    const [billingPaymentMethod, setBillingPaymentMethod] = useState<'cash' | 'qr_digital' | 'split'>('cash')
-    const [splitCashAmount, setSplitCashAmount] = useState('')
-    const [splitQrAmount, setSplitQrAmount] = useState('')
-    const [isSavingCheckout, setIsSavingCheckout] = useState(false)
-    const [mounted, setMounted] = useState(false)
-
-    useEffect(() => {
-        setMounted(true)
-    }, [])
-
-    useEffect(() => {
-        if (selectedBillingRoom && billingStayBooking) {
-            setLoadingStayDetails(true)
-            fetch(`/api/rooms/charges?bookingId=${billingStayBooking.id}`)
-                .then(r => r.json())
-                .then(chargesData => {
-                    if (chargesData.success) {
-                        setBillingRoomCharges(chargesData.data || [])
-                    }
-                })
-                .catch(err => console.error('Error loading charges:', err))
-                .finally(() => setLoadingStayDetails(false))
-        }
-    }, [selectedBillingRoom, billingStayBooking])
-
-    const money = (amount: number) => {
-        return "Rs. " + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    }
-
-    const formatDateTimeLocal = (dateStr: string) => {
-        if (!dateStr) return '-'
-        return new Date(dateStr).toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
-        })
-    }
-
-    const calculateStayCost = (room: any, booking: any) => {
-        if (!room || !booking) return 0
-        const price = room.room_types?.base_price || 0
-        const inDate = new Date(booking.check_in)
-        const outDate = new Date(booking.check_out)
-        const diffMs = outDate.getTime() - inDate.getTime()
-        const nights = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)))
-        return price * nights
-    }
-
-    const getRoomQrOrders = (room: any) => {
-        if (!room) return []
-        const matchingTable = tables.find(t => t.label === room.room_number || t.label === 'Room ' + room.room_number)
-        if (!matchingTable?.activeSession) return []
-
-        const sessionOrders = activeOrders.filter(o => o.session_id === matchingTable.activeSession.id)
-        
-        const items: { name: string; quantity: number; unitPrice: number }[] = []
-        for (const order of sessionOrders) {
-            for (const item of order.order_items || []) {
-                items.push({
-                    name: item.menu_items?.name || 'Item',
-                    quantity: item.quantity,
-                    unitPrice: item.unit_price,
-                })
-            }
-        }
-        return items
-    }
-
-    const calculateGrandTotal = (room: any, booking: any) => {
-        const stayCost = calculateStayCost(room, booking)
-        const qrOrdersTotal = getRoomQrOrders(room).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
-        const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
-        return stayCost + qrOrdersTotal + manualChargesTotal
-    }
-
-    // The QR session whose orders are folded into the bill — sent to the
-    // checkout API so it can settle those orders and close the session.
-    const getRoomSessionId = (room: any) => {
-        if (!room) return null
-        const matchingTable = tables.find(t => t.label === room.room_number || t.label === 'Room ' + room.room_number)
-        return matchingTable?.activeSession?.id ?? null
-    }
-
-    const handleCheckoutSettle = async () => {
-        if (!selectedBillingRoom || !billingStayBooking) return
-        
-        setIsSavingCheckout(true)
-        try {
-            const total = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
-            const advancePaid = Number(billingStayBooking.paid_amount) || 0
-            const balanceDue = Math.max(0, total - advancePaid)
-
-            const resolvedCash = billingPaymentMethod === 'cash' ? balanceDue
-                : billingPaymentMethod === 'qr_digital' ? 0
-                : parseFloat(splitCashAmount) || 0
-            const resolvedQr = billingPaymentMethod === 'qr_digital' ? balanceDue
-                : billingPaymentMethod === 'cash' ? 0
-                : parseFloat(splitQrAmount) || 0
-
-            const res = await fetch(`/api/bookings/checkout`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    booking_id: billingStayBooking.id,
-                    room_id: selectedBillingRoom.id,
-                    total_amount: total,
-                    cash_paid: resolvedCash,
-                    qr_paid: resolvedQr,
-                    session_id: getRoomSessionId(selectedBillingRoom)
-                })
-            })
-            const data = await res.json()
-            if (!res.ok) throw new Error(data.error || 'Failed to checkout booking')
-
-            toast.success('Room billing settled and guest checked out successfully!')
-
-            // Update local state — keyed off the billing room, since the room
-            // details modal (selectedRoom) may already have been closed.
-            setRooms(prev => prev.map(r => r.id === selectedBillingRoom.id ? { ...r, status: 'dirty' } : r))
-            setSelectedBillingRoom(null)
-            setBillingStayBooking(null)
-            setSelectedRoom(null)
-        } catch (err: any) {
-            toast.error(err.message || 'Failed to checkout')
-        } finally {
-            setIsSavingCheckout(false)
-        }
-    }
+    // Stay being settled in the checkout/billing modal
+    const [billingStay, setBillingStay] = useState<{ room: Room; booking: Booking } | null>(null)
 
     // Modals state
     const [isAddRoomOpen, setIsAddRoomOpen] = useState(false)
@@ -169,8 +36,9 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantId, res
     const [isConfirmCloseOpen, setIsConfirmCloseOpen] = useState(false)
     
     // Active Booking (occupied room check-in details)
-    const [activeBooking, setActiveBooking] = useState<any | null>(null)
-    const [loadingBooking, setLoadingBooking] = useState(false)
+    const [activeBooking, setActiveBooking] = useState<Booking | null>(null)
+    // Which room's booking has been fetched — loading is derived from it
+    const [loadedBookingRoomId, setLoadedBookingRoomId] = useState<string | null>(null)
 
     const [roomForm, setRoomForm] = useState({ room_number: '', floor: '', type_id: '' })
     const [typeForm, setTypeForm] = useState({ name: '', base_price: '', capacity: '2', description: '' })
@@ -188,34 +56,32 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantId, res
     const [isSubmittingType, setIsSubmittingType] = useState(false)
     const [isSubmittingBooking, setIsSubmittingBooking] = useState(false)
 
-    const [isMounted, setIsMounted] = useState(false)
-    useEffect(() => {
-        setIsMounted(true)
-    }, [])
+    // Reset the fetched booking when the selected room changes (render-phase
+    // adjust, see react.dev "You Might Not Need an Effect")
+    const [prevSelectedRoomId, setPrevSelectedRoomId] = useState<string | null>(null)
+    if (prevSelectedRoomId !== (selectedRoom?.id ?? null)) {
+        setPrevSelectedRoomId(selectedRoom?.id ?? null)
+        setActiveBooking(null)
+    }
+    const loadingBooking = !!selectedRoom && selectedRoom.status === 'occupied' && loadedBookingRoomId !== selectedRoom.id
 
     // Fetch active booking details when an occupied room is selected
     useEffect(() => {
-        if (selectedRoom && selectedRoom.status === 'occupied') {
-            setLoadingBooking(true)
-            fetch(`/api/rooms/booking?roomId=${selectedRoom.id}`)
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        setActiveBooking(data.data)
-                    } else {
-                        setActiveBooking(null)
-                    }
-                })
-                .catch(err => {
-                    console.error("Error fetching room booking:", err)
-                    setActiveBooking(null)
-                })
-                .finally(() => {
-                    setLoadingBooking(false)
-                })
-        } else {
-            setActiveBooking(null)
-        }
+        if (!selectedRoom || selectedRoom.status !== 'occupied') return
+        let cancelled = false
+        fetch(`/api/rooms/booking?roomId=${selectedRoom.id}`)
+            .then(res => res.json())
+            .then(data => {
+                if (!cancelled) setActiveBooking(data.success ? data.data : null)
+            })
+            .catch(err => {
+                console.error("Error fetching room booking:", err)
+                if (!cancelled) setActiveBooking(null)
+            })
+            .finally(() => {
+                if (!cancelled) setLoadedBookingRoomId(selectedRoom.id)
+            })
+        return () => { cancelled = true }
     }, [selectedRoom, rooms])
 
     // Filter logic
@@ -274,8 +140,8 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantId, res
             setIsAddTypeOpen(false)
             setTypeForm({ name: '', base_price: '', capacity: '2', description: '' })
             toast.success('Room Category added!')
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to add Room Category')
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Failed to add Room Category')
         } finally {
             setIsSubmittingType(false)
         }
@@ -298,8 +164,8 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantId, res
             setIsAddRoomOpen(false)
             setRoomForm({ room_number: '', floor: '', type_id: '' })
             toast.success('Room created successfully!')
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to add room')
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Failed to add room')
         } finally {
             setIsSubmittingRoom(false)
         }
@@ -376,8 +242,8 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantId, res
             setSelectedRoom(prev => prev ? { ...prev, status: 'occupied' } : null)
             setIsBookModalOpen(false)
             toast.success('Room booked successfully!')
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to book room')
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Failed to book room')
         } finally {
             setIsSubmittingBooking(false)
         }
@@ -745,8 +611,7 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantId, res
                                         <div className="pt-2">
                                             <button
                                                 onClick={() => {
-                                                    setSelectedBillingRoom(selectedRoom)
-                                                    setBillingStayBooking(activeBooking)
+                                                    if (selectedRoom) setBillingStay({ room: selectedRoom, booking: activeBooking })
                                                 }}
                                                 className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold rounded-xl text-xs transition-colors shadow-sm shadow-rose-600/10"
                                             >
@@ -1153,253 +1018,19 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantId, res
             )}
 
             {/* Billing Stay Details modal */}
-            {mounted && selectedBillingRoom && createPortal(
-                <div 
-                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-300"
-                    onClick={() => setSelectedBillingRoom(null)}
-                >
-                    <div 
-                        className="bg-white w-full max-w-2xl rounded-[28px] shadow-2xl overflow-hidden border border-gray-150 flex flex-col max-h-[90vh] md:max-h-[85vh] animate-in zoom-in-95 duration-200"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 bg-gray-50/50 flex-shrink-0">
-                            <div>
-                                <h3 className="text-lg font-black text-gray-900">Room {selectedBillingRoom.room_number} stays details</h3>
-                                <p className="text-xs text-gray-500 mt-0.5">{selectedBillingRoom.room_types?.name} • Floor {selectedBillingRoom.floor || 'N/A'}</p>
-                            </div>
-                            <button onClick={() => setSelectedBillingRoom(null)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition text-gray-500 hover:text-gray-900"><X size={16} /></button>
-                        </div>
-
-                        {loadingStayDetails ? (
-                            <div className="p-6 flex-1 flex flex-col items-center justify-center gap-3">
-                                <Loader2 size={32} className="animate-spin text-[#ff5a00]" />
-                                <p className="text-xs text-gray-500 font-semibold">Loading details...</p>
-                            </div>
-                        ) : billingStayBooking ? (
-                            <>
-                                <div className="space-y-6 p-6 overflow-y-auto flex-1">
-                                <div className="grid grid-cols-2 gap-4 bg-gray-50/50 border border-gray-100 rounded-2xl p-4 text-xs">
-                                    <div className="space-y-1.5">
-                                        <p className="text-[10px] font-bold text-gray-400 uppercase">Guest</p>
-                                        <p className="font-extrabold text-gray-900 text-sm">{billingStayBooking.guest_name}</p>
-                                        <p className="font-semibold text-gray-600">{billingStayBooking.guest_phone}</p>
-                                    </div>
-                                    <div className="space-y-1 text-right border-l border-gray-100 pl-4">
-                                        <p className="text-[10px] font-bold text-gray-400 uppercase">Stay schedule</p>
-                                        <p className="font-semibold text-gray-600">In: {formatDateTime(billingStayBooking.check_in)}</p>
-                                        <p className="font-semibold text-gray-600">Out: {formatDateTime(billingStayBooking.check_out)}</p>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-4">
-                                    <h4 className="text-xs font-bold uppercase text-gray-400 tracking-wider">Stay billing breakdown</h4>
-                                    <div className="border border-gray-100 rounded-2xl overflow-hidden divide-y divide-gray-100 bg-white">
-                                        <div className="flex justify-between items-center p-4 text-xs">
-                                            <div>
-                                                <p className="font-extrabold text-gray-900">Room Stay Cost</p>
-                                                <p className="text-[10px] text-gray-400">{money(selectedBillingRoom.room_types?.base_price || 0)} / Night</p>
-                                            </div>
-                                            <span className="font-extrabold text-gray-600 tabular-nums">{money(calculateStayCost(selectedBillingRoom, billingStayBooking))}</span>
-                                        </div>
-
-                                        {getRoomQrOrders(selectedBillingRoom).length > 0 && (
-                                            <div className="p-4 space-y-2">
-                                                <p className="font-extrabold text-xs text-indigo-600">QR Room service orders</p>
-                                                <div className="space-y-1.5 pl-3 border-l-2 border-indigo-100">
-                                                    {getRoomQrOrders(selectedBillingRoom).map((item, idx) => (
-                                                        <div key={idx} className="flex justify-between text-[10px] text-gray-600">
-                                                            <span>{item.name} ({item.quantity}×)</span>
-                                                            <span className="tabular-nums font-semibold">{money(item.unitPrice * item.quantity)}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {billingRoomCharges.length > 0 && (
-                                            <div className="p-4 space-y-2">
-                                                <p className="font-extrabold text-xs text-amber-600">Additional stay charges</p>
-                                                <div className="space-y-1.5 pl-3 border-l-2 border-amber-100">
-                                                    {billingRoomCharges.map((c: any) => (
-                                                        <div key={c.id} className="flex justify-between text-[10px] text-gray-600">
-                                                            <span className="capitalize">{c.description} ({c.charge_type})</span>
-                                                            <span className="tabular-nums font-semibold">{money(c.amount)}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Payment Method Selector */}
-                                <div className="pt-4">
-                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Payment Method</p>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        <button
-                                            onClick={() => setBillingPaymentMethod('cash')}
-                                            className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
-                                                billingPaymentMethod === 'cash'
-                                                    ? 'border-[#ff5a00] bg-orange-50/50 text-[#ff5a00]'
-                                                    : 'border-gray-150 bg-white text-gray-500 hover:border-[#ff5a00]/50 hover:text-[#ff5a00]'
-                                            }`}
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
-                                            Cash
-                                        </button>
-                                        <button
-                                            onClick={() => setBillingPaymentMethod('qr_digital')}
-                                            className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
-                                                billingPaymentMethod === 'qr_digital'
-                                                    ? 'border-[#ff5a00] bg-orange-50/50 text-[#ff5a00]'
-                                                    : 'border-gray-150 bg-white text-gray-500 hover:border-[#ff5a00]/50 hover:text-[#ff5a00]'
-                                            }`}
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
-                                            QR / Digital
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setBillingPaymentMethod('split')
-                                                setSplitCashAmount('')
-                                                setSplitQrAmount('')
-                                            }}
-                                            className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
-                                                billingPaymentMethod === 'split'
-                                                    ? 'border-[#ff5a00] bg-orange-50/50 text-[#ff5a00]'
-                                                    : 'border-gray-150 bg-white text-gray-500 hover:border-[#ff5a00]/50 hover:text-[#ff5a00]'
-                                            }`}
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></svg>
-                                            Both
-                                        </button>
-                                    </div>
-
-                                    {/* Split amount inputs — shown only when Both is selected */}
-                                    {billingPaymentMethod === 'split' && (() => {
-                                        const total = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
-                                        const advancePaid = Number(billingStayBooking?.paid_amount) || 0
-                                        const balanceDue = Math.max(0, total - advancePaid)
-                                        return (
-                                            <div className="mt-3 grid grid-cols-2 gap-3 p-3 bg-gray-50/50 border border-gray-100 rounded-2xl">
-                                                <div>
-                                                    <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Cash Amount</label>
-                                                    <div className="relative">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400">Rs.</span>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            max={balanceDue}
-                                                            placeholder="0.00"
-                                                            value={splitCashAmount}
-                                                            onChange={e => {
-                                                                const v = e.target.value
-                                                                setSplitCashAmount(v)
-                                                                const cash = parseFloat(v) || 0
-                                                                setSplitQrAmount(Math.max(0, balanceDue - cash).toFixed(2))
-                                                            }}
-                                                            className="w-full pl-7 pr-2 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">QR / Digital Amount</label>
-                                                    <div className="relative">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400">Rs.</span>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            max={balanceDue}
-                                                            placeholder="0.00"
-                                                            value={splitQrAmount}
-                                                            onChange={e => {
-                                                                const v = e.target.value
-                                                                setSplitQrAmount(v)
-                                                                const qr = parseFloat(v) || 0
-                                                                setSplitCashAmount(Math.max(0, balanceDue - qr).toFixed(2))
-                                                            }}
-                                                            className="w-full pl-7 pr-2 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
-                                                        />
-                                                    </div>
-                                                </div>
-                                                {/* Balance check */}
-                                                {(() => {
-                                                    const cash = parseFloat(splitCashAmount) || 0
-                                                    const qr = parseFloat(splitQrAmount) || 0
-                                                    const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
-                                                    const advancePaid = Number(billingStayBooking?.paid_amount) || 0
-                                                    const balanceDue = Math.max(0, grandTotal - advancePaid)
-                                                    const diff = Math.abs(cash + qr - balanceDue)
-                                                    if (diff > 0.01) return (
-                                                        <p className="col-span-2 text-[9px] text-rose-500 font-bold text-center">
-                                                            ⚠ Cash + QR must equal {money(balanceDue)} (difference: {money(diff)})
-                                                        </p>
-                                                    )
-                                                    return (
-                                                        <p className="col-span-2 text-[9px] text-emerald-600 font-bold text-center">✓ Amounts balanced</p>
-                                                    )
-                                                })()}
-                                            </div>
-                                        )
-                                    })()}
-                                </div>
-                            </div>
-                            <div className="border-t border-gray-100 px-6 py-4 flex-shrink-0 bg-white">
-                                    {/* Gross Total + Advance row */}
-                                    {(() => {
-                                        const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
-                                        const advancePaid = Number(billingStayBooking?.paid_amount) || 0
-                                        const balanceDue = Math.max(0, grandTotal - advancePaid)
-                                        return (
-                                            <>
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-[10px] font-bold text-gray-400 uppercase">Total bill amount</span>
-                                                    <span className="text-sm font-black text-gray-600 tabular-nums">{money(grandTotal)}</span>
-                                                </div>
-                                                {advancePaid > 0 && (
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-[10px] font-bold text-emerald-600 uppercase flex items-center gap-1">
-                                                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                                            Advance Paid ({billingStayBooking?.advance_payment_method === 'qr_digital' ? 'QR/Digital' : 'Cash'})
-                                                        </span>
-                                                        <span className="text-sm font-black text-emerald-600 tabular-nums">− {money(advancePaid)}</span>
-                                                    </div>
-                                                )}
-                                                <div className="flex items-center justify-between pt-1 border-t border-dashed border-gray-100">
-                                                    <div>
-                                                        <span className="text-[10px] font-bold text-gray-400 uppercase">{advancePaid > 0 ? 'Balance Due' : 'Total Due'}</span>
-                                                        <p className="text-2xl font-black text-[#ff5a00] tabular-nums">{money(balanceDue)}</p>
-                                                    </div>
-                                                    <div className="flex gap-2">
-                                                        <button 
-                                                            onClick={() => setSelectedBillingRoom(null)}
-                                                            className="px-4 py-2 border border-gray-200 rounded-xl text-xs font-semibold hover:bg-gray-50 transition"
-                                                        >
-                                                            Close
-                                                        </button>
-                                                        <button 
-                                                            onClick={handleCheckoutSettle}
-                                                            disabled={isSavingCheckout}
-                                                            className="px-6 py-2 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-[#ff5a00]/10 disabled:opacity-50 flex items-center gap-1.5"
-                                                        >
-                                                            {isSavingCheckout ? <Loader2 size={12} className="animate-spin" /> : null}
-                                                            Settle & Checkout
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </>
-                                        )
-                                    })()}
-                                </div>
-                            </>
-                        ) : (
-                            <div className="p-6 flex-1 flex items-center justify-center">
-                                <p className="text-xs text-gray-400">No active stay found for this room.</p>
-                            </div>
-                        )}
-                    </div>
-                </div>,
-                document.body
+            {billingStay && (
+                <RoomBillingModal
+                    room={billingStay.room}
+                    booking={billingStay.booking}
+                    tables={tables}
+                    activeOrders={activeOrders}
+                    onClose={() => setBillingStay(null)}
+                    onSettled={result => {
+                        setRooms(prev => prev.map(r => r.id === result.roomId ? { ...r, status: 'dirty' } : r))
+                        setBillingStay(null)
+                        setSelectedRoom(null)
+                    }}
+                />
             )}
         </div>
     )

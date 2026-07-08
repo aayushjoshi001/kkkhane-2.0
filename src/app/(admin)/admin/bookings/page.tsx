@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/server'
+import type { BillingTable, BillingOrder } from '@/components/admin/RoomBillingModal'
 import { getCurrentUser } from '@/lib/auth'
 import BookingsClient from './BookingsClient'
 import type { Booking, Room } from '@/types/database'
@@ -14,8 +15,8 @@ export default async function BookingsPage() {
     // Fetch bookings, rooms, tables, sessions and active orders with safety
     let bookings: Booking[] = []
     let rooms: Room[] = []
-    let tablesMapped: any[] = []
-    let activeOrders: any[] = []
+    let tablesMapped: BillingTable[] = []
+    let activeOrders: BillingOrder[] = []
 
     try {
         const [bookingsRes, roomsRes, tablesRes, activeSessionsRes, activeOrdersRes] = await Promise.all([
@@ -53,7 +54,7 @@ export default async function BookingsPage() {
 
         bookings = (bookingsRes.data as unknown as Booking[]) || []
         rooms = (roomsRes.data as unknown as Room[]) || []
-        activeOrders = activeOrdersRes.data || []
+        activeOrders = (activeOrdersRes.data as unknown as BillingOrder[]) || []
         
         const activeSessions = activeSessionsRes.data || []
         const activeSessionsByTable = Object.fromEntries(
