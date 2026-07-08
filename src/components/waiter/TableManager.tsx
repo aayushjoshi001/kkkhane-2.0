@@ -14,6 +14,7 @@ import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import EmptyState from '@/components/ui/EmptyState'
 import { useRouter } from 'next/navigation'
+import QuickOrderModal from './QuickOrderModal'
 
 export type TableWithSession = Table & { activeSession?: Session | null }
 
@@ -75,6 +76,8 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
 
     const [mounted, setMounted] = useState(false)
     useEffect(() => { setMounted(true) }, [])
+
+    const [quickOrderSession, setQuickOrderSession] = useState<{ sessionId: string; tableName: string } | null>(null)
 
     const [openSessionRequests, setOpenSessionRequests] = useState<Record<string, string>>({})
 
@@ -481,7 +484,10 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                                     setPhoneResult(null)
                                                     setActiveBookingsList([])
                                                 } else {
-                                                    router.push(`/t/${selectedTable.qr_token}?s=${selectedTable.activeSession!.session_token}&w=1`)
+                                                    setQuickOrderSession({
+                                                        sessionId: selectedTable.activeSession!.session_token,
+                                                        tableName: selectedTable.label
+                                                    })
                                                     setSelectedTable(null)
                                                 }
                                             }}
@@ -654,9 +660,12 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                         variant="secondary"
                                         icon={ShoppingCart}
                                         onClick={() => {
-                                            router.push(`/t/${selectedTable.qr_token}?s=${selectedTable.activeSession!.session_token}&w=1`)
-                                            setSelectedTable(null)
-                                            setShowGuestPicker(false)
+                                            setQuickOrderSession({
+                                                 sessionId: selectedTable.activeSession!.session_token,
+                                                 tableName: selectedTable.label
+                                             })
+                                             setSelectedTable(null)
+                                             setShowGuestPicker(false)
                                         }}
                                     >
                                         Outside Guest (Direct Order)
@@ -737,7 +746,10 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                                         toast.success(`Linked to Room ${(phoneResult as any).rooms?.room_number}`)
                                                     }
                                                     setIsProcessing(false)
-                                                    router.push(`/t/${selectedTable.qr_token}?s=${selectedTable.activeSession!.session_token}&w=1`)
+                                                    setQuickOrderSession({
+                                                        sessionId: selectedTable.activeSession!.session_token,
+                                                        tableName: selectedTable.label
+                                                    })
                                                     setSelectedTable(null)
                                                     setShowGuestPicker(false)
                                                 }}
@@ -802,7 +814,10 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                                             toast.success(`Linked to Room ${booking.rooms?.room_number || '?'}`)
                                                         }
                                                         setIsProcessing(false)
-                                                        router.push(`/t/${selectedTable.qr_token}?s=${selectedTable.activeSession!.session_token}&w=1`)
+                                                        setQuickOrderSession({
+                                                            sessionId: selectedTable.activeSession!.session_token,
+                                                            tableName: selectedTable.label
+                                                        })
                                                         setSelectedTable(null)
                                                         setShowGuestPicker(false)
                                                     }}
@@ -833,6 +848,15 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                     </div>
                 </div>,
                 document.body
+            )}
+            {quickOrderSession && (
+                <QuickOrderModal
+                    isOpen={true}
+                    onClose={() => setQuickOrderSession(null)}
+                    sessionId={quickOrderSession.sessionId}
+                    tableName={quickOrderSession.tableName}
+                    restaurantId={restaurantId}
+                />
             )}
         </div>
     )
