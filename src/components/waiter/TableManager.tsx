@@ -641,46 +641,26 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                         block
                                         variant="primary"
                                         icon={Hotel}
-                                        onClick={async () => {
-                                            setGuestPickerStep('rooms')
-                                            setLoadingBookings(true)
-                                            const res = await getActiveBookings(restaurantId)
-                                            if (res.success && res.bookings) {
-                                                setActiveBookingsList(res.bookings)
-                                            } else {
-                                                toast.error(res.error || 'Failed to load bookings')
-                                            }
-                                            setLoadingBookings(false)
-                                        }}
-                                    >
-                                        Hotel Guest
-                                    </Button>
-                                    <Button
-                                        block
-                                        variant="secondary"
-                                        icon={Phone}
                                         onClick={() => {
                                             setGuestPickerStep('phone')
                                             setPhoneInput('')
                                             setPhoneResult(null)
                                         }}
                                     >
-                                        Outside Guest
+                                        Hotel Guest (Link to Room)
                                     </Button>
-                                    <div className="pt-2 border-t border-hairline mt-2">
-                                        <Button
-                                            block
-                                            variant="secondary"
-                                            icon={ShoppingCart}
-                                            onClick={() => {
-                                                router.push(`/t/${selectedTable.qr_token}?s=${selectedTable.activeSession!.session_token}&w=1`)
-                                                setSelectedTable(null)
-                                                setShowGuestPicker(false)
-                                            }}
-                                        >
-                                            Skip — Order Directly
-                                        </Button>
-                                    </div>
+                                    <Button
+                                        block
+                                        variant="secondary"
+                                        icon={ShoppingCart}
+                                        onClick={() => {
+                                            router.push(`/t/${selectedTable.qr_token}?s=${selectedTable.activeSession!.session_token}&w=1`)
+                                            setSelectedTable(null)
+                                            setShowGuestPicker(false)
+                                        }}
+                                    >
+                                        Outside Guest (Direct Order)
+                                    </Button>
                                 </div>
                             )}
 
@@ -726,20 +706,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                     {phoneResult === undefined && (
                                         <div className="bg-warning/10 border border-warning/20 rounded-xl p-4 text-center">
                                             <p className="text-body font-semibold text-warning-fg">No booking found</p>
-                                            <p className="text-caption text-ink-subtle mt-1">This phone number is not linked to any checked-in room</p>
-                                            <Button
-                                                block
-                                                variant="secondary"
-                                                icon={ShoppingCart}
-                                                className="mt-3"
-                                                onClick={() => {
-                                                    router.push(`/t/${selectedTable.qr_token}?s=${selectedTable.activeSession!.session_token}&w=1`)
-                                                    setSelectedTable(null)
-                                                    setShowGuestPicker(false)
-                                                }}
-                                            >
-                                                Order Without Room Link
-                                            </Button>
+                                            <p className="text-caption text-ink-subtle mt-1">Please make sure the phone number matches the one provided during room check-in.</p>
                                         </div>
                                     )}
 
@@ -780,12 +747,30 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                         </div>
                                     )}
 
-                                    <button
-                                        onClick={() => setGuestPickerStep('choose')}
-                                        className="w-full text-center text-caption text-ink-subtle hover:text-ink mt-2"
-                                    >
-                                        ← Back
-                                    </button>
+                                    <div className="flex flex-col gap-2 mt-4 pt-2 border-t border-hairline">
+                                        <button
+                                            onClick={() => setGuestPickerStep('choose')}
+                                            className="w-full text-center text-caption text-ink-subtle hover:text-ink"
+                                        >
+                                            ← Back
+                                        </button>
+                                        <button
+                                            onClick={async () => {
+                                                setGuestPickerStep('rooms')
+                                                setLoadingBookings(true)
+                                                const res = await getActiveBookings(restaurantId)
+                                                if (res.success && res.bookings) {
+                                                    setActiveBookingsList(res.bookings)
+                                                } else {
+                                                    toast.error(res.error || 'Failed to load bookings')
+                                                }
+                                                setLoadingBookings(false)
+                                            }}
+                                            className="w-full text-center text-[11px] text-brand-500 hover:underline font-semibold mt-1"
+                                        >
+                                            Or browse checked-in guests list
+                                        </button>
+                                    </div>
                                 </div>
                             )}
 
