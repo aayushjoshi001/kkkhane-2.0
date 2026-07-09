@@ -93,7 +93,7 @@ export default function BankLedgerManager({
     const [newBankName, setNewBankName] = useState('')
     const [newBankAccountNumber, setNewBankAccountNumber] = useState('')
     const [newBankDisplayName, setNewBankDisplayName] = useState('')
-    const [ownershipType, setOwnershipType] = useState<'company' | 'personal' | 'ac_payee' | ''>('')
+    const [ownershipType, setOwnershipType] = useState<'company' | 'personal' | ''>('')
     const [submittingBank, setSubmittingBank] = useState(false)
 
     const handleAddBank = async (e: React.FormEvent) => {
@@ -495,14 +495,13 @@ export default function BankLedgerManager({
                                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Ownership Category *</label>
                                 <select
                                     value={ownershipType}
-                                    onChange={e => setOwnershipType(e.target.value as 'company' | 'personal' | 'ac_payee' | '')}
+                                    onChange={e => setOwnershipType(e.target.value as 'company' | 'personal' | '')}
                                     required
                                     className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
                                 >
                                     <option value="">Choose Category *</option>
-                                    <option value="company">Company / Restaurant Account</option>
+                                    <option value="company">Company Account (A/C Payee)</option>
                                     <option value="personal">Personal Account (Manager/Owner)</option>
-                                    <option value="ac_payee">A/C Payee (Company Account)</option>
                                 </select>
                             </div>
 

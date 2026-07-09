@@ -166,7 +166,7 @@ export async function createVoucherAction(input: {
             .maybeSingle()
         if (bankAcc?.bank_name?.startsWith('personal:')) {
             isPersonalAccount = true
-        } else if (bankAcc?.bank_name?.startsWith('ac_payee:')) {
+        } else if (bankAcc?.bank_name?.startsWith('company:') || bankAcc?.bank_name?.startsWith('ac_payee:')) {
             isAcPayeeAccount = true
         }
     }

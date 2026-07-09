@@ -925,7 +925,7 @@ export default function VouchersManager({
                                         <option value="">Select Account</option>
                                         {parsedBankAccounts.map(b => (
                                             <option key={b.id} value={b.name}>
-                                                {b.name} ({b.displayName} — {b.ownership === 'personal' ? 'Personal' : (b.ownership === 'ac_payee' ? 'A/C Payee' : 'Company')})
+                                                {b.name} ({b.displayName} — {b.ownership === 'personal' ? 'Personal' : 'Company (A/C Payee)'})
                                             </option>
                                         ))}
                                     </select>

@@ -61,7 +61,7 @@ export default function BankManager({
 function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAccounts: (fn: (prev: BankAccount[]) => BankAccount[]) => void }) {
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
-    const [form, setForm] = useState({ name: '', account_type: 'bank' as BankAccountType, wallet_provider: '', bank_name: '', account_number: '', opening_balance: '0', ownership_type: '' as 'company' | 'personal' | 'ac_payee' | '' })
+    const [form, setForm] = useState({ name: '', account_type: 'bank' as BankAccountType, wallet_provider: '', bank_name: '', account_number: '', opening_balance: '0', ownership_type: '' as 'company' | 'personal' | '' })
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
@@ -158,11 +158,10 @@ function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAc
                     </FormSelect>
                 ) : (
                     <>
-                        <FormSelect label="Ownership Category" required value={form.ownership_type} onChange={(e) => setForm((f) => ({ ...f, ownership_type: e.target.value as 'company' | 'personal' | 'ac_payee' | '' }))}>
+                        <FormSelect label="Ownership Category" required value={form.ownership_type} onChange={(e) => setForm((f) => ({ ...f, ownership_type: e.target.value as 'company' | 'personal' | '' }))}>
                             <option value="">Choose Category *</option>
-                            <option value="company">Company / Restaurant Account</option>
+                            <option value="company">Company Account (A/C Payee)</option>
                             <option value="personal">Personal Account (Manager/Owner)</option>
-                            <option value="ac_payee">A/C Payee (Company Account)</option>
                         </FormSelect>
                         <FormInput label="Bank Name" value={form.bank_name} onChange={(e) => setForm((f) => ({ ...f, bank_name: e.target.value }))} />
                         <FormInput label="Account Number" value={form.account_number} onChange={(e) => setForm((f) => ({ ...f, account_number: e.target.value }))} />
