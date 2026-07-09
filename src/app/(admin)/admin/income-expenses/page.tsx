@@ -33,13 +33,13 @@ export default async function IncomeExpensesPage() {
             .order('name', { ascending: true }),
         supabase
             .from('income_entries')
-            .select('*, income_categories(*)')
+            .select('*, income_categories(*), bank_accounts(*)')
             .eq('restaurant_id', restaurantId)
             .order('created_at', { ascending: false })
             .limit(200),
         supabase
             .from('expenses')
-            .select('*, expense_categories(*)')
+            .select('*, expense_categories(*), bank_accounts(*)')
             .eq('restaurant_id', restaurantId)
             .order('created_at', { ascending: false })
             .limit(200),

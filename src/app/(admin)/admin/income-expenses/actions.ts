@@ -92,6 +92,19 @@ export async function createEntryAction(input: {
         .eq('status', 'open')
         .maybeSingle()
 
+    let bankAccountId: string | null = null
+    if (input.payment_source === 'bank' && input.bank_name) {
+        const { data: bankAcc } = await supabase
+            .from('bank_accounts')
+            .select('id')
+            .eq('restaurant_id', user.restaurantId)
+            .eq('name', input.bank_name.trim())
+            .maybeSingle()
+        if (bankAcc) {
+            bankAccountId = bankAcc.id
+        }
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let newEntryData: any = null
 
@@ -103,9 +116,10 @@ export async function createEntryAction(input: {
                 amount: input.amount,
                 description: input.description.trim(),
                 restaurant_id: user.restaurantId,
+                bank_account_id: bankAccountId,
                 created_by: user.id
             })
-            .select('*, income_categories(*)')
+            .select('*, income_categories(*), bank_accounts(*)')
             .single()
 
         if (error) return { error: error.message }
@@ -119,12 +133,13 @@ export async function createEntryAction(input: {
                 description: input.description.trim(),
                 vendor_name: input.vendor_name?.trim() || null,
                 status: 'paid', // Auto-approved and paid for simple tracking
+                bank_account_id: bankAccountId,
                 approved_by: user.id,
                 approved_at: new Date().toISOString(),
                 restaurant_id: user.restaurantId,
                 created_by: user.id
             })
-            .select('*, expense_categories(*)')
+            .select('*, expense_categories(*), bank_accounts(*)')
             .single()
 
         if (error) return { error: error.message }

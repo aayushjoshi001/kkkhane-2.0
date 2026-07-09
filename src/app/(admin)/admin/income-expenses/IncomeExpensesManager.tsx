@@ -15,6 +15,13 @@ interface Category {
     description: string | null
 }
 
+interface BankAccount {
+    id: string
+    name: string
+    bank_name: string | null
+    account_number: string | null
+}
+
 interface IncomeEntry {
     id: string
     amount: number
@@ -22,6 +29,7 @@ interface IncomeEntry {
     created_at: string
     category_id: string
     income_categories: Category | null
+    bank_accounts: BankAccount | null
 }
 
 interface ExpenseEntry {
@@ -32,6 +40,7 @@ interface ExpenseEntry {
     created_at: string
     category_id: string
     expense_categories: Category | null
+    bank_accounts: BankAccount | null
 }
 interface IncomeExpensesManagerProps {
     initialIncomeCategories: Category[]
@@ -668,6 +677,7 @@ export default function IncomeExpensesManager({
                                             <th className="px-4 py-3 font-bold text-ink-subtle border-r border-hairline w-12 text-center">#</th>
                                             <th className="px-4 py-3 font-bold text-ink-subtle border-r border-hairline w-28">Date</th>
                                             <th className="px-4 py-3 font-bold text-ink-subtle border-r border-hairline w-36">Category</th>
+                                            <th className="px-4 py-3 font-bold text-ink-subtle border-r border-hairline w-28 font-bold">Payment</th>
                                             <th className="px-4 py-3 font-bold text-ink-subtle border-r border-hairline">Description</th>
                                             <th className="px-4 py-3 font-bold text-ink-subtle text-right border-r border-hairline w-32">Amount</th>
                                             <th className="px-4 py-3 font-bold text-ink-subtle w-16 text-center">Actions</th>
@@ -677,12 +687,19 @@ export default function IncomeExpensesManager({
                                         {filteredIncomeEntries.map((item, idx) => (
                                             <tr key={item.id} className={`hover:bg-brand-50/5 transition-colors ${idx % 2 === 0 ? 'bg-surface' : 'bg-surface-muted/10'}`}>
                                                 <td className="px-4 py-3 text-center border-r border-hairline font-black text-ink-muted">{idx + 1}</td>
-                                                <td className="px-4 py-3 border-r border-hairline whitespace-nowrap text-ink-subtle font-bold">
+                                                <td className="px-4 py-3 border-r border-hairline text-ink-subtle font-bold">
                                                     {new Date(item.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
                                                 </td>
                                                 <td className="px-4 py-3 border-r border-hairline">
                                                     <span className="inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase border border-emerald-100 bg-emerald-50 text-emerald-700">
                                                         {item.income_categories?.name || 'Uncategorized'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 border-r border-hairline">
+                                                    <span className={`inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase ${
+                                                        item.bank_accounts ? 'bg-indigo-50 border border-indigo-100 text-indigo-700' : 'bg-amber-50 border border-amber-100 text-amber-700'
+                                                    }`}>
+                                                        {item.bank_accounts ? item.bank_accounts.name : 'Cash'}
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-3 border-r border-hairline font-bold text-ink">{item.description}</td>
@@ -717,6 +734,7 @@ export default function IncomeExpensesManager({
                                             <th className="px-4 py-3 font-bold text-ink-subtle border-r border-hairline w-28">Date</th>
                                             <th className="px-4 py-3 font-bold text-ink-subtle border-r border-hairline w-36">Category</th>
                                             <th className="px-4 py-3 font-bold text-ink-subtle border-r border-hairline w-32">Vendor</th>
+                                            <th className="px-4 py-3 font-bold text-ink-subtle border-r border-hairline w-28 font-bold">Payment</th>
                                             <th className="px-4 py-3 font-bold text-ink-subtle border-r border-hairline">Description</th>
                                             <th className="px-4 py-3 font-bold text-ink-subtle text-right border-r border-hairline w-32">Amount</th>
                                             <th className="px-4 py-3 font-bold text-ink-subtle w-16 text-center">Actions</th>
@@ -736,6 +754,13 @@ export default function IncomeExpensesManager({
                                                 </td>
                                                 <td className="px-4 py-3 border-r border-hairline font-bold text-ink-subtle truncate max-w-[120px]" title={item.vendor_name || ''}>
                                                     {item.vendor_name || <span className="text-ink-muted italic">None</span>}
+                                                </td>
+                                                <td className="px-4 py-3 border-r border-hairline">
+                                                    <span className={`inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase ${
+                                                        item.bank_accounts ? 'bg-indigo-50 border border-indigo-100 text-indigo-700' : 'bg-amber-50 border border-amber-100 text-amber-700'
+                                                    }`}>
+                                                        {item.bank_accounts ? item.bank_accounts.name : 'Cash'}
+                                                    </span>
                                                 </td>
                                                 <td className="px-4 py-3 border-r border-hairline font-bold text-ink">{item.description}</td>
                                                 <td className="px-4 py-3 text-right font-black border-r border-hairline text-rose-600 text-sm whitespace-nowrap">

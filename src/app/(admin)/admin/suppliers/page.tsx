@@ -26,7 +26,7 @@ export default async function SuppliersLedgerPage() {
             .order('name', { ascending: true }),
         supabase
             .from('expenses')
-            .select('*, expense_categories(*)')
+            .select('*, expense_categories(*), bank_accounts(*)')
             .eq('restaurant_id', restaurantId)
             .order('created_at', { ascending: false }),
         supabase

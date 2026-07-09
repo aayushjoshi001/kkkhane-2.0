@@ -25,6 +25,7 @@ interface Expense {
     vendor_name: string | null
     created_at: string
     expense_categories: { name: string } | null
+    bank_accounts: { name: string } | null
 }
 
 interface SuppliersLedgerManagerProps {
@@ -597,7 +598,7 @@ export default function SuppliersLedgerManager({
                                                                     ? 'bg-indigo-50 text-indigo-700'
                                                                     : 'bg-amber-50 text-amber-700'
                                                         }`}>
-                                                            {e.paidAmt === 0 ? 'UNPAID' : e.parsed.payment_type === 'bank' ? `BANK (${e.parsed.bank_name || 'Transfer'})` : 'CASH'}
+                                                            {e.paidAmt === 0 ? 'UNPAID' : e.parsed.payment_type === 'bank' ? `BANK (${e.bank_accounts?.name || e.parsed.bank_name || 'Transfer'})` : 'CASH'}
                                                         </span>
                                                     </td>
                                                     {/* Running Balance */}

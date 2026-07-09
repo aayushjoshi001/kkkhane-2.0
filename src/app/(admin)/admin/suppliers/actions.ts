@@ -155,6 +155,19 @@ export async function createSupplierBillAction(input: {
         bank_name: input.payment_source === 'bank' ? (input.bank_name?.trim() || '') : ''
     })
 
+    let bankAccountId: string | null = null
+    if (input.payment_source === 'bank' && input.bank_name) {
+        const { data: bankAcc } = await supabase
+            .from('bank_accounts')
+            .select('id')
+            .eq('restaurant_id', user.restaurantId)
+            .eq('name', input.bank_name.trim())
+            .maybeSingle()
+        if (bankAcc) {
+            bankAccountId = bankAcc.id
+        }
+    }
+
     // 2. Insert into expenses table
     const { data: newExpense, error: expError } = await supabase
         .from('expenses')
@@ -165,11 +178,12 @@ export async function createSupplierBillAction(input: {
             description: descJson,
             vendor_name: input.supplier_name,
             status: 'paid',
+            bank_account_id: bankAccountId,
             approved_by: user.id,
             approved_at: new Date().toISOString(),
             created_by: user.id
         })
-        .select('*, expense_categories(*)')
+        .select('*, expense_categories(*), bank_accounts(*)')
         .single()
 
     if (expError) return { error: expError.message }
