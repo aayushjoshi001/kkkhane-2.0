@@ -40,7 +40,7 @@ export async function GET(req: Request) {
         // 2. Fetch active booking details
         const { data: booking } = await supabase
             .from('bookings')
-            .select('*, rooms:room_id(room_number, room_types:room_type_id(base_price, name))')
+            .select('*, rooms:room_id(room_number, room_types:type_id(base_price, name))')
             .eq('id', roomContext.bookingId)
             .single()
 
@@ -56,18 +56,40 @@ export async function GET(req: Request) {
         const nights = calculateNights(booking.check_in, booking.check_out)
         const stayCost = pricePerNight * nights
 
-        // 4. Fetch all non-cancelled orders for this booking_id
+        // 4. Fetch all non-cancelled orders for this booking_id (in-room QR orders —
+        // booking_id is stamped directly on the order at placement, see checkout/actions.ts)
         const { data: orders } = await supabase
             .from('orders')
             .select('id, total_amount, placed_at')
             .eq('booking_id', booking.id)
             .neq('status', 'cancelled')
 
-        const foodOrders = (orders || []).map(o => ({
-            id: o.id,
-            total: Number(o.total_amount || 0),
-            placedAt: o.placed_at
-        }))
+        // 4b. Fetch dining-table orders a waiter linked to this stay (linkSessionToBooking
+        // only stamps sessions.booking_id, never the individual orders.booking_id, so these
+        // are a disjoint set from the room-QR orders above — see waiter/actions.ts).
+        const { data: linkedSessions } = await supabase
+            .from('sessions')
+            .select('id')
+            .eq('booking_id', booking.id)
+
+        const linkedSessionIds = (linkedSessions || []).map(s => s.id)
+        let linkedOrders: { id: string; total_amount: number | null; placed_at: string }[] = []
+        if (linkedSessionIds.length > 0) {
+            const { data: tableOrders } = await supabase
+                .from('orders')
+                .select('id, total_amount, placed_at')
+                .in('session_id', linkedSessionIds)
+                .neq('status', 'cancelled')
+                .neq('payment_status', 'paid')
+            linkedOrders = tableOrders || []
+        }
+
+        // De-duplicate defensively in case an order ever ends up reachable via both paths.
+        const orderMap = new Map<string, { id: string; total: number; placedAt: string }>()
+        for (const o of [...(orders || []), ...linkedOrders]) {
+            orderMap.set(o.id, { id: o.id, total: Number(o.total_amount || 0), placedAt: o.placed_at })
+        }
+        const foodOrders = Array.from(orderMap.values())
         const foodOrdersTotal = foodOrders.reduce((sum, o) => sum + o.total, 0)
 
         // 5. Fetch all room charges
