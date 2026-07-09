@@ -125,7 +125,7 @@ export default function MarketingNav() {
                     <Link href="/login" className="hidden font-bold text-[14px] text-ink-muted transition-colors hover:text-[var(--color-primary)] sm:block">
                         Login
                     </Link>
-                    <Link href="/signup" className="rounded-full bg-ink px-5 py-2 font-bold text-[13px] text-white shadow-md transition-transform hover:scale-105 hover:bg-gray-800">
+                    <Link href="/signup" className="rounded-full bg-[var(--color-primary)] px-5 py-2 font-bold text-[13px] text-white shadow-md transition-transform hover:scale-105 hover:bg-brand-600">
                         Start Free
                     </Link>
                     <MobileNav />

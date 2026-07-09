@@ -155,8 +155,8 @@ export default async function RootLayout({
           {/* Global Fixed Overlay: KK Watermark (Placed behind content) */}
           <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
               {/* Faded Watermark on the left */}
-              <div className="absolute -left-[5vw] top-1/2 -translate-y-1/2 text-[28vw] leading-none font-black text-ink opacity-[0.05] select-none mix-blend-multiply whitespace-nowrap flex items-center">
-                  <span className="text-transparent" style={{ WebkitTextStroke: '6px currentColor', letterSpacing: '-0.15em' }}>KK</span>
+              <div className="absolute -left-[5vw] top-1/2 -translate-y-1/2 text-[28vw] leading-none font-black text-ink opacity-[0.08] select-none mix-blend-multiply whitespace-nowrap flex items-center">
+                  <span style={{ WebkitTextStroke: '8px #181614', color: 'transparent', letterSpacing: '-0.15em' }}>KK</span>
                   <span className="ml-16 font-[family-name:var(--font-devanagari)]">खाने?</span>
               </div>
           </div>
