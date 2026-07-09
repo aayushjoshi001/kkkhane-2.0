@@ -1,15 +1,22 @@
-// Builds the ESC/POS byte stream for a Kitchen Order Ticket (KOT) — printed
-// automatically the instant a new order lands in the kitchen queue. No
-// prices: a KOT is a cooking instruction, not a bill.
+// Builds the ESC/POS byte stream for a station order ticket — a KOT for the
+// kitchen, a BOT for the bar. Same layout, different heading and item set: each
+// station only ever sees the lines it makes. No prices; a station ticket is a
+// prep instruction, not a bill.
 
 import { EscPosBuilder } from '../escpos'
-import type { KitchenOrder } from '@/components/kitchen/OrderQueue'
+import type { KitchenOrder, KitchenOrderItem } from '@/components/kitchen/OrderQueue'
+import { STATION_META, itemsForStation, type StationKind } from '@/lib/stations'
 
-export function buildKotTicket(order: KitchenOrder, restaurantName = 'KKHANE'): Uint8Array {
+export function buildStationTicket(
+    order: KitchenOrder,
+    station: StationKind,
+    restaurantName = 'KKHANE'
+): Uint8Array {
     const b = new EscPosBuilder().init()
+    const meta = STATION_META[station]
 
     b.align('center').bold(true).line(restaurantName).bold(false)
-    b.line('KITCHEN ORDER TICKET')
+    b.line(meta.ticketTitle)
     b.divider()
 
     const table = order.sessions?.tables?.label
@@ -26,7 +33,7 @@ export function buildKotTicket(order: KitchenOrder, restaurantName = 'KKHANE'): 
     b.line(`Time: ${new Date(order.placed_at).toLocaleTimeString()}`)
     b.divider()
 
-    const items = order.order_items || []
+    const items = itemsForStation<KitchenOrderItem>(order.order_items, station)
     for (const item of items) {
         b.bold(true)
         b.line(`${item.quantity} x ${item.menu_items?.name || 'Item'}`)
@@ -43,7 +50,7 @@ export function buildKotTicket(order: KitchenOrder, restaurantName = 'KKHANE'): 
     }
 
     b.divider()
-    b.line('Chef: ______________')
+    b.line(station === 'bar' ? 'Bartender: __________' : 'Chef: ______________')
 
     return b.cut().build()
 }

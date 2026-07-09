@@ -124,7 +124,12 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         return () => { cancelled = true }
     }, [booking])
 
-    const allServiceOrderItems = [...qrOrderItems, ...linkedDiningOrders]
+    // The room's own QR session carries booking_id, so its orders arrive in BOTH
+    // qrOrderItems (by session) and linkedDiningOrders (by booking) — dedupe by
+    // order-item id so the displayed total matches what the server bills.
+    const allServiceOrderItems = Array.from(
+        new Map([...qrOrderItems, ...linkedDiningOrders].map(it => [it.id, it])).values()
+    )
     const stayCost = booking ? calculateStayCost(room, booking) : 0
     const qrOrdersTotal = allServiceOrderItems.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
     const manualChargesTotal = charges.reduce((acc, c) => acc + Number(c.amount || 0), 0)

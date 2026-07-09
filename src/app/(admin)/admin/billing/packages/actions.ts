@@ -2,6 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase/server'
 import { requireRoleWithOptions } from '@/lib/auth'
+import { TIER_LIMITS } from '@/lib/tiers'
 import { revalidatePath } from 'next/cache'
 
 export async function selectFreePlanAction() {
@@ -20,8 +21,9 @@ export async function selectFreePlanAction() {
                 subscription_status: 'active',
                 subscription_expires_at: null,
                 is_suspended: false,
-                max_staff: 1, // Free plan limits
-                max_menu_items: 20
+                max_staff: TIER_LIMITS.free.max_staff,
+                max_menu_items: TIER_LIMITS.free.max_menu_items,
+                max_tables: TIER_LIMITS.free.max_tables,
             })
             .eq('id', currentUser.restaurantId)
 

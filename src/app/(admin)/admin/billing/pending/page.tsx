@@ -39,7 +39,7 @@ export default function PendingVerificationPage() {
                 <Button variant="primary" size="lg" href="/admin/dashboard">
                     Check Status
                 </Button>
-                <Button variant="secondary" size="lg" href="mailto:support@kkkhane.com">
+                <Button variant="secondary" size="lg" href="mailto:info.kkkhane@gmail.com">
                     Contact Support
                 </Button>
             </div>

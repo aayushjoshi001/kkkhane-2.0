@@ -24,28 +24,41 @@ export async function GET(req: NextRequest) {
 
         const supabase = await createAdminClient()
 
-        // Find all sessions linked to this booking, excluding the room's own
-        // in-room QR session (tables.room_id set) — those orders are already
-        // counted as "room QR orders" elsewhere, so including them here would
-        // double them in the stay total.
+        // Find all sessions linked to this booking. Pull the session's table so we
+        // can tell an ordinary dining table (room_id NULL) from the room's own
+        // in-room QR table.
+        //
+        // The room_id NULL check happens in JS below, not as a PostgREST
+        // `.is('tables.room_id', null)` filter: without `!inner`, filtering on an
+        // embedded column nulls out the embed rather than dropping the parent row,
+        // so the room's own session would survive the filter and double-count.
         const { data: linkedSessions, error: sessErr } = await supabase
             .from('sessions')
-            .select('id, status, table_id, tables!inner(room_id)')
+            .select('id, status, table_id, tables:table_id(room_id)')
             .eq('booking_id', bookingId)
-            .is('tables.room_id', null)
 
         if (sessErr) {
             console.error('[linked-orders] Error fetching sessions:', sessErr)
             return NextResponse.json({ error: 'Failed to fetch sessions' }, { status: 500 })
         }
 
-        console.log('[linked-orders API] Found linkedSessions:', linkedSessions)
+        // Exclude the room's own in-room QR session: those orders are already shown
+        // as room service on the folio, so returning them here too would double-count.
+        // The embedded `tables` relation may come back as an object or a single-row
+        // array depending on how PostgREST types the join, so normalize both.
+        const roomIdOf = (t: unknown): string | null => {
+            const rel = Array.isArray(t) ? t[0] : t
+            return (rel as { room_id?: string | null } | null)?.room_id ?? null
+        }
+        const diningSessions = (linkedSessions || []).filter(
+            (s: { tables?: unknown }) => !roomIdOf(s.tables)
+        )
 
-        if (!linkedSessions || linkedSessions.length === 0) {
+        if (diningSessions.length === 0) {
             return NextResponse.json({ success: true, items: [] })
         }
 
-        const sessionIds = linkedSessions.map((s: { id: string }) => s.id)
+        const sessionIds = diningSessions.map((s: { id: string }) => s.id)
 
         // Fetch all order items from these sessions
         const { data: orders, error: ordErr } = await supabase
@@ -64,8 +77,10 @@ export async function GET(req: NextRequest) {
         console.log('[linked-orders API] Found orders matching sessionIds:', orders?.length, orders)
 
         // Flatten order items
-        const items = (orders || []).flatMap((o: any) =>
-            (o.order_items || []).map((item: any) => ({
+        type LinkedOrderItem = { id: string; quantity: number; unit_price: number; menu_items: unknown }
+        type LinkedOrder = { order_items?: LinkedOrderItem[] }
+        const items = ((orders || []) as LinkedOrder[]).flatMap((o) =>
+            (o.order_items || []).map((item) => ({
                 id: item.id,
                 quantity: item.quantity,
                 unit_price: item.unit_price,

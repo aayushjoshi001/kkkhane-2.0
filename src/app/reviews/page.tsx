@@ -1,5 +1,6 @@
 import { Star, Globe } from 'lucide-react'
 import { MarketingNav, MarketingFooter, Section, SectionHeading, Eyebrow, MarketingButton } from '@/components/marketing'
+import RandomStatCounter from '@/components/shared/RandomStatCounter'
 
 const REVIEWS = [
     { name: 'Prakash Shrestha', role: 'Owner', platform: 'Google', text: 'I have been using this app since a year now. I like all features. It is simple to setup and it helps me to take orders from customers. The main features I liked of this app is, <highlight>customer can scan qr code and order from their phone which is best... UI is nice</highlight>' },
@@ -14,10 +15,10 @@ const REVIEWS = [
 ]
 
 const STATS = [
-    { value: '7,500+', label: 'Restaurants' },
-    { value: '4.8★', label: 'Average rating' },
-    { value: '1M+', label: 'Orders processed' },
-    { value: '99.9%', label: 'Uptime' },
+    { value: <RandomStatCounter suffix="+" />, label: 'Restaurants' },
+    { value: <RandomStatCounter suffix="★" />, label: 'Average rating' },
+    { value: <RandomStatCounter suffix="M+" />, label: 'Orders processed' },
+    { value: <RandomStatCounter suffix="%" />, label: 'Uptime' },
 ]
 
 function renderText(text: string) {
@@ -31,11 +32,11 @@ function renderText(text: string) {
 
 export default function ReviewsPage() {
     return (
-        <div className="min-h-screen bg-surface text-ink">
+        <div className="min-h-screen bg-transparent text-ink">
             <MarketingNav />
 
             {/* Hero */}
-            <section className="relative overflow-hidden bg-surface pb-14 pt-36 text-center">
+            <section className="relative overflow-hidden bg-transparent pb-14 pt-36 text-center">
                 <div className="pointer-events-none absolute left-1/2 top-1/2 h-[700px] w-[700px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--color-primary)]/5 blur-[120px]" />
                 <div className="relative mx-auto max-w-3xl px-4 sm:px-6">
                     <Eyebrow tone="purple">Loved across Nepal</Eyebrow>
@@ -60,34 +61,51 @@ export default function ReviewsPage() {
                 </div>
             </Section>
 
-            {/* Reviews masonry */}
+            {/* Reviews marquee */}
             <Section tone="band">
                 <SectionHeading
                     eyebrow="Reviews"
                     title="What restaurants say about kkkhane"
                     subtitle="Real reviews from owners and managers running their floors with kkkhane every day."
                 />
-                <div className="columns-1 gap-6 md:columns-2 lg:columns-3">
-                    {REVIEWS.map((r, i) => (
-                        <div key={i} className="mb-6 break-inside-avoid rounded-3xl border border-hairline bg-surface p-8 shadow-sm transition-shadow hover:shadow-lg">
-                            <div className="mb-6 flex items-start justify-between">
-                                <div className="flex items-center gap-4">
-                                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 text-lg font-bold uppercase text-ink-muted">
-                                        {r.name.substring(0, 2)}
+                
+                <style>{`
+                    @keyframes marquee-vertical {
+                        from { transform: translateY(0%); }
+                        to { transform: translateY(-50%); }
+                    }
+                    .animate-marquee-vertical {
+                        animation: marquee-vertical 8s linear infinite;
+                    }
+                `}</style>
+                
+                <div className="relative h-[800px] overflow-hidden rounded-[2.5rem] border border-hairline bg-surface p-6 shadow-sm">
+                    {/* Fade gradients */}
+                    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-32 bg-gradient-to-b from-surface to-transparent" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-32 bg-gradient-to-t from-surface to-transparent" />
+                    
+                    <div className="columns-1 gap-6 md:columns-2 lg:columns-3 animate-marquee-vertical pb-6">
+                        {[...REVIEWS, ...REVIEWS].map((r, i) => (
+                            <div key={i} className="mb-6 break-inside-avoid rounded-3xl border border-hairline bg-white p-8 shadow-sm transition-shadow hover:shadow-md cursor-pointer hover:border-[var(--color-primary)]/30 hover:-translate-y-1 transform duration-200">
+                                <div className="mb-6 flex items-start justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 text-lg font-bold uppercase text-ink-muted">
+                                            {r.name.substring(0, 2)}
+                                        </div>
+                                        <div>
+                                            <h5 className="font-bold text-ink">{r.name}</h5>
+                                            <p className="text-xs text-ink-subtle">{r.role}</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h5 className="font-bold text-ink">{r.name}</h5>
-                                        <p className="text-xs text-ink-subtle">{r.role}</p>
-                                    </div>
+                                    <Globe size={20} className="text-blue-500" />
                                 </div>
-                                <Globe size={20} className="text-blue-500" />
+                                <div className="mb-4 flex gap-1 text-amber-400">
+                                    {[...Array(5)].map((_, idx) => <Star key={idx} size={16} fill="currentColor" />)}
+                                </div>
+                                <p className="font-medium leading-relaxed text-ink-muted" dangerouslySetInnerHTML={renderText(r.text)} />
                             </div>
-                            <div className="mb-4 flex gap-1 text-amber-400">
-                                {[...Array(5)].map((_, idx) => <Star key={idx} size={16} fill="currentColor" />)}
-                            </div>
-                            <p className="font-medium leading-relaxed text-ink-muted" dangerouslySetInnerHTML={renderText(r.text)} />
-                        </div>
-                    ))}
+                        ))}
+                    </div>
                 </div>
             </Section>
 

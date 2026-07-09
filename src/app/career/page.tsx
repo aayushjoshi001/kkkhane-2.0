@@ -1,4 +1,4 @@
-import { ShieldCheck, Zap, TrendingUp, HeartHandshake, Lightbulb, Users } from 'lucide-react'
+import { ShieldCheck, Zap, TrendingUp, HeartHandshake, Lightbulb, Users, ArrowRight } from 'lucide-react'
 import { MarketingNav, MarketingFooter, Eyebrow } from '@/components/marketing'
 
 const VALUES = [
@@ -48,11 +48,11 @@ const VALUES = [
 
 export default function CareerPage() {
     return (
-        <div className="min-h-screen bg-surface text-ink font-sans">
+        <div className="min-h-screen bg-transparent text-ink font-sans">
             <MarketingNav />
 
             {/* Hero Section */}
-            <section className="pt-32 pb-20 px-4 relative overflow-hidden bg-[#FAFAF8] border-b border-hairline text-center">
+            <section className="pt-32 pb-20 px-4 relative overflow-hidden bg-transparent border-b border-hairline text-center">
                 <div className="absolute top-0 right-0 -mr-32 -mt-32 w-96 h-96 bg-purple-50 rounded-full blur-3xl opacity-50"></div>
                 <div className="max-w-[800px] mx-auto relative z-10">
                     <div className="mb-6 inline-flex justify-center"><Eyebrow tone="brand">Join Our Team</Eyebrow></div>
@@ -86,7 +86,7 @@ export default function CareerPage() {
             </section>
 
             {/* Open Positions Section */}
-            <section className="py-20 px-4 bg-[#FAFAF8] border-t border-hairline">
+            <section className="py-20 px-4 bg-transparent border-t border-hairline">
                 <div className="max-w-[800px] mx-auto text-center">
                     <div className="mb-12">
                         <h2 className="text-3xl font-extrabold text-ink mb-4">Current Openings!</h2>
@@ -104,10 +104,10 @@ export default function CareerPage() {
                                 We currently don&apos;t have any specific open roles listed online, but if you believe you would be a fantastic fit for our team, we want to hear from you.
                             </p>
                             <a 
-                                href="mailto:careers@kkkhane.com" 
-                                className="inline-flex items-center justify-center bg-ink text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-gray-800 transition-colors shadow-lg"
+                                href="mailto:info.kkkhane@gmail.com" 
+                                className="inline-flex items-center gap-2 text-[var(--color-primary)] font-bold hover:gap-3 transition-all"
                             >
-                                careers@kkkhane.com
+                                info.kkkhane@gmail.com <ArrowRight size={16} />
                             </a>
                             <p className="mt-4 text-sm text-ink-subtle font-medium">Please include your CV and a brief introduction.</p>
                         </div>

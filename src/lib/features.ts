@@ -114,7 +114,8 @@ export async function updateFeaturesAction(restaurantId: string, features: Parti
     if (!isSuperAdmin && !(currentUser.role === 'manager' && currentUser.restaurantId === restaurantId)) {
         return { error: 'Unauthorized' }
     }
-    // financeEnabled is the enterprise-tier gate; only super admins may flip it.
+    // financeEnabled gates the accounting module (Premium and above); only super
+    // admins may flip it.
     if (!isSuperAdmin && 'financeEnabled' in features) {
         return { error: 'Unauthorized' }
     }

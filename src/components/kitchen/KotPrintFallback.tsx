@@ -2,14 +2,16 @@
 
 import { useEffect } from 'react'
 import type { KitchenOrder } from './OrderQueue'
+import { STATION_META, type StationKind } from '@/lib/stations'
 
 /**
- * Browser-print fallback for a KOT when QZ Tray isn't connected/trusted on
- * this device. Sits off-screen normally; the @media print rules (same
- * visibility-isolation technique as the invoice receipt in CashierClient.tsx)
- * make it the only thing that prints when window.print() fires.
+ * Browser-print fallback for a station ticket (KOT or BOT) when QZ Tray isn't
+ * connected/trusted on this device. Sits off-screen normally; the @media print
+ * rules (same visibility-isolation technique as the invoice receipt in
+ * CashierClient.tsx) make it the only thing that prints when window.print()
+ * fires. The order passed in is already projected to this station's lines.
  */
-export default function KotPrintFallback({ order, onDone }: { order: KitchenOrder | null; onDone: () => void }) {
+export default function KotPrintFallback({ order, station = 'kitchen', onDone }: { order: KitchenOrder | null; station?: StationKind; onDone: () => void }) {
     useEffect(() => {
         if (!order) return
         const timer = setTimeout(() => window.print(), 50)
@@ -44,7 +46,7 @@ export default function KotPrintFallback({ order, onDone }: { order: KitchenOrde
                     }
                 }
             `}</style>
-            <div className="text-center font-black uppercase text-[11px]">Kitchen Order Ticket</div>
+            <div className="text-center font-black uppercase text-[11px]">{STATION_META[station].ticketTitle}</div>
             <div className="border-t border-dashed border-black my-1" />
             <div className="text-center font-black text-sm">{sourceLabel}</div>
             <div className="text-[10px]">Order: #{order.id.slice(0, 8).toUpperCase()}</div>

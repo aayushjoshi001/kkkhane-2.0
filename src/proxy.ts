@@ -11,6 +11,7 @@ const ROUTE_RULES: Array<{
 }> = [
     { pattern: /^\/admin(\/|$)/, allowedRoles: ['super_admin', 'manager'] },
     { pattern: /^\/kitchen(\/|$)/, allowedRoles: ['kitchen', 'manager', 'super_admin'] },
+    { pattern: /^\/bar(\/|$)/, allowedRoles: ['bartender', 'manager', 'super_admin'] },
     { pattern: /^\/waiter(\/|$)/, allowedRoles: ['waiter', 'manager', 'super_admin'] },
     { pattern: /^\/cashier(\/|$)/, allowedRoles: ['cashier', 'waiter', 'manager', 'super_admin'] },
 ]

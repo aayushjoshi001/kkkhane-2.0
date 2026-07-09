@@ -1,7 +1,7 @@
 import {
     LayoutDashboard, BarChart3, Building2, CreditCard, UtensilsCrossed,
     ShoppingBag, Truck, Users, Clock, DollarSign, Heart, Tag, Package,
-    Grid3X3, FileText, Settings, Sparkles, Palette, ChefHat, ClipboardList,
+    Grid3X3, FileText, Settings, Sparkles, Palette, ChefHat, Martini, ClipboardList,
     Wallet, Landmark, TrendingUp, Receipt, HandCoins, ArrowUpRight, Banknote,
     PiggyBank, Percent, BookOpen, FileBarChart, Settings2, ShieldCheck, Wrench,
     type LucideIcon,
@@ -175,6 +175,15 @@ const KITCHEN_GROUPS: CommandGroup[] = [
     },
 ]
 
+const BAR_GROUPS: CommandGroup[] = [
+    {
+        heading: 'Workspace',
+        items: [
+            { label: 'Bar Display', href: '/bar', icon: Martini, keywords: ['bot', 'drinks', 'bar', 'tickets'] },
+        ],
+    },
+]
+
 /**
  * Returns the command palette groups a given role is allowed to navigate to.
  * Keeps the palette in sync with each role's sidebar/portal and prevents
@@ -192,6 +201,8 @@ export function getCommandsForRole(role: string | undefined): CommandGroup[] {
             return CASHIER_GROUPS
         case 'kitchen':
             return KITCHEN_GROUPS
+        case 'bartender':
+            return BAR_GROUPS
         default:
             return []
     }

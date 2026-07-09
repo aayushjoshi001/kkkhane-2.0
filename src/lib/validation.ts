@@ -190,13 +190,13 @@ export const CreateTenantSchema = z.object({
   ownerPassword: z.string().min(8, 'Password must be 8+ characters').max(128),
   contactPhone: PHONE.optional(),
   address: z.string().max(500).optional(),
-  subscriptionTier: z.enum(['free', 'basic', 'pro', 'enterprise']).default('free'),
+  subscriptionTier: z.enum(['free', 'basic', 'premium', 'platinum', 'enterprise']).default('free'),
   businessType: z.enum(ONBOARDING_BUSINESS_TYPES).optional()
 })
 
 export const UpdateTenantSchema = z.object({
   restaurant_id: UUID,
-  subscription_tier: z.enum(['free', 'basic', 'pro', 'enterprise']).optional(),
+  subscription_tier: z.enum(['free', 'basic', 'premium', 'platinum', 'enterprise']).optional(),
   subscription_status: z.enum(['active', 'past_due', 'suspended', 'cancelled']).optional(),
   custom_domain: z.string().max(255).optional()
 })

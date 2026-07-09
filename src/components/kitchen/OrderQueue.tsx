@@ -14,7 +14,8 @@ import { setOrderItemsStatus, getKitchenOrders } from '@/app/(staff)/kitchen/act
 import { rollUpOrderStatus } from '@/lib/orderRollup'
 import EmptyState from '@/components/ui/EmptyState'
 import { usePrinter } from '@/lib/print/usePrinter'
-import { buildKotTicket } from '@/lib/print/templates/kotTicket'
+import { buildStationTicket } from '@/lib/print/templates/stationTicket'
+import { STATION_META, itemsForStation, type StationKind } from '@/lib/stations'
 import KotPrintFallback from './KotPrintFallback'
 
 export type KitchenOrderItem = OrderItem & {
@@ -45,7 +46,7 @@ const ORDER_SELECT = `
   id, status, order_type, total_amount, placed_at, customer_note,
   sessions ( tables ( label ) ),
   order_items (
-    id, menu_item_id, quantity, unit_price, special_request, status, claimed_by, claimed_at,
+    id, menu_item_id, quantity, unit_price, special_request, status, station, claimed_by, claimed_at,
     menu_items ( id, name, is_combo ),
     order_item_modifiers ( modifier_name, price_adjustment )
   )
@@ -60,20 +61,33 @@ const TAB_META: Record<TabKey, { label: string; icon: typeof Bell; accent: strin
     cooking: { label: 'Cooking',    icon: Flame,     accent: '#ef4444', soft: '#FEE2E2', border: '#FCA5A5' },
 }
 
-export default function OrderQueue({ initialOrders, restaurantId, comboItems = [], userId, staffNames = {} }: {
+export default function OrderQueue({ initialOrders, restaurantId, comboItems = [], userId, staffNames = {}, station = 'kitchen' }: {
     initialOrders: KitchenOrder[]
     restaurantId: string
     comboItems?: ComboItemRow[]
     userId: string
     staffNames?: Record<string, string>
+    /** Which station this board serves. Kitchen sees food lines, bar sees drinks. */
+    station?: StationKind
 }) {
-    const [orders, setOrders] = useState<KitchenOrder[]>(initialOrders)
+    const stationMeta = STATION_META[station]
+    // Project an order down to just this station's lines. Orders with none of
+    // our lines (e.g. an all-food order on the bar board) drop out entirely, so
+    // the kitchen never sees a drink and the bar never sees a burger.
+    const projectStation = useCallback((list: KitchenOrder[]): KitchenOrder[] =>
+        list.reduce<KitchenOrder[]>((acc, o) => {
+            const mine = itemsForStation(o.order_items, station)
+            if (mine.length) acc.push({ ...o, order_items: mine })
+            return acc
+        }, []), [station])
+
+    const [orders, setOrders] = useState<KitchenOrder[]>(() => projectStation(initialOrders))
     const [now, setNow] = useState(() => Date.now())
     const [activeTab, setActiveTab] = useState<TabKey>('new')
     const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
     const money = useCurrency()
     const supabaseRef = useRef(createClient())
-    const { print: printKot } = usePrinter('kot')
+    const { print: printKot } = usePrinter(stationMeta.printerRole)
     // Queued, not a single slot — QZ Tray being down for the whole shift means
     // every order fails to print at once, and a single slot would silently
     // drop all but the most recent order's fallback ticket.
@@ -85,24 +99,27 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     // function (never from inside a setState updater — React 18 StrictMode
     // double-invokes those in dev, which would double-print every ticket).
     const printKotWithFallback = useCallback((order: KitchenOrder) => {
-        void printKot(buildKotTicket(order)).then((result) => {
+        // `order` is already projected to this station's lines, so an all-food
+        // order reaching the bar board has an empty item list — nothing to print.
+        if (!(order.order_items || []).length) return
+        void printKot(buildStationTicket(order, station)).then((result) => {
             if (result.ok) return
             setKotFallbackQueue(q => [...q, order])
             toast.error(
                 result.status === 'no-printer-selected'
-                    ? 'No KOT printer set — printed via browser instead. Set one in Printer Settings.'
-                    : 'KOT printer not connected — printed via browser instead.'
+                    ? `No ${stationMeta.ticketAbbr} printer set — printed via browser instead. Set one in Printer Settings.`
+                    : `${stationMeta.ticketAbbr} printer not connected — printed via browser instead.`
             )
         })
-    }, [printKot])
+    }, [printKot, station, stationMeta.ticketAbbr])
 
     // Resync: fetch fresh orders from DB on mount and whenever the realtime
     // channel reconnects. This recovers any orders missed during a disconnect
     // (e.g. logout → login, network blip, token refresh).
     const resync = useCallback(async () => {
         const fresh = await getKitchenOrders(restaurantId)
-        setOrders(fresh as unknown as KitchenOrder[])
-    }, [restaurantId])
+        setOrders(projectStation(fresh as unknown as KitchenOrder[]))
+    }, [restaurantId, projectStation])
 
     useEffect(() => {
         resync() // always refresh on mount
@@ -123,7 +140,9 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             if (needsConfirmation || (isTakeoutDelivery && payload.new.status === 'pending')) return
             const { data } = await supabaseRef.current.from('orders').select(ORDER_SELECT).eq('id', payload.new.id).single()
             if (!data) return
-            const order = data as unknown as KitchenOrder
+            const [order] = projectStation([data as unknown as KitchenOrder])
+            // No lines for this station (e.g. an all-food order on the bar board).
+            if (!order) return
             let isNew = false
             setOrders(prev => {
                 if (prev.some(o => o.id === order.id)) return prev
@@ -168,7 +187,12 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             }
             const { data } = await supabaseRef.current.from('orders').select(ORDER_SELECT).eq('id', payload.new.id).single()
             if (!data) return
-            const fresh = data as unknown as KitchenOrder
+            const [fresh] = projectStation([data as unknown as KitchenOrder])
+            if (!fresh) {
+                // Order lost its lines for this station — drop it from the board.
+                setOrders(prev => prev.filter(o => o.id !== payload.new.id))
+                return
+            }
             let added = false
             setOrders(prev => {
                 if (prev.some(o => o.id === fresh.id)) return prev.map(o => o.id === fresh.id ? fresh : o)
@@ -263,6 +287,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             now={now}
             userId={userId}
             staffNames={staffNames}
+            stationAccent={stationMeta.accent}
             collapsed={collapsed.has(section.order.id)}
             onToggle={() => toggleCollapse(section.order.id)}
             onApply={applyItemStatus}
@@ -271,7 +296,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
 
     return (
         <div className="h-full flex flex-col bg-[#FBF7F3]">
-            <KotPrintFallback order={kotFallbackQueue[0] ?? null} onDone={dequeueKotFallback} />
+            <KotPrintFallback order={kotFallbackQueue[0] ?? null} station={station} onDone={dequeueKotFallback} />
 
             {/* Mobile: tab bar */}
             <div className="lg:hidden shrink-0 bg-surface border-b border-hairline px-2 sm:px-4">
@@ -396,7 +421,7 @@ function itemStatusPill(status: string) {
     return { label: 'Pending', cls: 'text-ink-subtle' }
 }
 
-function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffNames, collapsed, onToggle, onApply }: {
+function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffNames, stationAccent, collapsed, onToggle, onApply }: {
     tab: TabKey
     order: KitchenOrder
     items: KitchenOrderItem[]
@@ -405,6 +430,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
     now: number
     userId: string
     staffNames: Record<string, string>
+    stationAccent: string
     collapsed: boolean
     onToggle: () => void
     onApply: (orderId: string, itemIds: string[], next: OrderItemStatus) => Promise<void>
@@ -465,7 +491,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
             <button onClick={onToggle} className="w-full text-left px-4 pt-3.5 pb-3">
                 <div className="flex items-center gap-2 flex-wrap pr-6 relative">
                     <span className="font-extrabold text-ink">#{order.id.slice(0, 4).toUpperCase()}</span>
-                    <span className="text-[11px] font-bold text-white px-2 py-0.5 rounded-full" style={{ background: '#FB6303' }}>{space}</span>
+                    <span className="text-[11px] font-bold text-white px-2 py-0.5 rounded-full" style={{ background: stationAccent }}>{space}</span>
                     <span className="text-[11px] font-semibold text-ink-subtle bg-surface-muted px-2 py-0.5 rounded-full">{items.length} dish{items.length > 1 ? 'es' : ''}</span>
                     {chefLabel && (
                         <span className="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full inline-flex items-center gap-1">

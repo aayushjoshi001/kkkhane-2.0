@@ -5,16 +5,41 @@
 
 import type { BusinessMode } from '@/lib/businessMode'
 
-export type Tier = 'free' | 'basic' | 'pro' | 'enterprise'
+export type Tier = 'free' | 'basic' | 'premium' | 'platinum' | 'enterprise'
 
+/**
+ * "Unlimited" has to survive a write into restaurants.max_staff etc., which are
+ * int4 — so it is int4's ceiling, not Infinity. Compare with isUnlimited()
+ * rather than testing against the magic number.
+ */
+export const UNLIMITED = 2_147_483_647
+
+export const isUnlimited = (limit: number): boolean => limit >= UNLIMITED
+
+/** Enforced caps. Must stay in step with the published plans in lib/pricing.ts. */
 export const TIER_LIMITS: Record<Tier, { max_staff: number; max_menu_items: number; max_tables: number }> = {
-    free:       { max_staff: 3,   max_menu_items: 20,   max_tables: 10  },
-    basic:      { max_staff: 10,  max_menu_items: 100,  max_tables: 30  },
-    pro:        { max_staff: 50,  max_menu_items: 500,  max_tables: 100 },
-    enterprise: { max_staff: 999, max_menu_items: 9999, max_tables: 999 },
+    free:       { max_staff: 3,        max_menu_items: 100,      max_tables: 10        },
+    basic:      { max_staff: 5,        max_menu_items: 500,      max_tables: 20        },
+    premium:    { max_staff: 24,       max_menu_items: 1000,     max_tables: 50        },
+    platinum:   { max_staff: UNLIMITED, max_menu_items: UNLIMITED, max_tables: UNLIMITED },
+    enterprise: { max_staff: UNLIMITED, max_menu_items: UNLIMITED, max_tables: UNLIMITED },
 }
 
-const TIER_FEATURES: Record<Tier, {
+/** Tiers whose plan includes the accounting/finance module. */
+export const FINANCE_TIERS: readonly Tier[] = ['premium', 'platinum', 'enterprise']
+
+/** Every tier, cheapest first — the order admin pickers render them in. */
+export const TIERS: readonly Tier[] = ['free', 'basic', 'premium', 'platinum', 'enterprise']
+
+export const TIER_LABELS: Record<Tier, string> = {
+    free: 'Free',
+    basic: 'Basic',
+    premium: 'Premium',
+    platinum: 'Platinum',
+    enterprise: 'Enterprise',
+}
+
+export const TIER_FEATURES: Record<Tier, {
     loyaltyEnabled: boolean
     promosEnabled: boolean
     takeoutEnabled: boolean
@@ -45,9 +70,16 @@ const TIER_FEATURES: Record<Tier, {
         ingredientTrackingEnabled: false, staffShiftsEnabled: false,
         waiterSessionEnabled: false, waiterOrderConfirmation: true,
     },
-    pro: {
+    premium: {
         loyaltyEnabled: true, promosEnabled: true, takeoutEnabled: true,
         multiLanguageEnabled: false, serviceRequestsEnabled: true,
+        splitBillingEnabled: true, dynamicPricingEnabled: true,
+        ingredientTrackingEnabled: true, staffShiftsEnabled: true,
+        waiterSessionEnabled: false, waiterOrderConfirmation: false,
+    },
+    platinum: {
+        loyaltyEnabled: true, promosEnabled: true, takeoutEnabled: true,
+        multiLanguageEnabled: true, serviceRequestsEnabled: true,
         splitBillingEnabled: true, dynamicPricingEnabled: true,
         ingredientTrackingEnabled: true, staffShiftsEnabled: true,
         waiterSessionEnabled: false, waiterOrderConfirmation: false,

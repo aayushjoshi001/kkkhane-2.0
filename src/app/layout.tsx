@@ -1,7 +1,7 @@
-import { Inter, Playfair_Display, Roboto, Lato, Outfit } from 'next/font/google'
+import { Inter, Playfair_Display, Roboto, Lato, Outfit, Noto_Sans_Devanagari } from 'next/font/google'
 import { Toaster } from 'react-hot-toast'
 import { ConfirmModal } from '@/components/shared/ConfirmModal'
-import type { Viewport } from 'next'
+import type { Viewport, Metadata } from 'next'
 import { createAdminClient } from '@/lib/supabase/server'
 import { unstable_cache } from 'next/cache'
 import { SerwistProvider } from '@serwist/turbopack/react'
@@ -15,6 +15,14 @@ const playfair = Playfair_Display({ subsets: ['latin'], variable: '--font-playfa
 const roboto = Roboto({ weight: ['400', '500', '700'], subsets: ['latin'], variable: '--font-roboto', display: 'swap' })
 const lato = Lato({ weight: ['400', '700'], subsets: ['latin'], variable: '--font-lato', display: 'swap' })
 const outfit = Outfit({ subsets: ['latin'], variable: '--font-outfit', display: 'swap' })
+// The Latin fonts above carry no Devanagari glyphs, so "के के खाने?" would fall
+// back to whatever the OS supplies. Load a real face for it.
+const notoDevanagari = Noto_Sans_Devanagari({
+    weight: ['400', '600', '700'],
+    subsets: ['devanagari'],
+    variable: '--font-devanagari',
+    display: 'swap',
+})
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -23,9 +31,28 @@ export const viewport: Viewport = {
   themeColor: '#1B263B',
 }
 
-export const metadata = {
-  title: 'kkkhane',
-  description: 'Mobile-first restaurant ordering system',
+export const metadata: Metadata = {
+  metadataBase: new URL('https://kkkhane.com'),
+  title: {
+    default: 'KKKhane | Best SaaS from Cafes to Restaurants in Nepal',
+    template: '%s | KKKhane'
+  },
+  description: 'KKKhane is an ultra-premium SaaS application best from cafes to restaurants. Features include QR Menus, POS, Inventory, and Real-Time Reporting in Nepal.',
+  keywords: ['restaurant software', 'cafe POS', 'Nepal POS', 'QR menu', 'restaurant management system', 'KKKhane', 'Bhojad', 'Bharatpur'],
+  authors: [{ name: 'KKKhane' }],
+  openGraph: {
+    title: 'KKKhane | Best SaaS from Cafes to Restaurants in Nepal',
+    description: 'An ultra-premium management software. Best from cafes to restaurants in Nepal.',
+    url: 'https://kkkhane.com',
+    siteName: 'KKKhane',
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'KKKhane | Best SaaS from Cafes to Restaurants in Nepal',
+    description: 'An ultra-premium management software. Best from cafes to restaurants in Nepal.',
+  },
   manifest: '/manifest.json',
   icons: {
     icon: '/icons/kkkhane.png',
@@ -108,14 +135,14 @@ export default async function RootLayout({
   const theme = await getThemeConfig()
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="scroll-smooth" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://challenges.cloudflare.com" />
         <link rel="dns-prefetch" href="https://challenges.cloudflare.com" />
         <style dangerouslySetInnerHTML={{ __html: themeToCSS(theme) }} />
       </head>
       <body className={`
-        ${inter.variable} ${playfair.variable} ${roboto.variable} ${lato.variable} ${outfit.variable}
+        ${inter.variable} ${playfair.variable} ${roboto.variable} ${lato.variable} ${outfit.variable} ${notoDevanagari.variable}
         font-[family-name:var(--font-family)]
         bg-canvas text-ink
         antialiased min-h-screen flex flex-col
@@ -125,7 +152,34 @@ export default async function RootLayout({
           disable={process.env.NODE_ENV === 'development'}
           reloadOnOnline
         >
-          {children}
+          {/* ── GLOBAL EDITORIAL BACKGROUND ── */}
+          <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+              {/* Paper Grain Texture */}
+              <div className="absolute inset-0 opacity-[0.25] mix-blend-multiply pointer-events-none" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }} />
+              
+              {/* Soft Ambient Orange Glow (Top-Left) */}
+              <div className="absolute -top-[30%] -left-[10%] w-[90vw] h-[90vw] bg-[radial-gradient(circle_at_center,rgba(251,99,3,0.06)_0%,transparent_60%)] mix-blend-multiply" />
+              
+              {/* Subtle Beige Radial Gradient (Center) */}
+              <div className="absolute top-[10%] left-[20%] w-[60vw] h-[60vw] bg-[radial-gradient(circle_at_center,rgba(235,225,210,0.5)_0%,transparent_70%)] mix-blend-multiply" />
+              
+              {/* Gentle Vignette (Edges) */}
+              <div className="absolute inset-0 shadow-[inset_0_0_120px_rgba(0,0,0,0.02)] pointer-events-none" />
+              
+              {/* Oversized Faded Serif Letters (3-4% Opacity) */}
+              <div className="absolute -left-[3vw] top-1/2 -translate-y-1/2 flex items-center select-none mix-blend-multiply whitespace-nowrap opacity-[0.035]">
+                  <span className="font-[family-name:var(--font-playfair)] font-black tracking-tight text-[38vw] text-ink leading-none">
+                      KK
+                  </span>
+                  <span className="ml-10 font-[family-name:var(--font-devanagari)] font-bold text-[18vw] text-ink leading-none mt-12">
+                      खाने?
+                  </span>
+              </div>
+          </div>
+
+          <div className="relative z-10 flex-1 flex flex-col">
+              {children}
+          </div>
         </SerwistProvider>
         <PwaInstallPrompt />
         <PwaUpdatePrompt />

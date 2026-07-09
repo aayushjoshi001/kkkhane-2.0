@@ -8,10 +8,13 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import { submitPaymentReferenceAction } from './actions'
 
+// Premium billing-cycle prices. The 1-year rate is anchored to the first-year
+// Premium price in lib/pricing.ts (Rs 22,000); shorter cycles bill at a higher
+// monthly rate (discount ladder). Keep these in step with the packages page.
 const PRICES = {
-    '3_months': 4500,
-    '6_months': 8100,
-    '1_year': 14400,
+    '3_months': 6600,
+    '6_months': 12000,
+    '1_year': 22000,
 }
 
 const CYCLE_NAMES = {
@@ -61,7 +64,7 @@ export default function CheckoutPage() {
         }
     }
 
-    if (plan !== 'pro') {
+    if (plan !== 'premium') {
         return (
             <div className="flex flex-col items-center justify-center min-h-[50vh]">
                 <p className="text-ink-subtle mb-4">Invalid plan selected.</p>
@@ -86,7 +89,7 @@ export default function CheckoutPage() {
                 <div>
                     <h1 className="text-3xl font-bold text-ink mb-2">Complete your upgrade</h1>
                     <p className="text-ink-muted mb-8">
-                        Select a payment method and upload your transaction reference to activate the Pro Plan.
+                        Select a payment method and upload your transaction reference to activate the Premium Plan.
                     </p>
 
                     <form onSubmit={handleSubmit} className="space-y-8">
@@ -191,7 +194,7 @@ export default function CheckoutPage() {
                             <div className="space-y-4 mb-6">
                                 <div className="flex justify-between items-start">
                                     <div>
-                                        <div className="font-medium text-ink">Pro Business Plan</div>
+                                        <div className="font-medium text-ink">Premium Plan</div>
                                         <div className="text-sm text-ink-subtle">Billed for {CYCLE_NAMES[cycle]}</div>
                                     </div>
                                     <div className="font-medium text-ink">

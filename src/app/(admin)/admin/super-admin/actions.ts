@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { validateInput, CreateTenantSchema } from '@/lib/validation'
 import { ORDER_STATUS_TO_TAKEOUT, type OrderStatus } from '@/lib/takeout'
-import { TIER_LIMITS, type Tier } from '@/lib/tiers'
+import { TIER_LIMITS, FINANCE_TIERS, type Tier } from '@/lib/tiers'
 import { provisionRestaurant } from '@/lib/provisioning'
 
 export interface CreateTenantInput {
@@ -97,7 +97,7 @@ export async function suspendRestaurant(restaurantId: string, suspend: boolean) 
 
 export async function updateSubscriptionTier(
     restaurantId: string,
-    tier: 'free' | 'basic' | 'pro' | 'enterprise'
+    tier: Tier
 ) {
     const supabase = await createAdminClient()
 
@@ -116,8 +116,10 @@ export async function updateSubscriptionTier(
 
     if (error) return { error: error.message }
 
-    // Downgrade protection: if changing to a non-enterprise tier, disable financeEnabled feature
-    if (tier !== 'enterprise') {
+    // Downgrade protection: the accounting module ships with Premium and above
+    // (see the published plans in lib/pricing.ts), so dropping below that
+    // disables financeEnabled.
+    if (!FINANCE_TIERS.includes(tier)) {
         const { data: settingsRow } = await supabase
             .from('settings')
             .select('features_v2')
@@ -378,7 +380,7 @@ export async function getSaasMetrics() {
         supabase.from('restaurants').select('subscription_tier'),
     ])
 
-    const tiers: Record<string, number> = { free: 0, basic: 0, pro: 0, enterprise: 0 }
+    const tiers: Record<string, number> = { free: 0, basic: 0, premium: 0, platinum: 0, enterprise: 0 }
     tierBreakdown?.forEach((r: { subscription_tier?: string }) => {
         const tier = r.subscription_tier || 'free'
         tiers[tier] = (tiers[tier] || 0) + 1
@@ -424,7 +426,7 @@ export async function getSaasMetricsFull() {
         supabase.from('restaurants').select('id, name, subscription_expires_at').not('subscription_expires_at', 'is', null),
     ])
 
-    const tiers: Record<string, number> = { free: 0, basic: 0, pro: 0, enterprise: 0 }
+    const tiers: Record<string, number> = { free: 0, basic: 0, premium: 0, platinum: 0, enterprise: 0 }
     ;(tierData || []).forEach((r: { subscription_tier?: string }) => {
         const t = r.subscription_tier || 'free'
         tiers[t] = (tiers[t] || 0) + 1

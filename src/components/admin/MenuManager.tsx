@@ -5,7 +5,8 @@ import useSWR from 'swr'
 import { NepaliInput } from '@/components/ui/NepaliInput'
 import Image from 'next/image'
 import { Plus, Edit2, Trash2, GripVertical, Check, X, Tag, Loader2, Image as ImageIcon, Globe, Upload, Link, Search } from 'lucide-react'
-import type { MenuCategory, MenuItem, Ingredient } from '@/types/database'
+import type { MenuCategory, MenuItem, Ingredient, StationKind } from '@/types/database'
+import { STATIONS, STATION_META, resolveStation } from '@/lib/stations'
 import { createClient } from '@/lib/supabase/client'
 import {
     addCategoryAction, updateCategoryAction, deleteCategoryAction,
@@ -87,6 +88,7 @@ export default function MenuManager({
     const [categoryName, setCategoryName] = useState('')
     const [categorySort, setCategorySort] = useState(0)
     const [categoryVisible, setCategoryVisible] = useState(true)
+    const [categoryStation, setCategoryStation] = useState<StationKind>('kitchen')
     const [categoryImageUrl, setCategoryImageUrl] = useState<string | null>('')
     const [categoryImageUploading, setCategoryImageUploading] = useState(false)
 
@@ -126,12 +128,14 @@ export default function MenuManager({
             setCategoryName(cat.name)
             setCategorySort(cat.sort_order)
             setCategoryVisible(cat.is_visible)
+            setCategoryStation(cat.station ?? 'kitchen')
             setCategoryImageUrl(cat.image_url ?? '')
         } else {
             setEditingCategory(null)
             setCategoryName('')
             setCategorySort(categories.length * 10)
             setCategoryVisible(true)
+            setCategoryStation('kitchen')
             setCategoryImageUrl('')
         }
         setIsCategoryModalOpen(true)
@@ -146,6 +150,7 @@ export default function MenuManager({
                 name: categoryName,
                 sort_order: categorySort,
                 is_visible: categoryVisible,
+                station: categoryStation,
                 image_url: categoryImageUrl || null
             })
             if (res.success) {
@@ -156,7 +161,7 @@ export default function MenuManager({
                 toast.error(res.error || 'Failed to update category')
             }
         } else {
-            const res = await addCategoryAction(restaurantId, categoryName, categorySort, categoryVisible, categoryImageUrl || null)
+            const res = await addCategoryAction(restaurantId, categoryName, categorySort, categoryVisible, categoryImageUrl || null, categoryStation)
             if (res.data) {
                 mutate()
                 toast.success('Category created')
@@ -642,10 +647,17 @@ export default function MenuManager({
                                                         )}
 
                                                         <div className="mt-auto pt-4 flex items-center justify-between">
+                                                            <span className="flex items-center gap-1.5">
+                                                            {resolveStation(item.station, categories.find(c => c.id === item.category_id)?.station) === 'bar' && (
+                                                                <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full shadow-sm text-white" style={{ background: STATION_META.bar.accent }} title="Sent to the bar">
+                                                                    <STATION_META.bar.icon size={11} /> Bar
+                                                                </span>
+                                                            )}
                                                             <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full shadow-sm ${item.is_available ? 'bg-success-bg text-success-fg' : 'bg-danger-bg text-danger-fg'}`}>
                                                                 {item.is_available ? 'Available' : 'Sold Out'}
                                                             </span>
-                                                            
+                                                            </span>
+
                                                             <div className="flex items-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity translate-x-2 sm:group-hover:translate-x-0">
                                                                 {hasNepali && (
                                                                     <button onClick={() => setTranslateTarget({ entityId: item.id, entityType: 'menu_item', name: item.name, description: item.description })} className="w-8 h-8 flex items-center justify-center text-ink-subtle hover:text-brand-600 rounded-lg hover:bg-brand-50 transition-colors bg-surface border border-hairline shadow-sm" title="Translate">
@@ -737,6 +749,28 @@ export default function MenuManager({
                                         />
                                         <span className="text-sm font-bold text-ink group-hover:text-brand-600 transition-colors">Visible to Customers</span>
                                     </label>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-small font-bold text-ink mb-1.5">Prepared at</label>
+                                <p className="text-xs text-ink-subtle mb-2">Sends these items&apos; tickets to the kitchen or the bar. Individual items can override this.</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {STATIONS.map(s => {
+                                        const sm = STATION_META[s]
+                                        const Icon = sm.icon
+                                        const active = categoryStation === s
+                                        return (
+                                            <button
+                                                key={s}
+                                                type="button"
+                                                onClick={() => setCategoryStation(s)}
+                                                className={`flex items-center justify-center gap-2 py-2.5 rounded-[var(--r-md)] border-2 text-sm font-bold transition-all ${active ? 'text-white shadow-sm' : 'text-ink-subtle bg-surface border-hairline hover:border-hairline-strong'}`}
+                                                style={active ? { background: sm.accent, borderColor: sm.accent } : undefined}
+                                            >
+                                                <Icon size={16} /> {sm.label}
+                                            </button>
+                                        )
+                                    })}
                                 </div>
                             </div>
                         </div>
@@ -1148,6 +1182,42 @@ export default function MenuManager({
                                     <div className="w-11 h-6 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-shadow"></div>
                                 </label>
                             </div>
+
+                            {/* Station: null/undefined = inherit the category's; an explicit
+                                value overrides it (a hot drink in the Beverages category
+                                that must still be made in the kitchen). */}
+                            {(() => {
+                                const catStation = categories.find(c => c.id === itemFormData.category_id)?.station ?? 'kitchen'
+                                const inheritLabel = STATION_META[catStation].label
+                                const options: { key: 'inherit' | StationKind; label: string }[] = [
+                                    { key: 'inherit', label: `Category default (${inheritLabel})` },
+                                    { key: 'kitchen', label: STATION_META.kitchen.label },
+                                    { key: 'bar', label: STATION_META.bar.label },
+                                ]
+                                const current: 'inherit' | StationKind = itemFormData.station ?? 'inherit'
+                                return (
+                                    <div className="mt-4">
+                                        <span className="text-small font-bold text-ink block mb-1.5">Prepared at</span>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {options.map(opt => {
+                                                const active = current === opt.key
+                                                const accent = opt.key === 'inherit' ? STATION_META[catStation].accent : STATION_META[opt.key].accent
+                                                return (
+                                                    <button
+                                                        key={opt.key}
+                                                        type="button"
+                                                        onClick={() => setItemFormData({ ...itemFormData, station: opt.key === 'inherit' ? null : opt.key })}
+                                                        className={`py-2 px-2 rounded-[var(--r-md)] border-2 text-xs font-bold transition-all ${active ? 'text-white shadow-sm' : 'text-ink-subtle bg-surface border-hairline hover:border-hairline-strong'}`}
+                                                        style={active ? { background: accent, borderColor: accent } : undefined}
+                                                    >
+                                                        {opt.label}
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
+                                    </div>
+                                )
+                            })()}
                         </div>
                         <div className="px-6 py-5 bg-surface-muted/50 border-t border-hairline flex justify-end gap-3 shrink-0">
                             <button onClick={() => setIsItemModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:shadow-md transition-all focus-ring">
