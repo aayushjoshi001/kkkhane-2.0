@@ -47,17 +47,43 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
             setCheckingStorage(false)
             return
         }
-        try {
+        
+        const checkStoredAccess = async () => {
             const key = `room_access_${restaurantSlug}_${roomParam}`
-            const stored = localStorage.getItem(key)
-            if (stored) {
-                setVerifiedData(JSON.parse(stored))
+            try {
+                const stored = localStorage.getItem(key)
+                if (stored) {
+                    const parsed = JSON.parse(stored)
+                    if (parsed.phoneNumber) {
+                        // Silent verification check to verify if the booking has changed or expired
+                        const res = await fetch('/api/rooms/verify', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                restaurantSlug,
+                                roomNumber: roomParam,
+                                phoneNumber: parsed.phoneNumber
+                            })
+                        })
+                        if (res.ok) {
+                            setVerifiedData(parsed)
+                        } else {
+                            // Booking changed or checked out — clean up storage
+                            localStorage.removeItem(key)
+                        }
+                    } else {
+                        // Legacy storage format without phone number — clear it
+                        localStorage.removeItem(key)
+                    }
+                }
+            } catch (e) {
+                console.error(e)
+            } finally {
+                setCheckingStorage(false)
             }
-        } catch (e) {
-            console.error(e)
-        } finally {
-            setCheckingStorage(false)
         }
+
+        checkStoredAccess()
     }, [roomParam, restaurantSlug])
 
     const handleVerify = async (e: React.FormEvent) => {
@@ -85,7 +111,8 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
             const verified = {
                 guestName: data.guestName,
                 qrToken: data.qrToken,
-                tableLabel: data.tableLabel
+                tableLabel: data.tableLabel,
+                phoneNumber: phoneNumber.trim() // Save phone number to re-verify later!
             }
 
             const key = `room_access_${restaurantSlug}_${roomParam}`
