@@ -4,7 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import Image from 'next/image'
 import { Shield, ChefHat, Users, User, Check, AlertTriangle, Loader2, Pencil, Trash2, Eye, EyeOff, Banknote, Search, Mail, X, RotateCw, DollarSign, List, Plus } from 'lucide-react'
-import { updateStaffRoleAction, toggleStaffStatusAction, updateStaffNameAction, resetStaffPasswordAction, deleteStaffAction, updateStaffSalaryAction, recordLedgerTransactionAction, fetchStaffLedgerAction } from '@/app/(admin)/admin/staff/actions'
+import { updateStaffRoleAction, toggleStaffStatusAction, updateStaffNameAction, resetStaffPasswordAction, deleteStaffAction, updateStaffSalaryAction, recordLedgerTransactionAction, fetchStaffLedgerAction, updateOpeningBalanceAction } from '@/app/(admin)/admin/staff/actions'
 import { createDepartmentAction, updateDepartmentAction, deleteDepartmentAction, updateStaffDepartmentAction } from '@/app/(admin)/admin/staff/department-actions'
 import { createInvitationAction, revokeInvitationAction, resendInvitationAction } from '@/app/(admin)/admin/staff/invite-actions'
 import { toast } from 'react-hot-toast'
@@ -23,6 +23,7 @@ type StaffMember = {
     email: string | null
     department_id: string | null
     monthly_salary: number
+    opening_balance: number
     created_at: string
     // Supabase can return arrays for joins depending on the query shape
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -121,11 +122,15 @@ export default function StaffManager({
         user: StaffMember | null
         entries: any[]
         loading: boolean
+        openingBalanceEdit: string
+        savingOpeningBalance: boolean
     }>({
         isOpen: false,
         user: null,
         entries: [],
-        loading: false
+        loading: false,
+        openingBalanceEdit: '',
+        savingOpeningBalance: false
     })
 
     const [submittingId, setSubmittingId] = useState<string | null>(null)
@@ -287,10 +292,10 @@ export default function StaffManager({
     }
 
     const handleOpenLedger = async (user: StaffMember) => {
-        setLedgerModal({ isOpen: true, user, entries: [], loading: true })
+        setLedgerModal({ isOpen: true, user, entries: [], loading: true, openingBalanceEdit: '', savingOpeningBalance: false })
         try {
             const data = await fetchStaffLedgerAction(user.id)
-            setLedgerModal({ isOpen: true, user, entries: data || [], loading: false })
+            setLedgerModal({ isOpen: true, user, entries: data || [], loading: false, openingBalanceEdit: '', savingOpeningBalance: false })
         } catch (err: any) {
             toast.error(err.message || 'Failed to fetch ledger')
             setLedgerModal(prev => ({ ...prev, loading: false }))
@@ -1621,19 +1626,20 @@ export default function StaffManager({
                 </div>
             )}
 
-            {/* Ledger History Drawer/Modal */}
+            {/* Ledger History Modal */}
             {ledgerModal.isOpen && ledgerModal.user && (
                 <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-surface w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl rounded-card border border-hairline animate-in fade-in zoom-in-95 duration-200">
-                        <div className="px-6 py-5 border-b border-hairline flex items-center justify-between shrink-0 bg-surface-muted/30">
+                        {/* Header */}
+                        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between shrink-0 bg-surface-muted/30">
                             <div>
                                 <h3 className="font-extrabold text-ink text-base">Staff Ledger Statement</h3>
-                                <p className="text-[11px] text-ink-subtle uppercase tracking-wider font-bold mt-1">{ledgerModal.user.full_name}</p>
+                                <p className="text-[11px] text-ink-subtle uppercase tracking-wider font-bold mt-0.5">{ledgerModal.user.full_name} • Monthly Salary: {formatCurrency(ledgerModal.user.monthly_salary)}</p>
                             </div>
-                            <button onClick={() => setLedgerModal(prev => ({ ...prev, isOpen: false }))} className="w-8 h-8 flex items-center justify-center rounded-[var(--r-md)] text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors focus-ring">×</button>
+                            <button onClick={() => setLedgerModal(prev => ({ ...prev, isOpen: false }))} className="w-8 h-8 flex items-center justify-center rounded-[var(--r-md)] text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors">×</button>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6 min-h-0">
+                        <div className="flex-1 overflow-y-auto p-6 space-y-5 min-h-0">
                             {ledgerModal.loading ? (
                                 <div className="flex flex-col items-center justify-center py-20 text-ink-subtle gap-2">
                                     <Loader2 size={24} className="animate-spin" />
@@ -1641,118 +1647,161 @@ export default function StaffManager({
                                 </div>
                             ) : (
                                 <>
-                                    {/* Ledger Metrics Summary */}
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="p-4 bg-emerald-50/40 border border-emerald-100 rounded-card">
-                                            <div className="text-[10px] uppercase tracking-wider font-black text-emerald-800">Total Paid Out</div>
-                                            <div className="text-xl font-black text-emerald-950 mt-1">
-                                                {formatCurrency(ledgerModal.entries.reduce((sum, entry) => {
-                                                    if (['salary_payout', 'advance_payment', 'bonus'].includes(entry.entry_type)) {
-                                                        return sum + Number(entry.amount)
-                                                    }
-                                                    return sum
-                                                }, 0))}
-                                            </div>
+                                    {/* Summary Metrics */}
+                                    <div className="grid grid-cols-3 gap-3">
+                                        <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-card">
+                                            <div className="text-[10px] uppercase tracking-wider font-black text-blue-700">Opening Balance</div>
+                                            <div className="text-xl font-black text-blue-950 mt-1">{formatCurrency(ledgerModal.user.opening_balance)}</div>
+                                            <div className="text-[10px] text-blue-500 mt-1">Pre-system balance owed</div>
                                         </div>
-                                        <div className="p-4 bg-amber-50/40 border border-amber-100 rounded-card">
-                                            <div className="text-[10px] uppercase tracking-wider font-black text-amber-800">Outstanding Advances</div>
-                                            <div className="text-xl font-black text-amber-950 mt-1">
-                                                {formatCurrency(ledgerModal.entries.reduce((sum, entry) => {
-                                                    if (entry.entry_type === 'advance_payment') return sum + Number(entry.amount)
-                                                    if (entry.entry_type === 'deduction' && entry.note?.toLowerCase().includes('advance')) return sum - Number(entry.amount)
-                                                    return sum
-                                                }, 0))}
+                                        <div className="p-4 bg-violet-50/50 border border-violet-100 rounded-card">
+                                            <div className="text-[10px] uppercase tracking-wider font-black text-violet-700">Total Salary Due</div>
+                                            <div className="text-xl font-black text-violet-950 mt-1">
+                                                {formatCurrency(Number(ledgerModal.user.opening_balance) + ledgerModal.entries.reduce((sum, e) => e.entry_type === 'accrual' ? sum + Number(e.amount) : sum, 0))}
                                             </div>
+                                            <div className="text-[10px] text-violet-500 mt-1">Opening + accruals</div>
+                                        </div>
+                                        <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-card">
+                                            <div className="text-[10px] uppercase tracking-wider font-black text-emerald-700">Total Paid Out</div>
+                                            <div className="text-xl font-black text-emerald-950 mt-1">
+                                                {formatCurrency(ledgerModal.entries.reduce((sum, e) => ['salary_payout','advance_payment','bonus'].includes(e.entry_type) ? sum + Number(e.amount) : sum, 0))}
+                                            </div>
+                                            <div className="text-[10px] text-emerald-500 mt-1">Payouts + advances + bonus</div>
                                         </div>
                                     </div>
 
-                                    {/* Transaction Ledger Table */}
+                                    {/* Opening Balance Editor */}
+                                    <div className="flex items-center gap-3 p-3 bg-blue-50/30 border border-blue-100 rounded-[var(--r-md)]">
+                                        <div className="text-[11px] font-black text-blue-700 uppercase tracking-wider shrink-0">Set Opening Balance</div>
+                                        <div className="text-[11px] text-blue-500 flex-1">Amount owed to this staff before this system was used (e.g. unpaid salary from previous months)</div>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={ledgerModal.openingBalanceEdit}
+                                            onChange={e => setLedgerModal(prev => ({ ...prev, openingBalanceEdit: e.target.value }))}
+                                            placeholder={String(ledgerModal.user.opening_balance)}
+                                            className="w-32 px-2.5 py-1.5 text-xs font-bold border border-blue-200 rounded-[var(--r-sm)] bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                        />
+                                        <button
+                                            disabled={ledgerModal.savingOpeningBalance || ledgerModal.openingBalanceEdit === ''}
+                                            onClick={async () => {
+                                                if (!ledgerModal.user) return
+                                                setLedgerModal(prev => ({ ...prev, savingOpeningBalance: true }))
+                                                const val = parseFloat(ledgerModal.openingBalanceEdit)
+                                                if (isNaN(val) || val < 0) {
+                                                    setLedgerModal(prev => ({ ...prev, savingOpeningBalance: false }))
+                                                    return
+                                                }
+                                                await updateOpeningBalanceAction(ledgerModal.user.id, val)
+                                                setLedgerModal(prev => ({
+                                                    ...prev,
+                                                    savingOpeningBalance: false,
+                                                    openingBalanceEdit: '',
+                                                    user: prev.user ? { ...prev.user, opening_balance: val } : null
+                                                }))
+                                            }}
+                                            className="px-3 py-1.5 text-[11px] font-black text-white bg-blue-500 hover:bg-blue-600 rounded-[var(--r-sm)] flex items-center gap-1 transition disabled:opacity-50"
+                                        >
+                                            {ledgerModal.savingOpeningBalance ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                                            Save
+                                        </button>
+                                    </div>
+
+                                    {/* Transaction Table */}
                                     <div className="space-y-2">
                                         <div className="flex items-center justify-between">
                                             <h4 className="text-xs font-black text-ink uppercase tracking-wider">Transaction History</h4>
-                                            <span className="text-[10px] font-bold text-ink-subtle">{ledgerModal.entries.length} entries</span>
+                                            <span className="text-[10px] font-bold text-ink-subtle">{ledgerModal.entries.length + (Number(ledgerModal.user.opening_balance) > 0 ? 1 : 0)} entries</span>
                                         </div>
-                                        
-                                        {ledgerModal.entries.length === 0 ? (
-                                            <div className="text-center py-12 text-sm text-ink-muted bg-surface-muted/20 border border-hairline rounded-card font-bold">
-                                                No ledger transactions recorded yet
-                                            </div>
-                                        ) : (
-                                            <div className="border border-hairline rounded-card overflow-hidden">
-                                                    <table className="w-full text-left text-xs border-collapse">
-                                                        <thead>
-                                                            <tr className="bg-surface-muted border-b-2 border-hairline">
-                                                                <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-center w-8">#</th>
-                                                                <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px]">Date & Time</th>
-                                                                <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px]">Type</th>
-                                                                <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px]">Method</th>
-                                                                <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px]">Note / Reference</th>
-                                                                <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-right">Amount</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-hairline">
-                                                            {ledgerModal.entries.map((entry, idx) => {
-                                                                const isPayout = ['salary_payout', 'advance_payment', 'bonus'].includes(entry.entry_type)
-                                                                const typeColors: Record<string, string> = {
-                                                                    salary_payout: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-                                                                    advance_payment: 'bg-amber-50 text-amber-700 border-amber-100',
-                                                                    bonus: 'bg-indigo-50 text-indigo-700 border-indigo-100',
-                                                                    deduction: 'bg-rose-50 text-rose-700 border-rose-100',
-                                                                    accrual: 'bg-gray-50 text-gray-600 border-gray-100',
-                                                                }
-                                                                const colorClass = typeColors[entry.entry_type] || 'bg-gray-50 text-gray-600 border-gray-100'
-                                                                const methodLabel = entry.payment_method
-                                                                    ? entry.payment_method === 'bank_transfer' ? 'Bank'
-                                                                    : entry.payment_method === 'qr_digital' ? 'QR'
-                                                                    : 'Cash'
-                                                                    : '—'
 
-                                                                return (
-                                                                    <tr key={entry.id} className={`transition-colors hover:bg-brand-50/20 ${idx % 2 === 0 ? 'bg-surface' : 'bg-surface-muted/20'}`}>
-                                                                        <td className="px-3 py-2.5 text-center text-[11px] font-black text-ink-muted border-r border-hairline">
-                                                                            {ledgerModal.entries.length - idx}
-                                                                        </td>
-                                                                        <td className="px-3 py-2.5 font-bold text-ink-subtle border-r border-hairline text-[11px]">
-                                                                            <div>{new Date(entry.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
-                                                                            <div className="text-ink-muted text-[10px]">{new Date(entry.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}</div>
-                                                                        </td>
-                                                                        <td className="px-3 py-2.5 border-r border-hairline">
-                                                                            <span className={`inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase tracking-wider border ${colorClass}`}>
-                                                                                {entry.entry_type.replace(/_/g, ' ')}
-                                                                            </span>
-                                                                        </td>
-                                                                        <td className="px-3 py-2.5 font-bold text-ink-subtle border-r border-hairline text-[11px] text-center">
-                                                                            {methodLabel}
-                                                                        </td>
-                                                                        <td className="px-3 py-2.5 font-bold text-ink border-r border-hairline text-[11px] w-full" title={entry.note || ''}>
-                                                                            {entry.note || <span className="text-ink-muted italic">—</span>}
-                                                                        </td>
-                                                                        <td className={`px-3 py-2.5 font-black text-right text-sm ${isPayout ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                                            {isPayout ? '+' : '−'} {formatCurrency(entry.amount)}
-                                                                        </td>
-                                                                    </tr>
-                                                                )
-                                                            })}
-                                                        </tbody>
-                                                        <tfoot>
-                                                            <tr className="bg-surface-muted/60 border-t-2 border-hairline">
-                                                                <td colSpan={5} className="px-3 py-2.5 text-[11px] font-black text-ink uppercase tracking-wider">Net Balance</td>
-                                                                <td className={`px-3 py-2.5 text-right font-black text-sm ${
-                                                                    ledgerModal.entries.reduce((sum, e) => {
-                                                                        const isPay = ['salary_payout', 'advance_payment', 'bonus'].includes(e.entry_type)
-                                                                        return sum + (isPay ? Number(e.amount) : -Number(e.amount))
-                                                                    }, 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                                                                }`}>
-                                                                    {formatCurrency(Math.abs(ledgerModal.entries.reduce((sum, e) => {
-                                                                        const isPay = ['salary_payout', 'advance_payment', 'bonus'].includes(e.entry_type)
-                                                                        return sum + (isPay ? Number(e.amount) : -Number(e.amount))
-                                                                    }, 0)))}
+                                        <div className="border border-hairline rounded-card overflow-hidden">
+                                            <table className="w-full text-left text-xs border-collapse">
+                                                <thead>
+                                                    <tr className="bg-surface-muted border-b-2 border-hairline">
+                                                        <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-center w-8 border-r border-hairline">#</th>
+                                                        <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline">Date & Time</th>
+                                                        <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline">Description</th>
+                                                        <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline">Type</th>
+                                                        <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline">Method</th>
+                                                        <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-right border-r border-hairline">Taken Amount</th>
+                                                        <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-right">Amount to Pay</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-hairline">
+                                                    {/* Opening Balance Row */}
+                                                    {Number(ledgerModal.user.opening_balance) > 0 && (
+                                                        <tr className="bg-blue-50/30 hover:bg-blue-50/50 transition-colors">
+                                                            <td className="px-3 py-2.5 text-center text-[11px] font-black text-ink-muted border-r border-hairline">0</td>
+                                                            <td className="px-3 py-2.5 font-bold text-ink-subtle border-r border-hairline text-[11px]">
+                                                                <div className="italic text-blue-600">Before system</div>
+                                                            </td>
+                                                            <td className="px-3 py-2.5 font-bold text-blue-700 border-r border-hairline text-[11px]">Pre-existing unpaid balance</td>
+                                                            <td className="px-3 py-2.5 border-r border-hairline">
+                                                                <span className="inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase tracking-wider border bg-blue-50 text-blue-700 border-blue-100">Opening Bal</span>
+                                                            </td>
+                                                            <td className="px-3 py-2.5 text-center text-ink-muted border-r border-hairline">—</td>
+                                                            <td className="px-3 py-2.5 text-right border-r border-hairline">—</td>
+                                                            <td className="px-3 py-2.5 text-right font-black text-blue-700 text-sm">{formatCurrency(ledgerModal.user.opening_balance)}</td>
+                                                        </tr>
+                                                    )}
+                                                    {/* Ledger Entry Rows */}
+                                                    {ledgerModal.entries.length === 0 && Number(ledgerModal.user.opening_balance) === 0 ? (
+                                                        <tr>
+                                                            <td colSpan={7} className="text-center py-10 text-sm text-ink-muted font-bold">No ledger transactions recorded yet</td>
+                                                        </tr>
+                                                    ) : ledgerModal.entries.map((entry, idx) => {
+                                                        const isTaken = ['salary_payout', 'advance_payment', 'bonus'].includes(entry.entry_type)
+                                                        const isAmountToPay = entry.entry_type === 'accrual'
+                                                        const typeColors: Record<string, string> = {
+                                                            salary_payout: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+                                                            advance_payment: 'bg-amber-50 text-amber-700 border-amber-100',
+                                                            bonus: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+                                                            deduction: 'bg-rose-50 text-rose-700 border-rose-100',
+                                                            accrual: 'bg-violet-50 text-violet-700 border-violet-100',
+                                                        }
+                                                        const colorClass = typeColors[entry.entry_type] || 'bg-gray-50 text-gray-600 border-gray-100'
+                                                        const methodLabel = entry.payment_method === 'bank_transfer' ? 'Bank' : entry.payment_method === 'qr_digital' ? 'QR' : entry.payment_method === 'cash' ? 'Cash' : '—'
+
+                                                        return (
+                                                            <tr key={entry.id} className={`transition-colors hover:bg-brand-50/10 ${idx % 2 === 0 ? 'bg-surface' : 'bg-surface-muted/15'}`}>
+                                                                <td className="px-3 py-2.5 text-center text-[11px] font-black text-ink-muted border-r border-hairline">{idx + 1}</td>
+                                                                <td className="px-3 py-2.5 border-r border-hairline text-[11px] font-bold text-ink-subtle">
+                                                                    <div>{new Date(entry.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                                                                    <div className="text-ink-muted text-[10px]">{new Date(entry.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}</div>
+                                                                </td>
+                                                                <td className="px-3 py-2.5 font-bold text-ink border-r border-hairline text-[11px] w-full">
+                                                                    {entry.note || <span className="text-ink-muted italic">No description</span>}
+                                                                </td>
+                                                                <td className="px-3 py-2.5 border-r border-hairline">
+                                                                    <span className={`inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase tracking-wider border ${colorClass}`}>
+                                                                        {entry.entry_type.replace(/_/g, ' ')}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-3 py-2.5 font-bold text-ink-subtle border-r border-hairline text-[11px] text-center">{methodLabel}</td>
+                                                                <td className="px-3 py-2.5 text-right font-black border-r border-hairline">
+                                                                    {isTaken ? <span className="text-emerald-600 text-sm">{formatCurrency(entry.amount)}</span> : <span className="text-ink-muted">—</span>}
+                                                                </td>
+                                                                <td className="px-3 py-2.5 text-right font-black">
+                                                                    {isAmountToPay ? <span className="text-violet-600 text-sm">{formatCurrency(entry.amount)}</span> : entry.entry_type === 'deduction' ? <span className="text-rose-600 text-sm">-{formatCurrency(entry.amount)}</span> : <span className="text-ink-muted">—</span>}
                                                                 </td>
                                                             </tr>
-                                                        </tfoot>
-                                                    </table>
-                                            </div>
-                                        )}
+                                                        )
+                                                    })}
+                                                </tbody>
+                                                <tfoot>
+                                                    <tr className="bg-surface-muted/70 border-t-2 border-hairline">
+                                                        <td colSpan={5} className="px-3 py-2.5 text-[11px] font-black text-ink uppercase tracking-wider">Totals</td>
+                                                        <td className="px-3 py-2.5 text-right font-black text-sm text-emerald-600 border-r border-hairline">
+                                                            {formatCurrency(ledgerModal.entries.reduce((sum, e) => ['salary_payout','advance_payment','bonus'].includes(e.entry_type) ? sum + Number(e.amount) : sum, 0))}
+                                                        </td>
+                                                        <td className="px-3 py-2.5 text-right font-black text-sm text-violet-600">
+                                                            {formatCurrency(Number(ledgerModal.user.opening_balance) + ledgerModal.entries.reduce((sum, e) => e.entry_type === 'accrual' ? sum + Number(e.amount) : e.entry_type === 'deduction' ? sum - Number(e.amount) : sum, 0))}
+                                                        </td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
                                     </div>
                                 </>
                             )}

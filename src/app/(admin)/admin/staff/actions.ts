@@ -218,9 +218,35 @@ export async function fetchStaffLedgerAction(userId: string) {
         .from('staff_ledger')
         .select('*')
         .eq('user_id', userId)
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: true })
 
     if (error) throw new Error(error.message)
     return data
 }
 
+export async function updateOpeningBalanceAction(userId: string, openingBalance: number) {
+    const currentUser = await getCurrentUser()
+    const supabase = await createAdminClient()
+
+    const { data: targetUser } = await supabase
+        .from('users')
+        .select('restaurant_id')
+        .eq('id', userId)
+        .single()
+
+    if (targetUser?.restaurant_id !== currentUser.restaurantId) {
+        return { error: 'Unauthorized' }
+    }
+
+    if (openingBalance < 0) return { error: 'Opening balance cannot be negative' }
+
+    const { error } = await supabase
+        .from('users')
+        .update({ opening_balance: openingBalance })
+        .eq('id', userId)
+
+    if (error) return { error: error.message }
+
+    revalidatePath('/admin/staff')
+    return { success: true }
+}
