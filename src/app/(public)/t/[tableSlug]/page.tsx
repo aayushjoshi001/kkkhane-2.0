@@ -139,6 +139,7 @@ async function MenuDataLoader({
                 label: tableData.label,
                 qr_token: tableToken,
                 restaurant_id: tableData.restaurant_id,
+                room_id: tableData.room_id ?? null,
                 restaurants: Array.isArray(tableData.restaurants)
                     ? tableData.restaurants[0] || null
                     : (tableData.restaurants as unknown as { name: string; slug: string | null; logo_url: string | null; physical_menu_urls: string[] | null } | null),

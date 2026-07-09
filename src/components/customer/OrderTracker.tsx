@@ -6,7 +6,7 @@ import { playStatusUpdate } from '@/lib/audio'
 import { playVoice } from '@/lib/voice'
 import { toast } from 'react-hot-toast'
 import { timeAgo } from '@/lib/utils'
-import { useCurrency } from '@/lib/contexts/FeatureContext'
+import { useCurrency, useBusinessMode } from '@/lib/contexts/FeatureContext'
 import { CheckCircle, Clock, ChefHat, Package, PartyPopper, ChevronLeft, MapPin, Plus } from 'lucide-react'
 import type { Order, OrderItem, MenuItem, OrderItemModifier } from '@/types/database'
 import Confetti from '@/components/customer/Confetti'
@@ -66,7 +66,12 @@ export default function OrderTracker({
     const router = useRouter()
 
     const isHotelRoom = !!(order as any).booking_id
-    const activeShowSuccess = isHotelRoom ? true : showSuccessScreen
+    // Hotels run the kitchen off printed KOT tickets, not this digital tracker —
+    // order status here never advances for them, so live tracking is hidden for
+    // every order in a hotel-mode restaurant, not just ones billed to a room.
+    const businessMode = useBusinessMode()
+    const hideLiveTracking = isHotelRoom || businessMode === 'hotel'
+    const activeShowSuccess = hideLiveTracking ? true : showSuccessScreen
 
     useEffect(() => {
         const supabase = supabaseRef.current
@@ -231,7 +236,7 @@ export default function OrderTracker({
 
                     {/* Action Button */}
                     <div className="mt-8">
-                        {isHotelRoom ? (
+                        {hideLiveTracking ? (
                             <button
                                 onClick={() => router.push(`/t/${tableSlug}`)}
                                 className="w-full bg-brand-500 text-white font-black text-sm py-4 rounded-2xl active:scale-[0.98] transition-transform shadow-md shadow-[#FB6303]/15 flex items-center justify-center gap-2"

@@ -20,10 +20,10 @@ export interface RoomContext {
 export async function getActiveBookingForRoom(
     admin: SupabaseClient,
     roomId: string,
-): Promise<{ id: string; guest_name: string } | null> {
+): Promise<{ id: string; guest_name: string; guest_phone: string | null } | null> {
     const { data } = await admin
         .from('bookings')
-        .select('id, guest_name')
+        .select('id, guest_name, guest_phone')
         .eq('room_id', roomId)
         .eq('status', 'checked_in')
         .order('created_at', { ascending: false })

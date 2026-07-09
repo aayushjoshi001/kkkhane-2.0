@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { getActiveBookingForRoom } from '@/lib/rooms'
 
 export async function POST(req: Request) {
     try {
@@ -35,17 +36,11 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: `Room ${roomNumber} not found in this hotel` }, { status: 404 })
         }
 
-        // 3. Find the active checked-in booking for this room
-        const { data: booking, error: bookingError } = await supabase
-            .from('bookings')
-            .select('id, guest_name, guest_phone, status')
-            .eq('room_id', room.id)
-            .eq('status', 'checked_in')
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle()
+        // 3. Find the active checked-in booking for this room (shared with the
+        // customer QR page and the cashier's folio, so the answer can't drift)
+        const booking = await getActiveBookingForRoom(supabase, room.id)
 
-        if (bookingError || !booking) {
+        if (!booking) {
             return NextResponse.json({ error: `No active stay/check-in found for Room ${roomNumber}` }, { status: 404 })
         }
 

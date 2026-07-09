@@ -105,6 +105,66 @@ export async function initTableSession(
     }
 }
 
+/**
+ * Links the current dining-table session to an in-house guest's active stay,
+ * purely by phone number — no waiter/cashier action needed. Used when a hotel
+ * guest scans an ordinary restaurant table (not their room QR) and identifies
+ * as staying at the hotel. Once linked, every order this session places is
+ * reachable via sessions.booking_id, the same mechanism a waiter's manual
+ * "link to booking" already uses — so it shows up in the room bill, the
+ * stay-billing view, and the cashier's folio without any extra plumbing.
+ */
+export async function linkInHouseGuest(sessionToken: string, phoneNumber: string) {
+    const supabase = await createAdminClient()
+
+    const { data: session } = await supabase
+        .from('sessions')
+        .select('id, restaurant_id, booking_id')
+        .eq('session_token', sessionToken)
+        .eq('status', 'active')
+        .maybeSingle()
+
+    if (!session) {
+        return { error: 'Your table session has expired. Please rescan the QR code.' }
+    }
+    if (session.booking_id) {
+        return { error: 'This table is already linked to a room.' }
+    }
+
+    const cleanVal = (val: string) => val.replace(/\D/g, '')
+    const normalizedInput = cleanVal(phoneNumber)
+    if (!normalizedInput) {
+        return { error: 'Please enter a valid phone number.' }
+    }
+
+    const { data: bookings } = await supabase
+        .from('bookings')
+        .select('id, guest_name, guest_phone')
+        .eq('restaurant_id', session.restaurant_id)
+        .eq('status', 'checked_in')
+        .order('created_at', { ascending: false })
+
+    const booking = (bookings || []).find(b => cleanVal(b.guest_phone || '') === normalizedInput)
+
+    if (!booking) {
+        return { error: 'No active stay found with that phone number.' }
+    }
+
+    const expiresAt = await getStayExpiry(supabase, booking.id)
+
+    const { error: updateError } = await supabase
+        .from('sessions')
+        .update({ booking_id: booking.id, ...(expiresAt ? { expires_at: expiresAt } : {}) })
+        .eq('id', session.id)
+        .is('booking_id', null)
+
+    if (updateError) {
+        return { error: 'Failed to link this table to your room. Please try again.' }
+    }
+
+    return { success: true, guestName: booking.guest_name }
+}
+
 /** A room session should live until the guest checks out, not 4 hours. */
 async function getStayExpiry(
     supabase: Awaited<ReturnType<typeof createAdminClient>>,

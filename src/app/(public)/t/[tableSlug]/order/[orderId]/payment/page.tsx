@@ -1,7 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import PaymentPageClient from '@/components/customer/PaymentPageClient'
-import { getRestaurantFeatures } from '@/lib/features'
+import { getRestaurantFeatures, getRestaurantMode } from '@/lib/features'
 import { use } from 'react'
 
 export const revalidate = 0 // Don't cache this page - fetch fresh DB state
@@ -31,8 +31,8 @@ export default async function PaymentPage(props: {
         return notFound()
     }
 
-    // Fetch restaurant info and features in parallel
-    const [restaurantResult, features] = await Promise.all([
+    // Fetch restaurant info, features, and business mode in parallel
+    const [restaurantResult, features, businessMode] = await Promise.all([
         order.restaurant_id
             ? adminSupabase
                 .from('restaurants')
@@ -43,7 +43,18 @@ export default async function PaymentPage(props: {
         order.restaurant_id
             ? getRestaurantFeatures(order.restaurant_id)
             : Promise.resolve(null),
+        order.restaurant_id
+            ? getRestaurantMode(order.restaurant_id)
+            : Promise.resolve('dine_in' as const),
     ])
+
+    // Hotels settle bills via the room folio (or in person at checkout), never
+    // through this self-service payment form — a direct link (old bookmark,
+    // browser back-button) must not reach it even though the UI no longer
+    // links here for a hotel-mode order.
+    if (order.booking_id || businessMode === 'hotel') {
+        redirect(`/t/${params.tableSlug}/order/${params.orderId}`)
+    }
 
     const restaurantInfo = restaurantResult?.data
 

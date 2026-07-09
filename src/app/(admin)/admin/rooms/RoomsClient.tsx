@@ -8,6 +8,9 @@ import { QRCodeCanvas } from 'qrcode.react'
 import { toast } from 'react-hot-toast'
 import RoomBillingModal, { type BillingTable, type BillingOrder } from '@/components/admin/RoomBillingModal'
 import NextImage from 'next/image'
+import { renderQrCardPng, downloadDataUrl } from '@/lib/qrCardCanvas'
+
+const QR_LOGO_SRC = '/icons/kkkhane.png'
 
 interface RoomsClientProps {
     initialRooms: Room[]
@@ -290,170 +293,15 @@ export default function RoomsClient({
                 return
             }
 
-            // Preload logo image
-            const logoImg = new Image()
-            logoImg.src = '/icons/kkkhane.png'
-            await new Promise<void>((resolve) => {
-                logoImg.onload = () => resolve()
-                logoImg.onerror = () => resolve()
+            const pngFile = await renderQrCardPng({
+                label: qrToDownload.label,
+                restaurantName,
+                sourceCanvas: canvas,
+                logoSrc: QR_LOGO_SRC,
             })
-
             if (!active) return
 
-            const baseWidth = 600
-            const baseHeight = 650
-            const scale = 3
-            
-            const exportCanvas = document.createElement('canvas')
-            exportCanvas.width = baseWidth * scale
-            exportCanvas.height = baseHeight * scale
-            
-            const ctx = exportCanvas.getContext('2d')
-            if (!ctx) {
-                setQrToDownload(null)
-                return
-            }
-
-            // 1. Draw white background
-            ctx.fillStyle = '#ffffff'
-            ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height)
-
-            // Extract hashed font names from CSS variables created by next/font
-            const outfitFont = typeof window !== 'undefined' ? window.getComputedStyle(document.body).getPropertyValue('--font-outfit').trim() || '"Outfit"' : '"Outfit"'
-            const interFont = typeof window !== 'undefined' ? window.getComputedStyle(document.body).getPropertyValue('--font-inter').trim() || '"Inter"' : '"Inter"'
-            const fontStack = `${outfitFont}, ${interFont}, system-ui, -apple-system, sans-serif`
-
-            // 2. Draw Top Banner
-            const orangeColor = '#ff7a00'
-            
-            // Thin horizontal line across the banner area (y = 55px)
-            ctx.strokeStyle = orangeColor
-            ctx.lineWidth = 4 * scale
-            ctx.beginPath()
-            ctx.moveTo(0, 55 * scale)
-            ctx.lineTo(exportCanvas.width, 55 * scale)
-            ctx.stroke()
-            
-            // Solid orange box in the center
-            const boxWidth = 320
-            const boxHeight = 50
-            const boxX = (baseWidth - boxWidth) / 2
-            const boxY = 30
-            
-            ctx.fillStyle = orangeColor
-            ctx.fillRect(boxX * scale, boxY * scale, boxWidth * scale, boxHeight * scale)
-            
-            // Label inside the orange box
-            ctx.fillStyle = '#ffffff'
-            ctx.font = `bold ${22 * scale}px ${fontStack}`
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
-            ctx.fillText(
-                qrToDownload.label.toUpperCase(),
-                exportCanvas.width / 2,
-                (boxY + boxHeight / 2) * scale
-            )
-
-            // 3. Draw QR Code in the middle
-            const qrSize = 340
-            const qrX = (baseWidth - qrSize) / 2
-            const qrY = 120
-            ctx.drawImage(
-                canvas,
-                qrX * scale,
-                qrY * scale,
-                qrSize * scale,
-                qrSize * scale
-            )
-
-            // 4. Draw Hotel/Restaurant Name (centered in the gap between QR and footer)
-            ctx.fillStyle = '#000000'
-            ctx.font = `bold ${26 * scale}px ${fontStack}`
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
-            ctx.fillText(
-                restaurantName,
-                exportCanvas.width / 2,
-                530 * scale
-            )
-
-            // 5. Draw Bottom Banner
-            const footerHeight = 55
-            const footerY = baseHeight - footerHeight
-            
-            ctx.fillStyle = orangeColor
-            ctx.fillRect(0, footerY * scale, exportCanvas.width, footerHeight * scale)
-
-            // Draw Footer Text "Powered by KKKhane"
-            ctx.fillStyle = '#ffffff'
-            ctx.font = `bold ${16 * scale}px ${fontStack}`
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
-            
-            const footerText = 'Powered by KKKhane'
-            const textCenterY = (footerY + footerHeight / 2) * scale
-            
-            const textWidth = ctx.measureText(footerText).width
-            const logoSpacing = 10 * scale
-            const logoRadius = 11 * scale
-            const totalWidth = textWidth + logoSpacing + (logoRadius * 2)
-            
-            const textStartX = (exportCanvas.width - totalWidth) / 2 + textWidth / 2
-            ctx.fillText(footerText, textStartX, textCenterY)
-
-            // Draw Logo Icon next to text
-            const logoCenterX = textStartX + textWidth / 2 + logoSpacing + logoRadius
-            const logoCenterY = textCenterY
-            
-            // Draw circular logo image if preloaded successfully, fallback to styled white 'K' circle
-            if (logoImg.complete && logoImg.naturalWidth > 0) {
-                // Draw solid white background circle
-                ctx.fillStyle = '#ffffff'
-                ctx.beginPath()
-                ctx.arc(logoCenterX, logoCenterY, logoRadius, 0, 2 * Math.PI)
-                ctx.fill()
-
-                ctx.save()
-                ctx.beginPath()
-                ctx.arc(logoCenterX, logoCenterY, logoRadius - (1.5 * scale), 0, 2 * Math.PI)
-                ctx.closePath()
-                ctx.clip()
-                ctx.drawImage(
-                    logoImg,
-                    logoCenterX - logoRadius,
-                    logoCenterY - logoRadius,
-                    logoRadius * 2,
-                    logoRadius * 2
-                )
-                ctx.restore()
-                
-                // Draw white circle outline on top
-                ctx.strokeStyle = '#ffffff'
-                ctx.lineWidth = 1.5 * scale
-                ctx.beginPath()
-                ctx.arc(logoCenterX, logoCenterY, logoRadius, 0, 2 * Math.PI)
-                ctx.stroke()
-            } else {
-                // Draw white circle outline fallback
-                ctx.strokeStyle = '#ffffff'
-                ctx.lineWidth = 2 * scale
-                ctx.beginPath()
-                ctx.arc(logoCenterX, logoCenterY, logoRadius, 0, 2 * Math.PI)
-                ctx.stroke()
-                
-                // Draw white K letter inside the circle fallback
-                ctx.fillStyle = '#ffffff'
-                ctx.font = `bold ${12 * scale}px ${fontStack}`
-                ctx.textAlign = 'center'
-                ctx.textBaseline = 'middle'
-                ctx.fillText('K', logoCenterX, logoCenterY + 0.5 * scale)
-            }
-
-            const pngFile = exportCanvas.toDataURL('image/png')
-            const downloadLink = document.createElement('a')
-            downloadLink.download = `${qrToDownload.label.replace(/\s+/g, '_')}_QR.png`
-            downloadLink.href = pngFile
-            downloadLink.click()
+            downloadDataUrl(pngFile, `${qrToDownload.label.replace(/\s+/g, '_')}_QR.png`)
 
             // Reset state
             setQrToDownload(null)

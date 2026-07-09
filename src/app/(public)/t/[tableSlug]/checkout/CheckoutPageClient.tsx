@@ -51,24 +51,63 @@ export default function CheckoutPageClient({ isHotelRoom = true }: { isHotelRoom
     // same row for the IP check) — only the non-hotel majority case gets to skip
     // this fetch/spinner entirely; a hotel room still needs the full billing detail.
     const [loadingStay, setLoadingStay] = useState(isHotelRoom)
+    const [stayBillingFailed, setStayBillingFailed] = useState(false)
 
-    useEffect(() => {
-        if (!isHotelRoom || !params.tableSlug) return
+    const fetchStayBilling = () => {
+        if (!params.tableSlug) return
         fetch(`/api/rooms/stay-billing?tableSlug=${params.tableSlug}`)
             .then(res => res.json())
             .then(data => {
                 if (data.isHotelRoom) {
                     setStayBilling(data)
+                } else {
+                    // The server already told us this is a hotel room — a response
+                    // that disagrees means something's wrong server-side, not that
+                    // it's actually safe to fall through to online payment.
+                    setStayBillingFailed(true)
                 }
             })
-            .catch(err => console.error('Failed to load stay billing:', err))
+            .catch(() => setStayBillingFailed(true))
             .finally(() => setLoadingStay(false))
+    }
+
+    const retryStayBilling = () => {
+        setStayBillingFailed(false)
+        setLoadingStay(true)
+        fetchStayBilling()
+    }
+
+    useEffect(() => {
+        if (!isHotelRoom) return
+        fetchStayBilling()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isHotelRoom, params.tableSlug])
 
     if (loadingStay) {
         return (
             <div className="min-h-screen bg-surface-muted flex items-center justify-center p-4">
                 <Loader2 className="w-8 h-8 animate-spin text-[var(--color-primary)]" />
+            </div>
+        )
+    }
+
+    // A hotel room must never fall through to the normal cart/online-payment
+    // checkout below — if the bill failed to load, show a retry state instead
+    // of silently exposing payment options this room isn't supposed to have.
+    if (isHotelRoom && stayBillingFailed) {
+        return (
+            <div className="min-h-screen bg-surface-muted flex items-center justify-center p-4">
+                <div className="text-center space-y-4 max-w-sm">
+                    <p className="text-sm font-semibold text-ink-subtle">
+                        Couldn&apos;t load your room bill. Please check your connection and try again.
+                    </p>
+                    <button
+                        onClick={retryStayBilling}
+                        className="bg-[var(--color-primary)] text-white font-bold text-xs px-5 py-3 rounded-xl active:scale-95 transition shadow-md"
+                    >
+                        Retry
+                    </button>
+                </div>
             </div>
         )
     }
