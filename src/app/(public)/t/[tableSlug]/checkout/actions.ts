@@ -336,10 +336,9 @@ export async function placeOrder(
                 .update({ needs_confirmation: true })
                 .eq('id', result.order_id)
         } else {
-            const deductResult = await supabase.rpc('deduct_ingredients_for_order', { p_order_id: result.order_id })
-            if (deductResult.error) {
-                console.error('[order]', result.order_id, 'deduct_ingredients RPC error:', deductResult.error)
-            } else if (sessionData.restaurant_id) {
+            // place_order() already deducted stock/ingredients inline for every item —
+            // do not call deduct_ingredients_for_order here, it would double-deduct.
+            if (sessionData.restaurant_id) {
                 void checkAndAlertLowStock(sessionData.restaurant_id)
             }
         }

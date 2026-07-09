@@ -135,7 +135,16 @@ BEGIN
         SELECT r.ingredient_id, r.quantity_needed 
         FROM recipes r 
         WHERE (r.menu_item_variation_id = v_variant_id AND v_variant_id IS NOT NULL)
-           OR (r.menu_item_id = v_menu_item.id AND v_variant_id IS NULL)
+           OR (
+             r.menu_item_id = v_menu_item.id 
+             AND r.menu_item_variation_id IS NULL
+             AND (
+               v_variant_id IS NULL
+               OR NOT EXISTS (
+                 SELECT 1 FROM recipes r2 WHERE r2.menu_item_variation_id = v_variant_id
+               )
+             )
+           )
       LOOP
         UPDATE ingredients
         SET stock_quantity = stock_quantity - (v_recipe.quantity_needed * (v_item->>'quantity')::SMALLINT), updated_at = NOW()
@@ -212,12 +221,28 @@ BEGIN
   WHERE id = v_order_id;
   
   -- Loyalty points
-  SELECT * INTO v_loyalty_config FROM loyalty_settings WHERE restaurant_id = v_restaurant_id;
-  IF FOUND AND p_loyalty_member_id IS NOT NULL THEN
-    v_points_earned := FLOOR((v_subtotal - v_discount) * v_loyalty_config.points_per_amount);
-    UPDATE loyalty_members
-    SET points = points + v_points_earned
-    WHERE id = p_loyalty_member_id;
+  IF p_loyalty_member_id IS NOT NULL THEN
+    SELECT * INTO v_loyalty_config FROM loyalty_config WHERE restaurant_id = v_restaurant_id AND is_active = TRUE;
+    IF FOUND THEN
+      v_points_earned := FLOOR((v_subtotal - v_discount) * v_loyalty_config.points_per_dollar);
+      UPDATE loyalty_members
+      SET points_balance  = points_balance + v_points_earned,
+          lifetime_points = lifetime_points + v_points_earned,
+          lifetime_spend  = lifetime_spend + (v_subtotal - v_discount + v_tax),
+          visit_count     = visit_count + 1,
+          last_visit_at   = NOW(),
+          tier = CASE
+            WHEN lifetime_points + v_points_earned >= v_loyalty_config.platinum_threshold THEN 'platinum'
+            WHEN lifetime_points + v_points_earned >= v_loyalty_config.gold_threshold     THEN 'gold'
+            WHEN lifetime_points + v_points_earned >= v_loyalty_config.silver_threshold   THEN 'silver'
+            ELSE 'bronze'
+          END,
+          updated_at = NOW()
+      WHERE id = p_loyalty_member_id;
+      INSERT INTO loyalty_transactions (member_id, order_id, type, points, description)
+      VALUES (p_loyalty_member_id, v_order_id, 'earn', v_points_earned,
+        'Earned ' || v_points_earned || ' points on order ' || v_order_id::TEXT);
+    END IF;
   END IF;
   
   RETURN jsonb_build_object(
@@ -251,7 +276,16 @@ BEGIN
             SELECT ingredient_id, quantity_needed
             FROM   recipes
             WHERE  (menu_item_variation_id = v_item.menu_item_variation_id AND v_item.menu_item_variation_id IS NOT NULL)
-               OR  (menu_item_id = v_item.menu_item_id AND v_item.menu_item_variation_id IS NULL)
+               OR  (
+                 menu_item_id = v_item.menu_item_id 
+                 AND menu_item_variation_id IS NULL
+                 AND (
+                   v_item.menu_item_variation_id IS NULL
+                   OR NOT EXISTS (
+                     SELECT 1 FROM recipes r2 WHERE r2.menu_item_variation_id = v_item.menu_item_variation_id
+                   )
+                 )
+               )
         LOOP
             v_consumed := v_recipe.quantity_needed * v_item.quantity;
 
