@@ -22,6 +22,11 @@ export async function initTableSession(
     const optionalUser = isWaiterMode ? await getOptionalUser() : null
     const isIpRestricted = !ipCheckResult.allowed && !optionalUser
 
+    // Room context: an in-room QR binds its session to the guest's stay, and
+    // lives as long as the booking rather than the 4-hour dining default.
+    // Null for ordinary dining tables, which behave exactly as before.
+    const roomContext = await getRoomContextForTable(supabase, tableId)
+
     // 2. Validate existing session if any
     if (sessionToken) {
         const { data: validSession } = await supabase
@@ -42,7 +47,7 @@ export async function initTableSession(
     if (!sessionToken) {
         const { data: existingSession } = await supabase
             .from('sessions')
-            .select('id, session_token')
+            .select('id, session_token, booking_id')
             .eq('table_id', tableId)
             .eq('status', 'active')
             .gt('expires_at', new Date().toISOString())
@@ -51,15 +56,17 @@ export async function initTableSession(
             .maybeSingle()
 
         if (existingSession) {
-            sessionToken = existingSession.session_token
-            sessionUUID = existingSession.id
+            // Verify that this session does not belong to a different checked-out booking stay
+            if (roomContext?.bookingId && existingSession.booking_id && existingSession.booking_id !== roomContext.bookingId) {
+                // Booking changed! Do not reuse the stale session
+                sessionToken = null
+                sessionUUID = undefined
+            } else {
+                sessionToken = existingSession.session_token
+                sessionUUID = existingSession.id
+            }
         }
     }
-
-    // 3. Room context: an in-room QR binds its session to the guest's stay, and
-    //    lives as long as the booking rather than the 4-hour dining default.
-    //    Null for ordinary dining tables, which behave exactly as before.
-    const roomContext = await getRoomContextForTable(supabase, tableId)
 
     // A room with nobody checked in never opens a session — its orders could
     // never be billed to a folio. The QR page surfaces this to the guest.

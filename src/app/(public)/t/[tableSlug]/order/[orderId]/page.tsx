@@ -83,8 +83,8 @@ export default async function OrderPage(props: {
 
     // 2. Fetch all active sibling orders placed in this session/stay
     let sessionOrders: any[] = []
-    if (order && order.session_id) {
-        const { data: siblingData, error: siblingError } = await adminSupabase
+    if (order) {
+        let query: any = adminSupabase
             .from('orders')
             .select(`
               *,
@@ -94,14 +94,25 @@ export default async function OrderPage(props: {
                 order_item_modifiers (*)
               )
             `)
-            .eq('session_id', order.session_id)
             .neq('status', 'cancelled')
-            .order('placed_at', { ascending: true })
 
-        if (siblingError) {
-            console.error("Sibling orders fetch error:", siblingError)
+        if (order.booking_id) {
+            query = query.eq('booking_id', order.booking_id)
+        } else if (order.session_id) {
+            query = query.eq('session_id', order.session_id)
         } else {
-            sessionOrders = siblingData || []
+            query = null
+        }
+
+        if (query) {
+            const { data: siblingData, error: siblingError } = await query
+                .order('placed_at', { ascending: true })
+
+            if (siblingError) {
+                console.error("Sibling orders fetch error:", siblingError)
+            } else {
+                sessionOrders = siblingData || []
+            }
         }
     }
 
