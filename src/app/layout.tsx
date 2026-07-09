@@ -34,24 +34,24 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL('https://kkkhane.com'),
   title: {
-    default: 'kkkhane | Best SaaS for Cafes & Restaurants in Nepal',
-    template: '%s | kkkhane'
+    default: 'KKKhane | Best SaaS for Cafes & Restaurants in Nepal',
+    template: '%s | KKKhane'
   },
-  description: 'kkkhane is an ultra-premium SaaS application best for cafes and restaurants. Features include QR Menus, POS, Inventory, and Real-Time Reporting in Nepal.',
-  keywords: ['restaurant software', 'cafe POS', 'Nepal POS', 'QR menu', 'restaurant management system', 'kkkhane', 'Bhojad', 'Bharatpur'],
-  authors: [{ name: 'kkkhane' }],
+  description: 'KKKhane is an ultra-premium SaaS application best for cafes and restaurants. Features include QR Menus, POS, Inventory, and Real-Time Reporting in Nepal.',
+  keywords: ['restaurant software', 'cafe POS', 'Nepal POS', 'QR menu', 'restaurant management system', 'KKKhane', 'Bhojad', 'Bharatpur'],
+  authors: [{ name: 'KKKhane' }],
   openGraph: {
-    title: 'kkkhane | Best SaaS for Cafes & Restaurants in Nepal',
-    description: 'An ultra-premium restaurant management software. Best for cafe to restaurants in Nepal.',
+    title: 'KKKhane | Best SaaS for Cafes & Restaurants in Nepal',
+    description: 'An ultra-premium management software. Best for cafes and restaurants in Nepal.',
     url: 'https://kkkhane.com',
-    siteName: 'kkkhane',
+    siteName: 'KKKhane',
     locale: 'en_US',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'kkkhane | Best SaaS for Cafes & Restaurants in Nepal',
-    description: 'An ultra-premium restaurant management software. Best for cafe to restaurants in Nepal.',
+    title: 'KKKhane | Best SaaS for Cafes & Restaurants in Nepal',
+    description: 'An ultra-premium management software. Best for cafes and restaurants in Nepal.',
   },
   manifest: '/manifest.json',
   icons: {
@@ -135,7 +135,7 @@ export default async function RootLayout({
   const theme = await getThemeConfig()
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="scroll-smooth" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://challenges.cloudflare.com" />
         <link rel="dns-prefetch" href="https://challenges.cloudflare.com" />

@@ -18,11 +18,11 @@ const ROLE_LANDING: Record<string, string> = {
 }
 
 const faqs = [
-    { q: "What is kkkhane?", a: "kkkhane is a mobile-first restaurant ordering and table management system built in Nepal — menus, KOTs, billing, and everything in between." },
-    { q: "What are the features of kkkhane?", a: "Order management, digital QR menus, kitchen tickets, billing, inventory tracking, accounting, and real-time reporting. Which of these you get depends on your plan." },
-    { q: "Can I use kkkhane for free?", a: "Yes. The Free plan is free forever and covers up to 100 dishes, 10 categories and 3 staff logins. No credit card required." },
+    { q: "What is KKKhane?", a: "KKKhane is a mobile-first restaurant ordering and table management system built in Nepal — menus, KOTs, billing, and everything in between." },
+    { q: "What are the features of KKKhane?", a: "Order management, digital QR menus, kitchen tickets, billing, inventory tracking, accounting, and real-time reporting. Which of these you get depends on your plan." },
+    { q: "Can I use KKKhane for free?", a: "Yes. The Free plan is free forever and covers up to 100 dishes, 10 categories and 3 staff logins. No credit card required." },
     { q: "How secure is my restaurant data?", a: "Data is encrypted in transit and at rest, isolated per restaurant by row-level security, and access is governed by per-role permissions." },
-    { q: "Is kkkhane available on mobile devices?", a: "Yes, you can access the platform on any device with a modern web browser." },
+    { q: "Is KKKhane available on mobile devices?", a: "Yes, you can access the platform on any device with a modern web browser, iOS or Android." },
     { q: "Do you offer a QR code menu feature?", a: "Yes. Guests scan a table QR code to browse the menu and order from their own phone, on every plan." },
 ]
 
@@ -44,7 +44,7 @@ export default async function Home() {
                     __html: JSON.stringify({
                         "@context": "https://schema.org",
                         "@type": ["SoftwareApplication", "LocalBusiness"],
-                        "name": "kkkhane",
+                        "name": "KKKhane",
                         "url": "https://kkkhane.com",
                         "logo": "https://kkkhane.com/icons/kkkhane.png",
                         "description": "The ultimate SaaS application best for cafe to restaurants. Manage orders, inventory, and QR menus with ease.",
@@ -78,7 +78,7 @@ export default async function Home() {
 
                     {/* Branding Display: "के के खाने?" from image */}
                     <div className="flex justify-center mb-6 animate-fade-up group" style={{ animationDelay: '0.05s' }}>
-                        <h1 className="text-7xl sm:text-8xl lg:text-[7rem] font-black tracking-tight transform transition-all duration-700 hover:scale-105 cursor-default" style={{ fontFamily: 'var(--font-inter), sans-serif' }}>
+                        <h1 lang="ne" className="text-7xl sm:text-8xl lg:text-[7rem] font-black tracking-tight transform transition-all duration-700 hover:scale-105 cursor-default" style={{ fontFamily: 'var(--font-devanagari), var(--font-inter), sans-serif' }}>
                             <span className="text-[#201F1E] inline-block transition-transform duration-500 group-hover:-translate-y-2 group-hover:-rotate-2">के के </span>
                             <span className="text-[#E76115] inline-block transition-transform duration-500 delay-75 group-hover:-translate-y-2 group-hover:rotate-1">खाने<span className="text-[#65635B] inline-block transition-transform duration-500 delay-150 group-hover:scale-125 group-hover:rotate-12 group-hover:text-amber-500">?</span></span>
                         </h1>
@@ -206,17 +206,26 @@ export default async function Home() {
                         
                         <div className="order-1 lg:order-2 text-center lg:text-left">
                             <h3 className="text-4xl sm:text-5xl font-extrabold text-ink mb-6 tracking-tight">Available on any <span className="text-[var(--color-primary)]">device</span></h3>
-                            <p className="text-lg text-ink-subtle font-medium mb-12 leading-relaxed max-w-lg mx-auto lg:mx-0">
+                            <p className="text-lg text-ink-subtle font-medium mb-10 leading-relaxed max-w-lg mx-auto lg:mx-0">
                                 Manage your cafe or restaurant from your phone, tablet, or desktop. Our cloud architecture ensures your kitchen, waitstaff, and cashier are always synced in real-time.
                             </p>
 
-                                <div className="bg-black text-white px-8 py-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg">
+                            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4">
+                                <div className="bg-black text-white px-6 py-4 rounded-2xl flex items-center gap-3 shadow-lg hover:-translate-y-1 transition-transform">
                                     <Globe size={24} className="text-[var(--color-primary)]" /> 
                                     <div className="text-left">
-                                        <span className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Access Anywhere</span>
+                                        <span className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Any OS</span>
                                         <span className="block text-sm font-bold">Web Browser</span>
                                     </div>
                                 </div>
+                                <div className="bg-white border border-hairline text-ink px-6 py-4 rounded-2xl flex items-center gap-3 shadow-sm hover:-translate-y-1 transition-transform">
+                                    <Globe size={24} className="text-ink-subtle" /> 
+                                    <div className="text-left">
+                                        <span className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Mobile</span>
+                                        <span className="block text-sm font-bold">iOS & Android</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

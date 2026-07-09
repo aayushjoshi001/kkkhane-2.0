@@ -79,7 +79,7 @@ export default function MarketingNav() {
                                     </Link>
                                 ))}
                                 <Link href="/signup" className="mt-auto block rounded-xl bg-gradient-to-br from-indigo-50 to-purple-50 p-4">
-                                    <h4 className="mb-4 pr-10 text-sm font-bold text-ink">Digital QR Menu to make your Restaurant smart.</h4>
+                                    <h4 className="mb-4 pr-10 text-sm font-bold text-ink">Digital QR Menu to make your Cafe or Restaurant smart.</h4>
                                     <span className="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-xs font-bold text-white">Start for free</span>
                                 </Link>
                             </div>

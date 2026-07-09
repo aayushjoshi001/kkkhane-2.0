@@ -40,7 +40,7 @@ export default function MarketingFooter() {
                     <div>
                         <Logo className="mb-6 h-8" />
                         <p className="mb-8 text-sm font-medium leading-relaxed text-ink-subtle">
-                            #1 Restaurant Software to manage and grow your restaurant — smarter, faster.
+                            #1 Software to manage and grow your cafe or restaurant — smarter, faster.
                         </p>
                         <div className="flex gap-3">
                             {SOCIALS.map(({ icon: Icon, url }) => (
@@ -109,7 +109,7 @@ export default function MarketingFooter() {
                         <Link href="/legal/privacy" className="transition-colors hover:text-ink">Privacy Policy</Link>
                         <Link href="/legal/terms" className="transition-colors hover:text-ink">Terms &amp; Conditions</Link>
                     </div>
-                    <p>&copy; <CopyrightYear /> kkkhane. All Rights Reserved.</p>
+                    <p>&copy; <CopyrightYear /> KKKhane. All Rights Reserved.</p>
                 </div>
             </div>
         </footer>
