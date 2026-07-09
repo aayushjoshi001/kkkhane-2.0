@@ -15,7 +15,12 @@ export type PaymentStatus = 'unpaid' | 'pending' | 'paid' | 'refunded' | 'failed
 // permission structure (see finance_role_permissions) — they exist as real
 // `roles` rows but are not yet granted /admin/finance access (still gated to
 // super_admin/manager only); that enforcement wiring is a later phase.
-export type RoleName = 'super_admin' | 'manager' | 'kitchen' | 'waiter' | 'cashier' | 'customer' | 'owner' | 'finance_manager' | 'accountant' | 'receptionist'
+export type RoleName = 'super_admin' | 'manager' | 'kitchen' | 'waiter' | 'cashier' | 'bartender' | 'customer' | 'owner' | 'finance_manager' | 'accountant' | 'receptionist'
+
+// Re-exported so the DB row types below can name it without every consumer
+// importing from two places. The station registry itself lives in lib/stations.
+import type { StationKind } from '@/lib/stations'
+export type { StationKind }
 
 // Roles that require the restaurant's financeEnabled feature (enterprise
 // finance plan) before they can be assigned or invited.
@@ -133,6 +138,8 @@ export interface MenuCategory {
     is_visible: boolean
     emoji?: string | null
     image_url?: string | null
+    /** Default station for items in this category. */
+    station?: StationKind
 }
 
 export interface MenuItemVariation {
@@ -160,6 +167,8 @@ export interface MenuItem {
     tags: string[] | null
     is_combo?: boolean
     estimated_cost_price?: number | null
+    /** Overrides the category's station. Null/undefined = inherit it. */
+    station?: StationKind | null
     created_at: string
     updated_at: string
     // Joined fields
@@ -269,6 +278,8 @@ export interface OrderItem {
     // mark the dish ready. Null until cooking starts (or for legacy rows).
     claimed_by?: string | null
     claimed_at?: string | null
+    /** Where this line is made. Resolved and frozen when the line is written. */
+    station?: StationKind
     created_at: string
     // Joined fields
     menu_items?: MenuItem

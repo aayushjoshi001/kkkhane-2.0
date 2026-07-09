@@ -6,8 +6,9 @@ import Logo from '@/components/shared/Logo'
 import MobileNav from '@/app/MobileNav'
 import {
     ChevronDown, FileText, LayoutGrid, PiggyBank, QrCode, Gift,
-    Clock, Globe, MessageCircle, Users2,
+    Clock, Globe, MessageCircle, Users2, ArrowLeft
 } from 'lucide-react'
+import { usePathname } from 'next/navigation'
 
 const FEATURE_LINKS = [
     { title: 'Order Management with KOT', desc: 'Take orders perfectly and reduce errors.', icon: FileText, href: '/features/order-management' },
@@ -33,6 +34,7 @@ const RESOURCE_LINKS = [
 /** Shared marketing top nav (full desktop dropdowns + mobile). */
 export default function MarketingNav() {
     const [scrolled, setScrolled] = useState(false)
+    const pathname = usePathname()
 
     useEffect(() => {
         const handleScroll = () => {
@@ -44,26 +46,36 @@ export default function MarketingNav() {
     }, [])
 
     return (
-        <nav className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 bg-surface/75 backdrop-blur-md ${scrolled ? 'shadow-md border-b border-hairline-strong' : 'border-b border-transparent'}`}>
-            <div className="mx-auto flex h-20 max-w-[1400px] items-center justify-between px-4 sm:px-6 lg:px-8">
+        <>
+            {pathname !== '/' && (
+                <Link href="/" className="fixed top-[100px] left-6 z-[100] flex items-center gap-2 bg-[var(--color-primary)] text-white border-transparent px-5 py-2.5 rounded-full shadow-[0_8px_30px_rgba(251,99,3,0.3)] hover:scale-105 hover:shadow-[0_8px_40px_rgba(251,99,3,0.5)] transition-all text-sm font-extrabold tracking-wide">
+                    <ArrowLeft size={18} strokeWidth={3} /> BACK
+                </Link>
+            )}
+        <nav className={`fixed left-1/2 -translate-x-1/2 z-50 w-full max-w-[1100px] px-4 transition-all duration-500 ${scrolled ? 'top-4' : 'top-8'}`}>
+            <div className={`mx-auto flex h-16 items-center justify-between rounded-full px-4 sm:px-6 transition-all duration-500 ${
+                scrolled 
+                    ? 'bg-surface/85 backdrop-blur-2xl border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.08)]' 
+                    : 'bg-surface/50 backdrop-blur-md border border-white/20 shadow-sm'
+            }`}>
                 <Link href="/" className="flex shrink-0 items-center gap-2">
-                    <Logo className="h-8" />
+                    <Logo className="h-7" />
                 </Link>
 
-                <div className="hidden items-center gap-8 text-[15px] font-semibold text-ink-muted lg:flex">
+                <div className="hidden items-center gap-8 text-[14px] font-bold text-ink-muted lg:flex">
                     {/* Features dropdown */}
-                    <div className="group relative flex h-20 items-center">
+                    <div className="group relative flex h-16 items-center">
                         <button className="flex items-center gap-1 transition-colors hover:text-[var(--color-primary)]">
                             Features <ChevronDown size={14} className="transition-transform duration-200 group-hover:-rotate-180" />
                         </button>
-                        <div className="invisible absolute left-1/2 top-[80px] flex w-[800px] -translate-x-1/2 gap-6 rounded-2xl border border-hairline bg-surface p-6 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:opacity-100">
+                        <div className="invisible absolute left-1/2 top-[60px] flex w-[800px] -translate-x-1/2 gap-6 rounded-2xl border border-hairline bg-surface p-6 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:opacity-100">
                             <div className="grid flex-1 grid-cols-2 gap-4">
                                 {FEATURE_LINKS.map(({ title, desc, icon: Icon, href }) => (
-                                    <Link href={href} key={title} className="flex gap-3 rounded-xl p-3 transition-colors hover:bg-surface-muted">
-                                        <Icon className="mt-1 text-ink-subtle shrink-0" size={18} />
+                                    <Link href={href} key={title} className="flex gap-3 rounded-xl p-3 transition-colors hover:bg-surface-muted group/link">
+                                        <Icon className="mt-1 text-ink-subtle shrink-0 group-hover/link:text-[var(--color-primary)] transition-colors" size={18} />
                                         <div>
                                             <h4 className="mb-0.5 text-sm font-bold text-ink">{title}</h4>
-                                            <p className="text-xs leading-snug text-ink-subtle">{desc}</p>
+                                            <p className="text-xs leading-snug text-ink-subtle font-medium">{desc}</p>
                                         </div>
                                     </Link>
                                 ))}
@@ -74,12 +86,12 @@ export default function MarketingNav() {
                                         <Icon className="mt-0.5 text-ink-subtle shrink-0" size={18} />
                                         <div>
                                             <h4 className="mb-0.5 text-sm font-bold">{title}</h4>
-                                            <p className="text-xs text-ink-subtle">{desc}</p>
+                                            <p className="text-xs text-ink-subtle font-medium">{desc}</p>
                                         </div>
                                     </Link>
                                 ))}
-                                <Link href="/signup" className="mt-auto block rounded-xl bg-gradient-to-br from-indigo-50 to-purple-50 p-4">
-                                    <h4 className="mb-4 pr-10 text-sm font-bold text-ink">Digital QR Menu to make your Restaurant smart.</h4>
+                                <Link href="/signup" className="mt-auto block rounded-xl bg-gradient-to-br from-indigo-50 to-purple-50 p-4 hover:shadow-md transition-shadow">
+                                    <h4 className="mb-4 pr-10 text-sm font-bold text-ink">Digital QR Menu to make your Cafe or Restaurant smart.</h4>
                                     <span className="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-xs font-bold text-white">Start for free</span>
                                 </Link>
                             </div>
@@ -87,17 +99,17 @@ export default function MarketingNav() {
                     </div>
 
                     {/* Resources dropdown */}
-                    <div className="group relative flex h-20 items-center">
+                    <div className="group relative flex h-16 items-center">
                         <button className="flex items-center gap-1 transition-colors hover:text-[var(--color-primary)]">
                             Resources <ChevronDown size={14} className="transition-transform duration-200 group-hover:-rotate-180" />
                         </button>
-                        <div className="invisible absolute left-0 top-[80px] w-[300px] rounded-2xl border border-hairline bg-surface p-3 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:opacity-100">
+                        <div className="invisible absolute left-1/2 -translate-x-1/2 top-[60px] w-[300px] rounded-2xl border border-hairline bg-surface p-3 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:opacity-100">
                             {RESOURCE_LINKS.map(({ title, desc, icon: Icon, href }) => (
-                                <Link href={href} key={title} className="flex gap-3 rounded-xl p-3 transition-colors hover:bg-surface-muted">
-                                    <Icon className="mt-0.5 text-[var(--color-primary)] shrink-0" size={18} />
+                                <Link href={href} key={title} className="flex gap-3 rounded-xl p-3 transition-colors hover:bg-surface-muted group/link">
+                                    <Icon className="mt-0.5 text-ink-subtle shrink-0 group-hover/link:text-[var(--color-primary)] transition-colors" size={18} />
                                     <div>
                                         <h4 className="mb-0.5 text-sm font-bold text-ink">{title}</h4>
-                                        <p className="text-xs text-ink-subtle">{desc}</p>
+                                        <p className="text-xs text-ink-subtle font-medium">{desc}</p>
                                     </div>
                                 </Link>
                             ))}
@@ -109,16 +121,17 @@ export default function MarketingNav() {
                     <Link href="/contact" className="transition-colors hover:text-[var(--color-primary)]">Contact</Link>
                 </div>
 
-                <div className="flex items-center gap-6">
-                    <Link href="/login" className="hidden font-bold text-ink-muted transition-colors hover:text-[var(--color-primary)] sm:block">
+                <div className="flex items-center gap-4">
+                    <Link href="/login" className="hidden font-bold text-[14px] text-ink-muted transition-colors hover:text-[var(--color-primary)] sm:block">
                         Login
                     </Link>
-                    <Link href="/signup" className="rounded-full bg-[var(--color-primary)] px-6 py-2.5 font-bold text-white shadow-md transition-transform hover:scale-105 hover:shadow-lg">
-                        Start For Free
+                    <Link href="/signup" className="rounded-full bg-[var(--color-primary)] px-5 py-2 font-bold text-[13px] text-white shadow-md transition-transform hover:scale-105 hover:bg-brand-600">
+                        Start Free
                     </Link>
                     <MobileNav />
                 </div>
             </div>
         </nav>
+        </>
     )
 }

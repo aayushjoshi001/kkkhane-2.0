@@ -1,23 +1,23 @@
 import Link from 'next/link'
-import { ArrowRight, CheckCircle } from 'lucide-react'
+import { ArrowRight, CheckCircle, Smartphone, ChefHat, CreditCard, Users, Gift, BarChart } from 'lucide-react'
 import { MarketingNav, MarketingFooter, Section, Eyebrow, MarketingButton } from '@/components/marketing'
 
 const FEATURES = [
-    { id: 1, title: 'QR Code Ordering', icon: '📱', description: 'Customers scan QR codes at their table to access your menu instantly on any smartphone.', items: ['No app download required', 'Real-time menu updates', 'Multiple modifier groups', 'Image support for dishes'] },
-    { id: 2, title: 'Kitchen Display System', icon: '👨‍🍳', description: 'Real-time order management with live updates and color-coded status tracking for kitchen staff.', items: ['Live order queue', 'Status management', 'Takeout order queue', 'Prep time tracking'] },
-    { id: 3, title: 'Nepal QR Payments', icon: '💳', description: 'Accept all major Nepal payment methods with screenshot verification and full VAT compliance.', items: ['eSewa, Khalti, Fonepay', 'Screenshot verification', 'VAT & PAN compliant', 'Automatic invoice generation'] },
-    { id: 4, title: 'Staff Management', icon: '👥', description: 'Complete staff management with role-based access, shift tracking, and performance analytics.', items: ['4 staff role types', 'Shift clock in/out', 'Break tracking', 'Performance metrics'] },
-    { id: 5, title: 'Loyalty Program', icon: '🎁', description: 'Build customer loyalty with tiered rewards, points systems, and birthday bonuses.', items: ['4 membership tiers', 'Points earn/redeem', 'Birthday bonuses', 'Referral rewards'] },
-    { id: 6, title: 'Analytics & Reports', icon: '📊', description: 'Comprehensive business analytics with revenue trends, KPIs, and detailed Z-reports.', items: ['7-day trend charts', 'EOD Z-reports', 'Revenue tracking', 'COGS analysis'] },
+    { id: 1, title: 'QR Code Ordering', icon: Smartphone, description: 'Customers scan QR codes at their table to access your menu instantly on any smartphone.', items: ['No app download required', 'Real-time menu updates', 'Multiple modifier groups', 'Image support for dishes'] },
+    { id: 2, title: 'Kitchen Display System', icon: ChefHat, description: 'Real-time order management with live updates and color-coded status tracking for kitchen staff.', items: ['Live order queue', 'Status management', 'Takeout order queue', 'Prep time tracking'] },
+    { id: 3, title: 'Nepal QR Payments', icon: CreditCard, description: 'Accept all major Nepal payment methods with screenshot verification and full VAT compliance.', items: ['eSewa, Khalti, Fonepay', 'Screenshot verification', 'VAT & PAN compliant', 'Automatic invoice generation'] },
+    { id: 4, title: 'Staff Management', icon: Users, description: 'Complete staff management with role-based access, shift tracking, and performance analytics.', items: ['4 staff role types', 'Shift clock in/out', 'Break tracking', 'Performance metrics'] },
+    { id: 5, title: 'Loyalty Program', icon: Gift, description: 'Build customer loyalty with tiered rewards, points systems, and birthday bonuses.', items: ['4 membership tiers', 'Points earn/redeem', 'Birthday bonuses', 'Referral rewards'] },
+    { id: 6, title: 'Analytics & Reports', icon: BarChart, description: 'Comprehensive business analytics with revenue trends, KPIs, and detailed Z-reports.', items: ['7-day trend charts', 'EOD Z-reports', 'Revenue tracking', 'COGS analysis'] },
 ]
 
 export default function FeaturesPage() {
     return (
-        <div className="min-h-screen bg-surface text-ink">
+        <div className="min-h-screen bg-transparent text-ink">
             <MarketingNav />
 
             {/* Hero */}
-            <section className="relative overflow-hidden bg-surface pb-14 pt-36 text-center">
+            <section className="relative overflow-hidden bg-transparent pb-14 pt-36 text-center">
                 <div className="pointer-events-none absolute left-1/2 top-1/2 h-[700px] w-[700px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--color-primary)]/5 blur-[120px]" />
                 <div className="relative mx-auto max-w-3xl px-4 sm:px-6">
                     <Eyebrow tone="brand">Platform Capabilities</Eyebrow>
@@ -38,8 +38,8 @@ export default function FeaturesPage() {
                             href={`/features/${feature.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
                             className="group relative flex h-full flex-col overflow-hidden rounded-3xl border border-hairline bg-surface p-8 transition-all duration-300 hover:-translate-y-1 hover:border-[var(--color-primary)]/30 hover:shadow-2xl">
                             <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-[var(--color-primary)]/5 blur-2xl transition-colors group-hover:bg-[var(--color-primary)]/10" />
-                            <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border border-hairline bg-surface-muted text-3xl shadow-sm transition-all group-hover:scale-110 group-hover:border-[var(--color-primary)]/20 group-hover:bg-[var(--color-primary)]/10">
-                                {feature.icon}
+                            <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border border-hairline bg-surface-muted text-[var(--color-primary)] shadow-sm transition-all group-hover:scale-110 group-hover:border-[var(--color-primary)]/20 group-hover:bg-[var(--color-primary)]/10">
+                                <feature.icon size={28} strokeWidth={1.5} />
                             </div>
                             <h3 className="mb-3 text-xl font-extrabold text-ink transition-colors group-hover:text-[var(--color-primary)]">{feature.title}</h3>
                             <p className="mb-8 flex-1 font-medium leading-relaxed text-ink-subtle">{feature.description}</p>

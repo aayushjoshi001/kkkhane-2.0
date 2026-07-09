@@ -2,15 +2,14 @@ import Link from 'next/link'
 import Logo from '@/components/shared/Logo'
 import CopyrightYear from '@/components/shared/CopyrightYear'
 import {
-    Phone, MapPin,
-    Facebook, Instagram, Youtube, Twitter,
+    Phone, MapPin, Map,
+    Facebook, Instagram, Linkedin,
 } from 'lucide-react'
 
 const SOCIALS = [
-    { icon: Facebook, url: 'https://facebook.com/kkkhane' },
-    { icon: Instagram, url: 'https://instagram.com/kkkhane' },
-    { icon: Youtube, url: 'https://youtube.com/@kkkhane' },
-    { icon: Twitter, url: 'https://twitter.com/kkkhane' },
+    { icon: Facebook, url: 'https://www.facebook.com/profile.php?id=61591962652382' },
+    { icon: Instagram, url: 'https://www.instagram.com/kkkhane_/' },
+    { icon: Linkedin, url: 'https://www.linkedin.com/company/kkkhane/?viewAsMember=true' },
 ]
 
 const FEATURE_LINKS = [
@@ -37,10 +36,10 @@ export default function MarketingFooter() {
         <footer className="border-t border-hairline-strong bg-[#f9fafb] pb-10 pt-20">
             <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-8">
                 <div className="mb-16 grid grid-cols-1 gap-12 md:grid-cols-2 lg:grid-cols-4">
-                    <div>
+                    <div className="lg:col-span-2 pr-10">
                         <Logo className="mb-6 h-8" />
                         <p className="mb-8 text-sm font-medium leading-relaxed text-ink-subtle">
-                            #1 Restaurant Software to manage and grow your restaurant — smarter, faster.
+                            From cafes to restaurants, we serve you — smarter, faster.
                         </p>
                         <div className="flex gap-3">
                             {SOCIALS.map(({ icon: Icon, url }) => (
@@ -79,25 +78,36 @@ export default function MarketingFooter() {
                 {/* Contact band */}
                 <div className="mb-12 rounded-3xl border border-hairline bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 p-8 shadow-sm sm:p-10">
                     <div className="mb-8">
-                        <h3 className="mb-2 flex items-center gap-2 text-2xl font-extrabold text-ink">Get in Touch 👋</h3>
+                        <h3 className="mb-2 flex items-center gap-2 text-2xl font-extrabold text-ink">Get in Touch</h3>
                         <p className="font-medium text-ink-muted">Ready to transform your restaurant? Contact our team today.</p>
                     </div>
                     <div className="grid gap-6 md:grid-cols-3">
-                        <div className="rounded-2xl border border-white bg-surface/80 p-6 shadow-sm backdrop-blur">
-                            <div className="mb-4 flex items-center gap-2 font-bold text-blue-600"><Phone size={18} /> Sales Team</div>
-                            <p className="mb-2 text-sm font-bold text-ink">+977 9800000000</p>
-                            <p className="text-sm font-bold text-ink">sales@kkkhane.com</p>
+                        <div className="rounded-2xl border border-white bg-surface/80 p-6 shadow-sm backdrop-blur relative overflow-hidden group">
+                            <div className="relative z-10">
+                                <div className="mb-4 flex items-center gap-2 font-bold text-blue-600"><Phone size={18} /> Sales & Support</div>
+                                <p className="mb-2 text-sm font-bold text-ink">+977 9765662427</p>
+                                <p className="text-sm font-bold text-ink">info.kkkhane@gmail.com</p>
+                            </div>
                         </div>
-                        <div className="rounded-2xl border border-white bg-surface/80 p-6 shadow-sm backdrop-blur">
-                            <div className="mb-4 flex items-center gap-2 font-bold text-green-600"><Phone size={18} /> Support Team</div>
-                            <p className="mb-2 text-sm font-bold text-ink">+977 9800000000</p>
-                            <p className="text-sm font-bold text-ink">support@kkkhane.com</p>
+                        <div className="rounded-2xl border border-white bg-surface/80 p-6 shadow-sm backdrop-blur relative overflow-hidden group">
+                            <div className="relative z-10">
+                                <div className="mb-4 flex items-center gap-2 font-bold text-green-600"><Phone size={18} /> General Inquiry</div>
+                                <p className="mb-2 text-sm font-bold text-ink">+977 9765662427</p>
+                                <p className="text-sm font-bold text-ink">siddantasodari123@gmail.com</p>
+                            </div>
                         </div>
-                        <div className="rounded-2xl border border-white bg-surface/80 p-6 shadow-sm backdrop-blur">
-                            <div className="mb-4 flex items-center gap-2 font-bold text-[var(--color-primary)]"><MapPin size={18} /> Service Location</div>
-                            <p className="text-sm font-medium leading-relaxed text-ink-muted">
-                                We provide comprehensive restaurant management solutions across all regions of Nepal.
-                            </p>
+                        <div className="rounded-2xl border border-white bg-surface/80 p-6 shadow-sm backdrop-blur relative overflow-hidden group">
+                            <div className="relative z-10">
+                                <div className="mb-4 flex items-center gap-2 font-bold text-[var(--color-primary)]"><MapPin size={18} /> Headquarters</div>
+                                <p className="text-sm font-medium leading-relaxed text-ink-muted">
+                                    Bhojad, Bharatpur, Nepal <br/>
+                                    Serving from cafes to restaurants nationwide.
+                                </p>
+                            </div>
+                            {/* Large Background Map Icon */}
+                            <div className="absolute -right-4 -bottom-6 opacity-[0.04] group-hover:opacity-[0.08] transition-opacity duration-500 pointer-events-none text-ink">
+                                <Map size={140} strokeWidth={1} />
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -108,7 +118,14 @@ export default function MarketingFooter() {
                         <Link href="/legal/privacy" className="transition-colors hover:text-ink">Privacy Policy</Link>
                         <Link href="/legal/terms" className="transition-colors hover:text-ink">Terms &amp; Conditions</Link>
                     </div>
-                    <p>&copy; <CopyrightYear /> kkkhane. All Rights Reserved.</p>
+                    <div className="flex flex-col items-center sm:items-end gap-2">
+                        <p>&copy; <CopyrightYear /> KKKhane. All Rights Reserved.</p>
+                        <a href="#" className="flex items-center gap-1.5 hover:text-ink transition-colors group">
+                            <span>Powered by</span>
+                            <span className="font-extrabold text-[var(--color-primary)]" style={{ fontFamily: 'var(--font-inter), sans-serif' }}>OmX Lab..</span>
+                            <img src="/images/omx-logo.png" alt="OmX Lab Logo" className="h-5 w-auto object-contain group-hover:scale-110 transition-transform" />
+                        </a>
+                    </div>
                 </div>
             </div>
         </footer>

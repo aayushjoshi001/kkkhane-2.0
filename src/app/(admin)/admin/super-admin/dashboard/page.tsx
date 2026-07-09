@@ -14,16 +14,17 @@ const TIER_BADGE: Record<string, string> = {
 }
 
 const TIER_BAR: Record<string, string> = {
-    free: 'from-gray-400 to-gray-500', 
-    basic: 'from-blue-400 to-blue-500', 
-    pro: 'from-purple-400 to-purple-500', 
+    free: 'from-gray-400 to-gray-500',
+    basic: 'from-blue-400 to-blue-500',
+    premium: 'from-purple-400 to-purple-500',
+    platinum: 'from-slate-400 to-slate-500',
     enterprise: 'from-amber-400 to-amber-500',
 }
 
 export default async function SuperAdminDashboardPage() {
     await requireRole('super_admin')
     const metrics = await getSaasMetricsFull()
-    const proPlus = (metrics.tierBreakdown.pro || 0) + (metrics.tierBreakdown.enterprise || 0)
+    const premiumPlus = (metrics.tierBreakdown.premium || 0) + (metrics.tierBreakdown.platinum || 0) + (metrics.tierBreakdown.enterprise || 0)
 
     return (
         <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
@@ -77,7 +78,7 @@ export default async function SuperAdminDashboardPage() {
                 <KpiCard title="Suspended" value={metrics.suspendedRestaurants} icon={Ban} color="red" />
                 <KpiCard title="Total MRR" value={`Rs. ${metrics.mrr.toLocaleString()}`} icon={DollarSign} color="green" />
                 <KpiCard title="Platform Orders" value={metrics.totalOrders} icon={ShoppingBag} color="blue" />
-                <KpiCard title="Pro+ Accounts" value={proPlus} icon={Crown} color="amber" />
+                <KpiCard title="Premium+ Accounts" value={premiumPlus} icon={Crown} color="amber" />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

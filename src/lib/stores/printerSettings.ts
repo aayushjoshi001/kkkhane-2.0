@@ -11,8 +11,12 @@ import { persist } from 'zustand/middleware'
 interface PrinterSettingsState {
     invoicePrinterName: string | null
     kotPrinterName: string | null
+    // Bar Order Ticket printer — the bar's counterpart to the KOT printer, so a
+    // venue with a separate bar station can send drink tickets to its own roll.
+    botPrinterName: string | null
     setInvoicePrinter: (name: string | null) => void
     setKotPrinter: (name: string | null) => void
+    setBotPrinter: (name: string | null) => void
 }
 
 export const usePrinterSettingsStore = create<PrinterSettingsState>()(
@@ -20,8 +24,10 @@ export const usePrinterSettingsStore = create<PrinterSettingsState>()(
         (set) => ({
             invoicePrinterName: null,
             kotPrinterName: null,
+            botPrinterName: null,
             setInvoicePrinter: (name) => set({ invoicePrinterName: name }),
             setKotPrinter: (name) => set({ kotPrinterName: name }),
+            setBotPrinter: (name) => set({ botPrinterName: name }),
         }),
         { name: 'srms-printer-settings' }
     )

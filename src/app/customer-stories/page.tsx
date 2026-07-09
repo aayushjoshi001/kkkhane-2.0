@@ -5,7 +5,7 @@ const STORIES = [
     {
         name: 'Himalayan Grill',
         location: 'Thamel, Kathmandu',
-        emoji: '🏔️',
+        emoji: '️',
         gradient: 'from-indigo-50 to-blue-50',
         challenge: 'Paper tickets caused constant kitchen mix-ups during peak hours.',
         result: 'Moved the whole kitchen onto the KDS and cut order errors to near zero.',
@@ -29,7 +29,7 @@ const STORIES = [
     {
         name: 'Spice Route',
         location: 'Pokhara',
-        emoji: '🍛',
+        emoji: '',
         gradient: 'from-amber-50 to-yellow-50',
         challenge: 'No visibility into ingredient costs led to silent food waste every week.',
         result: 'Recipe-based inventory now deducts stock per order with low-stock alerts.',
@@ -41,7 +41,7 @@ const STORIES = [
     {
         name: 'Everest Dine',
         location: 'Boudha, Kathmandu',
-        emoji: '🥟',
+        emoji: '',
         gradient: 'from-emerald-50 to-teal-50',
         challenge: 'Manual eSewa/Khalti reconciliation took hours at the end of every day.',
         result: 'Screenshot verification confirms transfers instantly with IRD-compliant billing.',
@@ -54,11 +54,11 @@ const STORIES = [
 
 export default function CustomerStoriesPage() {
     return (
-        <div className="min-h-screen bg-surface text-ink">
+        <div className="min-h-screen bg-transparent text-ink">
             <MarketingNav />
 
             {/* Hero */}
-            <section className="relative overflow-hidden bg-surface pb-14 pt-36 text-center">
+            <section className="relative overflow-hidden bg-transparent pb-14 pt-36 text-center">
                 <div className="pointer-events-none absolute left-1/2 top-1/2 h-[700px] w-[700px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500/5 blur-[120px]" />
                 <div className="relative mx-auto max-w-3xl px-4 sm:px-6">
                     <Eyebrow tone="brand">Customer Stories</Eyebrow>
@@ -94,7 +94,7 @@ export default function CustomerStoriesPage() {
                                     <p><span className="font-bold text-ink">Challenge:</span> {s.challenge}</p>
                                     <p><span className="font-bold text-ink">Result:</span> {s.result}</p>
                                 </div>
-                                <blockquote className="mt-auto rounded-2xl border border-hairline bg-[#FAFAF8] p-6">
+                                <blockquote className="mt-auto rounded-2xl border border-hairline bg-transparent p-6">
                                     <Quote size={20} className="mb-2 text-[var(--color-primary)]" />
                                     <p className="font-medium italic leading-relaxed text-ink-muted">&ldquo;{s.quote}&rdquo;</p>
                                     <p className="mt-3 text-xs font-bold text-ink">— {s.person}</p>
