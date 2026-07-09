@@ -27,6 +27,7 @@ import {
     buildFeaturesV2,
 } from '@/lib/tiers'
 import { getBusinessMode } from '@/lib/businessMode'
+import type { StationKind } from '@/lib/stations'
 
 const MANAGER_ROLE_ID = 2 // roles: 1=super_admin 2=manager 3=kitchen 4=waiter 5=customer
 const DEFAULT_TABLE_COUNT = 6
@@ -65,7 +66,7 @@ export interface ProvisionResult {
 }
 
 /** Starter menu seeded so the dashboard + customer menu aren't empty on day one. */
-const SAMPLE_MENU: Array<{ category: string; items: Array<{ name: string; description: string; price: number }> }> = [
+const SAMPLE_MENU: Array<{ category: string; station?: StationKind; items: Array<{ name: string; description: string; price: number }> }> = [
     {
         category: 'Starters',
         items: [
@@ -81,7 +82,10 @@ const SAMPLE_MENU: Array<{ category: string; items: Array<{ name: string; descri
         ],
     },
     {
+        // Drinks are made at the bar, so their tickets route to the BOT queue
+        // out of the box — a new venue sees the split working with no setup.
         category: 'Beverages',
+        station: 'bar',
         items: [
             { name: 'Milk Tea', description: 'Classic Nepali milk tea', price: 60 },
             { name: 'Fresh Lime Soda', description: 'Sweet or salted', price: 90 },
@@ -191,6 +195,7 @@ async function seedStarterData(
         name: c.category,
         sort_order: i,
         is_visible: true,
+        station: c.station ?? 'kitchen',
     }))
     const { data: insertedCategories, error: catError } = await supabase
         .from('menu_categories')

@@ -94,6 +94,23 @@ async function ensureDemoTenant(admin: AdminClient, tenant: DemoTenant): Promise
         }
     }
 
+    // Route the demo's drinks to the bar so the BOT board isn't empty. Runs on
+    // every demo login (not just first provisioning) so a demo restaurant seeded
+    // before the station split still showcases the kitchen/bar routing. Idempotent
+    // and best-effort.
+    if (restaurantId) {
+        try {
+            await admin
+                .from('menu_categories')
+                .update({ station: 'bar' })
+                .eq('restaurant_id', restaurantId)
+                .in('name', ['Beverages', 'Drinks', 'Bar'])
+                .neq('station', 'bar')
+        } catch (e) {
+            console.error('Demo bar-category tag failed:', e)
+        }
+    }
+
     // Seed hotel-specific data (rooms, bookings, room-numbered tables). Idempotent
     // and best-effort — a seeding hiccup must never block the demo login.
     if (restaurantId && tenant === 'hotel') {
@@ -125,17 +142,50 @@ async function provisionDemoAccount(admin: AdminClient, account: DemoAccount): P
     const userId = await ensureDemoAuthUser(admin, account)
     if (!userId) return
 
+    const roleId = await resolveRoleId(admin, account)
+    if (!roleId) return
+
     await admin.from('users').upsert(
         {
             id: userId,
             restaurant_id: restaurantId,
             full_name: account.fullName,
             email: account.email,
-            role_id: account.roleId,
+            role_id: roleId,
             is_active: true,
         },
         { onConflict: 'id' },
     )
+}
+
+// Resolve the account's role id. Accounts pinned to a stable seed id (1-6) use
+// it directly; accounts carrying roleName (bartender) resolve by name because
+// that role's id varies by environment. If the role is somehow absent it is
+// created at MAX(id)+1 — the same rule the migration and seed use — so demo
+// login self-heals even on an environment that missed the migration.
+async function resolveRoleId(admin: AdminClient, account: DemoAccount): Promise<number | null> {
+    if (!account.roleName) return account.roleId
+
+    const { data: existing } = await admin
+        .from('roles')
+        .select('id')
+        .eq('name', account.roleName)
+        .maybeSingle()
+    if (existing?.id) return existing.id
+
+    const { data: max } = await admin
+        .from('roles')
+        .select('id')
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    const nextId = (max?.id ?? 0) + 1
+    const { data: created } = await admin
+        .from('roles')
+        .insert({ id: nextId, name: account.roleName, description: 'Views and updates drink preparation status at the bar' })
+        .select('id')
+        .maybeSingle()
+    return created?.id ?? null
 }
 
 export async function loginAction(prevState: { error: string | null }, formData: FormData) {

@@ -6,6 +6,7 @@ export const ROLE_LANDING: Record<string, string> = {
     super_admin: '/admin/dashboard',
     manager: '/admin/dashboard',
     kitchen: '/kitchen',
+    bartender: '/bar',
     waiter: '/waiter',
     cashier: '/cashier',
     onboarding: '/onboarding',

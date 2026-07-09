@@ -140,7 +140,9 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             if (needsConfirmation || (isTakeoutDelivery && payload.new.status === 'pending')) return
             const { data } = await supabaseRef.current.from('orders').select(ORDER_SELECT).eq('id', payload.new.id).single()
             if (!data) return
-            const order = data as unknown as KitchenOrder
+            const [order] = projectStation([data as unknown as KitchenOrder])
+            // No lines for this station (e.g. an all-food order on the bar board).
+            if (!order) return
             let isNew = false
             setOrders(prev => {
                 if (prev.some(o => o.id === order.id)) return prev
@@ -185,7 +187,12 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             }
             const { data } = await supabaseRef.current.from('orders').select(ORDER_SELECT).eq('id', payload.new.id).single()
             if (!data) return
-            const fresh = data as unknown as KitchenOrder
+            const [fresh] = projectStation([data as unknown as KitchenOrder])
+            if (!fresh) {
+                // Order lost its lines for this station — drop it from the board.
+                setOrders(prev => prev.filter(o => o.id !== payload.new.id))
+                return
+            }
             let added = false
             setOrders(prev => {
                 if (prev.some(o => o.id === fresh.id)) return prev.map(o => o.id === fresh.id ? fresh : o)
@@ -280,6 +287,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             now={now}
             userId={userId}
             staffNames={staffNames}
+            stationAccent={stationMeta.accent}
             collapsed={collapsed.has(section.order.id)}
             onToggle={() => toggleCollapse(section.order.id)}
             onApply={applyItemStatus}
@@ -288,7 +296,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
 
     return (
         <div className="h-full flex flex-col bg-[#FBF7F3]">
-            <KotPrintFallback order={kotFallbackQueue[0] ?? null} onDone={dequeueKotFallback} />
+            <KotPrintFallback order={kotFallbackQueue[0] ?? null} station={station} onDone={dequeueKotFallback} />
 
             {/* Mobile: tab bar */}
             <div className="lg:hidden shrink-0 bg-surface border-b border-hairline px-2 sm:px-4">
@@ -413,7 +421,7 @@ function itemStatusPill(status: string) {
     return { label: 'Pending', cls: 'text-ink-subtle' }
 }
 
-function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffNames, collapsed, onToggle, onApply }: {
+function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffNames, stationAccent, collapsed, onToggle, onApply }: {
     tab: TabKey
     order: KitchenOrder
     items: KitchenOrderItem[]
@@ -422,6 +430,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
     now: number
     userId: string
     staffNames: Record<string, string>
+    stationAccent: string
     collapsed: boolean
     onToggle: () => void
     onApply: (orderId: string, itemIds: string[], next: OrderItemStatus) => Promise<void>
@@ -482,7 +491,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
             <button onClick={onToggle} className="w-full text-left px-4 pt-3.5 pb-3">
                 <div className="flex items-center gap-2 flex-wrap pr-6 relative">
                     <span className="font-extrabold text-ink">#{order.id.slice(0, 4).toUpperCase()}</span>
-                    <span className="text-[11px] font-bold text-white px-2 py-0.5 rounded-full" style={{ background: '#FB6303' }}>{space}</span>
+                    <span className="text-[11px] font-bold text-white px-2 py-0.5 rounded-full" style={{ background: stationAccent }}>{space}</span>
                     <span className="text-[11px] font-semibold text-ink-subtle bg-surface-muted px-2 py-0.5 rounded-full">{items.length} dish{items.length > 1 ? 'es' : ''}</span>
                     {chefLabel && (
                         <span className="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full inline-flex items-center gap-1">

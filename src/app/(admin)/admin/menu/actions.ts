@@ -3,8 +3,9 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { invalidateCache } from '@/lib/redis'
+import type { StationKind } from '@/lib/stations'
 
-export async function addCategoryAction(restaurantId: string, name: string, sortOrder: number, isVisible: boolean, imageUrl?: string | null) {
+export async function addCategoryAction(restaurantId: string, name: string, sortOrder: number, isVisible: boolean, imageUrl?: string | null, station: StationKind = 'kitchen') {
     const supabase = await createAdminClient()
     const { data, error } = await supabase
         .from('menu_categories')
@@ -13,7 +14,8 @@ export async function addCategoryAction(restaurantId: string, name: string, sort
             name,
             sort_order: sortOrder,
             is_visible: isVisible,
-            image_url: imageUrl || null
+            image_url: imageUrl || null,
+            station
         })
         .select()
         .single()
