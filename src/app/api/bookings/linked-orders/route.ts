@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
         }
 
         const bookingId = req.nextUrl.searchParams.get('bookingId')
+        console.log('[linked-orders API] Received bookingId:', bookingId)
         if (!bookingId) {
             return NextResponse.json({ error: 'Missing bookingId' }, { status: 400 })
         }
@@ -26,13 +27,15 @@ export async function GET(req: NextRequest) {
         // Find all sessions linked to this booking
         const { data: linkedSessions, error: sessErr } = await supabase
             .from('sessions')
-            .select('id')
+            .select('id, status, table_id')
             .eq('booking_id', bookingId)
 
         if (sessErr) {
             console.error('[linked-orders] Error fetching sessions:', sessErr)
             return NextResponse.json({ error: 'Failed to fetch sessions' }, { status: 500 })
         }
+
+        console.log('[linked-orders API] Found linkedSessions:', linkedSessions)
 
         if (!linkedSessions || linkedSessions.length === 0) {
             return NextResponse.json({ success: true, items: [] })
@@ -43,7 +46,7 @@ export async function GET(req: NextRequest) {
         // Fetch all order items from these sessions
         const { data: orders, error: ordErr } = await supabase
             .from('orders')
-            .select('id, session_id, status, order_items(id, quantity, unit_price, menu_items(name))')
+            .select('id, session_id, status, payment_status, order_items(id, quantity, unit_price, menu_items(name))')
             .in('session_id', sessionIds)
             .eq('restaurant_id', currentUser.restaurantId)
             .neq('status', 'cancelled')
@@ -52,6 +55,8 @@ export async function GET(req: NextRequest) {
             console.error('[linked-orders] Error fetching orders:', ordErr)
             return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 })
         }
+
+        console.log('[linked-orders API] Found orders matching sessionIds:', orders?.length, orders)
 
         // Flatten order items
         const items = (orders || []).flatMap((o: any) =>
@@ -62,6 +67,8 @@ export async function GET(req: NextRequest) {
                 menu_items: item.menu_items
             }))
         )
+
+        console.log('[linked-orders API] Flattened items to return:', items)
 
         return NextResponse.json({ success: true, items })
     } catch (error) {

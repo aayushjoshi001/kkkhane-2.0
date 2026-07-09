@@ -57,7 +57,7 @@ export default async function CashierPage() {
         // All active sessions
         adminSupabase
             .from('sessions')
-            .select('id, table_id, restaurant_id, status, opened_at, session_token')
+            .select('id, table_id, restaurant_id, status, opened_at, session_token, booking_id')
             .eq('restaurant_id', restaurantId)
             .eq('status', 'active'),
 
