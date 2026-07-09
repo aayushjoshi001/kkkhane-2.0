@@ -1,7 +1,7 @@
 import { Inter, Playfair_Display, Roboto, Lato, Outfit } from 'next/font/google'
 import { Toaster } from 'react-hot-toast'
 import { ConfirmModal } from '@/components/shared/ConfirmModal'
-import type { Viewport } from 'next'
+import type { Viewport, Metadata } from 'next'
 import { createAdminClient } from '@/lib/supabase/server'
 import { unstable_cache } from 'next/cache'
 import { SerwistProvider } from '@serwist/turbopack/react'
@@ -23,9 +23,28 @@ export const viewport: Viewport = {
   themeColor: '#1B263B',
 }
 
-export const metadata = {
-  title: 'kkkhane',
-  description: 'Mobile-first restaurant ordering system',
+export const metadata: Metadata = {
+  metadataBase: new URL('https://kkkhane.com'),
+  title: {
+    default: 'kkkhane | Best SaaS for Cafes & Restaurants in Nepal',
+    template: '%s | kkkhane'
+  },
+  description: 'kkkhane is an ultra-premium SaaS application best for cafes and restaurants. Features include QR Menus, POS, Inventory, and Real-Time Reporting in Nepal.',
+  keywords: ['restaurant software', 'cafe POS', 'Nepal POS', 'QR menu', 'restaurant management system', 'kkkhane', 'Bhojad', 'Bharatpur'],
+  authors: [{ name: 'kkkhane' }],
+  openGraph: {
+    title: 'kkkhane | Best SaaS for Cafes & Restaurants in Nepal',
+    description: 'An ultra-premium restaurant management software. Best for cafe to restaurants in Nepal.',
+    url: 'https://kkkhane.com',
+    siteName: 'kkkhane',
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'kkkhane | Best SaaS for Cafes & Restaurants in Nepal',
+    description: 'An ultra-premium restaurant management software. Best for cafe to restaurants in Nepal.',
+  },
   manifest: '/manifest.json',
   icons: {
     icon: '/icons/kkkhane.png',

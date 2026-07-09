@@ -84,19 +84,20 @@ export default function MarketingFooter() {
                     </div>
                     <div className="grid gap-6 md:grid-cols-3">
                         <div className="rounded-2xl border border-white bg-surface/80 p-6 shadow-sm backdrop-blur">
-                            <div className="mb-4 flex items-center gap-2 font-bold text-blue-600"><Phone size={18} /> Sales Team</div>
-                            <p className="mb-2 text-sm font-bold text-ink">+977 9800000000</p>
-                            <p className="text-sm font-bold text-ink">sales@kkkhane.com</p>
+                            <div className="mb-4 flex items-center gap-2 font-bold text-blue-600"><Phone size={18} /> Sales & Support</div>
+                            <p className="mb-2 text-sm font-bold text-ink">+977 9765662427</p>
+                            <p className="text-sm font-bold text-ink">info.kkkhane@gmail.com</p>
                         </div>
                         <div className="rounded-2xl border border-white bg-surface/80 p-6 shadow-sm backdrop-blur">
-                            <div className="mb-4 flex items-center gap-2 font-bold text-green-600"><Phone size={18} /> Support Team</div>
-                            <p className="mb-2 text-sm font-bold text-ink">+977 9800000000</p>
-                            <p className="text-sm font-bold text-ink">support@kkkhane.com</p>
+                            <div className="mb-4 flex items-center gap-2 font-bold text-green-600"><Phone size={18} /> General Inquiry</div>
+                            <p className="mb-2 text-sm font-bold text-ink">+977 9765662427</p>
+                            <p className="text-sm font-bold text-ink">info.kkkhane@gmail.com</p>
                         </div>
                         <div className="rounded-2xl border border-white bg-surface/80 p-6 shadow-sm backdrop-blur">
-                            <div className="mb-4 flex items-center gap-2 font-bold text-[var(--color-primary)]"><MapPin size={18} /> Service Location</div>
+                            <div className="mb-4 flex items-center gap-2 font-bold text-[var(--color-primary)]"><MapPin size={18} /> Headquarters</div>
                             <p className="text-sm font-medium leading-relaxed text-ink-muted">
-                                We provide comprehensive restaurant management solutions across all regions of Nepal.
+                                Bhojad, Bharatpur, Nepal <br/>
+                                Serving Cafe and Restaurants nationwide.
                             </p>
                         </div>
                     </div>

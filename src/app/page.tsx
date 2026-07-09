@@ -37,6 +37,31 @@ export default async function Home() {
         <div className="min-h-screen bg-surface text-ink overflow-x-hidden font-sans">
             <MarketingNav />
 
+            {/* ── SEO: JSON-LD Schema for Local Business & Software ──────────────── */}
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{
+                    __html: JSON.stringify({
+                        "@context": "https://schema.org",
+                        "@type": ["SoftwareApplication", "LocalBusiness"],
+                        "name": "kkkhane",
+                        "url": "https://kkkhane.com",
+                        "logo": "https://kkkhane.com/icons/kkkhane.png",
+                        "description": "The ultimate SaaS application best for cafe to restaurants. Manage orders, inventory, and QR menus with ease.",
+                        "applicationCategory": "BusinessApplication",
+                        "operatingSystem": "All",
+                        "email": "info.kkkhane@gmail.com",
+                        "telephone": "+977-9765662427",
+                        "address": {
+                            "@type": "PostalAddress",
+                            "addressLocality": "Bharatpur",
+                            "addressRegion": "Bhojad",
+                            "addressCountry": "NP"
+                        }
+                    })
+                }}
+            />
+
             {/* ── 1. Ultra Premium Hero Section ────────────────────────────────────────────── */}
             <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden bg-[#FAFAF8]">
                 {/* Stunning Gradient Background */}
@@ -51,13 +76,21 @@ export default async function Home() {
                         <span className="text-ink-muted font-bold text-sm tracking-wide">The New Standard for Nepali Restaurants 🇳🇵</span>
                     </div>
 
-                    <h1 className="text-5xl sm:text-7xl lg:text-[5.5rem] font-extrabold text-ink leading-[1.05] mb-8 tracking-tight animate-fade-up" style={{ animationDelay: '0.1s' }}>
-                        Run your restaurant <br className="hidden sm:block" />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-primary)] to-amber-500">beautifully.</span>
-                    </h1>
+                    {/* Branding Display: "के के खाने?" from image */}
+                    <div className="flex justify-center mb-6 animate-fade-up" style={{ animationDelay: '0.05s' }}>
+                        <h1 className="text-7xl sm:text-8xl lg:text-[7rem] font-black tracking-tight" style={{ fontFamily: 'var(--font-inter), sans-serif' }}>
+                            <span className="text-[#201F1E]">के के </span>
+                            <span className="text-[#E76115]">खाने<span className="text-[#65635B]">?</span></span>
+                        </h1>
+                    </div>
+
+                    <h2 className="text-3xl sm:text-5xl font-extrabold text-ink leading-[1.1] mb-8 tracking-tight animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                        The SaaS Platform built <br className="hidden sm:block" />
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-primary)] to-amber-500">for Cafes & Restaurants.</span>
+                    </h2>
 
                     <p className="text-lg sm:text-xl text-ink-subtle mb-12 max-w-2xl mx-auto leading-relaxed font-medium animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                        An ultra-premium OS that handles orders, inventory, billing, and staff. Elevate your dining experience with world-class technology.
+                        An ultra-premium OS that handles orders, inventory, billing, and staff seamlessly. Built natively for businesses in Nepal, starting from Bhojad, Bharatpur.
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-up" style={{ animationDelay: '0.3s' }}>
@@ -118,7 +151,7 @@ export default async function Home() {
                 <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-20 max-w-3xl mx-auto">
                         <h2 className="text-4xl sm:text-5xl font-extrabold text-ink mb-6 tracking-tight">Everything you need. <br/><span className="text-ink-subtle">Nothing you don&apos;t.</span></h2>
-                        <p className="text-xl text-ink-subtle font-medium leading-relaxed">A complete ecosystem designed to automate your restaurant from front-of-house to back-office.</p>
+                        <p className="text-xl text-ink-subtle font-medium leading-relaxed">A complete ecosystem designed to automate your cafe or restaurant from front-of-house to back-office.</p>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[320px]">
@@ -191,7 +224,7 @@ export default async function Home() {
                         <div className="order-1 lg:order-2 text-center lg:text-left">
                             <h3 className="text-4xl sm:text-5xl font-extrabold text-ink mb-6 tracking-tight">Available on any <span className="text-[var(--color-primary)]">device</span></h3>
                             <p className="text-lg text-ink-subtle font-medium mb-12 leading-relaxed max-w-lg mx-auto lg:mx-0">
-                                Manage your business from your phone, tablet, or desktop. Our cloud architecture ensures you are always synced across all your devices in real-time.
+                                Manage your cafe or restaurant from your phone, tablet, or desktop. Our cloud architecture ensures your kitchen, waitstaff, and cashier are always synced in real-time.
                             </p>
 
                                 <div className="bg-black text-white px-8 py-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg">
@@ -384,8 +417,8 @@ export default async function Home() {
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-[var(--color-primary)]/20 blur-[120px] rounded-full pointer-events-none" />
                         
                         <div className="relative z-10 max-w-2xl mx-auto">
-                            <h2 className="text-4xl sm:text-5xl font-extrabold text-white mb-6 tracking-tight">Ready to elevate your restaurant?</h2>
-                            <p className="text-xl text-ink-subtle mb-10 font-medium">Join thousands of restaurants running their operations on our modern platform.</p>
+                            <h2 className="text-4xl sm:text-5xl font-extrabold text-white mb-6 tracking-tight">Ready to elevate your cafe?</h2>
+                            <p className="text-xl text-ink-subtle mb-10 font-medium">Join thousands of cafes and restaurants running their operations on our modern platform.</p>
                             
                             <Link href="/signup" className="inline-flex items-center justify-center bg-[var(--color-primary)] text-white px-10 py-5 rounded-2xl font-extrabold text-xl hover:scale-105 transition-transform shadow-[0_0_40px_rgba(251,99,3,0.4)]">
                                 Start your free trial today
