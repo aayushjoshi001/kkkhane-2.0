@@ -3,7 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
-import { postFinancialTransaction } from '@/lib/ledger'
+import { postFinancialTransaction, resolveBankAccountId } from '@/lib/ledger'
 
 async function requireManager() {
     return requireRole('super_admin', 'manager')
@@ -156,18 +156,9 @@ export async function createSupplierBillAction(input: {
         bank_name: input.payment_source === 'bank' ? (input.bank_name?.trim() || '') : ''
     })
 
-    let bankAccountId: string | null = null
-    if (input.payment_source === 'bank' && input.bank_name) {
-        const { data: bankAcc } = await supabase
-            .from('bank_accounts')
-            .select('id')
-            .eq('restaurant_id', user.restaurantId)
-            .eq('name', input.bank_name.trim())
-            .maybeSingle()
-        if (bankAcc) {
-            bankAccountId = bankAcc.id
-        }
-    }
+    const bankAccountId = input.payment_source === 'bank'
+        ? await resolveBankAccountId(supabase, user.restaurantId, input.bank_name)
+        : null
 
     // 2. Insert into expenses table
     const { data: newExpense, error: expError } = await supabase
@@ -189,15 +180,24 @@ export async function createSupplierBillAction(input: {
 
     if (expError) return { error: expError.message }
 
-    // 3. Post paid_amount to Day Book if greater than 0
+    // 3. Post paid_amount to Day Book if greater than 0.
+    // The bill itself is already saved, so a failed Day Book posting is
+    // reported as a warning rather than failing the whole action — but it
+    // must never pass silently, or the books quietly disagree with the bill.
+    let warning: string | undefined
     if (input.paid_amount > 0) {
-        await postFinancialTransaction(supabase, user, {
+        const postResult = await postFinancialTransaction(supabase, user, {
             type: input.payment_source === 'cash' ? 'cash_out' : 'bank_out',
             amount: input.paid_amount,
             description: `[Supplier Bill Paid] ${input.text_desc.trim()} (Supplier: ${input.supplier_name})`,
             category: input.payment_source === 'cash' ? 'expense' : 'transfer_out',
             bankName: input.payment_source === 'bank' ? input.bank_name : null
         })
+
+        if (postResult.error) {
+            console.error('Failed to post supplier payment to Day Book:', postResult.error)
+            warning = `Bill saved, but it could not be posted to the Day Book: ${postResult.error}`
+        }
     }
 
     revalidatePath(PATH)
@@ -205,6 +205,6 @@ export async function createSupplierBillAction(input: {
     revalidatePath('/admin/bank-book')
     revalidatePath('/admin/income-expenses')
 
-    return { data: newExpense }
+    return { data: newExpense, warning }
 }
 

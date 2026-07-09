@@ -157,20 +157,16 @@ export async function addStockMovementAction(input: {
         .insert(input)
     if (moveErr) return { error: moveErr.message }
 
-    // Update stock
-    const { data: ingredient } = await supabase
-        .from('ingredients')
-        .select('stock_quantity')
-        .eq('id', input.ingredient_id)
-        .single()
+    // Update stock. Applied as a single atomic UPDATE inside the database —
+    // reading the quantity here and writing back read + delta would lose one
+    // of two movements recorded at the same time.
+    const delta = input.movement_type === 'purchase' ? input.quantity : -input.quantity
+    const { error: stockErr } = await supabase.rpc('adjust_ingredient_stock', {
+        p_ingredient_id: input.ingredient_id,
+        p_delta: delta
+    })
 
-    if (ingredient) {
-        const delta = input.movement_type === 'purchase' ? input.quantity : -input.quantity
-        await supabase
-            .from('ingredients')
-            .update({ stock_quantity: Math.max(0, ingredient.stock_quantity + delta) })
-            .eq('id', input.ingredient_id)
-    }
+    if (stockErr) return { error: stockErr.message }
 
     revalidatePath('/admin/ingredients')
     return { success: true }

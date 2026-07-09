@@ -3,7 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
-import { postFinancialTransaction } from '@/lib/ledger'
+import { postFinancialTransaction, resolveBankAccountId, isCategoryOwned } from '@/lib/ledger'
 
 async function requireManager() {
     return requireRole('super_admin', 'manager')
@@ -80,18 +80,15 @@ export async function createEntryAction(input: {
 
     const supabase = await createAdminClient()
 
-    let bankAccountId: string | null = null
-    if (input.payment_source === 'bank' && input.bank_name) {
-        const { data: bankAcc } = await supabase
-            .from('bank_accounts')
-            .select('id')
-            .eq('restaurant_id', user.restaurantId)
-            .eq('name', input.bank_name.trim())
-            .maybeSingle()
-        if (bankAcc) {
-            bankAccountId = bankAcc.id
-        }
+    // Never write another restaurant's category id onto this restaurant's row.
+    const categoryTable = input.type === 'income' ? 'income_categories' : 'expense_categories'
+    if (!await isCategoryOwned(supabase, user.restaurantId, categoryTable, input.category_id)) {
+        return { error: 'Category not found.' }
     }
+
+    const bankAccountId = input.payment_source === 'bank'
+        ? await resolveBankAccountId(supabase, user.restaurantId, input.bank_name)
+        : null
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let newEntryData: any = null
@@ -134,9 +131,12 @@ export async function createEntryAction(input: {
         newEntryData = data
     }
 
-    // ── Auto-post matching entry to Day Book session if open
+    // ── Auto-post matching entry to Day Book session if open.
+    // The income/expense row is already saved, so this is reported as a
+    // warning rather than failing the action — but never swallowed.
+    let warning: string | undefined
     if (newEntryData) {
-        await postFinancialTransaction(supabase, user, {
+        const postResult = await postFinancialTransaction(supabase, user, {
             type: input.type === 'income'
                 ? (input.payment_source === 'cash' ? 'cash_in' : 'bank_in')
                 : (input.payment_source === 'cash' ? 'cash_out' : 'bank_out'),
@@ -149,6 +149,11 @@ export async function createEntryAction(input: {
                 : (input.payment_source === 'cash' ? 'expense' : 'transfer_out'),
             bankName: input.payment_source === 'bank' ? input.bank_name : null
         })
+
+        if (postResult.error) {
+            console.error('Failed to post income/expense entry to Day Book:', postResult.error)
+            warning = `Entry saved, but it could not be posted to the Day Book: ${postResult.error}`
+        }
     }
 
     revalidatePath(PATH)
@@ -156,7 +161,7 @@ export async function createEntryAction(input: {
     revalidatePath('/admin/cash-book')
     revalidatePath('/admin/bank-book')
 
-    return { data: newEntryData }
+    return { data: newEntryData, warning }
 }
 
 export async function deleteEntryAction(id: string, type: 'income' | 'expense') {

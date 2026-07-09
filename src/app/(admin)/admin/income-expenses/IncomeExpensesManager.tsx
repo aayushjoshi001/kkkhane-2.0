@@ -224,6 +224,7 @@ export default function IncomeExpensesManager({
                 setPaymentSource('cash')
                 setBankName('')
                 toast.success(`${activeTab === 'income' ? 'Income' : 'Expense'} logged successfully!`)
+                if ('warning' in res && res.warning) toast.error(res.warning)
             }
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'Failed to save entry')

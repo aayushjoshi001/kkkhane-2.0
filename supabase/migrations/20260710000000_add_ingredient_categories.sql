@@ -8,5 +8,7 @@ ALTER TABLE public.ingredients
     ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES public.expense_categories(id) ON DELETE SET NULL;
 
 -- Add category_id to suppliers
-ALTER TABLE public.suppliers 
+ALTER TABLE public.suppliers
     ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES public.expense_categories(id) ON DELETE SET NULL;
+
+NOTIFY pgrst, 'reload schema';

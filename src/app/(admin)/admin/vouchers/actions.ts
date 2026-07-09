@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { SupabaseClient } from '@supabase/supabase-js'
-import { postFinancialTransaction, findOpenDayBookSessionId } from '@/lib/ledger'
+import { postFinancialTransaction, findOpenDayBookSessionId, resolveBankAccountId } from '@/lib/ledger'
 import { getNstDateString } from '@/lib/timezone'
 
 const PATH = '/admin/vouchers'
@@ -25,7 +25,10 @@ async function requireManager(): Promise<CurrentUserType> {
 
 // Helper to post supplier ledger, staff payroll, or stock-purchase expense
 // entries upon approval
-async function postLedgerEntry(supabase: SupabaseClient, user: CurrentUserType, voucher: {
+// `dayBookEntryId` is stamped onto every record this creates so that deleting
+// the voucher's Day Book entry cascades the downstream expense / staff_ledger
+// row away with it instead of orphaning it.
+async function postLedgerEntry(supabase: SupabaseClient, user: CurrentUserType, dayBookEntryId: string, voucher: {
     voucher_type: 'receipt' | 'payment'
     category?: 'suppliers' | 'staff' | 'expenses' | 'stock' | 'other'
     supplier_id?: string
@@ -66,16 +69,7 @@ async function postLedgerEntry(supabase: SupabaseClient, user: CurrentUserType, 
             }
         }
 
-        let bankAccountId: string | null = null
-        if (voucher.bank_name) {
-            const { data: bankAcc } = await supabase
-                .from('bank_accounts')
-                .select('id')
-                .eq('restaurant_id', user.restaurantId)
-                .eq('name', voucher.bank_name)
-                .maybeSingle()
-            bankAccountId = bankAcc?.id || null
-        }
+        const bankAccountId = await resolveBankAccountId(supabase, user.restaurantId, voucher.bank_name)
 
         // Dated to when the purchase was originally recorded, not when a
         // cheque happens to get approved — so the expense always lands on
@@ -85,6 +79,7 @@ async function postLedgerEntry(supabase: SupabaseClient, user: CurrentUserType, 
             .insert({
                 restaurant_id: user.restaurantId,
                 category_id: categoryId,
+                day_book_entry_id: dayBookEntryId,
                 amount: voucher.amount,
                 description: voucher.particulars,
                 vendor_name: voucher.party_name,
@@ -134,18 +129,31 @@ async function postLedgerEntry(supabase: SupabaseClient, user: CurrentUserType, 
             bank_name: voucher.payment_mode !== 'cash' ? (voucher.bank_name || '') : ''
         })
 
+        // Recorded like the stock branch does, so a spend-by-bank-account
+        // report sees supplier settlements paid from a bank too.
+        const bankAccountId = voucher.payment_mode !== 'cash'
+            ? await resolveBankAccountId(supabase, user.restaurantId, voucher.bank_name)
+            : null
+
         // Insert into expenses table with amount=0 and paid_amount=voucher.amount to offset balance
-        await supabase
+        const { error: expenseErr } = await supabase
             .from('expenses')
             .insert({
                 restaurant_id: user.restaurantId,
                 category_id: categoryId,
+                day_book_entry_id: dayBookEntryId,
                 amount: 0,
                 description: descJson,
                 vendor_name: voucher.party_name,
+                bank_account_id: bankAccountId,
                 status: 'paid',
                 created_by: user.id
             })
+
+        if (expenseErr) {
+            console.error('Failed to post supplier settlement expense:', expenseErr)
+            throw new Error(`Failed to post expense: ${expenseErr.message}`)
+        }
     } else if (voucher.category === 'staff' && voucher.staff_user_id) {
         // Post payment to staff_ledger to reduce owed balance
         const paymentMethodVal = voucher.payment_mode === 'cash'
@@ -157,6 +165,7 @@ async function postLedgerEntry(supabase: SupabaseClient, user: CurrentUserType, 
             .insert({
                 restaurant_id: user.restaurantId,
                 user_id: voucher.staff_user_id,
+                day_book_entry_id: dayBookEntryId,
                 amount: voucher.amount,
                 entry_type: 'salary_payout',
                 payment_method: paymentMethodVal,
@@ -220,7 +229,7 @@ export async function createVoucherAction(input: {
             .from('bank_accounts')
             .select('bank_name')
             .eq('restaurant_id', user.restaurantId)
-            .eq('name', input.bank_name.trim())
+            .ilike('name', input.bank_name.trim())
             .maybeSingle()
         if (bankAcc?.bank_name?.startsWith('personal:')) {
             isPersonalAccount = true
@@ -230,17 +239,23 @@ export async function createVoucherAction(input: {
     }
 
     // ── Generate sequential Voucher Number
-    const { data: existingEntries } = await supabase
-        .from('day_book_entries')
-        .select('description')
-        .eq('session_id', openSessionId)
-        .like('description', '{"voucher_type"%')
-
-    const voucherCount = existingEntries ? existingEntries.length : 0
-    const sequenceStr = String(voucherCount + 1).padStart(3, '0')
-    
-    const dateCompact = todayDateNst.replace(/-/g, '').substring(2)
+    // Drawn from an atomic per (restaurant, date, prefix) counter. Counting
+    // existing rows instead would hand two simultaneous submissions the same
+    // number, since both would read the same count before either inserted.
     const prefix = input.voucher_type === 'receipt' ? 'RV' : 'PV'
+
+    const { data: sequence, error: sequenceError } = await supabase.rpc('next_voucher_number', {
+        p_restaurant_id: user.restaurantId,
+        p_date: todayDateNst,
+        p_prefix: prefix
+    })
+
+    if (sequenceError || typeof sequence !== 'number') {
+        return { error: `Failed to allocate a voucher number: ${sequenceError?.message ?? 'unknown error'}` }
+    }
+
+    const sequenceStr = String(sequence).padStart(3, '0')
+    const dateCompact = todayDateNst.replace(/-/g, '').substring(2)
     const voucherNumber = `${prefix}-${dateCompact}-${sequenceStr}`
 
     // Cheque approval rules
@@ -300,21 +315,28 @@ export async function createVoucherAction(input: {
     if (postResult.error || !postResult.entry) return { error: postResult.error || 'Failed to post voucher entry.' }
     const newEntry = postResult.entry
 
-    // If approved immediately, post ledger impacts
+    // If approved immediately, post ledger impacts. A voucher whose ledger
+    // impact failed to post is worse than no voucher at all — it shows as paid
+    // while the supplier/staff balance is untouched — so undo the entry.
     if (status === 'approved') {
-        await postLedgerEntry(supabase, user, {
-            voucher_type: input.voucher_type,
-            category: input.category,
-            supplier_id: input.supplier_id,
-            staff_user_id: input.staff_user_id,
-            expense_category_id: input.expense_category_id,
-            purchase_date: todayDateNst,
-            party_name: input.party_name,
-            amount: input.amount,
-            particulars: input.particulars,
-            payment_mode: input.payment_mode,
-            bank_name: input.bank_name
-        })
+        try {
+            await postLedgerEntry(supabase, user, newEntry.id, {
+                voucher_type: input.voucher_type,
+                category: input.category,
+                supplier_id: input.supplier_id,
+                staff_user_id: input.staff_user_id,
+                expense_category_id: input.expense_category_id,
+                purchase_date: todayDateNst,
+                party_name: input.party_name,
+                amount: input.amount,
+                particulars: input.particulars,
+                payment_mode: input.payment_mode,
+                bank_name: input.bank_name
+            })
+        } catch (e) {
+            await supabase.from('day_book_entries').delete().eq('id', newEntry.id)
+            return { error: e instanceof Error ? e.message : 'Failed to post voucher ledger entry.' }
+        }
     }
 
     revalidatePath(PATH)
@@ -361,20 +383,31 @@ export async function approveChequeAction(id: string) {
 
         if (updateError) return { error: updateError.message }
 
-        // Post ledger impacts now that it is approved
-        await postLedgerEntry(supabase, user, {
-            voucher_type: parsed.voucher_type,
-            category: parsed.category,
-            supplier_id: parsed.supplier_id,
-            staff_user_id: parsed.staff_user_id,
-            expense_category_id: parsed.expense_category_id,
-            purchase_date: parsed.purchase_date,
-            party_name: parsed.party_name,
-            amount: parsed.amount,
-            particulars: parsed.particulars,
-            payment_mode: parsed.payment_mode,
-            bank_name: parsed.bank_name
-        })
+        // Post ledger impacts now that it is approved. If that fails, put the
+        // cheque back to pending rather than leaving it marked approved with
+        // no ledger impact — and surface the real reason, since the enclosing
+        // catch would otherwise blame the description format.
+        try {
+            await postLedgerEntry(supabase, user, id, {
+                voucher_type: parsed.voucher_type,
+                category: parsed.category,
+                supplier_id: parsed.supplier_id,
+                staff_user_id: parsed.staff_user_id,
+                expense_category_id: parsed.expense_category_id,
+                purchase_date: parsed.purchase_date,
+                party_name: parsed.party_name,
+                amount: parsed.amount,
+                particulars: parsed.particulars,
+                payment_mode: parsed.payment_mode,
+                bank_name: parsed.bank_name
+            })
+        } catch (e) {
+            await supabase
+                .from('day_book_entries')
+                .update({ amount: 0.01, description: entry.description })
+                .eq('id', id)
+            return { error: e instanceof Error ? e.message : 'Failed to post voucher ledger entry.' }
+        }
 
         revalidatePath(PATH)
         revalidatePath('/admin/cash-book')
@@ -434,6 +467,8 @@ export async function deleteVoucherAction(id: string) {
 
     const supabase = await createAdminClient()
 
+    // The expenses / staff_ledger row this voucher created (if it was
+    // approved) goes with it via day_book_entry_id's ON DELETE CASCADE.
     const { error, count } = await supabase
         .from('day_book_entries')
         .delete({ count: 'exact' })
@@ -457,9 +492,7 @@ export async function openTodayDayBookSessionAction() {
 
     const supabase = await createAdminClient()
 
-    const now = new Date()
-    const NST_OFFSET_MS = (5 * 60 + 45) * 60 * 1000
-    const todayDateNst = new Date(now.getTime() + NST_OFFSET_MS).toISOString().split('T')[0]
+    const todayDateNst = getNstDateString()
 
     // Calculate opening balances from last closed session
     const { data: lastSession } = await supabase

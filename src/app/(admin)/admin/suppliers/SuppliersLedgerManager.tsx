@@ -254,6 +254,7 @@ export default function SuppliersLedgerManager({
                 setBillPaymentSource('cash')
                 setBillBankName('')
                 toast.success('Bill logged successfully!')
+                if ('warning' in res && res.warning) toast.error(res.warning)
             }
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'Failed to record bill')

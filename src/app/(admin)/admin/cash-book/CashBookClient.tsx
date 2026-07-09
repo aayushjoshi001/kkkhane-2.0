@@ -97,9 +97,17 @@ export default function CashBookClient({
     const [isSubmittingOpen, setIsSubmittingOpen] = useState(false)
 
     // Add Entry modal
+    const EMPTY_ENTRY_FORM = { amount: '', description: '', category: 'other' as DayBookEntryCategory, bank_name: '', expense_category_id: '' }
     const [entryModal, setEntryModal] = useState<{ type: 'cash_in' | 'cash_out' } | null>(null)
-    const [entryForm, setEntryForm]   = useState({ amount: '', description: '', category: 'other' as DayBookEntryCategory, bank_name: '', expense_category_id: '' })
+    const [entryForm, setEntryForm]   = useState(EMPTY_ENTRY_FORM)
     const [isSubmittingEntry, setIsSubmittingEntry] = useState(false)
+
+    // Reset on open so a Cash Out-only category (e.g. 'expense') left behind by
+    // a cancelled entry can't be submitted against a Cash In.
+    const openEntryModal = (type: 'cash_in' | 'cash_out') => {
+        setEntryForm(EMPTY_ENTRY_FORM)
+        setEntryModal({ type })
+    }
 
     // Close Day
     const [isClosingDay, setIsClosingDay] = useState(false)
@@ -200,9 +208,17 @@ export default function CashBookClient({
                     })
                     if (autoRes.ok) {
                         toast.success('Cash Out logged and deposited to Bank successfully!')
+                    } else {
+                        // The cash already left the till; the operator has to know
+                        // the matching bank entry never landed.
+                        const autoData = await autoRes.json().catch(() => ({}))
+                        toast.error(
+                            `Cash Out logged, but the matching Bank deposit failed: ${autoData.error ?? autoRes.statusText}. Add it to the Bank Book manually.`
+                        )
                     }
                 } catch (autoErr) {
                     console.error('Failed to auto-create bank entry', autoErr)
+                    toast.error('Cash Out logged, but the matching Bank deposit failed. Add it to the Bank Book manually.')
                 }
             } else {
                 toast.success('Cash transaction logged successfully!')
@@ -469,13 +485,13 @@ export default function CashBookClient({
                             {session.status === 'open' && (
                                 <div className="flex gap-2">
                                     <button
-                                        onClick={() => setEntryModal({ type: 'cash_in' })}
+                                        onClick={() => openEntryModal('cash_in')}
                                         className="flex items-center gap-1 px-3 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-extrabold rounded-xl text-xs border border-emerald-200 transition-colors"
                                     >
                                         <Plus size={14} /> Add Cash In
                                     </button>
                                     <button
-                                        onClick={() => setEntryModal({ type: 'cash_out' })}
+                                        onClick={() => openEntryModal('cash_out')}
                                         className="flex items-center gap-1 px-3 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 font-extrabold rounded-xl text-xs border border-rose-200 transition-colors"
                                     >
                                         <Plus size={14} /> Add Cash Out
@@ -586,12 +602,17 @@ export default function CashBookClient({
                                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                                 >
                                     <option value="other">Other / General</option>
-                                    <option value="expense">Expense</option>
                                     <option value="refund">Refund</option>
                                     <option value="salary">Salary / Wage</option>
                                     <option value="advance">Advance</option>
+                                    {/* Cash Out only: 'expense' writes an expenses row, which only
+                                        makes sense for cash leaving the till, and 'bank_deposit'
+                                        auto-pairs a matching bank_in. */}
                                     {entryModal.type === 'cash_out' && (
-                                        <option value="bank_deposit">Bank Deposit (Deposited Cash to Bank)</option>
+                                        <>
+                                            <option value="expense">Expense</option>
+                                            <option value="bank_deposit">Bank Deposit (Deposited Cash to Bank)</option>
+                                        </>
                                     )}
                                 </select>
                             </div>

@@ -107,8 +107,16 @@ export default function BankBookClient({
     const [isSubmittingOpen, setIsSubmittingOpen] = useState(false)
 
     // Add Entry modal
+    const EMPTY_ENTRY_FORM = { amount: '', description: '', category: 'transfer' as DayBookEntryCategory, bank_name: '', expense_category_id: '' }
     const [entryModal, setEntryModal] = useState<{ type: 'bank_in' | 'bank_out' } | null>(null)
-    const [entryForm, setEntryForm]   = useState({ amount: '', description: '', category: 'transfer' as DayBookEntryCategory, bank_name: '', expense_category_id: '' })
+    const [entryForm, setEntryForm]   = useState(EMPTY_ENTRY_FORM)
+
+    // Reset on open so a Bank Out-only category ('expense', 'withdrawal') left
+    // behind by a cancelled entry can't be submitted against a Bank In.
+    const openEntryModal = (type: 'bank_in' | 'bank_out') => {
+        setEntryForm(EMPTY_ENTRY_FORM)
+        setEntryModal({ type })
+    }
     const [isSubmittingEntry, setIsSubmittingEntry] = useState(false)
 
     // Close Day
@@ -212,9 +220,17 @@ export default function BankBookClient({
                     })
                     if (autoRes.ok) {
                         toast.success('Bank Out logged and withdrawn to Cash successfully!')
+                    } else {
+                        // The money already left the bank account; the operator has
+                        // to know the matching cash entry never landed.
+                        const autoData = await autoRes.json().catch(() => ({}))
+                        toast.error(
+                            `Bank Out logged, but the matching Cash In failed: ${autoData.error ?? autoRes.statusText}. Add it to the Cash Book manually.`
+                        )
                     }
                 } catch (autoErr) {
                     console.error('Failed to auto-create cash entry', autoErr)
+                    toast.error('Bank Out logged, but the matching Cash In failed. Add it to the Cash Book manually.')
                 }
             } else {
                 toast.success('Bank transaction logged successfully!')
@@ -531,13 +547,13 @@ export default function BankBookClient({
                             {session.status === 'open' && (
                                 <div className="flex gap-2">
                                     <button
-                                        onClick={() => setEntryModal({ type: 'bank_in' })}
+                                        onClick={() => openEntryModal('bank_in')}
                                         className="flex items-center gap-1 px-3 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-extrabold rounded-xl text-xs border border-emerald-200 transition-colors"
                                     >
                                         <Plus size={14} /> Add Bank In (Receive)
                                     </button>
                                     <button
-                                        onClick={() => setEntryModal({ type: 'bank_out' })}
+                                        onClick={() => openEntryModal('bank_out')}
                                         className="flex items-center gap-1 px-3 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 font-extrabold rounded-xl text-xs border border-rose-200 transition-colors"
                                     >
                                         <Plus size={14} /> Add Bank Out (Payment)

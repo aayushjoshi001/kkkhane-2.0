@@ -455,6 +455,7 @@ export default function StaffManager({
                 toast.error(res.error)
             } else {
                 toast.success('Transaction recorded successfully')
+                if ('warning' in res && res.warning) toast.error(res.warning)
                 const userId = transactionModal.user.id
                 setTransactionModal({
                     isOpen: false,

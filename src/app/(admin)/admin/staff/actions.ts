@@ -344,26 +344,35 @@ export async function recordLedgerTransactionAction(
 
     if (error) return { error: error.message }
 
-    // ── Auto-post matching entry to Day Book session if open and is a payout
+    // ── Auto-post matching entry to Day Book session if open and is a payout.
+    // The staff_ledger row is already written, so a failed posting is a
+    // warning rather than a hard failure — but it must be reported, otherwise
+    // the payout never shows up in the day's cash/bank movements.
+    let warning: string | undefined
     const isPayout = entryType === 'salary_payout' || entryType === 'advance_payment'
     if (isPayout && paymentMethod) {
         const isCash = paymentMethod === 'cash'
         const staffName = targetUser?.full_name || 'Staff'
 
-        await postFinancialTransaction(supabase, currentUser, {
+        const postResult = await postFinancialTransaction(supabase, currentUser, {
             type: isCash ? 'cash_out' : 'bank_out',
             amount: amount,
             description: `[Staff Payout] Paid ${entryType === 'salary_payout' ? 'Salary' : 'Advance'} to ${staffName}` + (note?.trim() ? ` (${note.trim()})` : ''),
             category: entryType === 'salary_payout' ? 'salary' : 'advance',
             bankName: !isCash ? bankName : null
         })
+
+        if (postResult.error) {
+            console.error('Failed to post staff payout to Day Book:', postResult.error)
+            warning = `Payout recorded, but it could not be posted to the Day Book: ${postResult.error}`
+        }
     }
 
     revalidatePath('/admin/staff')
     revalidatePath('/admin/cash-book')
     revalidatePath('/admin/bank-book')
     revalidatePath('/admin/bank-ledger')
-    return { success: true }
+    return { success: true, warning }
 }
 
 export async function fetchStaffLedgerAction(userId: string) {

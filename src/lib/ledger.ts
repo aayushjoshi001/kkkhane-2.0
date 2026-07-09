@@ -51,6 +51,15 @@ export async function findOpenDayBookSessionId(
     return data?.id
 }
 
+// `%` and `_` are wildcards to ilike, so a bank literally named "50_50" would
+// otherwise match more rows than it should.
+function escapeLikePattern(value: string): string {
+    return value.replace(/[\\%_]/g, (c) => `\\${c}`)
+}
+
+// Matched case-insensitively so renaming an account "nabil bank" -> "Nabil Bank"
+// doesn't silently stop resolving entries already written under the old
+// casing. Bank Ledger has always compared these names case-insensitively.
 export async function resolveBankAccountId(
     supabase: SupabaseClient,
     restaurantId: string,
@@ -61,9 +70,27 @@ export async function resolveBankAccountId(
         .from('bank_accounts')
         .select('id')
         .eq('restaurant_id', restaurantId)
-        .eq('name', bankName.trim())
+        .ilike('name', escapeLikePattern(bankName.trim()))
         .maybeSingle()
     return data?.id ?? null
+}
+
+// Confirms a category actually belongs to the caller's restaurant before it is
+// written onto an expense/income row. Without this, a caller could attach a
+// spend to another tenant's category id.
+export async function isCategoryOwned(
+    supabase: SupabaseClient,
+    restaurantId: string,
+    table: 'expense_categories' | 'income_categories',
+    categoryId: string
+): Promise<boolean> {
+    const { data } = await supabase
+        .from(table)
+        .select('id')
+        .eq('id', categoryId)
+        .eq('restaurant_id', restaurantId)
+        .maybeSingle()
+    return !!data
 }
 
 // The single canonical write path for day_book_entries. Looks up today's
