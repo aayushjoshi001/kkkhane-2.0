@@ -89,6 +89,16 @@ export async function proxy(request: NextRequest) {
 
     // ── Not authenticated ───────────────────────────────────────────────────────
     if (!user) {
+        // Next.js Server Actions cannot handle standard 307 redirects directly from middleware.
+        // Returning a 401 response instead lets the client catch the authentication failure cleanly.
+        if (request.headers.has('next-action')) {
+            const response = new NextResponse('Unauthorized', { status: 401 })
+            supabaseResponse.cookies.getAll().forEach(({ name, value, ...opts }) => {
+                response.cookies.set(name, value, opts)
+            })
+            return response
+        }
+
         const loginUrl = new URL('/login', request.url)
         loginUrl.searchParams.set('redirect', pathname)
         console.log(`[PROXY_LOG] Not authenticated, redirecting to: ${loginUrl.toString()}`);

@@ -278,16 +278,38 @@ export default function QuickOrderModal({
         }
 
         setSubmitting(true)
-        const res = await placeStaffOrder(selectedSession.token, cart, customerNote)
-        if (res.success) {
-            toast.success('Order placed successfully & sent to kitchen!')
-            setCart([])
-            setCustomerNote('')
-            onClose()
-        } else {
-            toast.error(res.error || 'Failed to place order')
+        try {
+            const res = await placeStaffOrder(selectedSession.token, cart, customerNote)
+            if (res && res.success) {
+                toast.success('Order placed successfully & sent to kitchen!')
+                setCart([])
+                setCustomerNote('')
+                onClose()
+            } else {
+                const errMsg = res?.error || 'Failed to place order'
+                if (errMsg === 'Unauthorized') {
+                    toast.error('Session expired. Redirecting to login...')
+                    setTimeout(() => { 
+                        window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}` 
+                    }, 1500)
+                } else {
+                    toast.error(errMsg)
+                }
+            }
+        } catch (err: any) {
+            console.error('[handlePlaceOrder] Error:', err)
+            const msg = err?.message || ''
+            if (msg.includes('Unauthorized') || msg.includes('unexpected response')) {
+                toast.error('Session expired. Redirecting to login...')
+                setTimeout(() => { 
+                    window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}` 
+                }, 1500)
+            } else {
+                toast.error('Failed to place order. Please try again.')
+            }
+        } finally {
+            setSubmitting(false)
         }
-        setSubmitting(false)
     }
 
     return createPortal(
