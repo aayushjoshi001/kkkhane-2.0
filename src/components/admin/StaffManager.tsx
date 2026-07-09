@@ -295,7 +295,13 @@ export default function StaffManager({
         setLedgerModal({ isOpen: true, user, entries: [], loading: true, openingBalanceEdit: '', savingOpeningBalance: false })
         try {
             const data = await fetchStaffLedgerAction(user.id)
-            setLedgerModal({ isOpen: true, user, entries: data || [], loading: false, openingBalanceEdit: '', savingOpeningBalance: false })
+            // Inject fresh opening_balance + monthly_salary from DB into the user object
+            const freshUser: StaffMember = {
+                ...user,
+                opening_balance: data.openingBalance,
+                monthly_salary: data.monthlySalary,
+            }
+            setLedgerModal({ isOpen: true, user: freshUser, entries: data.entries, loading: false, openingBalanceEdit: '', savingOpeningBalance: false })
         } catch (err: any) {
             toast.error(err.message || 'Failed to fetch ledger')
             setLedgerModal(prev => ({ ...prev, loading: false }))

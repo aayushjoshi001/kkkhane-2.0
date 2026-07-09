@@ -214,14 +214,27 @@ export async function fetchStaffLedgerAction(userId: string) {
         throw new Error('Unauthorized')
     }
 
-    const { data, error } = await supabase
-        .from('staff_ledger')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: true })
+    // Fetch ledger entries AND fresh opening_balance in parallel
+    const [ledgerResult, userResult] = await Promise.all([
+        supabase
+            .from('staff_ledger')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: true }),
+        supabase
+            .from('users')
+            .select('opening_balance, monthly_salary')
+            .eq('id', userId)
+            .single()
+    ])
 
-    if (error) throw new Error(error.message)
-    return data
+    if (ledgerResult.error) throw new Error(ledgerResult.error.message)
+
+    return {
+        entries: ledgerResult.data || [],
+        openingBalance: (userResult.data as any)?.opening_balance ?? 0,
+        monthlySalary: (userResult.data as any)?.monthly_salary ?? 0,
+    }
 }
 
 export async function updateOpeningBalanceAction(userId: string, openingBalance: number) {
