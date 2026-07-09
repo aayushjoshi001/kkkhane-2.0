@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { NextRequest } from 'next/server'
 import { computeMonthlyAccrualPreview, insertAccruals } from '@/lib/payroll'
 import { verifyCronRequest, getActiveRestaurants } from '@/lib/cron'
+import { NST_OFFSET_MS } from '@/lib/timezone'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -18,8 +19,8 @@ export async function POST(request: NextRequest) {
         return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // NST = UTC+5:45. Only run the accrual on the 1st day of the NST month.
-    const nowNst = new Date(Date.now() + (5 * 60 + 45) * 60 * 1000)
+    // Only run the accrual on the 1st day of the NST month.
+    const nowNst = new Date(Date.now() + NST_OFFSET_MS)
     if (nowNst.getUTCDate() !== 1) {
         return Response.json({ message: 'Not the 1st of the month (NST), skipping', accrued: 0 })
     }

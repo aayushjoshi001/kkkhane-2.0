@@ -1,12 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
+import { getEffectiveJoinDate } from '@/lib/timezone'
 
 type SupabaseAdminClient = Awaited<ReturnType<typeof createAdminClient>>
-
-// NST = UTC+5:45. Used to align "which calendar day" a UTC timestamp falls on
-// with the same NST-based month boundaries the accrual cron uses, so a staff
-// member hired late in the UTC day (but already the next day in NST) isn't
-// mis-prorated by a day.
-const NST_OFFSET_MS = (5 * 60 + 45) * 60 * 1000
 
 export type AccrualPreviewItem = {
     userId: string
@@ -35,14 +30,18 @@ export async function computeMonthlyAccrualPreview(
     const totalDaysInMonth = new Date(year, month, 0).getDate()
     const startUTC = Date.UTC(year, month - 1, 1)
     const endUTC = Date.UTC(year, month, 0)
+    const startDateStr = startDate.toISOString().slice(0, 10)
+    const endDateStr = endDate.toISOString().slice(0, 10)
 
     const [
         { data: staff, error: staffError },
-        { data: existingAccruals, error: accrualError }
+        { data: existingAccruals, error: accrualError },
+        { data: absences, error: absenceError },
+        { data: salaryHistory, error: salaryHistoryError }
     ] = await Promise.all([
         supabase
             .from('users')
-            .select('id, full_name, created_at, monthly_salary')
+            .select('id, full_name, created_at, join_date, monthly_salary')
             .eq('restaurant_id', restaurantId)
             .eq('is_active', true),
         supabase
@@ -51,42 +50,93 @@ export async function computeMonthlyAccrualPreview(
             .eq('restaurant_id', restaurantId)
             .eq('entry_type', 'accrual')
             .gte('created_at', startDate.toISOString())
-            .lte('created_at', endDate.toISOString())
+            .lte('created_at', endDate.toISOString()),
+        supabase
+            .from('staff_attendance')
+            .select('user_id, date')
+            .eq('restaurant_id', restaurantId)
+            .eq('status', 'absent')
+            .gte('date', startDateStr)
+            .lte('date', endDateStr),
+        supabase
+            .from('staff_salary_history')
+            .select('user_id, monthly_salary, effective_from, effective_to')
+            .eq('restaurant_id', restaurantId)
+            .lte('effective_from', endDateStr)
+            .or(`effective_to.is.null,effective_to.gte.${startDateStr}`)
     ])
 
     if (staffError) throw new Error(staffError.message)
     if (accrualError) throw new Error(accrualError.message)
+    if (absenceError) throw new Error(absenceError.message)
+    if (salaryHistoryError) throw new Error(salaryHistoryError.message)
 
     const processedUserIds = new Set(existingAccruals?.map(a => a.user_id) || [])
 
+    const absentDatesByUser = new Map<string, Set<string>>()
+    for (const row of absences || []) {
+        if (!absentDatesByUser.has(row.user_id)) absentDatesByUser.set(row.user_id, new Set())
+        absentDatesByUser.get(row.user_id)!.add(row.date)
+    }
+
+    const salarySegmentsByUser = new Map<string, Array<{ from: string; to: string | null; salary: number }>>()
+    for (const row of salaryHistory || []) {
+        if (!salarySegmentsByUser.has(row.user_id)) salarySegmentsByUser.set(row.user_id, [])
+        salarySegmentsByUser.get(row.user_id)!.push({ from: row.effective_from, to: row.effective_to, salary: Number(row.monthly_salary) })
+    }
+
     return staff.map(member => {
-        const joinedDate = new Date(member.created_at)
         const isProcessed = processedUserIds.has(member.id)
 
-        // Shift into NST before reading calendar components, so the "hire day"
-        // lines up with the same NST-based month boundaries the cron uses.
-        const joinedNst = new Date(joinedDate.getTime() + NST_OFFSET_MS)
-        const joinedUTC = Date.UTC(joinedNst.getUTCFullYear(), joinedNst.getUTCMonth(), joinedNst.getUTCDate())
+        // Same join-date resolution actions.ts uses when backfilling salary
+        // history, so the two never disagree over a staff member's join day.
+        const joinDateStr = getEffectiveJoinDate(member.join_date, member.created_at)
+        const [jy, jm, jd] = joinDateStr.split('-').map(Number)
+        const joinedUTC = Date.UTC(jy, jm - 1, jd)
 
-        let computedAmount = Number(member.monthly_salary)
+        let computedAmount = 0
         let note = 'Previous month salary'
         let daysWorked = totalDaysInMonth
 
         if (joinedUTC > endUTC) {
-            computedAmount = 0
             note = 'Not hired yet during this period'
             daysWorked = 0
-        } else if (joinedUTC > startUTC) {
-            const joinedDay = new Date(joinedUTC).getUTCDate()
-            daysWorked = totalDaysInMonth - joinedDay + 1
-            computedAmount = Math.round(Number(member.monthly_salary) * (daysWorked / totalDaysInMonth) * 100) / 100
-            note = `Previous month salary (Prorated: ${daysWorked}/${totalDaysInMonth} days)`
+        } else {
+            // Walk each day the member could have worked this month, using
+            // whichever salary segment (or the flat fallback rate) covers
+            // that specific day, and skipping days marked absent — so a
+            // mid-month raise or an absence only affects the days it
+            // actually applies to.
+            const absentDates = absentDatesByUser.get(member.id)
+            const segments = salarySegmentsByUser.get(member.id)
+            const fallbackRate = Number(member.monthly_salary)
+
+            let paidDays = 0
+            let absentDays = 0
+            let rawAmount = 0
+
+            for (let d = Math.max(startUTC, joinedUTC); d <= endUTC; d += 86400000) {
+                const dateStr = new Date(d).toISOString().slice(0, 10)
+                if (absentDates?.has(dateStr)) {
+                    absentDays++
+                    continue
+                }
+                const segment = segments?.find(s => s.from <= dateStr && (!s.to || s.to >= dateStr))
+                rawAmount += (segment ? segment.salary : fallbackRate) / totalDaysInMonth
+                paidDays++
+            }
+
+            daysWorked = paidDays
+            computedAmount = Math.round(rawAmount * 100) / 100
+            note = daysWorked === totalDaysInMonth
+                ? 'Previous month salary'
+                : `Previous month salary (Prorated: ${daysWorked}/${totalDaysInMonth} days${absentDays > 0 ? `, ${absentDays} absent` : ''})`
         }
 
         return {
             userId: member.id,
             fullName: member.full_name,
-            joinedDate: member.created_at,
+            joinedDate: joinDateStr,
             monthlySalary: Number(member.monthly_salary),
             computedAmount,
             daysWorked,
