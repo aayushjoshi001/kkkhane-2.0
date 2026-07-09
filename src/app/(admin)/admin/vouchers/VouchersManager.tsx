@@ -46,6 +46,9 @@ interface ParsedVoucher {
     reference_no: string
     receiver_name: string
     status: 'approved' | 'pending_approval' | 'rejected'
+    category: 'suppliers' | 'staff' | 'expenses' | 'other'
+    supplier_id?: string
+    staff_user_id?: string
     cheque_details?: {
         written_name: string
         bank_cheque: string // Issuer Bank
@@ -58,6 +61,8 @@ interface ParsedVoucher {
 interface VouchersManagerProps {
     bankAccounts: BankAccount[]
     initialEntries: RawVoucherEntry[]
+    suppliers: { id: string; name: string }[]
+    staffList: { id: string; full_name: string }[]
 }
 
 function amountInWords(amount: number): string {
@@ -71,18 +76,21 @@ function amountInWords(amount: number): string {
     function helper(n: number): string {
         if (n < 20) return ones[n]
         if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + ones[n % 10] : '')
-        if (n < 1000) return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' ' + helper(n % 100) : '')
+        if (n < 1000) return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' ' + helper(n % 150) : '')
         if (n < 100000) return helper(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 !== 0 ? ' ' + helper(n % 1000) : '')
         if (n < 10000000) return helper(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 !== 0 ? ' ' + helper(n % 100000) : '')
         return helper(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 !== 0 ? ' ' + helper(n % 10000000) : '')
     }
     
+    // Quick and safe Nepalese conversion helper
     return helper(num) + ' Rupees Only'
 }
 
 export default function VouchersManager({
     bankAccounts,
-    initialEntries
+    initialEntries,
+    suppliers,
+    staffList
 }: VouchersManagerProps) {
     const [entriesList, setEntriesList] = useState<RawVoucherEntry[]>(initialEntries)
 
@@ -92,11 +100,16 @@ export default function VouchersManager({
     const [partyName, setPartyName] = useState('')
     const [amount, setAmount] = useState('')
     const [paymentMode, setPaymentMode] = useState<'cash' | 'qr' | 'cheque'>('cash')
-    const [bankName, setBankName] = useState('') // Destination Bank
+    const [bankName, setBankName] = useState('') // Destination / Source Bank
     const [particulars, setParticulars] = useState('')
     const [referenceNo, setReferenceNo] = useState('') // Payer phone
     const [receiverName, setReceiverName] = useState('')
     const [saving, setSaving] = useState(false)
+
+    // Category and specific targets for Payments
+    const [payoutCategory, setPayoutCategory] = useState<'suppliers' | 'staff' | 'expenses' | 'other'>('other')
+    const [selectedSupplierId, setSelectedSupplierId] = useState('')
+    const [selectedStaffUserId, setSelectedStaffUserId] = useState('')
 
     // Cheque specific form fields
     const [chequeWrittenName, setChequeWrittenName] = useState('')
@@ -119,6 +132,27 @@ export default function VouchersManager({
     // Pending approvals action state
     const [actioningId, setActioningId] = useState<string | null>(null)
 
+    // Parse bank account ownership labels reactively
+    const parsedBankAccounts = useMemo(() => {
+        return bankAccounts.map(b => {
+            const bName = b.bank_name || ''
+            let ownership: 'company' | 'personal' = 'company'
+            let displayName = bName
+            if (bName.startsWith('personal:')) {
+                ownership = 'personal'
+                displayName = bName.split('personal:')[1]
+            } else if (bName.startsWith('company:')) {
+                ownership = 'company'
+                displayName = bName.split('company:')[1]
+            }
+            return {
+                ...b,
+                ownership,
+                displayName
+            }
+        })
+    }, [bankAccounts])
+
     // Parse description JSON reactively
     const parsedVouchers = useMemo((): ParsedVoucher[] => {
         return entriesList.map(e => {
@@ -133,6 +167,9 @@ export default function VouchersManager({
                 receiver_name: '',
                 status: 'approved' as const,
                 amount: Number(e.amount),
+                category: 'other' as const,
+                supplier_id: '',
+                staff_user_id: '',
                 cheque_details: undefined
             }
             try {
@@ -150,7 +187,6 @@ export default function VouchersManager({
                 created_at: e.created_at,
                 date: e.day_book_sessions?.date || e.created_at.split('T')[0],
                 ...parsed,
-                // Ensure parsed amount takes precedence (since pending normal cheque stores real amount in description)
                 amount: parsed.amount
             }
         })
@@ -159,7 +195,6 @@ export default function VouchersManager({
     // Filtered Vouchers list
     const filteredVouchers = useMemo(() => {
         return parsedVouchers.filter(v => {
-            // Screen split active vouchers vs pending approvals
             if (activeTab === 'vouchers') {
                 if (v.status === 'pending_approval') return false
             } else {
@@ -213,8 +248,19 @@ export default function VouchersManager({
 
         const isBankSelect = paymentMode === 'qr' || paymentMode === 'cheque'
         if (isBankSelect && bankAccounts.length > 0 && !bankName) {
-            toast.error('Please select a destination bank account')
+            toast.error('Please select a bank account')
             return
+        }
+
+        if (voucherType === 'payment') {
+            if (payoutCategory === 'suppliers' && !selectedSupplierId) {
+                toast.error('Please select a supplier')
+                return
+            }
+            if (payoutCategory === 'staff' && !selectedStaffUserId) {
+                toast.error('Please select a staff member')
+                return
+            }
         }
 
         if (paymentMode === 'cheque') {
@@ -245,8 +291,11 @@ export default function VouchersManager({
                 payment_mode: paymentMode,
                 bank_name: isBankSelect ? (bankName || 'General Bank') : undefined,
                 particulars: particulars,
-                reference_no: referenceNo, // Payer Number
+                reference_no: referenceNo,
                 receiver_name: receiverName,
+                category: voucherType === 'payment' ? payoutCategory : undefined,
+                supplier_id: voucherType === 'payment' && payoutCategory === 'suppliers' ? selectedSupplierId : undefined,
+                staff_user_id: voucherType === 'payment' && payoutCategory === 'staff' ? selectedStaffUserId : undefined,
                 cheque_details: paymentMode === 'cheque' ? {
                     written_name: chequeWrittenName.trim(),
                     bank_cheque: chequeBank.trim(),
@@ -270,10 +319,15 @@ export default function VouchersManager({
                 setChequeNumber('')
                 setChequeDate('')
                 setChequeType('ac_payee')
+                setSelectedSupplierId('')
+                setSelectedStaffUserId('')
+                setPayoutCategory('other')
                 setCreateModalOpen(false)
                 
-                if (paymentMode === 'cheque' && chequeType === 'normal') {
-                    toast.success('Cheque logged! Sent to Pending Approvals queue.')
+                // Determine redirect tab
+                const isPendingCheque = res.data.description.includes('"status":"pending_approval"')
+                if (isPendingCheque) {
+                    toast.success('Cheque issued! Pending manager approval to deduct balance.')
                     setActiveTab('approvals')
                 } else {
                     toast.success('Voucher created successfully!')
@@ -295,7 +349,7 @@ export default function VouchersManager({
             if (res.error) {
                 toast.error(res.error)
             } else {
-                toast.success('Cheque approved and deposited successfully!')
+                toast.success('Cheque approved and cleared successfully!')
                 setEntriesList(prev => prev.map(e => {
                     if (e.id === id) {
                         try {
@@ -396,7 +450,7 @@ export default function VouchersManager({
                         <Plus size={15} /> Receipt Voucher (In)
                     </button>
                     <button
-                        onClick={() => { setVoucherType('payment'); setPaymentMode('cash'); setCreateModalOpen(true); }}
+                        onClick={() => { setVoucherType('payment'); setPaymentMode('cash'); setCreateModalOpen(true); setPayoutCategory('other'); }}
                         className="flex items-center gap-1.5 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md shadow-rose-500/10 focus-ring"
                     >
                         <Plus size={15} /> Payment Voucher (Out)
@@ -531,7 +585,7 @@ export default function VouchersManager({
                                 <tr className="bg-gray-50 border-b border-gray-100 text-gray-500">
                                     <th className="px-5 py-3 font-bold w-28">Date</th>
                                     <th className="px-5 py-3 font-bold w-32">Voucher No</th>
-                                    <th className="px-5 py-3 font-bold w-20">Type</th>
+                                    <th className="px-5 py-3 font-bold w-28">Type</th>
                                     <th className="px-5 py-3 font-bold w-44">Party Name</th>
                                     <th className="px-5 py-3 font-bold w-32">Mode</th>
                                     <th className="px-5 py-3 font-bold text-right w-28">Amount</th>
@@ -547,11 +601,18 @@ export default function VouchersManager({
                                         </td>
                                         <td className="px-5 py-4 font-extrabold text-gray-800 whitespace-nowrap">{v.voucher_number}</td>
                                         <td className="px-5 py-4">
-                                            <span className={`inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase ${
-                                                v.voucher_type === 'receipt' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
-                                            }`}>
-                                                {v.voucher_type === 'receipt' ? 'Receipt' : 'Payment'}
-                                            </span>
+                                            <div className="flex flex-col gap-0.5">
+                                                <span className={`inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase w-fit ${
+                                                    v.voucher_type === 'receipt' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                                                }`}>
+                                                    {v.voucher_type === 'receipt' ? 'Receipt' : 'Payment'}
+                                                </span>
+                                                {v.voucher_type === 'payment' && v.category && v.category !== 'other' && (
+                                                    <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider pl-1">
+                                                        ↳ {v.category}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-5 py-4 font-bold text-gray-800 truncate max-w-[150px]" title={v.party_name}>
                                             {v.party_name}
@@ -645,6 +706,72 @@ export default function VouchersManager({
                         </div>
                         
                         <form onSubmit={handleCreateVoucher} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+                            {/* Payout Category Selection (Only for Payment Vouchers) */}
+                            {voucherType === 'payment' && (
+                                <div className="space-y-3 bg-gray-50 p-3 rounded-xl border border-gray-150">
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Payment Ledger Category</label>
+                                        <div className="grid grid-cols-4 gap-1.5">
+                                            {(['suppliers', 'staff', 'expenses', 'other'] as const).map(cat => (
+                                                <button
+                                                    key={cat}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setPayoutCategory(cat)
+                                                        setPartyName('')
+                                                        setSelectedSupplierId('')
+                                                        setSelectedStaffUserId('')
+                                                    }}
+                                                    className={`py-1.5 rounded-lg text-[10px] font-bold border transition capitalize ${payoutCategory === cat ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                                                >
+                                                    {cat}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {payoutCategory === 'suppliers' && (
+                                        <div className="animate-in slide-in-from-top-1 duration-150">
+                                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Select Supplier *</label>
+                                            <select
+                                                value={selectedSupplierId}
+                                                onChange={(e) => {
+                                                    const sId = e.target.value
+                                                    setSelectedSupplierId(sId)
+                                                    const match = suppliers.find(s => s.id === sId)
+                                                    if (match) setPartyName(match.name)
+                                                }}
+                                                required
+                                                className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
+                                            >
+                                                <option value="">Choose Supplier</option>
+                                                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                            </select>
+                                        </div>
+                                    )}
+
+                                    {payoutCategory === 'staff' && (
+                                        <div className="animate-in slide-in-from-top-1 duration-150">
+                                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Select Staff Member *</label>
+                                            <select
+                                                value={selectedStaffUserId}
+                                                onChange={(e) => {
+                                                    const sId = e.target.value
+                                                    setSelectedStaffUserId(sId)
+                                                    const match = staffList.find(s => s.id === sId)
+                                                    if (match) setPartyName(match.full_name)
+                                                }}
+                                                required
+                                                className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
+                                            >
+                                                <option value="">Choose Staff Profile</option>
+                                                {staffList.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
@@ -656,7 +783,8 @@ export default function VouchersManager({
                                         value={partyName}
                                         onChange={e => setPartyName(e.target.value)}
                                         required
-                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
+                                        disabled={voucherType === 'payment' && (payoutCategory === 'suppliers' || payoutCategory === 'staff')}
+                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] disabled:bg-gray-50 disabled:text-gray-400"
                                     />
                                 </div>
 
@@ -677,7 +805,7 @@ export default function VouchersManager({
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Payer Phone Number</label>
+                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Reference / Phone Number</label>
                                     <input
                                         type="tel"
                                         placeholder="e.g. 98XXXXXXXX"
@@ -718,7 +846,7 @@ export default function VouchersManager({
                             {(paymentMode === 'qr' || paymentMode === 'cheque') && (
                                 <div className="animate-in slide-in-from-top-1 duration-150">
                                     <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-                                        Destination Bank Account (Nepal System) *
+                                        Destination / Source Bank Account *
                                     </label>
                                     <select
                                         value={bankName}
@@ -726,9 +854,11 @@ export default function VouchersManager({
                                         required
                                         className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
                                     >
-                                        <option value="">Select Destination Bank</option>
-                                        {bankAccounts.map(b => (
-                                            <option key={b.id} value={b.name}>{b.name} ({b.account_number})</option>
+                                        <option value="">Select Account</option>
+                                        {parsedBankAccounts.map(b => (
+                                            <option key={b.id} value={b.name}>
+                                                {b.name} ({b.displayName} — {b.ownership === 'personal' ? 'Personal Account' : 'Company Account'})
+                                            </option>
                                         ))}
                                     </select>
                                 </div>
@@ -839,19 +969,16 @@ export default function VouchersManager({
                 </div>
             )}
 
-            {/* Printable Voucher Slip Modal (Real-world thermal/A4 slip format) */}
+            {/* Printable Voucher Slip Modal */}
             {printVoucher && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 print:p-0 print:absolute print:inset-0">
-                    {/* Backdrop */}
                     <div 
                         className="fixed inset-0 bg-[#0a0a0a]/60 backdrop-blur-md transition-opacity duration-300 print:hidden"
                         onClick={() => setPrintVoucher(null)}
                     />
 
-                    {/* Modal Box */}
                     <div className="bg-white rounded-2xl border border-gray-150 shadow-2xl w-full max-w-2xl relative z-10 overflow-hidden flex flex-col max-h-[90vh] print:max-h-none print:w-full print:border-none print:shadow-none print:static">
                         
-                        {/* Modal controls header */}
                         <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50 print:hidden shrink-0">
                             <span className="text-xs font-black text-gray-800 uppercase tracking-wider">Voucher Print Preview</span>
                             <div className="flex gap-2">
@@ -870,24 +997,20 @@ export default function VouchersManager({
                             </div>
                         </div>
 
-                        {/* Slip print target page layout */}
                         <div className="flex-1 overflow-y-auto p-8 print:p-0 print:overflow-visible">
                             <div className="border border-gray-300 p-6 rounded-xl font-mono text-xs text-gray-800 space-y-6 print:border-none print:p-0 print:rounded-none">
                                 
-                                {/* Header */}
                                 <div className="text-center border-b border-dashed border-gray-300 pb-4">
                                     <h2 className="text-lg font-black tracking-tight text-gray-900">KKKHANE RESTAURANT</h2>
                                     <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mt-0.5">Workspace Account Voucher</p>
                                 </div>
 
-                                {/* Title Banner */}
                                 <div className="text-center py-1.5 bg-gray-100 border border-gray-200 rounded-lg">
                                     <h3 className="text-sm font-black tracking-widest text-gray-900 uppercase">
                                         {printVoucher.voucher_type === 'receipt' ? 'RECEIPT VOUCHER' : 'PAYMENT VOUCHER'}
                                     </h3>
                                 </div>
 
-                                {/* Info grid */}
                                 <div className="grid grid-cols-2 gap-y-2 border-b border-dashed border-gray-300 pb-4 text-[11px]">
                                     <div>
                                         <span className="font-bold text-gray-400 uppercase">Voucher No:</span>{' '}
@@ -913,14 +1036,20 @@ export default function VouchersManager({
                                     </div>
                                     {printVoucher.reference_no && (
                                         <div>
-                                            <span className="font-bold text-gray-400 uppercase">Payer Phone:</span>{' '}
+                                            <span className="font-bold text-gray-400 uppercase">Ref Phone:</span>{' '}
                                             <span className="font-black text-gray-900">{printVoucher.reference_no}</span>
                                         </div>
                                     )}
                                     {printVoucher.receiver_name && (
                                         <div className="text-right">
-                                            <span className="font-bold text-gray-400 uppercase">Receiver Name:</span>{' '}
+                                            <span className="font-bold text-gray-400 uppercase">Receiver Staff:</span>{' '}
                                             <span className="font-black text-gray-900 uppercase">{printVoucher.receiver_name}</span>
+                                        </div>
+                                    )}
+                                    {printVoucher.voucher_type === 'payment' && printVoucher.category && (
+                                        <div>
+                                            <span className="font-bold text-gray-400 uppercase">Ledger Category:</span>{' '}
+                                            <span className="font-black text-gray-950 uppercase">{printVoucher.category}</span>
                                         </div>
                                     )}
                                     {printVoucher.payment_mode === 'cheque' && printVoucher.cheque_details && (
@@ -944,7 +1073,7 @@ export default function VouchersManager({
                                             <div>
                                                 <span className="font-bold text-gray-400 uppercase">Cheque Type:</span>{' '}
                                                 <span className="font-black text-gray-900 uppercase">
-                                                    {printVoucher.cheque_details.cheque_type === 'ac_payee' ? 'A/C Payee (Company)' : 'Normal Person'}
+                                                    {printVoucher.cheque_details.cheque_type === 'ac_payee' ? 'A/C Payee' : 'Normal Cheque'}
                                                 </span>
                                             </div>
                                             <div className="text-right">
@@ -957,7 +1086,6 @@ export default function VouchersManager({
                                     )}
                                 </div>
 
-                                {/* Details / Particulars Table */}
                                 <div className="space-y-2">
                                     <table className="w-full text-left text-[11px] border-collapse">
                                         <thead>
@@ -973,7 +1101,7 @@ export default function VouchersManager({
                                                 <td className="py-3 font-semibold leading-relaxed">
                                                     {printVoucher.payment_mode === 'cheque' && printVoucher.cheque_details ? (
                                                         <span>
-                                                            Cheque deposit settlement: No. {printVoucher.cheque_details.cheque_number} issued by {printVoucher.cheque_details.bank_cheque}. (Payee: {printVoucher.cheque_details.written_name})
+                                                            Cheque settlement payout: No. {printVoucher.cheque_details.cheque_number} issued on {printVoucher.cheque_details.bank_cheque}. (Payee: {printVoucher.cheque_details.written_name})
                                                         </span>
                                                     ) : (
                                                         printVoucher.particulars
@@ -991,13 +1119,11 @@ export default function VouchersManager({
                                     </table>
                                 </div>
 
-                                {/* Sum in Words */}
                                 <div className="p-3 bg-gray-50 border border-gray-150 rounded-lg text-[11px] flex gap-2">
                                     <span className="font-bold text-gray-400 uppercase shrink-0">Sum In Words:</span>
                                     <span className="font-black text-gray-800 italic capitalize">{amountInWords(printVoucher.amount)}</span>
                                 </div>
 
-                                {/* Signatures grid */}
                                 <div className="grid grid-cols-3 gap-6 pt-16 text-center text-[10px] font-bold text-gray-400 uppercase">
                                     <div className="space-y-1">
                                         <div className="border-t border-gray-300 pt-2 text-gray-800 font-black">Prepared By</div>

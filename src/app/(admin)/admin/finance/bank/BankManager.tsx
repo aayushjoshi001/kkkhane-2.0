@@ -61,16 +61,19 @@ export default function BankManager({
 function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAccounts: (fn: (prev: BankAccount[]) => BankAccount[]) => void }) {
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
-    const [form, setForm] = useState({ name: '', account_type: 'bank' as BankAccountType, wallet_provider: '', bank_name: '', account_number: '', opening_balance: '0' })
+    const [form, setForm] = useState({ name: '', account_type: 'bank' as BankAccountType, wallet_provider: '', bank_name: '', account_number: '', opening_balance: '0', ownership_type: 'company' as 'company' | 'personal' })
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
         setSaving(true)
+        const finalBankName = form.account_type === 'bank' 
+            ? `${form.ownership_type}:${form.bank_name.trim()}`
+            : ''
         const result = await createBankAccountAction({
             name: form.name,
             account_type: form.account_type,
             wallet_provider: form.wallet_provider || undefined,
-            bank_name: form.bank_name,
+            bank_name: finalBankName || undefined,
             account_number: form.account_number,
             opening_balance: parseFloat(form.opening_balance) || 0,
         })
@@ -79,7 +82,7 @@ function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAc
         setAccounts((prev) => [result.data as BankAccount, ...prev])
         toast.success('Bank account created')
         setOpen(false)
-        setForm({ name: '', account_type: 'bank', wallet_provider: '', bank_name: '', account_number: '', opening_balance: '0' })
+        setForm({ name: '', account_type: 'bank', wallet_provider: '', bank_name: '', account_number: '', opening_balance: '0', ownership_type: 'company' })
     }
 
     async function toggleActive(account: BankAccount) {
@@ -104,7 +107,19 @@ function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAc
             <DataTable
                 columns={[
                     { key: 'name', header: 'Name', render: (a) => <span className="font-bold text-ink">{a.name}</span> },
-                    { key: 'type', header: 'Type', render: (a) => (a.account_type === 'wallet' ? WALLET_PROVIDERS.find((w) => w.value === a.wallet_provider)?.label ?? 'Wallet' : (a.bank_name || 'Bank')) },
+                    { key: 'type', header: 'Type', render: (a) => {
+                        if (a.account_type === 'wallet') {
+                            return WALLET_PROVIDERS.find((w) => w.value === a.wallet_provider)?.label ?? 'Wallet'
+                        }
+                        const bName = a.bank_name || ''
+                        if (bName.startsWith('personal:')) {
+                            return `Personal Bank (${bName.split('personal:')[1]})`
+                        }
+                        if (bName.startsWith('company:')) {
+                            return `Company Bank (${bName.split('company:')[1]})`
+                        }
+                        return bName || 'Bank'
+                    }},
                     { key: 'account_number', header: 'Account No.', render: (a) => a.account_number || <span className="text-ink-subtle">—</span> },
                     { key: 'opening_balance', header: 'Opening Balance', align: 'right', render: (a) => formatCurrency(a.opening_balance), sortValue: (a) => a.opening_balance },
                     { key: 'status', header: 'Status', render: (a) => <StatusBadge status={a.is_active ? 'active' : 'closed'} label={a.is_active ? 'Active' : 'Inactive'} /> },
@@ -136,6 +151,10 @@ function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAc
                     </FormSelect>
                 ) : (
                     <>
+                        <FormSelect label="Ownership Category" required value={form.ownership_type} onChange={(e) => setForm((f) => ({ ...f, ownership_type: e.target.value as 'company' | 'personal' }))}>
+                            <option value="company">Company / Restaurant Account</option>
+                            <option value="personal">Personal Account (Manager/Owner)</option>
+                        </FormSelect>
                         <FormInput label="Bank Name" value={form.bank_name} onChange={(e) => setForm((f) => ({ ...f, bank_name: e.target.value }))} />
                         <FormInput label="Account Number" value={form.account_number} onChange={(e) => setForm((f) => ({ ...f, account_number: e.target.value }))} />
                     </>
