@@ -55,6 +55,8 @@ export default function MenuManager({
         input_quantity?: number;
         input_unit?: string;
         input_raw?: string;
+        variation_id?: string | null;
+        variation_name?: string | null;
     }[]>([])
     const [showAddStockModal, setShowAddStockModal] = useState(false)
     const [newStockForm, setNewStockForm] = useState({
@@ -244,11 +246,14 @@ export default function MenuManager({
             if (res.data) {
                 setRecipe(res.data.map(r => {
                     const ing = ingredients.find(i => i.id === r.ingredient_id)
+                    const matchedVar = item.variations?.find((v: any) => v.id === r.menu_item_variation_id)
                     return {
                         ingredient_id: r.ingredient_id,
                         quantity_needed: r.quantity_needed,
                         input_quantity: r.quantity_needed,
-                        input_unit: ing?.unit || 'g'
+                        input_unit: ing?.unit || 'g',
+                        variation_id: r.menu_item_variation_id || null,
+                        variation_name: matchedVar?.name || null
                     }
                 }))
             } else {
@@ -360,7 +365,14 @@ export default function MenuManager({
 
     const handleRecipeRowChange = (
         index: number,
-        fields: { ingredient_id?: string; input_quantity?: number; input_unit?: string; input_raw?: string }
+        fields: { 
+            ingredient_id?: string; 
+            input_quantity?: number; 
+            input_unit?: string; 
+            input_raw?: string;
+            variation_id?: string | null;
+            variation_name?: string | null;
+        }
     ) => {
         setRecipe(prev => prev.map((row, idx) => {
             if (idx !== index) return row;
@@ -1009,6 +1021,29 @@ export default function MenuManager({
                                                             ))}
                                                         </select>
                                                     </div>
+                                                    {hasVariations && (
+                                                         <div className="w-40 shrink-0">
+                                                             <select
+                                                                 value={r.variation_id || r.variation_name || ''}
+                                                                 onChange={e => {
+                                                                     const val = e.target.value
+                                                                     const matched = itemVariations.find(v => v.id === val || v.name === val)
+                                                                     handleRecipeRowChange(idx, {
+                                                                         variation_id: matched?.id || null,
+                                                                         variation_name: matched?.name || null
+                                                                     })
+                                                                 }}
+                                                                 className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 text-xs p-2.5 border bg-surface text-ink transition-all"
+                                                             >
+                                                                 <option value="">Whole Product (Base)</option>
+                                                                 {itemVariations.filter(v => v.name.trim() !== '').map((v, vIdx) => (
+                                                                     <option key={v.id || vIdx} value={v.id || v.name}>
+                                                                         {v.name}
+                                                                     </option>
+                                                                 ))}
+                                                             </select>
+                                                         </div>
+                                                     )}
                                                     <div className="w-20 shrink-0">
                                                         <input
                                                             type="text"
