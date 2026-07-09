@@ -288,15 +288,23 @@ export async function placeStaffOrder(
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'Unauthorized' }
 
-    // Resolve session (UUID vs token)
-    const { data: session, error: sessionError } = await adminSupabase
+    // Resolve session (UUID vs token) safely to avoid UUID casting errors in Postgres
+    let query = adminSupabase
         .from('sessions')
         .select('id, restaurant_id, status')
-        .or(`id.eq.${sessionId},session_token.eq.${sessionId}`)
         .eq('status', 'active')
-        .single()
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)
+    if (isUuid) {
+        query = query.eq('id', sessionId)
+    } else {
+        query = query.eq('session_token', sessionId)
+    }
+
+    const { data: session, error: sessionError } = await query.maybeSingle()
 
     if (sessionError || !session) {
+        console.error('[placeStaffOrder] Session lookup failed:', sessionError, sessionId)
         return { error: 'Table session is invalid or closed.' }
     }
 
