@@ -443,7 +443,7 @@ export default function TablePageClient({
                     sessionId={liveSessionToken}
                     restaurantSlug={tableData.qr_token}
                     restaurantId={tableData.restaurant_id}
-                    layout={menuLayout}
+                    layout="list"
                     searchQuery={searchQuery}
                     setSearchQuery={setSearchQuery}
                 />
