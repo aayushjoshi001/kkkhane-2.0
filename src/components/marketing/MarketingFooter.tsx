@@ -2,7 +2,7 @@ import Link from 'next/link'
 import Logo from '@/components/shared/Logo'
 import CopyrightYear from '@/components/shared/CopyrightYear'
 import {
-    Phone, MapPin,
+    Phone, MapPin, Map,
     Facebook, Instagram, Linkedin,
 } from 'lucide-react'
 
@@ -36,7 +36,7 @@ export default function MarketingFooter() {
         <footer className="border-t border-hairline-strong bg-[#f9fafb] pb-10 pt-20">
             <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-8">
                 <div className="mb-16 grid grid-cols-1 gap-12 md:grid-cols-2 lg:grid-cols-4">
-                    <div>
+                    <div className="lg:col-span-2 pr-10">
                         <Logo className="mb-6 h-8" />
                         <p className="mb-8 text-sm font-medium leading-relaxed text-ink-subtle">
                             From cafes to restaurants, we serve you — smarter, faster.
@@ -82,22 +82,32 @@ export default function MarketingFooter() {
                         <p className="font-medium text-ink-muted">Ready to transform your restaurant? Contact our team today.</p>
                     </div>
                     <div className="grid gap-6 md:grid-cols-3">
-                        <div className="rounded-2xl border border-white bg-surface/80 p-6 shadow-sm backdrop-blur">
-                            <div className="mb-4 flex items-center gap-2 font-bold text-blue-600"><Phone size={18} /> Sales & Support</div>
-                            <p className="mb-2 text-sm font-bold text-ink">+977 9765662427</p>
-                            <p className="text-sm font-bold text-ink">info.kkkhane@gmail.com</p>
+                        <div className="rounded-2xl border border-white bg-surface/80 p-6 shadow-sm backdrop-blur relative overflow-hidden group">
+                            <div className="relative z-10">
+                                <div className="mb-4 flex items-center gap-2 font-bold text-blue-600"><Phone size={18} /> Sales & Support</div>
+                                <p className="mb-2 text-sm font-bold text-ink">+977 9765662427</p>
+                                <p className="text-sm font-bold text-ink">info.kkkhane@gmail.com</p>
+                            </div>
                         </div>
-                        <div className="rounded-2xl border border-white bg-surface/80 p-6 shadow-sm backdrop-blur">
-                            <div className="mb-4 flex items-center gap-2 font-bold text-green-600"><Phone size={18} /> General Inquiry</div>
-                            <p className="mb-2 text-sm font-bold text-ink">+977 9765662427</p>
-                            <p className="text-sm font-bold text-ink">siddantasodari123@gmail.com</p>
+                        <div className="rounded-2xl border border-white bg-surface/80 p-6 shadow-sm backdrop-blur relative overflow-hidden group">
+                            <div className="relative z-10">
+                                <div className="mb-4 flex items-center gap-2 font-bold text-green-600"><Phone size={18} /> General Inquiry</div>
+                                <p className="mb-2 text-sm font-bold text-ink">+977 9765662427</p>
+                                <p className="text-sm font-bold text-ink">siddantasodari123@gmail.com</p>
+                            </div>
                         </div>
-                        <div className="rounded-2xl border border-white bg-surface/80 p-6 shadow-sm backdrop-blur">
-                            <div className="mb-4 flex items-center gap-2 font-bold text-[var(--color-primary)]"><MapPin size={18} /> Headquarters</div>
-                            <p className="text-sm font-medium leading-relaxed text-ink-muted">
-                                Bhojad, Bharatpur, Nepal <br/>
-                                Serving from cafes to restaurants nationwide.
-                            </p>
+                        <div className="rounded-2xl border border-white bg-surface/80 p-6 shadow-sm backdrop-blur relative overflow-hidden group">
+                            <div className="relative z-10">
+                                <div className="mb-4 flex items-center gap-2 font-bold text-[var(--color-primary)]"><MapPin size={18} /> Headquarters</div>
+                                <p className="text-sm font-medium leading-relaxed text-ink-muted">
+                                    Bhojad, Bharatpur, Nepal <br/>
+                                    Serving from cafes to restaurants nationwide.
+                                </p>
+                            </div>
+                            {/* Large Background Map Icon */}
+                            <div className="absolute -right-4 -bottom-6 opacity-[0.04] group-hover:opacity-[0.08] transition-opacity duration-500 pointer-events-none text-ink">
+                                <Map size={140} strokeWidth={1} />
+                            </div>
                         </div>
                     </div>
                 </div>
