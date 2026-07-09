@@ -138,6 +138,10 @@ export default function BankLedgerManager({
         })
     }, [bankAccountsList, bankEntries])
 
+    const activeBankAccountWithBalance = useMemo(() => {
+        return bankAccountsWithBalances.find(b => b.id === selectedBankId) || null
+    }, [bankAccountsWithBalances, selectedBankId])
+
     // Filter bank entries by active bank and time filter
     const activeBankEntries = useMemo(() => {
         if (!activeBankAccount) return []
@@ -366,12 +370,13 @@ export default function BankLedgerManager({
                                     ) : (
                                         <table className="w-full text-left text-xs border-collapse">
                                             <thead>
-                                                <tr className="bg-gray-50 border-b border-gray-100 text-gray-500">
+                                                <tr className="bg-gray-55 border-b border-gray-100 text-gray-500">
                                                     <th className="px-4 py-3 font-bold w-24">Date</th>
-                                                    <th className="px-4 py-3 font-bold w-20">Type</th>
-                                                    <th className="px-4 py-3 font-bold w-28 text-center">Category</th>
                                                     <th className="px-4 py-3 font-bold">Description</th>
-                                                    <th className="px-4 py-3 font-bold text-right w-28">Amount</th>
+                                                    <th className="px-4 py-3 font-bold text-right w-28">Bank In</th>
+                                                    <th className="px-4 py-3 font-bold text-right w-28">Bank Out</th>
+                                                    <th className="px-4 py-3 font-bold text-center w-20">Type</th>
+                                                    <th className="px-4 py-3 font-bold text-center w-28">Category</th>
                                                     <th className="px-4 py-3 font-bold text-right w-28 bg-gray-50/50">Running Balance</th>
                                                 </tr>
                                             </thead>
@@ -382,8 +387,18 @@ export default function BankLedgerManager({
                                                         <td className="px-4 py-3 text-gray-500 font-semibold whitespace-nowrap">
                                                             {new Date(e.day_book_sessions?.date || e.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
                                                         </td>
+                                                        {/* Description */}
+                                                        <td className="px-4 py-3 font-bold text-gray-800">{e.description}</td>
+                                                        {/* Bank In */}
+                                                        <td className="px-4 py-3 text-right font-black text-xs text-emerald-600">
+                                                            {e.type === 'bank_in' ? `+${formatCurrency(e.amount)}` : '-'}
+                                                        </td>
+                                                        {/* Bank Out */}
+                                                        <td className="px-4 py-3 text-right font-black text-xs text-rose-600">
+                                                            {e.type === 'bank_out' ? `-${formatCurrency(e.amount)}` : '-'}
+                                                        </td>
                                                         {/* Type */}
-                                                        <td className="px-4 py-3">
+                                                        <td className="px-4 py-3 text-center">
                                                             <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-black uppercase ${
                                                                 e.type === 'bank_in' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
                                                             }`}>
@@ -398,12 +413,6 @@ export default function BankLedgerManager({
                                                                 {CATEGORY_LABELS[e.category] || e.category}
                                                             </span>
                                                         </td>
-                                                        {/* Description */}
-                                                        <td className="px-4 py-3 font-bold text-gray-800">{e.description}</td>
-                                                        {/* Amount */}
-                                                        <td className={`px-4 py-3 text-right font-black text-xs ${e.type === 'bank_in' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                            {e.type === 'bank_in' ? '+' : '-'}{formatCurrency(e.amount)}
-                                                        </td>
                                                         {/* Running Balance */}
                                                         <td className="px-4 py-3 text-right font-black bg-gray-50/30 text-gray-900">
                                                             {formatCurrency(e.runningBalance)}
@@ -414,6 +423,13 @@ export default function BankLedgerManager({
                                         </table>
                                     )}
                                 </div>
+                                
+                                {activeBankAccountWithBalance && (
+                                    <div className="bg-brand-50/5 border-t border-gray-100 p-4 flex items-center justify-between">
+                                        <span className="text-xs font-black text-gray-800 uppercase tracking-wider">Total Amount Left in {activeBankAccountWithBalance.name}:</span>
+                                        <span className="text-base font-black text-[#ff5a00]">{formatCurrency(activeBankAccountWithBalance.currentBalance)}</span>
+                                    </div>
+                                )}
                             </div>
                         </>
                     ) : (
