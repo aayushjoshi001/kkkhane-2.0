@@ -92,6 +92,7 @@ export default function BankBookClient({
     const [newBankName, setNewBankName] = useState('')
     const [newBankAccountNumber, setNewBankAccountNumber] = useState('')
     const [newBankDisplayName, setNewBankDisplayName] = useState('')
+    const [ownershipType, setOwnershipType] = useState<'company' | 'personal' | 'ac_payee' | ''>('')
     const [submittingBank, setSubmittingBank] = useState(false)
 
     // Open Day state
@@ -241,13 +242,16 @@ export default function BankBookClient({
         const accNum = newBankAccountNumber.trim()
         const dispName = newBankDisplayName.trim() || bName
 
+        if (!ownershipType) { toast.error('Ownership Category is required'); return }
         if (!bName) { toast.error('Bank Name is required'); return }
         if (!accNum) { toast.error('Account Number is required'); return }
+
+        const finalBankName = `${ownershipType}:${bName}`
 
         setSubmittingBank(true)
         try {
             const res = await createBankAccountAction({
-                bank_name: bName,
+                bank_name: finalBankName,
                 account_number: accNum,
                 display_name: dispName,
             })
@@ -258,6 +262,7 @@ export default function BankBookClient({
                 setNewBankName('')
                 setNewBankAccountNumber('')
                 setNewBankDisplayName('')
+                setOwnershipType('')
                 setAddBankModalOpen(false)
                 
                 // Auto select it in the entry form
@@ -680,6 +685,22 @@ export default function BankBookClient({
                         {/* Modal Form Body */}
                         <form onSubmit={handleAddBank}>
                             <div className="p-6 space-y-4">
+                                {/* Ownership Category */}
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Ownership Category *</label>
+                                    <select
+                                        value={ownershipType}
+                                        onChange={e => setOwnershipType(e.target.value as 'company' | 'personal' | 'ac_payee' | '')}
+                                        required
+                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                    >
+                                        <option value="">Choose Category *</option>
+                                        <option value="company">Company / Restaurant Account</option>
+                                        <option value="personal">Personal Account (Manager/Owner)</option>
+                                        <option value="ac_payee">A/C Payee (Company Account)</option>
+                                    </select>
+                                </div>
+
                                 {/* Bank Name */}
                                 <div>
                                     <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Bank Name *</label>

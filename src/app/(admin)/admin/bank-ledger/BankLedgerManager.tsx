@@ -93,6 +93,7 @@ export default function BankLedgerManager({
     const [newBankName, setNewBankName] = useState('')
     const [newBankAccountNumber, setNewBankAccountNumber] = useState('')
     const [newBankDisplayName, setNewBankDisplayName] = useState('')
+    const [ownershipType, setOwnershipType] = useState<'company' | 'personal' | 'ac_payee' | ''>('')
     const [submittingBank, setSubmittingBank] = useState(false)
 
     const handleAddBank = async (e: React.FormEvent) => {
@@ -101,13 +102,16 @@ export default function BankLedgerManager({
         const accNum = newBankAccountNumber.trim()
         const dispName = newBankDisplayName.trim() || bName
 
+        if (!ownershipType) { toast.error('Ownership Category is required'); return }
         if (!bName) { toast.error('Bank Name is required'); return }
         if (!accNum) { toast.error('Account Number is required'); return }
+
+        const finalBankName = `${ownershipType}:${bName}`
 
         setSubmittingBank(true)
         try {
             const res = await createBankAccountAction({
-                bank_name: bName,
+                bank_name: finalBankName,
                 account_number: accNum,
                 display_name: dispName,
             })
@@ -123,6 +127,7 @@ export default function BankLedgerManager({
                 setNewBankName('')
                 setNewBankAccountNumber('')
                 setNewBankDisplayName('')
+                setOwnershipType('')
                 setAddBankModalOpen(false)
                 toast.success('Bank account created successfully!')
             }
@@ -485,6 +490,22 @@ export default function BankLedgerManager({
                         </div>
                         
                         <form onSubmit={handleAddBank} className="p-5 space-y-4">
+                            {/* Ownership Category */}
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Ownership Category *</label>
+                                <select
+                                    value={ownershipType}
+                                    onChange={e => setOwnershipType(e.target.value as 'company' | 'personal' | 'ac_payee' | '')}
+                                    required
+                                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
+                                >
+                                    <option value="">Choose Category *</option>
+                                    <option value="company">Company / Restaurant Account</option>
+                                    <option value="personal">Personal Account (Manager/Owner)</option>
+                                    <option value="ac_payee">A/C Payee (Company Account)</option>
+                                </select>
+                            </div>
+
                             <div>
                                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Bank Name *</label>
                                 <input
