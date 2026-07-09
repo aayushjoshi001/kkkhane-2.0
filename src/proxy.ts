@@ -45,7 +45,6 @@ function getRequestIp(request: NextRequest): string {
 
 export async function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl
-    console.log(`[PROXY_LOG] Path: ${pathname}`);
 
     // Rate-limit public QR/table pages to prevent DoS.
     // Wrapped in try/catch so a transient Redis failure never 500s a customer.
@@ -60,7 +59,6 @@ export async function proxy(request: NextRequest) {
                 )
                 const { success } = await Promise.race([limiter.limit(ip), timeoutPromise])
                 if (!success) {
-                    console.log(`[PROXY_LOG] Rate limited: ${pathname}`);
                     return new NextResponse('Too many requests. Please slow down.', {
                         status: 429,
                         headers: { 'Content-Type': 'text/plain', 'Retry-After': '60' },
@@ -75,23 +73,19 @@ export async function proxy(request: NextRequest) {
     // Always refresh the Supabase session cookie — this is required by @supabase/ssr
     // to keep the access token valid across server components and API routes.
     const { user, supabaseResponse, supabase } = await updateSession(request)
-    console.log(`[PROXY_LOG] Auth user: ${user ? user.email : 'null'}`);
 
     // If it is a Next.js Server Action, ALWAYS let it pass through!
     // Next.js actions will run and check auth/permissions internally, returning standard
     // serializable responses instead of raw middleware redirects/401s which crash the client action fetcher.
     if (request.headers.has('next-action')) {
-        console.log(`[PROXY_LOG] Server Action, letting pass through: ${pathname}`);
         return supabaseResponse
     }
 
     // Find whether this path needs protection
     const rule = ROUTE_RULES.find(r => r.pattern.test(pathname))
-    console.log(`[PROXY_LOG] Rule matched: ${rule ? JSON.stringify(rule.allowedRoles) : 'none'}`);
 
     // Public route — return the response with refreshed cookies and nothing else
     if (!rule) {
-        console.log(`[PROXY_LOG] Public route, passing through: ${pathname}`);
         return supabaseResponse
     }
 
@@ -99,7 +93,6 @@ export async function proxy(request: NextRequest) {
     if (!user) {
         const loginUrl = new URL('/login', request.url)
         loginUrl.searchParams.set('redirect', pathname)
-        console.log(`[PROXY_LOG] Not authenticated, redirecting to: ${loginUrl.toString()}`);
         const response = NextResponse.redirect(loginUrl)
         // Copy over any cookie mutations from updateSession
         supabaseResponse.cookies.getAll().forEach(({ name, value, ...opts }) => {
@@ -142,7 +135,6 @@ export async function proxy(request: NextRequest) {
         }
     }
 
-    console.log(`[PROXY_LOG] Letting request pass through: ${pathname}`);
     return supabaseResponse
 }
 
