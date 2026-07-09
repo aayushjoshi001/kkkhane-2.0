@@ -77,6 +77,14 @@ export async function proxy(request: NextRequest) {
     const { user, supabaseResponse, supabase } = await updateSession(request)
     console.log(`[PROXY_LOG] Auth user: ${user ? user.email : 'null'}`);
 
+    // If it is a Next.js Server Action, ALWAYS let it pass through!
+    // Next.js actions will run and check auth/permissions internally, returning standard
+    // serializable responses instead of raw middleware redirects/401s which crash the client action fetcher.
+    if (request.headers.has('next-action')) {
+        console.log(`[PROXY_LOG] Server Action, letting pass through: ${pathname}`);
+        return supabaseResponse
+    }
+
     // Find whether this path needs protection
     const rule = ROUTE_RULES.find(r => r.pattern.test(pathname))
     console.log(`[PROXY_LOG] Rule matched: ${rule ? JSON.stringify(rule.allowedRoles) : 'none'}`);
@@ -102,6 +110,7 @@ export async function proxy(request: NextRequest) {
 
     // ── Role check ──────────────────────────────────────────────────────────────
     if (rule.allowedRoles) {
+
         // getClaims() verifies the JWT signature and returns its decoded claims —
         // including the app_role injected by the custom_access_token_hook
         // (004_jwt_claims_hook.sql). Unlike decoding the raw cookie, a tampered

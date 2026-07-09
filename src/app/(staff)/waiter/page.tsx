@@ -11,7 +11,7 @@ import { getReadyDeliveries } from '@/app/api/takeout/actions'
 import CashPaymentFeed, { type UnpaidOrder } from '@/components/waiter/CashPaymentFeed'
 import WaiterTabs from '@/components/waiter/WaiterTabs'
 import WaiterOrdersTabs from '@/components/waiter/WaiterOrdersTabs'
-import { getRestaurantFeatures } from '@/lib/features'
+import { getRestaurantFeatures, getRestaurantMode } from '@/lib/features'
 import { TAKEOUT_ORDER_SELECT, mapOrderRowToTakeout, type TakeoutOrderRow } from '@/lib/takeout'
 import type { TakeoutOrder } from '@/types/database'
 import { Users, Package, Bell, ChefHat } from 'lucide-react'
@@ -90,6 +90,7 @@ export default async function WaiterPage() {
 
     const [
         features,
+        businessMode,
         { data: serviceRequests },
         { data: paymentClaims },
         { data: activeOrders },
@@ -97,6 +98,7 @@ export default async function WaiterPage() {
         { data: unpaidDelivered },
     ] = await Promise.all([
         getRestaurantFeatures(restaurantId),
+        getRestaurantMode(restaurantId),
         adminSupabase
             .from('service_requests')
             .select('*, sessions(tables(label)), direct_table:tables(label)')
@@ -196,6 +198,7 @@ export default async function WaiterPage() {
                 initialOrders={(activeOrders || []).map(o => ({ id: o.id, session_id: o.session_id, status: o.status }))}
                 userId={userId}
                 staffNames={staffNames}
+                isHotel={businessMode === 'hotel'}
             />
         </div>
     )

@@ -4,6 +4,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { logAudit } from '@/lib/audit'
 import { markTableDirtyForSession } from '@/lib/tableLifecycle'
+import { getCachedMenuData } from '@/lib/menu-cache'
 
 export async function openSession(tableId: string, restaurantId: string, guestCount?: number) {
     const supabase = await createServerClient()
@@ -204,3 +205,168 @@ export async function markTableClean(
     revalidatePath('/waiter')
     return { success: true }
 }
+
+export async function findBookingByPhone(phone: string, restaurantId: string) {
+    const adminSupabase = await createAdminClient()
+    const cleanPhone = phone.trim()
+    const { data: booking, error } = await adminSupabase
+        .from('bookings')
+        .select('id, guest_name, guest_phone, status, room_id, rooms(room_number)')
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'checked_in')
+        .eq('guest_phone', cleanPhone)
+        .maybeSingle()
+
+    if (error) {
+        console.error('[findBookingByPhone] Error:', error)
+        return { error: 'Failed to search booking' }
+    }
+    return { success: true, booking }
+}
+
+export async function getActiveBookings(restaurantId: string) {
+    const adminSupabase = await createAdminClient()
+    const { data: bookings, error } = await adminSupabase
+        .from('bookings')
+        .select('id, guest_name, guest_phone, status, room_id, rooms(room_number)')
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'checked_in')
+        .order('check_in', { ascending: false })
+
+    if (error) {
+        console.error('[getActiveBookings] Error:', error)
+        return { error: 'Failed to fetch active bookings' }
+    }
+    return { success: true, bookings }
+}
+
+export async function linkSessionToBooking(sessionId: string, bookingId: string) {
+    const adminSupabase = await createAdminClient()
+    const { error } = await adminSupabase
+        .from('sessions')
+        .update({ booking_id: bookingId })
+        .eq('id', sessionId)
+
+    if (error) {
+        console.error('[linkSessionToBooking] Error:', error)
+        return { error: error.message }
+    }
+    revalidatePath('/waiter')
+    return { success: true }
+}
+
+export async function getStaffMenu(restaurantId: string) {
+    const supabase = await createServerClient()
+    const adminSupabase = await createAdminClient()
+    
+    // Check if staff user
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    try {
+        const data = await getCachedMenuData(restaurantId)
+        return {
+            success: true,
+            categories: data.categories || [],
+            menuItems: data.menuItems || []
+        }
+    } catch (e: any) {
+        console.error('[getStaffMenu] Error:', e)
+        return { error: 'Failed to load menu' }
+    }
+}
+
+export async function placeStaffOrder(
+    sessionId: string,
+    items: any[],
+    customerNote?: string
+) {
+    const supabase = await createServerClient()
+    const adminSupabase = await createAdminClient()
+    
+    // Check if staff user
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    // Resolve session (UUID vs token) safely to avoid UUID casting errors in Postgres
+    let query = adminSupabase
+        .from('sessions')
+        .select('id, restaurant_id, status')
+        .eq('status', 'active')
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)
+    if (isUuid) {
+        query = query.eq('id', sessionId)
+    } else {
+        query = query.eq('session_token', sessionId)
+    }
+
+    const { data: session, error: sessionError } = await query.maybeSingle()
+
+    if (sessionError || !session) {
+        console.error('[placeStaffOrder] Session lookup failed:', sessionError, sessionId)
+        return { error: 'Table session is invalid or closed.' }
+    }
+
+    // Format items for RPC
+    const payload = items.map((i) => {
+        let specialRequest = i.specialRequest || ''
+        if (i.variationName) {
+            specialRequest = specialRequest
+                ? `[${i.variationName}] ${specialRequest}`
+                : `[${i.variationName}]`
+        }
+        return {
+            menu_item_id: i.menuItemId,
+            quantity: i.quantity,
+            special_request: specialRequest || null,
+            modifiers: (i.modifiers || []).map((m: any) => ({
+                modifier_id: m.modifierId || m.id,
+            })),
+            variation_id: i.variationId || null,
+        }
+    })
+
+    try {
+        // Place the order
+        const { data, error } = await adminSupabase.rpc('place_order', {
+            p_session_id: session.id,
+            p_items: payload,
+            p_customer_note: customerNote || null,
+            p_promo_code: null,
+            p_loyalty_member_id: null,
+            p_client_request_id: null,
+        })
+
+        if (error) {
+            console.error('[placeStaffOrder] RPC Error:', error)
+            return { error: error.message }
+        }
+
+        const result = data as { order_id: string }
+        if (!result || !result.order_id) {
+            return { error: 'Failed to place order.' }
+        }
+
+        // Update status to confirmed immediately (since it is placed by staff)
+        await adminSupabase
+            .from('orders')
+            .update({ status: 'confirmed', needs_confirmation: false })
+            .eq('id', result.order_id)
+
+        // Deduct ingredient stock immediately
+        const deductResult = await adminSupabase.rpc('deduct_ingredients_for_order', { p_order_id: result.order_id })
+        if (deductResult.error) {
+            console.error('[placeStaffOrder] deduct_ingredients RPC error:', deductResult.error)
+        }
+
+        revalidatePath('/waiter')
+        revalidatePath('/cashier')
+
+        return { success: true, orderId: result.order_id }
+    } catch (e: any) {
+        console.error('[placeStaffOrder] Exception:', e)
+        return { error: e.message || 'Server error' }
+    }
+}
+

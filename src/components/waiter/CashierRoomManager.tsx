@@ -9,6 +9,7 @@ import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { type TableWithSession } from './CashierTableManager'
+import { formatDateTime, calculateNights } from '@/lib/utils'
 
 export interface RoomWithTypes {
     id: string
@@ -68,6 +69,7 @@ export default function CashierRoomManager({
     
     // Manual charge addition states
     const [manualCharges, setManualCharges] = useState<any[]>([])
+    const [linkedDiningOrders, setLinkedDiningOrders] = useState<any[]>([])
     const [loadingCharges, setLoadingCharges] = useState(false)
     const [showAddChargeForm, setShowAddChargeForm] = useState(false)
     const [newCharge, setNewCharge] = useState({
@@ -93,6 +95,12 @@ export default function CashierRoomManager({
         setMounted(true)
     }, [])
 
+    // Track activeBooking in a ref to avoid stale closure issues in realtime callback
+    const activeBookingRef = useRef(activeBooking)
+    useEffect(() => {
+        activeBookingRef.current = activeBooking
+    }, [activeBooking])
+
     // Realtime subscriptions for rooms
     useRestaurantTable(restaurantId, 'rooms', (payload) => {
         if (payload.eventType === 'UPDATE') {
@@ -103,6 +111,21 @@ export default function CashierRoomManager({
                 return prev.id === updatedRoom.id ? { ...prev, status: updatedRoom.status } : prev
             })
         }
+    })
+
+    // Realtime subscription for orders to refresh linked table dining orders instantly
+    useRestaurantTable(restaurantId, 'orders', (payload) => {
+        const currentBooking = activeBookingRef.current
+        if (!currentBooking) return
+        
+        fetch(`/api/bookings/linked-orders?bookingId=${currentBooking.id}`)
+            .then(res => res.json())
+            .then(linkedRes => {
+                if (linkedRes.success) {
+                    setLinkedDiningOrders(linkedRes.items || [])
+                }
+            })
+            .catch(err => console.error("Error refreshing linked dining orders in real-time:", err))
     })
 
     // Prepopulate booking form check-in/out default values
@@ -134,35 +157,51 @@ export default function CashierRoomManager({
         setAdvancePayMethod('cash')
     }
 
-    // Fetch active booking details and manual charges when selected room is occupied
+    // Fetch active booking details, manual charges, and linked dining orders concurrently when selected room is occupied
     useEffect(() => {
         if (selectedRoom && selectedRoom.status === 'occupied') {
             setLoadingBooking(true)
             fetch(`/api/rooms/booking?roomId=${selectedRoom.id}`)
                 .then(res => res.json())
-                .then(data => {
+                .then(async (data) => {
                     if (data.success && data.data) {
-                        setActiveBooking(data.data)
-                        // Fetch manual stay charges
-                        setLoadingCharges(true)
-                        fetch(`/api/rooms/charges?bookingId=${data.data.id}`)
-                            .then(res => res.json())
-                            .then(chargesRes => {
-                                if (chargesRes.success) {
-                                    setManualCharges(chargesRes.data || [])
-                                }
-                            })
-                            .catch(err => console.error("Error fetching room charges:", err))
-                            .finally(() => setLoadingCharges(false))
+                        const booking = data.data
+                        try {
+                            setLoadingCharges(true)
+                            // Concurrently fetch charges and linked dining orders
+                            const [chargesRes, linkedRes] = await Promise.all([
+                                fetch(`/api/rooms/charges?bookingId=${booking.id}`).then(r => r.json()),
+                                fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`).then(r => r.json())
+                            ])
+                            
+                            // Set all states simultaneously
+                            setActiveBooking(booking)
+                            if (chargesRes.success) {
+                                setManualCharges(chargesRes.data || [])
+                            }
+                            if (linkedRes.success) {
+                                setLinkedDiningOrders(linkedRes.items || [])
+                            }
+                        } catch (err) {
+                            console.error("Error fetching secondary stay details:", err)
+                            // Set basic stay booking at least
+                            setActiveBooking(booking)
+                            setManualCharges([])
+                            setLinkedDiningOrders([])
+                        } finally {
+                            setLoadingCharges(false)
+                        }
                     } else {
                         setActiveBooking(null)
                         setManualCharges([])
+                        setLinkedDiningOrders([])
                     }
                 })
                 .catch(err => {
                     console.error("Error fetching room booking details:", err)
                     setActiveBooking(null)
                     setManualCharges([])
+                    setLinkedDiningOrders([])
                 })
                 .finally(() => {
                     setLoadingBooking(false)
@@ -170,6 +209,7 @@ export default function CashierRoomManager({
         } else {
             setActiveBooking(null)
             setManualCharges([])
+            setLinkedDiningOrders([])
             setShowAddChargeForm(false)
         }
     }, [selectedRoom, rooms])
@@ -224,12 +264,7 @@ export default function CashierRoomManager({
         if (!selectedRoom || !activeBooking) return { nights: 0, cost: 0 }
         
         const price = selectedRoom.room_types?.base_price || 0
-        const inDate = new Date(activeBooking.check_in)
-        const outDate = new Date(activeBooking.check_out)
-        
-        // Calculate nights (ceiling value, minimum 1 night)
-        const diffMs = outDate.getTime() - inDate.getTime()
-        const nights = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)))
+        const nights = calculateNights(activeBooking.check_in, activeBooking.check_out)
         const cost = price * nights
 
         return { nights, cost }
@@ -240,8 +275,9 @@ export default function CashierRoomManager({
         const roomStayCost = stayPriceDetails.cost
         const qrOrdersTotal = qrOrdersDetails?.total || 0
         const manualChargesTotal = manualCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
-        return roomStayCost + qrOrdersTotal + manualChargesTotal
-    }, [stayPriceDetails, qrOrdersDetails, manualCharges])
+        const linkedDiningTotal = linkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+        return roomStayCost + qrOrdersTotal + manualChargesTotal + linkedDiningTotal
+    }, [stayPriceDetails, qrOrdersDetails, manualCharges, linkedDiningOrders])
 
     // Change room status helper
     const handleStatusChange = async (roomId: string, newStatus: 'available' | 'dirty' | 'maintenance') => {
@@ -364,16 +400,7 @@ export default function CashierRoomManager({
         }
     }
 
-    const formatDateTime = (dateStr: string) => {
-        if (!dateStr) return '-'
-        return new Date(dateStr).toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
-        })
-    }
+
 
     return (
         <div className="w-full">
@@ -808,6 +835,26 @@ export default function CashierRoomManager({
                                                         <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
                                                             <span>{item.name} <span className="text-[9px] text-brand-500">({item.quantity}×)</span></span>
                                                             <span className="tabular-nums font-semibold">{money(item.unitPrice * item.quantity)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Waiter Linked Restaurant Dining Row */}
+                                        {linkedDiningOrders.length > 0 && (
+                                            <div className="p-4 space-y-3">
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <p className="font-extrabold text-emerald-600">Restaurant Dining (Table Orders)</p>
+                                                    <span className="font-extrabold text-emerald-600 tabular-nums">
+                                                        {money(linkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0))}
+                                                    </span>
+                                                </div>
+                                                <div className="space-y-1.5 pl-3 border-l-2 border-emerald-100 max-h-28 overflow-y-auto">
+                                                    {linkedDiningOrders.map((item, idx) => (
+                                                        <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
+                                                            <span>{item.menu_items?.name || 'Item'} <span className="text-[9px] text-brand-500">({item.quantity}×)</span></span>
+                                                            <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
                                                         </div>
                                                     ))}
                                                 </div>

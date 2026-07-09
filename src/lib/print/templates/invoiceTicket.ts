@@ -30,6 +30,8 @@ export interface ActiveInvoice {
     stayCost: number
     qrOrders: InvoiceLineItem[]
     qrOrdersTotal: number
+    linkedOrders?: InvoiceLineItem[]
+    linkedOrdersTotal?: number
     manualCharges: InvoiceManualCharge[]
     manualChargesTotal: number
     total: number
@@ -98,6 +100,17 @@ export function buildInvoiceTicket(
             { text: money(item.unitPrice), width: COL.rate, align: 'right' },
             { text: money(item.unitPrice * item.quantity), width: COL.amt, align: 'right' },
         ])
+    }
+
+    if (invoice.linkedOrders) {
+        for (const item of invoice.linkedOrders) {
+            b.columns([
+                { text: `Dine: ${item.name}`, width: COL.desc },
+                { text: String(item.quantity), width: COL.qty, align: 'center' },
+                { text: money(item.unitPrice), width: COL.rate, align: 'right' },
+                { text: money(item.unitPrice * item.quantity), width: COL.amt, align: 'right' },
+            ])
+        }
     }
 
     b.divider()

@@ -1,10 +1,10 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/auth'
+import { getOptionalUser } from '@/lib/auth'
 
 export async function POST(req: Request) {
     try {
-        const currentUser = await getCurrentUser()
+        const currentUser = await getOptionalUser()
         if (!currentUser || !currentUser.restaurantId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }

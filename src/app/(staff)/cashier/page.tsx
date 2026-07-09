@@ -26,7 +26,7 @@ export default async function CashierPage() {
             .from('orders')
             .select(`
                 id, total_amount, delivered_at, payment_status, payment_method, session_id,
-                sessions ( id, tables ( id, label ) ),
+                sessions ( id, booking_id, tables ( id, label ) ),
                 order_items ( quantity, unit_price, menu_items ( name ) )
             `)
             .eq('restaurant_id', restaurantId)
@@ -39,7 +39,7 @@ export default async function CashierPage() {
             .from('orders')
             .select(`
                 id, status, total_amount, placed_at, session_id, order_type, customer_name, customer_phone, delivery_address, payment_status,
-                sessions ( id, tables ( label ) ),
+                sessions ( id, booking_id, tables ( label ) ),
                 order_items ( id, quantity, status, unit_price, menu_items ( name ) )
             `)
             .eq('restaurant_id', restaurantId)
@@ -57,7 +57,7 @@ export default async function CashierPage() {
         // All active sessions
         adminSupabase
             .from('sessions')
-            .select('id, table_id, restaurant_id, status, opened_at, session_token')
+            .select('id, table_id, restaurant_id, status, opened_at, session_token, booking_id')
             .eq('restaurant_id', restaurantId)
             .eq('status', 'active'),
 

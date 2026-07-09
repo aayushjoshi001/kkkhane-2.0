@@ -236,6 +236,13 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantSlug, t
                 })
             })
             const data = await res.json()
+            if (res.status === 401 || data.error === 'Unauthorized') {
+                toast.error('Session expired. Redirecting to login...')
+                setTimeout(() => {
+                    window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`
+                }, 1000)
+                return
+            }
             if (!res.ok) throw new Error(data.error)
 
             setRooms(prev => prev.map(r => r.id === selectedRoom!.id ? { ...r, status: 'occupied' } : r))
