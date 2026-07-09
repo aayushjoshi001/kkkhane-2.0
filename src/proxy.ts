@@ -77,6 +77,14 @@ export async function proxy(request: NextRequest) {
     const { user, supabaseResponse, supabase } = await updateSession(request)
     console.log(`[PROXY_LOG] Auth user: ${user ? user.email : 'null'}`);
 
+    // If it is a Next.js Server Action, ALWAYS let it pass through!
+    // Next.js actions will run and check auth/permissions internally, returning standard
+    // serializable responses instead of raw middleware redirects/401s which crash the client action fetcher.
+    if (request.headers.has('next-action')) {
+        console.log(`[PROXY_LOG] Server Action, letting pass through: ${pathname}`);
+        return supabaseResponse
+    }
+
     // Find whether this path needs protection
     const rule = ROUTE_RULES.find(r => r.pattern.test(pathname))
     console.log(`[PROXY_LOG] Rule matched: ${rule ? JSON.stringify(rule.allowedRoles) : 'none'}`);
@@ -89,16 +97,6 @@ export async function proxy(request: NextRequest) {
 
     // ── Not authenticated ───────────────────────────────────────────────────────
     if (!user) {
-        // Next.js Server Actions cannot handle standard 307 redirects directly from middleware.
-        // Returning a 401 response instead lets the client catch the authentication failure cleanly.
-        if (request.headers.has('next-action')) {
-            const response = new NextResponse('Unauthorized', { status: 401 })
-            supabaseResponse.cookies.getAll().forEach(({ name, value, ...opts }) => {
-                response.cookies.set(name, value, opts)
-            })
-            return response
-        }
-
         const loginUrl = new URL('/login', request.url)
         loginUrl.searchParams.set('redirect', pathname)
         console.log(`[PROXY_LOG] Not authenticated, redirecting to: ${loginUrl.toString()}`);
@@ -112,12 +110,6 @@ export async function proxy(request: NextRequest) {
 
     // ── Role check ──────────────────────────────────────────────────────────────
     if (rule.allowedRoles) {
-        // Next.js Server Actions cannot handle standard 307 redirects from middleware.
-        // If this is a Server Action request, bypass the role-based redirect check and let Next.js run the action.
-        if (request.headers.has('next-action')) {
-            console.log(`[PROXY_LOG] Server Action, bypassing role check redirect: ${pathname}`);
-            return supabaseResponse
-        }
 
         // getClaims() verifies the JWT signature and returns its decoded claims —
         // including the app_role injected by the custom_access_token_hook
