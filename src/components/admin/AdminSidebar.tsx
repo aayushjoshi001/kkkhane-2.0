@@ -6,7 +6,7 @@ import {
     Users, UtensilsCrossed, Settings, LogOut, BarChart3, Palette, Grid3X3,
     TrendingUp, ShoppingBag, Tag, Heart, DollarSign, Package,
     FileText, Truck, Clock, CreditCard, Sparkles, Sun, Moon, X,
-    Bed, CalendarRange, Hotel, BookOpen, Wallet
+    Bed, CalendarRange, Hotel, BookOpen, Wallet, Landmark
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -152,7 +152,8 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/ingredients" icon={Package}         label="Inventory"       path={pathname} />
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/staff"       icon={Users}           label="Staff Members"   path={pathname} />
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/shifts"      icon={Clock}           label="Schedule"        path={pathname} />
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/day-book"    icon={BookOpen}        label="Day Book"        path={pathname} />
+                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/cash-book"   icon={Wallet}          label="Cash Book"       path={pathname} />
+                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/bank-book"   icon={Landmark}        label="Bank Book"       path={pathname} />
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/income-expenses" icon={TrendingUp}  label="Income & Expenses" path={pathname} />
 
                 {financeEnabled && (
