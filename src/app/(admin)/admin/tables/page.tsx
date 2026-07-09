@@ -16,6 +16,7 @@ export default async function TablesManagementPage() {
             .select('*')
             .eq('restaurant_id', restaurantId)
             .eq('is_active', true)
+            .is('room_id', null)
             .order('label', { ascending: true }),
         adminSupabase
             .from('restaurants')

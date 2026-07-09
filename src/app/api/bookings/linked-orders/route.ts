@@ -24,11 +24,15 @@ export async function GET(req: NextRequest) {
 
         const supabase = await createAdminClient()
 
-        // Find all sessions linked to this booking
+        // Find all sessions linked to this booking, excluding the room's own
+        // in-room QR session (tables.room_id set) — those orders are already
+        // counted as "room QR orders" elsewhere, so including them here would
+        // double them in the stay total.
         const { data: linkedSessions, error: sessErr } = await supabase
             .from('sessions')
-            .select('id, status, table_id')
+            .select('id, status, table_id, tables!inner(room_id)')
             .eq('booking_id', bookingId)
+            .is('tables.room_id', null)
 
         if (sessErr) {
             console.error('[linked-orders] Error fetching sessions:', sessErr)
