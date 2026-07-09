@@ -207,6 +207,7 @@ function ItemGrid({ items, comboItems, menuItems, sessionId, restaurantSlug, res
                         sessionId={sessionId}
                         restaurantSlug={restaurantSlug}
                         restaurantId={restaurantId}
+                        layout={layout}
                     />
                 </div>
             ))}
