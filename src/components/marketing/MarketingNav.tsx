@@ -104,6 +104,7 @@ export default function MarketingNav() {
                         </div>
                     </div>
 
+                    <Link href="/" className="transition-colors hover:text-[var(--color-primary)]">Home</Link>
                     <Link href="/pricing" className="transition-colors hover:text-[var(--color-primary)]">Pricing</Link>
                     <Link href="/career" className="transition-colors hover:text-[var(--color-primary)]">Career</Link>
                     <Link href="/contact" className="transition-colors hover:text-[var(--color-primary)]">Contact</Link>

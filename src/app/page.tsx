@@ -130,7 +130,7 @@ export default async function Home() {
             </section>
 
             {/* ── 2. Bento Grid Features ────────────────────────────────────────── */}
-            <section id="features" className="py-32 bg-surface relative">
+            <section id="features" className="pt-16 pb-24 bg-surface relative">
                 <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-20 max-w-3xl mx-auto">
                         <h2 className="text-4xl sm:text-5xl font-extrabold text-ink mb-6 tracking-tight">Everything you need. <br/><span className="text-ink-subtle">Nothing you don&apos;t.</span></h2>

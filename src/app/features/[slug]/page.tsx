@@ -279,7 +279,7 @@ export default async function FeatureSlugPage({ params }: { params: Promise<{ sl
                                 'top-1/2 left-[15%] -translate-x-1/2 -translate-y-1/2'
                             ]
                             return (
-                                <div key={i} className={`absolute ${positions[i]} w-64 bg-white rounded-3xl p-6 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.12)] border border-hairline flex flex-col items-center text-center hover:scale-110 hover:shadow-[0_20px_50px_-10px_rgba(0,0,0,0.15)] transition-all duration-500 z-20 group cursor-default`}>
+                                <div key={i} className={`absolute ${positions[i]} w-64 bg-white rounded-3xl p-6 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.12)] border border-hairline flex flex-col items-center text-center hover:scale-110 hover:shadow-[0_20px_50px_-10px_rgba(0,0,0,0.15)] transition-all duration-500 z-20 group cursor-pointer`}>
                                     <div className="w-14 h-14 bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-2xl flex items-center justify-center text-ink-muted group-hover:text-[var(--color-primary)] group-hover:border-[var(--color-primary)]/30 transition-colors mb-4 shadow-sm">
                                         <item.icon size={24} />
                                     </div>

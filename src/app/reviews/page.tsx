@@ -61,34 +61,54 @@ export default function ReviewsPage() {
                 </div>
             </Section>
 
-            {/* Reviews masonry */}
+            {/* Reviews marquee */}
             <Section tone="band">
                 <SectionHeading
                     eyebrow="Reviews"
                     title="What restaurants say about kkkhane"
                     subtitle="Real reviews from owners and managers running their floors with kkkhane every day."
                 />
-                <div className="columns-1 gap-6 md:columns-2 lg:columns-3">
-                    {REVIEWS.map((r, i) => (
-                        <div key={i} className="mb-6 break-inside-avoid rounded-3xl border border-hairline bg-surface p-8 shadow-sm transition-shadow hover:shadow-lg">
-                            <div className="mb-6 flex items-start justify-between">
-                                <div className="flex items-center gap-4">
-                                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 text-lg font-bold uppercase text-ink-muted">
-                                        {r.name.substring(0, 2)}
+                
+                <style>{`
+                    @keyframes marquee-vertical {
+                        from { transform: translateY(0%); }
+                        to { transform: translateY(-50%); }
+                    }
+                    .animate-marquee-vertical {
+                        animation: marquee-vertical 40s linear infinite;
+                    }
+                    .animate-marquee-vertical:hover {
+                        animation-play-state: paused;
+                    }
+                `}</style>
+                
+                <div className="relative h-[800px] overflow-hidden rounded-[2.5rem] border border-hairline bg-surface p-6 shadow-sm">
+                    {/* Fade gradients */}
+                    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-32 bg-gradient-to-b from-surface to-transparent" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-32 bg-gradient-to-t from-surface to-transparent" />
+                    
+                    <div className="columns-1 gap-6 md:columns-2 lg:columns-3 animate-marquee-vertical pb-6">
+                        {[...REVIEWS, ...REVIEWS].map((r, i) => (
+                            <div key={i} className="mb-6 break-inside-avoid rounded-3xl border border-hairline bg-white p-8 shadow-sm transition-shadow hover:shadow-md">
+                                <div className="mb-6 flex items-start justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 text-lg font-bold uppercase text-ink-muted">
+                                            {r.name.substring(0, 2)}
+                                        </div>
+                                        <div>
+                                            <h5 className="font-bold text-ink">{r.name}</h5>
+                                            <p className="text-xs text-ink-subtle">{r.role}</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h5 className="font-bold text-ink">{r.name}</h5>
-                                        <p className="text-xs text-ink-subtle">{r.role}</p>
-                                    </div>
+                                    <Globe size={20} className="text-blue-500" />
                                 </div>
-                                <Globe size={20} className="text-blue-500" />
+                                <div className="mb-4 flex gap-1 text-amber-400">
+                                    {[...Array(5)].map((_, idx) => <Star key={idx} size={16} fill="currentColor" />)}
+                                </div>
+                                <p className="font-medium leading-relaxed text-ink-muted" dangerouslySetInnerHTML={renderText(r.text)} />
                             </div>
-                            <div className="mb-4 flex gap-1 text-amber-400">
-                                {[...Array(5)].map((_, idx) => <Star key={idx} size={16} fill="currentColor" />)}
-                            </div>
-                            <p className="font-medium leading-relaxed text-ink-muted" dangerouslySetInnerHTML={renderText(r.text)} />
-                        </div>
-                    ))}
+                        ))}
+                    </div>
                 </div>
             </Section>
 
