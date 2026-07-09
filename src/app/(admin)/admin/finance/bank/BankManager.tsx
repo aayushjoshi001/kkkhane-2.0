@@ -61,10 +61,14 @@ export default function BankManager({
 function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAccounts: (fn: (prev: BankAccount[]) => BankAccount[]) => void }) {
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
-    const [form, setForm] = useState({ name: '', account_type: 'bank' as BankAccountType, wallet_provider: '', bank_name: '', account_number: '', opening_balance: '0', ownership_type: 'company' as 'company' | 'personal' | 'ac_payee' })
+    const [form, setForm] = useState({ name: '', account_type: 'bank' as BankAccountType, wallet_provider: '', bank_name: '', account_number: '', opening_balance: '0', ownership_type: '' as 'company' | 'personal' | 'ac_payee' | '' })
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
+        if (form.account_type === 'bank' && !form.ownership_type) {
+            toast.error('Please select an Ownership Category for this bank account.')
+            return
+        }
         setSaving(true)
         const finalBankName = form.account_type === 'bank' 
             ? `${form.ownership_type}:${form.bank_name.trim()}`
@@ -82,7 +86,7 @@ function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAc
         setAccounts((prev) => [result.data as BankAccount, ...prev])
         toast.success('Bank account created')
         setOpen(false)
-        setForm({ name: '', account_type: 'bank', wallet_provider: '', bank_name: '', account_number: '', opening_balance: '0', ownership_type: 'company' })
+        setForm({ name: '', account_type: 'bank', wallet_provider: '', bank_name: '', account_number: '', opening_balance: '0', ownership_type: '' })
     }
 
     async function toggleActive(account: BankAccount) {
@@ -154,7 +158,8 @@ function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAc
                     </FormSelect>
                 ) : (
                     <>
-                        <FormSelect label="Ownership Category" required value={form.ownership_type} onChange={(e) => setForm((f) => ({ ...f, ownership_type: e.target.value as 'company' | 'personal' | 'ac_payee' }))}>
+                        <FormSelect label="Ownership Category" required value={form.ownership_type} onChange={(e) => setForm((f) => ({ ...f, ownership_type: e.target.value as 'company' | 'personal' | 'ac_payee' | '' }))}>
+                            <option value="">Choose Category *</option>
                             <option value="company">Company / Restaurant Account</option>
                             <option value="personal">Personal Account (Manager/Owner)</option>
                             <option value="ac_payee">A/C Payee (Company Account)</option>
