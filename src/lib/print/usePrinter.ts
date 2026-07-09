@@ -5,7 +5,7 @@ import { useHydratedStore } from '@/lib/stores/useHydratedStore'
 import { usePrinterSettingsStore } from '@/lib/stores/printerSettings'
 import { listPrinters, printRawEscPos, type QzResult, type QzStatus } from './qzClient'
 
-export type PrinterRole = 'invoice' | 'kot'
+export type PrinterRole = 'invoice' | 'kot' | 'bot'
 export type PrinterConnStatus = 'idle' | 'connecting' | 'connected' | 'not-running' | 'not-trusted'
 
 export interface PrintOutcome {
@@ -27,11 +27,12 @@ function toConnStatus(result: QzResult): PrinterConnStatus {
 export function usePrinter(role: PrinterRole) {
     const selectedPrinter = useHydratedStore(
         usePrinterSettingsStore,
-        (s) => (role === 'invoice' ? s.invoicePrinterName : s.kotPrinterName)
+        (s) => (role === 'invoice' ? s.invoicePrinterName : role === 'bot' ? s.botPrinterName : s.kotPrinterName)
     )
     const setInvoicePrinter = usePrinterSettingsStore((s) => s.setInvoicePrinter)
     const setKotPrinter = usePrinterSettingsStore((s) => s.setKotPrinter)
-    const selectPrinter = role === 'invoice' ? setInvoicePrinter : setKotPrinter
+    const setBotPrinter = usePrinterSettingsStore((s) => s.setBotPrinter)
+    const selectPrinter = role === 'invoice' ? setInvoicePrinter : role === 'bot' ? setBotPrinter : setKotPrinter
 
     const [printers, setPrinters] = useState<string[]>([])
     const [status, setStatus] = useState<PrinterConnStatus>('idle')

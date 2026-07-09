@@ -8,7 +8,8 @@ import { EscPosBuilder } from '@/lib/print/escpos'
 
 const ROLE_COPY: Record<PrinterRole, { title: string; hint: string }> = {
     invoice: { title: 'Invoice Printer', hint: 'Used to print the bill automatically when a table or room is settled.' },
-    kot: { title: 'Kitchen Ticket (KOT) Printer', hint: 'Used to print a ticket automatically the moment a new order arrives.' },
+    kot: { title: 'Kitchen Ticket (KOT) Printer', hint: 'Used to print a ticket automatically the moment a new food order arrives.' },
+    bot: { title: 'Bar Ticket (BOT) Printer', hint: 'Used to print a ticket automatically the moment a new drink order arrives.' },
 }
 
 function buildTestTicket(): Uint8Array {

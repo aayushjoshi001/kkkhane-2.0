@@ -14,7 +14,8 @@ import { setOrderItemsStatus, getKitchenOrders } from '@/app/(staff)/kitchen/act
 import { rollUpOrderStatus } from '@/lib/orderRollup'
 import EmptyState from '@/components/ui/EmptyState'
 import { usePrinter } from '@/lib/print/usePrinter'
-import { buildKotTicket } from '@/lib/print/templates/kotTicket'
+import { buildStationTicket } from '@/lib/print/templates/stationTicket'
+import { STATION_META, itemsForStation, type StationKind } from '@/lib/stations'
 import KotPrintFallback from './KotPrintFallback'
 
 export type KitchenOrderItem = OrderItem & {
@@ -45,7 +46,7 @@ const ORDER_SELECT = `
   id, status, order_type, total_amount, placed_at, customer_note,
   sessions ( tables ( label ) ),
   order_items (
-    id, menu_item_id, quantity, unit_price, special_request, status, claimed_by, claimed_at,
+    id, menu_item_id, quantity, unit_price, special_request, status, station, claimed_by, claimed_at,
     menu_items ( id, name, is_combo ),
     order_item_modifiers ( modifier_name, price_adjustment )
   )
@@ -60,20 +61,33 @@ const TAB_META: Record<TabKey, { label: string; icon: typeof Bell; accent: strin
     cooking: { label: 'Cooking',    icon: Flame,     accent: '#ef4444', soft: '#FEE2E2', border: '#FCA5A5' },
 }
 
-export default function OrderQueue({ initialOrders, restaurantId, comboItems = [], userId, staffNames = {} }: {
+export default function OrderQueue({ initialOrders, restaurantId, comboItems = [], userId, staffNames = {}, station = 'kitchen' }: {
     initialOrders: KitchenOrder[]
     restaurantId: string
     comboItems?: ComboItemRow[]
     userId: string
     staffNames?: Record<string, string>
+    /** Which station this board serves. Kitchen sees food lines, bar sees drinks. */
+    station?: StationKind
 }) {
-    const [orders, setOrders] = useState<KitchenOrder[]>(initialOrders)
+    const stationMeta = STATION_META[station]
+    // Project an order down to just this station's lines. Orders with none of
+    // our lines (e.g. an all-food order on the bar board) drop out entirely, so
+    // the kitchen never sees a drink and the bar never sees a burger.
+    const projectStation = useCallback((list: KitchenOrder[]): KitchenOrder[] =>
+        list.reduce<KitchenOrder[]>((acc, o) => {
+            const mine = itemsForStation(o.order_items, station)
+            if (mine.length) acc.push({ ...o, order_items: mine })
+            return acc
+        }, []), [station])
+
+    const [orders, setOrders] = useState<KitchenOrder[]>(() => projectStation(initialOrders))
     const [now, setNow] = useState(() => Date.now())
     const [activeTab, setActiveTab] = useState<TabKey>('new')
     const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
     const money = useCurrency()
     const supabaseRef = useRef(createClient())
-    const { print: printKot } = usePrinter('kot')
+    const { print: printKot } = usePrinter(stationMeta.printerRole)
     // Queued, not a single slot — QZ Tray being down for the whole shift means
     // every order fails to print at once, and a single slot would silently
     // drop all but the most recent order's fallback ticket.

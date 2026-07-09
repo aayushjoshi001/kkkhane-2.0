@@ -195,36 +195,73 @@ export default async function Home() {
                 </div>
             </section>
 
-            {/* ── 3. Flow Chart Section ────────────────────────────────────────── */}
-            <section className="py-32 bg-[#1B263B] text-white relative overflow-hidden border-y border-[#2c3d5a]">
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-[var(--color-primary)]/10 blur-[120px] rounded-full pointer-events-none" />
-                <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-                    <div className="text-center mb-20 max-w-3xl mx-auto">
-                        <h2 className="text-4xl sm:text-5xl font-extrabold mb-6 tracking-tight">The Perfect Flow</h2>
-                        <p className="text-xl text-white/70 font-medium">From the moment your customer sits down to the final billing, every step is flawlessly connected.</p>
+            {/* ── 3. Circular Architecture Section ─────────────────────────────── */}
+            <section className="py-32 bg-surface relative overflow-hidden border-y border-hairline">
+                <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+                    <div className="text-center mb-24 max-w-3xl mx-auto">
+                        <h2 className="text-4xl sm:text-5xl font-extrabold mb-6 tracking-tight text-ink">The Perfect Cycle</h2>
+                        <p className="text-xl text-ink-subtle font-medium">An interconnected ecosystem where every action flows seamlessly into the next.</p>
                     </div>
 
-                    <div className="relative">
-                        {/* Connecting Line for Desktop */}
-                        <div className="hidden lg:block absolute top-[50%] left-0 w-full h-1 bg-gradient-to-r from-transparent via-[var(--color-primary)] to-transparent opacity-30 -translate-y-1/2 z-0" />
+                    {/* Desktop Circular Diagram */}
+                    <div className="hidden lg:flex relative w-full max-w-4xl mx-auto aspect-square items-center justify-center">
+                        {/* Circular Track */}
+                        <div className="absolute inset-[15%] rounded-full border-[2px] border-dashed border-gray-300" />
+                        <div className="absolute inset-[25%] rounded-full border border-hairline bg-gray-50/30" />
                         
-                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                            {[
-                                { step: '01', title: 'Customer Scans QR', desc: 'Guests scan the table QR code to view the digital menu and place their order directly.', icon: QrCode },
-                                { step: '02', title: 'Kitchen Gets KOT', desc: 'The order instantly prints or appears on the Kitchen Display System (KDS) for preparation.', icon: ChefHat },
-                                { step: '03', title: 'Serve & Enjoy', desc: 'Waiters are notified when the food is ready, ensuring hot food is served immediately.', icon: CheckCircle },
-                                { step: '04', title: 'Auto Billing', desc: 'The final bill is automatically generated and synced with accounting and analytics.', icon: Receipt },
-                            ].map((item, i) => (
-                                <div key={i} className="relative z-10 bg-[#25324b] border border-white/5 p-8 rounded-3xl shadow-xl hover:-translate-y-2 transition-transform duration-300">
-                                    <div className="w-14 h-14 bg-[var(--color-primary)] rounded-2xl flex items-center justify-center text-white mb-6 shadow-[0_0_30px_rgba(251,99,3,0.3)]">
-                                        <item.icon size={28} />
-                                    </div>
-                                    <h4 className="text-xl font-bold mb-3">{item.title}</h4>
-                                    <p className="text-white/60 leading-relaxed font-medium text-sm">{item.desc}</p>
-                                    <div className="absolute top-8 right-8 text-6xl font-black text-white/5 pointer-events-none">{item.step}</div>
-                                </div>
-                            ))}
+                        {/* Orbiting Particles */}
+                        <div className="absolute inset-[15%] rounded-full border-2 border-transparent animate-[spin_20s_linear_infinite]">
+                            <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[var(--color-primary)] rounded-full shadow-[0_0_15px_var(--color-primary)]" />
+                            <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-amber-400 rounded-full shadow-[0_0_15px_orange]" />
                         </div>
+
+                        {/* Center Hub */}
+                        <div className="relative z-10 w-48 h-48 bg-white rounded-full shadow-[0_20px_60px_-15px_rgba(0,0,0,0.1)] flex flex-col items-center justify-center border-[8px] border-gray-50">
+                            <span className="text-2xl font-black text-ink tracking-tight mb-1">KKKhane</span>
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--color-primary)]">Core Sync</span>
+                        </div>
+
+                        {/* Nodes */}
+                        {[
+                            { step: '01', title: 'Customer Scans QR', desc: 'Instant digital menu access & order placement.', icon: QrCode, pos: 'top-[15%] left-1/2 -translate-x-1/2 -translate-y-1/2' },
+                            { step: '02', title: 'Kitchen KOT', desc: 'Real-time kitchen display and ticket printing.', icon: ChefHat, pos: 'top-1/2 right-[15%] translate-x-1/2 -translate-y-1/2' },
+                            { step: '03', title: 'Serve & Enjoy', desc: 'Instant waiter alerts for hot food delivery.', icon: CheckCircle, pos: 'bottom-[15%] left-1/2 -translate-x-1/2 translate-y-1/2' },
+                            { step: '04', title: 'Auto Billing', desc: 'Seamless payments synced with analytics.', icon: Receipt, pos: 'top-1/2 left-[15%] -translate-x-1/2 -translate-y-1/2' },
+                        ].map((item, i) => (
+                            <div key={i} className={`absolute ${item.pos} w-64 bg-white rounded-3xl p-6 shadow-xl border border-hairline flex flex-col items-center text-center hover:scale-110 transition-transform duration-500 z-20 group cursor-default`}>
+                                <div className="w-14 h-14 bg-gradient-to-br from-gray-50 to-gray-100 border border-hairline-strong rounded-2xl flex items-center justify-center text-ink-muted group-hover:text-[var(--color-primary)] group-hover:border-[var(--color-primary)]/30 transition-colors mb-4 shadow-sm">
+                                    <item.icon size={24} />
+                                </div>
+                                <h4 className="text-base font-extrabold text-ink mb-2">{item.title}</h4>
+                                <p className="text-xs font-medium text-ink-subtle leading-relaxed">{item.desc}</p>
+                                <div className="absolute -top-3 -right-3 w-8 h-8 bg-ink text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md">
+                                    {item.step}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Mobile Timeline Grid */}
+                    <div className="lg:hidden grid gap-6 sm:grid-cols-2">
+                        {[
+                            { step: '1', title: 'Customer Scans QR', desc: 'Instant digital menu access & order placement.', icon: QrCode },
+                            { step: '2', title: 'Kitchen KOT', desc: 'Real-time kitchen display and ticket printing.', icon: ChefHat },
+                            { step: '3', title: 'Serve & Enjoy', desc: 'Instant waiter alerts for hot food delivery.', icon: CheckCircle },
+                            { step: '4', title: 'Auto Billing', desc: 'Seamless payments synced with analytics.', icon: Receipt },
+                        ].map((item, i) => (
+                            <div key={i} className="bg-white rounded-3xl p-6 shadow-lg border border-hairline relative overflow-hidden">
+                                <div className="text-[10rem] font-black text-gray-50 absolute -right-4 -bottom-12 pointer-events-none leading-none z-0">
+                                    {item.step}
+                                </div>
+                                <div className="relative z-10">
+                                    <div className="w-12 h-12 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-center text-[var(--color-primary)] mb-4 shadow-sm">
+                                        <item.icon size={24} />
+                                    </div>
+                                    <h4 className="text-lg font-extrabold text-ink mb-2">{item.title}</h4>
+                                    <p className="text-sm font-medium text-ink-subtle">{item.desc}</p>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </section>

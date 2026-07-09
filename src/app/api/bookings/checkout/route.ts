@@ -274,7 +274,8 @@ export async function POST(req: Request) {
         })
 
         return NextResponse.json({ success: true, total: authoritativeTotal, breakdown: folio })
-    } catch (e: any) {
-        return NextResponse.json({ error: e.message || 'Server error' }, { status: 500 })
+    } catch (e) {
+        const message = e instanceof Error ? e.message : 'Server error'
+        return NextResponse.json({ error: message }, { status: 500 })
     }
 }
