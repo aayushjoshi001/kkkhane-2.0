@@ -77,9 +77,6 @@ export default function ReviewsPage() {
                     .animate-marquee-vertical {
                         animation: marquee-vertical 8s linear infinite;
                     }
-                    .animate-marquee-vertical:hover {
-                        animation-play-state: paused;
-                    }
                 `}</style>
                 
                 <div className="relative h-[800px] overflow-hidden rounded-[2.5rem] border border-hairline bg-surface p-6 shadow-sm">
@@ -89,7 +86,7 @@ export default function ReviewsPage() {
                     
                     <div className="columns-1 gap-6 md:columns-2 lg:columns-3 animate-marquee-vertical pb-6">
                         {[...REVIEWS, ...REVIEWS].map((r, i) => (
-                            <div key={i} className="mb-6 break-inside-avoid rounded-3xl border border-hairline bg-white p-8 shadow-sm transition-shadow hover:shadow-md">
+                            <div key={i} className="mb-6 break-inside-avoid rounded-3xl border border-hairline bg-white p-8 shadow-sm transition-shadow hover:shadow-md cursor-pointer hover:border-[var(--color-primary)]/30 hover:-translate-y-1 transform duration-200">
                                 <div className="mb-6 flex items-start justify-between">
                                     <div className="flex items-center gap-4">
                                         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 text-lg font-bold uppercase text-ink-muted">

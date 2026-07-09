@@ -94,7 +94,7 @@ function PlanCard({ plan }: { plan: Plan }) {
 
     return (
         <div
-            className={`relative flex flex-col overflow-hidden rounded-[2rem] p-8 transition-all ${
+            className={`relative flex flex-col overflow-hidden rounded-[2rem] p-8 transition-all cursor-pointer group hover:-translate-y-1 ${
                 invert
                     ? 'z-10 border border-gray-800 bg-ink shadow-2xl shadow-gray-900/20 lg:scale-[1.03]'
                     : 'border border-hairline bg-surface shadow-sm hover:border-hairline-strong hover:shadow-md'
