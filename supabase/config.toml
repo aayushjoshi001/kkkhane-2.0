@@ -180,11 +180,22 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+site_url = "http://localhost:3000"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
-# A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+# URLs an auth provider may redirect to after sign-in. A redirect that matches
+# NONE of these is silently downgraded to site_url — which is exactly how an
+# OAuth login ends up back on the marketing home page instead of /auth/callback.
+# The dev server is reachable as both localhost and 127.0.0.1, so allow both;
+# `/**` globs the /auth/callback path and its ?code=... query. Production hosts
+# are listed too so `supabase config push` keeps the hosted project in step —
+# but the hosted project's own dashboard Redirect URLs must carry these as well.
+additional_redirect_urls = [
+    "http://localhost:3000/**",
+    "http://127.0.0.1:3000/**",
+    "https://kkkhane.com/**",
+    "https://www.kkkhane.com/**",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -343,6 +354,20 @@ max_frequency = "5s"
 # Use an external OAuth provider. The full list of providers are: `apple`, `azure`, `bitbucket`,
 # `discord`, `facebook`, `github`, `gitlab`, `google`, `keycloak`, `linkedin_oidc`, `notion`, `twitch`,
 # `twitter`, `x`, `slack`, `spotify`, `workos`, `zoom`.
+
+# Google sign-in (the "Continue with Google" button on /login and /signup).
+# Credentials come from env so they are never committed — set
+# SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID / _SECRET in .env.local. In the Google
+# Cloud OAuth client, the authorized redirect URI is the SUPABASE callback
+# (http://127.0.0.1:54321/auth/v1/callback locally), not the app's /auth/callback.
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+# Local Google sign-in returns no nonce, so leaving this off rejects every
+# local login with "nonce mismatch". Harmless on the hosted project.
+skip_nonce_check = true
+
 [auth.external.apple]
 enabled = false
 client_id = ""
