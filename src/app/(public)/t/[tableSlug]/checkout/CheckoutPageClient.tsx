@@ -4,7 +4,7 @@ import { useCartStore, getCartItemKey } from '@/lib/stores/cart'
 import { useHydratedStore } from '@/lib/stores/useHydratedStore'
 import { useRouter } from 'next/navigation'
 import { placeOrder } from './actions'
-import { useState, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, Trash2, Plus, Minus, Loader2 } from 'lucide-react'
 import BottomNavbar from '@/components/customer/BottomNavbar'
 import PromoCodeInput from '@/components/customer/PromoCodeInput'
@@ -41,6 +41,153 @@ export default function CheckoutPageClient() {
     const isSubmittingRef = useRef(false)
     const [showSplit, setShowSplit] = useState(false)
     const router = useRouter()
+
+    const [stayBilling, setStayBilling] = useState<any | null>(null)
+    const [loadingStay, setLoadingStay] = useState(true)
+
+    useEffect(() => {
+        if (!params.tableSlug) {
+            setLoadingStay(false)
+            return
+        }
+        fetch(`/api/rooms/stay-billing?tableSlug=${params.tableSlug}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.isHotelRoom) {
+                    setStayBilling(data)
+                }
+            })
+            .catch(err => console.error('Failed to load stay billing:', err))
+            .finally(() => setLoadingStay(false))
+    }, [params.tableSlug])
+
+    if (loadingStay) {
+        return (
+            <div className="min-h-screen bg-surface-muted flex items-center justify-center p-4">
+                <Loader2 className="w-8 h-8 animate-spin text-[var(--color-primary)]" />
+            </div>
+        )
+    }
+
+    if (stayBilling) {
+        return (
+            <div className="min-h-screen bg-surface-muted pb-64 text-ink font-sans flex flex-col justify-between">
+                <div>
+                    {/* Header */}
+                    <header className="bg-surface px-4 py-4 shadow-sm sticky top-0 z-20 flex items-center gap-3">
+                        <button onClick={() => router.back()} className="p-2 -ml-2 text-ink-muted rounded-full active:bg-surface-muted">
+                            <ArrowLeft size={20} />
+                        </button>
+                        <h1 className="text-xl font-bold text-ink">Room Bill Details</h1>
+                    </header>
+
+                    <main className="max-w-xl mx-auto px-4 mt-6 space-y-6">
+                        {/* Guest & Stay Info Card */}
+                        <div className="bg-surface rounded-[var(--border-radius)] shadow-sm border border-hairline p-5">
+                            <div className="flex items-center justify-between border-b border-hairline pb-3 mb-4">
+                                <div>
+                                    <p className="text-[10px] font-bold text-ink-subtle uppercase">Guest Name</p>
+                                    <p className="text-base font-black text-ink">{stayBilling.guestName}</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-[10px] font-bold text-ink-subtle uppercase">Room</p>
+                                    <p className="text-base font-black text-[var(--color-primary)]">Room {stayBilling.roomNumber}</p>
+                                </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-ink-muted">
+                                <div>
+                                    <p className="text-[10px] font-bold text-ink-subtle uppercase">Check In</p>
+                                    <p>{new Date(stayBilling.checkIn).toLocaleDateString('en-US', { dateStyle: 'medium' })}</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-[10px] font-bold text-ink-subtle uppercase">Check Out</p>
+                                    <p>{new Date(stayBilling.checkOut).toLocaleDateString('en-US', { dateStyle: 'medium' })}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Stay Billing Breakdown */}
+                        <div className="bg-surface rounded-[var(--border-radius)] shadow-sm border border-hairline overflow-hidden">
+                            <div className="p-4 border-b border-hairline bg-surface-muted/50">
+                                <h2 className="font-semibold text-ink-muted">Account Statement Summary</h2>
+                            </div>
+
+                            <div className="divide-y divide-gray-100">
+                                {/* Room Stay Cost */}
+                                <div className="p-4 flex justify-between items-center text-sm">
+                                    <div>
+                                        <p className="font-bold text-ink">Room Stay Cost</p>
+                                        <p className="text-[10px] text-ink-subtle font-semibold">
+                                            {money(stayBilling.roomBasePrice)} × {stayBilling.nights} night{stayBilling.nights > 1 ? 's' : ''}
+                                        </p>
+                                    </div>
+                                    <span className="font-bold text-ink tabular-nums">{money(stayBilling.stayCost)}</span>
+                                </div>
+
+                                {/* Food Orders */}
+                                {stayBilling.foodOrders.length > 0 && (
+                                    <div className="p-4 space-y-2">
+                                        <p className="font-bold text-sm text-indigo-600">Restaurant Orders (QR & Dining)</p>
+                                        <div className="space-y-2 pl-3 border-l-2 border-indigo-100">
+                                            {stayBilling.foodOrders.map((o: any) => (
+                                                <div key={o.id} className="flex justify-between text-xs text-ink-muted">
+                                                    <span className="font-medium">Order #{o.id.substring(0, 6).toUpperCase()}</span>
+                                                    <span className="tabular-nums font-bold">{money(o.total)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Additional Charges */}
+                                {stayBilling.additionalCharges.length > 0 && (
+                                    <div className="p-4 space-y-2">
+                                        <p className="font-bold text-sm text-amber-600">Extra Room Charges</p>
+                                        <div className="space-y-2 pl-3 border-l-2 border-amber-100">
+                                            {stayBilling.additionalCharges.map((c: any) => (
+                                                <div key={c.id} className="flex justify-between text-xs text-ink-muted">
+                                                    <span className="font-medium capitalize">{c.description} ({c.chargeType})</span>
+                                                    <span className="tabular-nums font-bold">{money(c.amount)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Statement Information Note */}
+                        <div className="bg-orange-50 border border-orange-100 rounded-[var(--border-radius)] p-4 text-xs font-semibold text-orange-800 leading-relaxed">
+                            💡 <strong>Information:</strong> This is a statement of your room stay account for review. Direct online payments are disabled here; please settle the final balance at the front desk when checking out.
+                        </div>
+                    </main>
+                </div>
+
+                {/* Persistent Bottom Totals & Balance Bar */}
+                <div className="fixed bottom-[88px] left-0 right-0 p-4 z-30 bg-surface border-t border-hairline-strong shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+                    <div className="max-w-xl mx-auto space-y-1.5">
+                        <div className="flex justify-between text-xs text-ink-subtle">
+                            <span>Subtotal</span>
+                            <span className="font-semibold">{money(stayBilling.grandTotal)}</span>
+                        </div>
+                        {stayBilling.advancePaid > 0 && (
+                            <div className="flex justify-between text-xs text-green-600">
+                                <span>Advance Paid</span>
+                                <span className="font-semibold">-{money(stayBilling.advancePaid)}</span>
+                            </div>
+                        )}
+                        <div className="flex justify-between items-center pt-2 border-t border-hairline">
+                            <span className="text-ink font-bold">Balance Due</span>
+                            <span className="text-2xl font-black text-[var(--color-primary)] tabular-nums">{money(stayBilling.balanceDue)}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <BottomNavbar activeTab="pay" />
+            </div>
+        )
+    }
 
     // Stable idempotency key for this checkout attempt. Sent with the order so a
     // double-tap / retry / second tab can't create a duplicate order in the
