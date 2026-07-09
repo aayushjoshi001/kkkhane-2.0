@@ -197,7 +197,7 @@ function ItemGrid({ items, comboItems, menuItems, sessionId, restaurantSlug, res
                     key={item.id}
                     className={layout === 'list'
                         ? 'w-full'
-                        : 'w-[calc(100vw-76px)] sm:w-auto shrink-0 snap-start h-full'
+                        : 'w-[165px] sm:w-auto shrink-0 snap-start h-full'
                     }
                 >
                     <MenuItemCard
@@ -207,6 +207,7 @@ function ItemGrid({ items, comboItems, menuItems, sessionId, restaurantSlug, res
                         sessionId={sessionId}
                         restaurantSlug={restaurantSlug}
                         restaurantId={restaurantId}
+                        layout={layout}
                     />
                 </div>
             ))}

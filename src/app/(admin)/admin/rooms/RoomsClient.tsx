@@ -7,17 +7,29 @@ import EmptyState from '@/components/ui/EmptyState'
 import { QRCodeCanvas } from 'qrcode.react'
 import { toast } from 'react-hot-toast'
 import RoomBillingModal, { type BillingTable, type BillingOrder } from '@/components/admin/RoomBillingModal'
+import NextImage from 'next/image'
+import { renderQrCardPng, downloadDataUrl } from '@/lib/qrCardCanvas'
+
+const QR_LOGO_SRC = '/icons/kkkhane.png'
 
 interface RoomsClientProps {
     initialRooms: Room[]
     roomTypes: RoomType[]
     restaurantId: string
     restaurantSlug: string
+    restaurantName?: string
     tables?: BillingTable[]
     activeOrders?: BillingOrder[]
 }
 
-export default function RoomsClient({ initialRooms, roomTypes, restaurantSlug, tables = [], activeOrders = [] }: RoomsClientProps) {
+export default function RoomsClient({ 
+    initialRooms, 
+    roomTypes, 
+    restaurantSlug, 
+    restaurantName = 'KKKhane', 
+    tables = [], 
+    activeOrders = [] 
+}: RoomsClientProps) {
     const [rooms, setRooms] = useState<Room[]>(initialRooms)
     const [roomTypesList, setRoomTypesList] = useState<RoomType[]>(roomTypes)
     
@@ -25,6 +37,7 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantSlug, t
     const [filterStatus, setFilterStatus] = useState<string>('all')
     const [filterType, setFilterType] = useState<string>('all')
     const [selectedRoom, setSelectedRoom] = useState<Room | null>(null)
+    const [qrToDownload, setQrToDownload] = useState<{ url: string; label: string } | null>(null)
 
     // Stay being settled in the checkout/billing modal
     const [billingStay, setBillingStay] = useState<{ room: Room; booking: Booking } | null>(null)
@@ -258,63 +271,49 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantSlug, t
 
     // Download QR Code card handler
     const handleDownloadQR = (roomNumber: string) => {
-        const canvas = document.getElementById(`qr-canvas-${roomNumber}`) as HTMLCanvasElement
-        if (!canvas) return
-        
-        const qrCanvas = document.createElement('canvas')
-        qrCanvas.width = 300
-        qrCanvas.height = 420
-        const ctx = qrCanvas.getContext('2d')
-        if (!ctx) return
-
-        // Card background
-        ctx.fillStyle = '#ffffff'
-        ctx.beginPath()
-        ctx.roundRect(0, 0, 300, 420, 20)
-        ctx.fill()
-        
-        // Card border
-        ctx.strokeStyle = '#e2e8f0'
-        ctx.lineWidth = 2
-        ctx.stroke()
-
-        // Orange Top Accent Banner
-        ctx.fillStyle = '#ff5a00'
-        ctx.beginPath()
-        ctx.roundRect(0, 0, 300, 15, [20, 20, 0, 0])
-        ctx.fill()
-
-        // Room Title Text
-        ctx.fillStyle = '#1e293b'
-        ctx.font = 'bold 24px sans-serif'
-        ctx.textAlign = 'center'
-        ctx.fillText(`Room ${roomNumber}`, 150, 60)
-
-        ctx.fillStyle = '#64748b'
-        ctx.font = 'bold 11px sans-serif'
-        ctx.fillText('ROOM SERVICE', 150, 85)
-
-        // Draw QR
-        ctx.drawImage(canvas, 50, 110, 200, 200)
-
-        // Bottom text
-        ctx.fillStyle = '#1e293b'
-        ctx.font = 'bold 12px sans-serif'
-        ctx.fillText('SCAN TO ORDER', 150, 345)
-
-        ctx.fillStyle = '#94a3b8'
-        ctx.font = '500 10px sans-serif'
-        ctx.fillText('Food & Room Services', 150, 365)
-
-        const pngUrl = qrCanvas.toDataURL("image/png")
-        const downloadLink = document.createElement("a")
-        downloadLink.href = pngUrl
-        downloadLink.download = `Room_${roomNumber}_QR_Card.png`
-        document.body.appendChild(downloadLink)
-        downloadLink.click()
-        document.body.removeChild(downloadLink)
-        toast.success(`Downloaded QR Card for Room ${roomNumber}!`)
+        const roomUrl = getRoomUrl(roomNumber)
+        setQrToDownload({ url: roomUrl, label: `Room ${roomNumber}` })
     }
+
+    // High-resolution Room QR Card Downloader Effect
+    useEffect(() => {
+        if (!qrToDownload) return
+
+        let active = true
+
+        const runDownload = async () => {
+            // Wait for canvas to mount and render
+            await new Promise(resolve => setTimeout(resolve, 150))
+            if (!active) return
+
+            const container = document.getElementById('shared-high-res-qr-container')
+            const canvas = container?.querySelector('canvas') as HTMLCanvasElement | null
+            if (!canvas) {
+                setQrToDownload(null)
+                return
+            }
+
+            const pngFile = await renderQrCardPng({
+                label: qrToDownload.label,
+                restaurantName,
+                sourceCanvas: canvas,
+                logoSrc: QR_LOGO_SRC,
+            })
+            if (!active) return
+
+            downloadDataUrl(pngFile, `${qrToDownload.label.replace(/\s+/g, '_')}_QR.png`)
+
+            // Reset state
+            setQrToDownload(null)
+            toast.success(`Downloaded QR Card for ${qrToDownload.label}!`)
+        }
+
+        runDownload()
+
+        return () => {
+            active = false
+        }
+    }, [qrToDownload, restaurantName])
 
     const getStatusColor = (status: RoomStatus) => {
         switch (status) {
@@ -637,15 +636,18 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantSlug, t
                         <div className="border-t border-gray-100 pt-4">
                             <p className="text-xs font-extrabold uppercase tracking-wider text-gray-400 mb-3">Room QR Service Card</p>
                             
-                            <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm flex flex-col items-center select-none max-w-[240px] mx-auto relative overflow-hidden">
-                                <div className="absolute top-0 left-0 right-0 h-1.5 bg-[#ff5a00]" />
+                            <div className="w-[220px] h-[260px] bg-white rounded-xl border border-gray-300 shadow-[0_8px_30px_rgba(0,0,0,0.12)] flex flex-col items-center p-3 pb-9 relative overflow-hidden mb-5 select-none mx-auto">
                                 
-                                <div className="my-3 text-center">
-                                    <span className="text-[9px] text-gray-400 font-extrabold uppercase tracking-widest">Room Service</span>
-                                    <h4 className="text-lg font-black text-gray-900 leading-tight">Room {selectedRoom.room_number}</h4>
+                                {/* Top Banner */}
+                                <div className="w-full flex items-center justify-center relative my-1.5 shrink-0">
+                                    <div className="absolute left-0 right-0 h-[3px] bg-[#ff7a00]" />
+                                    <div className="bg-[#ff7a00] text-white text-[10px] font-black px-4 py-1.5 rounded-sm uppercase tracking-wider relative z-10 min-w-[100px] text-center shadow-sm">
+                                        ROOM {selectedRoom.room_number}
+                                    </div>
                                 </div>
 
-                                <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-100 mb-3 flex items-center justify-center">
+                                {/* QR Code */}
+                                <div className="my-1 shrink-0 bg-white">
                                     <div className="hidden">
                                         <QRCodeCanvas
                                             id={`qr-canvas-${selectedRoom.room_number}`}
@@ -659,31 +661,54 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantSlug, t
                                     </div>
                                     <QRCodeCanvas
                                         value={getRoomUrl(selectedRoom.room_number)}
-                                        size={120}
+                                        size={105}
                                         level="H"
                                         includeMargin={false}
                                         fgColor="#000000"
                                         bgColor="#ffffff"
                                         imageSettings={{
                                             src: '/icons/kkkhane.png',
-                                            height: 24,
-                                            width: 24,
+                                            height: 28,
+                                            width: 28,
                                             excavate: true,
                                         }}
                                     />
                                 </div>
 
-                                <p className="text-[9px] text-gray-400 font-bold text-center leading-normal mb-3 uppercase tracking-wide">
-                                    Scan to Order Food & Services
-                                </p>
-                                
-                                <button
-                                    onClick={() => handleDownloadQR(selectedRoom.room_number)}
-                                    className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-extrabold rounded-xl text-xs transition-colors"
-                                >
-                                    <Download size={13} /> Download QR Card
-                                </button>
+                                {/* Hotel / Restaurant Name */}
+                                <div className="text-center flex-1 flex flex-col justify-center pb-1 min-h-[40px] px-1 overflow-hidden shrink-0 mt-0.5">
+                                    <p className="font-extrabold text-[12px] text-gray-900 truncate max-w-[190px] leading-tight" title={restaurantName}>
+                                        {restaurantName || 'KKKhane'}
+                                    </p>
+                                </div>
+
+                                {/* Bottom Banner */}
+                                <div className="absolute bottom-0 left-0 right-0 h-8 bg-[#ff7a00] flex items-center justify-center gap-1.5 shrink-0 shadow-[0_-2px_10px_rgba(255,122,0,0.3)]">
+                                    <span 
+                                        className="text-white text-[9px] font-extrabold tracking-wider uppercase" 
+                                        style={{ fontFamily: 'var(--font-outfit), var(--font-inter), system-ui, sans-serif' }}
+                                    >
+                                        Powered by KKKhane
+                                    </span>
+                                    <div className="relative w-4 h-4 rounded-full border-[1.5px] border-white shrink-0 shadow-sm overflow-hidden bg-white">
+                                        <NextImage
+                                            src="/icons/kkkhane.png"
+                                            alt="Logo"
+                                            fill
+                                            sizes="16px"
+                                            className="object-cover"
+                                        />
+                                    </div>
+                                </div>
+
                             </div>
+
+                            <button
+                                onClick={() => handleDownloadQR(selectedRoom.room_number)}
+                                className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-extrabold rounded-xl text-xs transition-colors"
+                            >
+                                <Download size={13} /> Download QR Card
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1038,6 +1063,25 @@ export default function RoomsClient({ initialRooms, roomTypes, restaurantSlug, t
                         setSelectedRoom(null)
                     }}
                 />
+            )}
+            {/* Shared dynamic high-resolution QR canvas for crisp on-demand downloads */}
+            {qrToDownload && (
+                <div id="shared-high-res-qr-container" className="hidden" style={{ display: 'none' }}>
+                    <QRCodeCanvas
+                        value={qrToDownload.url}
+                        size={1020}
+                        level="H"
+                        includeMargin={false}
+                        fgColor="#000000"
+                        bgColor="#ffffff"
+                        imageSettings={{
+                            src: '/icons/kkkhane.png',
+                            height: 272,
+                            width: 272,
+                            excavate: true,
+                        }}
+                    />
+                </div>
             )}
         </div>
     )

@@ -16,6 +16,7 @@ export default async function RoomsPage() {
     let rooms: Room[] = []
     let roomTypes: RoomType[] = []
     let restaurantSlug = ''
+    let restaurantName = ''
     let tablesMapped: BillingTable[] = []
     let activeOrders: BillingOrder[] = []
 
@@ -33,7 +34,7 @@ export default async function RoomsPage() {
                 .order('name', { ascending: true }),
             adminSupabase
                 .from('restaurants')
-                .select('slug')
+                .select('name, slug')
                 .eq('id', restaurantId)
                 .single(),
             adminSupabase
@@ -61,6 +62,7 @@ export default async function RoomsPage() {
         rooms = (roomsRes.data as unknown as Room[]) || []
         roomTypes = typesRes.data || []
         restaurantSlug = restRes.data?.slug || ''
+        restaurantName = restRes.data?.name || ''
         activeOrders = (activeOrdersRes.data as unknown as BillingOrder[]) || []
 
         const activeSessions = activeSessionsRes.data || []
@@ -81,6 +83,7 @@ export default async function RoomsPage() {
             roomTypes={roomTypes} 
             restaurantId={restaurantId} 
             restaurantSlug={restaurantSlug}
+            restaurantName={restaurantName}
             tables={tablesMapped}
             activeOrders={activeOrders}
         />

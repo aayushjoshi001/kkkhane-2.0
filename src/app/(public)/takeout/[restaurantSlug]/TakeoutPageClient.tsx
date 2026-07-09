@@ -209,6 +209,7 @@ function TakeoutMenu({ restaurant, categories, menuItems, comboItems }: {
                             restaurantSlug={restaurant.slug}
                             restaurantId={restaurant.id}
                             isTakeout={true}
+                            layout="list"
                         />
                     ))}
                 </div>

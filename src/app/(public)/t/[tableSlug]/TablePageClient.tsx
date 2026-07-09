@@ -16,13 +16,15 @@ import { RecommendationsProvider, type PairingMap } from '@/lib/contexts/Recomme
 import { UtensilsCrossed, RefreshCw, Bell, Check, Loader2, Home, X, ShoppingBag, ChefHat, Search, CreditCard, UserCircle } from 'lucide-react'
 import { useCartStore } from '@/lib/stores/cart'
 import { requestSessionOpen } from '@/app/api/service-requests/actions'
-import { initTableSession } from '@/app/api/table-session/actions'
+import { initTableSession, linkInHouseGuest } from '@/app/api/table-session/actions'
+import { useBusinessMode } from '@/lib/contexts/FeatureContext'
 import ActiveOrderPill from '@/components/customer/ActiveOrderPill'
 import ServiceRequestPanel from '@/components/customer/ServiceRequestPanel'
 import { useActiveOrders } from '@/lib/stores/activeOrders'
 import { useHydratedStore } from '@/lib/stores/useHydratedStore'
 import { toast } from 'react-hot-toast'
 import CustomerProfileSheet from '@/components/customer/CustomerProfileSheet'
+import BottomNavbar from '@/components/customer/BottomNavbar'
 
 interface TablePageClientProps {
     tableData: {
@@ -30,6 +32,8 @@ interface TablePageClientProps {
         label: string
         qr_token: string
         restaurant_id: string
+        /** Set only for a hotel room's own in-room QR table; null for an ordinary dining table. */
+        room_id?: string | null
         restaurants: { name: string; slug?: string | null; logo_url: string | null; physical_menu_urls: string[] | null } | null
     }
     categories: MenuCategory[]
@@ -123,6 +127,26 @@ export default function TablePageClient({
     // Customers can dismiss the "waiting for waiter" popup to browse the menu in
     // view-only mode; a floating button brings it back to ring for service.
     const [popupDismissed, setPopupDismissed] = useState(false)
+
+    // A hotel guest scanning an ordinary dining table (not their room QR) can
+    // self-identify by phone so this table's orders land on their room bill —
+    // no waiter/cashier needed. Only applies to hotel-mode restaurants' own
+    // tables; room QR tables and non-hotel restaurants never show this.
+    const businessMode = useBusinessMode()
+    const isRoomTable = !!tableData.room_id
+    const [guestGateResolved, setGuestGateResolved] = useState(false)
+    const [showPhoneEntry, setShowPhoneEntry] = useState(false)
+    const [phoneInput, setPhoneInput] = useState('')
+    const [linkingGuest, setLinkingGuest] = useState(false)
+
+    useEffect(() => {
+        if (businessMode !== 'hotel' || isRoomTable) return
+        const resolved = localStorage.getItem(`guest-gate:${tableData.id}`)
+        // localStorage is only reachable client-side, so this can't be read during
+        // the initial render/lazy useState initializer without crashing SSR.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        if (resolved === 'outside' || resolved === 'inside') setGuestGateResolved(true)
+    }, [businessMode, isRoomTable, tableData.id])
     // WiFi IP restriction states
     const [isRestricted, setIsRestricted] = useState(false)
     const [verifyingIp, setVerifyingIp] = useState(true)
@@ -137,6 +161,32 @@ export default function TablePageClient({
     useEffect(() => {
         setIsMounted(true)
     }, [])
+
+    // Gated on isMounted so the (client-only) localStorage check never causes
+    // a hydration mismatch or a flash of the gate for a guest who already resolved it.
+    const showGuestGate = isMounted && businessMode === 'hotel' && !isRoomTable && !guestGateResolved
+
+    const handleOutsideGuest = () => {
+        localStorage.setItem(`guest-gate:${tableData.id}`, 'outside')
+        setGuestGateResolved(true)
+    }
+
+    const handleInsideGuestSubmit = async () => {
+        if (!liveSessionToken || !phoneInput.trim()) return
+        setLinkingGuest(true)
+        try {
+            const res = await linkInHouseGuest(liveSessionToken, phoneInput.trim())
+            if (res.success) {
+                localStorage.setItem(`guest-gate:${tableData.id}`, 'inside')
+                setGuestGateResolved(true)
+                toast.success(`Welcome back${res.guestName ? `, ${res.guestName}` : ''}! Orders here go to your room bill.`)
+            } else {
+                toast.error(res.error || 'Could not verify your stay.')
+            }
+        } finally {
+            setLinkingGuest(false)
+        }
+    }
 
     const totalItems = useHydratedStore(useCartStore, (s) => s.totalItems)
     const cartCount = isMounted && totalItems ? totalItems() : 0
@@ -339,6 +389,79 @@ export default function TablePageClient({
             </header>
 
             <main className="max-w-2xl mx-auto px-4 pt-0">
+                {/* Hotel dine-in tables only: ask whether the guest is already staying
+                    at the hotel so their orders can be linked to the room bill. */}
+                {showGuestGate && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/40 backdrop-blur-md animate-fade-in">
+                        <div className="relative bg-surface p-6 rounded-3xl max-w-sm w-full border border-hairline shadow-2xl text-center flex flex-col items-center animate-scale-in">
+                            {logoUrl ? (
+                                <div className="relative w-16 h-16 rounded-full overflow-hidden bg-surface border border-hairline mb-4 shadow-sm">
+                                    <Image src={logoUrl} alt={restaurantName} fill className="object-cover" sizes="64px" />
+                                </div>
+                            ) : (
+                                <div className="w-16 h-16 rounded-full bg-surface-muted flex items-center justify-center mb-4 border border-hairline shadow-sm">
+                                    <UtensilsCrossed size={28} className="text-brand-500" />
+                                </div>
+                            )}
+                            <h2 className="font-black text-ink text-lg mb-2">Welcome to {restaurantName}!</h2>
+
+                            {!showPhoneEntry ? (
+                                <>
+                                    <p className="text-ink-subtle text-sm font-semibold mb-6 leading-relaxed">
+                                        Are you currently staying with us, or just visiting the restaurant?
+                                    </p>
+                                    <div className="w-full space-y-3">
+                                        <button
+                                            onClick={() => setShowPhoneEntry(true)}
+                                            className="w-full flex items-center justify-center gap-2 text-sm font-black bg-brand-500 text-white py-3.5 rounded-2xl active:scale-95 transition shadow-md shadow-[#FB6303]/15"
+                                        >
+                                            Inside Guest (Staying Here)
+                                        </button>
+                                        <button
+                                            onClick={handleOutsideGuest}
+                                            className="w-full flex items-center justify-center gap-2 text-sm font-black bg-surface text-brand-500 border-2 border-brand-500 py-3.5 rounded-2xl active:scale-95 transition"
+                                        >
+                                            Outside Guest
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <p className="text-ink-subtle text-sm font-semibold mb-4 leading-relaxed">
+                                        Enter the phone number on your room booking and we&apos;ll add this order to your room bill.
+                                    </p>
+                                    <input
+                                        type="tel"
+                                        inputMode="tel"
+                                        value={phoneInput}
+                                        onChange={e => setPhoneInput(e.target.value)}
+                                        placeholder="Phone number"
+                                        className="w-full border-hairline rounded-2xl p-3.5 border bg-surface text-ink text-sm font-semibold mb-4 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 transition-all"
+                                        disabled={linkingGuest}
+                                    />
+                                    <div className="w-full space-y-3">
+                                        <button
+                                            onClick={handleInsideGuestSubmit}
+                                            disabled={linkingGuest || !phoneInput.trim() || !liveSessionToken}
+                                            className="w-full flex items-center justify-center gap-2 text-sm font-black bg-brand-500 text-white py-3.5 rounded-2xl active:scale-95 transition disabled:opacity-60 shadow-md shadow-[#FB6303]/15"
+                                        >
+                                            {linkingGuest ? <Loader2 size={16} className="animate-spin" /> : null}
+                                            {linkingGuest ? 'Verifying…' : 'Confirm'}
+                                        </button>
+                                        <button
+                                            onClick={() => setShowPhoneEntry(false)}
+                                            disabled={linkingGuest}
+                                            className="w-full text-xs font-bold text-ink-subtle active:scale-95 transition disabled:opacity-60"
+                                        >
+                                            Back
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* Waiter-managed mode: blurred fullscreen gate shown when there's no
                     active session. Dismissable so the guest can browse view-only. */}
                 {showWaiterGate && !popupDismissed && (
@@ -443,7 +566,7 @@ export default function TablePageClient({
                     sessionId={liveSessionToken}
                     restaurantSlug={tableData.qr_token}
                     restaurantId={tableData.restaurant_id}
-                    layout={menuLayout}
+                    layout="list"
                     searchQuery={searchQuery}
                     setSearchQuery={setSearchQuery}
                 />
@@ -466,61 +589,8 @@ export default function TablePageClient({
                 />
             )}
 
-            {/* Fixed Bottom Navigation Bar */}
-            <div 
-                className="fixed bottom-0 left-0 right-0 z-40 bg-brand-500 text-white shadow-[0_-4px_16px_rgba(0,0,0,0.1)] px-4 py-1 flex items-center justify-around h-12 border-t border-orange-600/30"
-                style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-            >
-                {/* Home */}
-                <button
-                    onClick={() => {
-                        window.scrollTo({ top: 0, behavior: 'smooth' })
-                    }}
-                    className="flex flex-col items-center justify-center text-white/80 hover:text-white transition active:scale-95 w-16"
-                >
-                    <Home size={18} className="stroke-[2.5px] text-white" />
-                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Home</span>
-                </button>
-
-                {/* Orders */}
-                <button
-                    onClick={() => {
-                        const activeOrder = currentTableOrders && currentTableOrders.length > 0 ? currentTableOrders[currentTableOrders.length - 1] : null
-                        if (activeOrder) {
-                            window.location.href = `/t/${tableData.qr_token}/order/${activeOrder.id}`
-                        } else {
-                            toast.error("No active orders placed yet")
-                        }
-                    }}
-                    className="flex flex-col items-center justify-center text-white/80 hover:text-white transition active:scale-95 w-16"
-                >
-                    <ChefHat size={18} className="stroke-[2.5px] text-white" />
-                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Orders</span>
-                </button>
-
-                {/* Cart */}
-                <Link
-                    href={`/t/${tableData.qr_token}/cart${isWaiter ? '?w=1' : ''}`}
-                    className="flex flex-col items-center justify-center text-white/80 hover:text-white transition active:scale-95 w-16 relative"
-                >
-                    {cartCount > 0 && (
-                        <span className="absolute -top-1.5 right-3 bg-surface text-brand-500 text-[9px] font-black rounded-full h-[18px] min-w-[18px] px-1 flex items-center justify-center ring-2 ring-[#FB6303]">
-                            {cartCount}
-                        </span>
-                    )}
-                    <ShoppingBag size={18} className="stroke-[2.5px] text-white" />
-                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Cart</span>
-                </Link>
-
-                {/* Payment */}
-                <Link
-                    href={`/t/${tableData.qr_token}/checkout`}
-                    className="flex flex-col items-center justify-center text-white/80 hover:text-white transition active:scale-95 w-16"
-                >
-                    <CreditCard size={18} className="stroke-[2.5px] text-white" />
-                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Pay</span>
-                </Link>
-            </div>
+            {/* Reusable Bottom Navigation Bar */}
+            <BottomNavbar activeTab="home" onHomeClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
         </div>
     )
 

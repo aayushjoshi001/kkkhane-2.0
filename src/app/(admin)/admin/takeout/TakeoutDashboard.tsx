@@ -177,7 +177,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantId, restaura
                                         className="text-white text-[11px] font-extrabold tracking-widest uppercase" 
                                         style={{ fontFamily: 'var(--font-outfit), var(--font-inter), system-ui, sans-serif' }}
                                     >
-                                        Powered by KKKHANEY
+                                        Powered by KKKhane
                                     </span>
                                     <div className="relative w-5 h-5 rounded-full border-[1.5px] border-white shrink-0 shadow-sm overflow-hidden bg-surface">
                                         <Image

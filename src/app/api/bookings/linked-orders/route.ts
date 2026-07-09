@@ -27,6 +27,11 @@ export async function GET(req: NextRequest) {
         // Find all sessions linked to this booking. Pull the session's table so we
         // can tell an ordinary dining table (room_id NULL) from the room's own
         // in-room QR table.
+        //
+        // The room_id NULL check happens in JS below, not as a PostgREST
+        // `.is('tables.room_id', null)` filter: without `!inner`, filtering on an
+        // embedded column nulls out the embed rather than dropping the parent row,
+        // so the room's own session would survive the filter and double-count.
         const { data: linkedSessions, error: sessErr } = await supabase
             .from('sessions')
             .select('id, status, table_id, tables:table_id(room_id)')

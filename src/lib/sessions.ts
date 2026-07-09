@@ -34,17 +34,27 @@ export async function getOrCreateActiveSession(
     // 1. Reuse an existing active, non-expired session if there is one.
     const existing = await findActiveSession(admin, tableId)
     if (existing) {
-        // A session opened before check-in (or before this column existed) has no
-        // stay attached. Bind it now so its orders land on the right folio.
-        if (room?.bookingId && !existing.booking_id) {
+        // If this is a hotel room stay and the active booking has changed,
+        // we must NOT reuse this session! Close it so a new one is created.
+        if (room?.bookingId && existing.booking_id && existing.booking_id !== room.bookingId) {
             await admin
                 .from('sessions')
-                .update({ booking_id: room.bookingId, ...(room.expiresAt ? { expires_at: room.expiresAt } : {}) })
+                .update({ status: 'closed', closed_at: new Date().toISOString() })
                 .eq('id', existing.id)
-                .is('booking_id', null)
-            return { ...existing, booking_id: room.bookingId }
+            // Continue past this block to create a fresh session
+        } else {
+            // A session opened before check-in (or before this column existed) has no
+            // stay attached. Bind it now so its orders land on the right folio.
+            if (room?.bookingId && !existing.booking_id) {
+                await admin
+                    .from('sessions')
+                    .update({ booking_id: room.bookingId, ...(room.expiresAt ? { expires_at: room.expiresAt } : {}) })
+                    .eq('id', existing.id)
+                    .is('booking_id', null)
+                return { ...existing, booking_id: room.bookingId }
+            }
+            return existing
         }
-        return existing
     }
 
     // 2. Expire any stale active sessions that passed expires_at but were never

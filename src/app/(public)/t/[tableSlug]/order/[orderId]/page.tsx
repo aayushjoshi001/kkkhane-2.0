@@ -81,6 +81,41 @@ export default async function OrderPage(props: {
         payment_qr_label?: string
     } | null
 
+    // 2. Fetch all active sibling orders placed in this session/stay
+    let sessionOrders: any[] = []
+    if (order) {
+        let query: any = adminSupabase
+            .from('orders')
+            .select(`
+              *,
+              order_items (
+                *,
+                menu_items (name),
+                order_item_modifiers (*)
+              )
+            `)
+            .neq('status', 'cancelled')
+
+        if (order.booking_id) {
+            query = query.eq('booking_id', order.booking_id)
+        } else if (order.session_id) {
+            query = query.eq('session_id', order.session_id)
+        } else {
+            query = null
+        }
+
+        if (query) {
+            const { data: siblingData, error: siblingError } = await query
+                .order('placed_at', { ascending: true })
+
+            if (siblingError) {
+                console.error("Sibling orders fetch error:", siblingError)
+            } else {
+                sessionOrders = siblingData || []
+            }
+        }
+    }
+
     const tableInfo = tableResult?.data as { label: string } | null
 
     return (
@@ -93,6 +128,7 @@ export default async function OrderPage(props: {
                     features={features}
                     restaurantInfo={restaurantInfo}
                     tableSlug={params.tableSlug}
+                    sessionOrders={sessionOrders}
                 />
 
                 <div className="px-4">
