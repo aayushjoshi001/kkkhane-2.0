@@ -5,7 +5,7 @@ import {
     TrendingUp, TrendingDown, Plus, X, Loader2,
     Wallet, Lock, Trash2, CalendarDays, CheckCircle2, AlertCircle
 } from 'lucide-react'
-import type { DayBookSession, DayBookEntry, DayBookEntryCategory } from '@/types/database'
+import type { DayBookSession, DayBookEntry, DayBookEntryCategory, ExpenseCategory } from '@/types/database'
 import { toast } from 'react-hot-toast'
 
 interface CashBookClientProps {
@@ -20,6 +20,7 @@ interface CashBookClientProps {
     userRole: string
     previousClosingBalance: number | null
     previousClosingBankBalance: number
+    expenseCategories: ExpenseCategory[]
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -31,6 +32,7 @@ const CATEGORY_LABELS: Record<string, string> = {
     salary:           'Salary / Wage',
     advance:          'Advance',
     bank_deposit:     'Bank Deposit',
+    withdrawal:       'Bank Withdrawal',
     other:            'Other',
 }
 
@@ -43,6 +45,7 @@ const CATEGORY_COLORS: Record<string, string> = {
     salary:          'bg-purple-50 text-purple-700 border-purple-100',
     advance:         'bg-yellow-50 text-yellow-700 border-yellow-100',
     bank_deposit:    'bg-cyan-50 text-cyan-700 border-cyan-100',
+    withdrawal:      'bg-amber-50 text-amber-700 border-amber-100',
     other:           'bg-gray-100 text-gray-600 border-gray-200',
 }
 
@@ -80,6 +83,7 @@ export default function CashBookClient({
     userRole,
     previousClosingBalance,
     previousClosingBankBalance,
+    expenseCategories,
 }: CashBookClientProps) {
     const [session, setSession]   = useState<DayBookSession | null>(initialSession)
     const [entries, setEntries]   = useState<DayBookEntry[]>(initialEntries)
@@ -94,7 +98,7 @@ export default function CashBookClient({
 
     // Add Entry modal
     const [entryModal, setEntryModal] = useState<{ type: 'cash_in' | 'cash_out' } | null>(null)
-    const [entryForm, setEntryForm]   = useState({ amount: '', description: '', category: 'other' as DayBookEntryCategory, bank_name: '' })
+    const [entryForm, setEntryForm]   = useState({ amount: '', description: '', category: 'other' as DayBookEntryCategory, bank_name: '', expense_category_id: '' })
     const [isSubmittingEntry, setIsSubmittingEntry] = useState(false)
 
     // Close Day
@@ -154,6 +158,10 @@ export default function CashBookClient({
             toast.error('Bank name is required for bank deposits');
             return
         }
+        if (entryForm.category === 'expense' && !entryForm.expense_category_id) {
+            toast.error('Expense category is required');
+            return
+        }
 
         setIsSubmittingEntry(true)
         try {
@@ -167,6 +175,7 @@ export default function CashBookClient({
                     description: entryForm.description.trim(),
                     category: entryForm.category,
                     bank_name: (entryForm.category === 'bank_deposit') ? entryForm.bank_name.trim() : null,
+                    expense_category_id: (entryForm.category === 'expense') ? entryForm.expense_category_id : undefined,
                 }),
             })
             const data = await res.json()
@@ -203,7 +212,7 @@ export default function CashBookClient({
             setEntries(updated)
             recalc(updated, session.opening_balance)
             setEntryModal(null)
-            setEntryForm({ amount: '', description: '', category: 'other', bank_name: '' })
+            setEntryForm({ amount: '', description: '', category: 'other', bank_name: '', expense_category_id: '' })
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : 'Failed to add entry'
             toast.error(errMsg)
@@ -597,6 +606,27 @@ export default function CashBookClient({
                                         placeholder="e.g. NIC Asia, Nabil Bank"
                                         className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                                     />
+                                </div>
+                            )}
+
+                            {entryForm.category === 'expense' && (
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Expense Category</label>
+                                    <select
+                                        value={entryForm.expense_category_id}
+                                        onChange={e => setEntryForm(prev => ({ ...prev, expense_category_id: e.target.value }))}
+                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                                    >
+                                        <option value="">Select category...</option>
+                                        {expenseCategories.map(c => (
+                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                        ))}
+                                    </select>
+                                    {expenseCategories.length === 0 && (
+                                        <span className="text-[11px] text-gray-400 font-semibold mt-1 block">
+                                            No expense categories yet — add one from Income &amp; Expenses.
+                                        </span>
+                                    )}
                                 </div>
                             )}
 

@@ -8,11 +8,36 @@ export default async function AdminIngredientsPage() {
     const { restaurantId: rid } = await getCurrentUser()
     const adminSupabase = await createAdminClient()
 
-    const { data: ingredients } = await adminSupabase
-        .from('ingredients')
-        .select('*')
-        .eq('restaurant_id', rid)
-        .order('name', { ascending: true })
+    const [
+        { data: ingredients },
+        { data: categories },
+        { data: suppliers },
+        { data: bankAccounts }
+    ] = await Promise.all([
+        adminSupabase
+            .from('ingredients')
+            .select('*')
+            .eq('restaurant_id', rid)
+            .order('name', { ascending: true }),
+        adminSupabase
+            .from('expense_categories')
+            .select('*')
+            .eq('restaurant_id', rid)
+            .eq('is_active', true)
+            .order('name', { ascending: true }),
+        adminSupabase
+            .from('suppliers')
+            .select('*')
+            .eq('restaurant_id', rid)
+            .eq('is_active', true)
+            .order('name', { ascending: true }),
+        adminSupabase
+            .from('bank_accounts')
+            .select('*')
+            .eq('restaurant_id', rid)
+            .eq('is_active', true)
+            .order('name', { ascending: true })
+    ])
 
     return (
         <div className="space-y-6">
@@ -20,7 +45,13 @@ export default async function AdminIngredientsPage() {
                 <h1 className="text-2xl font-bold text-ink">Stock</h1>
                 <p className="text-ink-subtle mt-1">Track stock levels, costs and movements.</p>
             </div>
-            <IngredientsManager initialIngredients={ingredients || []} restaurantId={rid} />
+            <IngredientsManager
+                initialIngredients={ingredients || []}
+                restaurantId={rid}
+                initialCategories={categories || []}
+                initialSuppliers={suppliers || []}
+                initialBankAccounts={bankAccounts || []}
+            />
         </div>
     )
 }

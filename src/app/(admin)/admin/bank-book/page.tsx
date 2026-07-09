@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import BankBookClient from './BankBookClient'
-import type { DayBookEntry } from '@/types/database'
+import type { DayBookEntry, ExpenseCategory } from '@/types/database'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +29,13 @@ export default async function BankBookPage() {
     // Fetch active bank accounts
     const { data: bankAccounts } = await supabase
         .from('bank_accounts')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', true)
+        .order('name', { ascending: true })
+
+    const { data: expenseCategories } = await supabase
+        .from('expense_categories')
         .select('*')
         .eq('restaurant_id', restaurantId)
         .eq('is_active', true)
@@ -134,6 +141,7 @@ export default async function BankBookPage() {
             previousClosingBankBalance={previousClosingBankBalance}
             previousClosingCashBalance={previousClosingCashBalance}
             bankAccounts={bankAccounts || []}
+            expenseCategories={(expenseCategories as ExpenseCategory[]) || []}
         />
     )
 }

@@ -7,6 +7,7 @@ import { FINANCE_GATED_ROLES } from '@/types/database'
 import { revalidatePath } from 'next/cache'
 import { computeMonthlyAccrualPreview, insertAccruals } from '@/lib/payroll'
 import { getNstDateString, getEffectiveJoinDate, isValidDateString, addDays } from '@/lib/timezone'
+import { postFinancialTransaction } from '@/lib/ledger'
 
 export async function updateStaffRoleAction(userId: string, targetRoleId: number) {
     const currentUser = await getCurrentUser()
@@ -346,36 +347,16 @@ export async function recordLedgerTransactionAction(
     // ── Auto-post matching entry to Day Book session if open and is a payout
     const isPayout = entryType === 'salary_payout' || entryType === 'advance_payment'
     if (isPayout && paymentMethod) {
-        const now = new Date()
-        const NST_OFFSET_MS = (5 * 60 + 45) * 60 * 1000
-        const todayDateNst = new Date(now.getTime() + NST_OFFSET_MS).toISOString().split('T')[0]
+        const isCash = paymentMethod === 'cash'
+        const staffName = targetUser?.full_name || 'Staff'
 
-        const { data: openSession } = await supabase
-            .from('day_book_sessions')
-            .select('id')
-            .eq('restaurant_id', currentUser.restaurantId)
-            .eq('date', todayDateNst)
-            .eq('status', 'open')
-            .maybeSingle()
-
-        if (openSession) {
-            const isCash = paymentMethod === 'cash'
-            const dbType = isCash ? 'cash_out' : 'bank_out'
-            const dbCategory = entryType === 'salary_payout' ? 'salary' : 'advance'
-            const staffName = targetUser?.full_name || 'Staff'
-            const dbDescription = `[Staff Payout] Paid ${entryType === 'salary_payout' ? 'Salary' : 'Advance'} to ${staffName}` + (note?.trim() ? ` (${note.trim()})` : '')
-
-            await supabase
-                .from('day_book_entries')
-                .insert({
-                    session_id: openSession.id,
-                    type: dbType,
-                    amount: amount,
-                    description: dbDescription,
-                    category: dbCategory,
-                    bank_name: !isCash ? bankName?.trim() : null
-                })
-        }
+        await postFinancialTransaction(supabase, currentUser, {
+            type: isCash ? 'cash_out' : 'bank_out',
+            amount: amount,
+            description: `[Staff Payout] Paid ${entryType === 'salary_payout' ? 'Salary' : 'Advance'} to ${staffName}` + (note?.trim() ? ` (${note.trim()})` : ''),
+            category: entryType === 'salary_payout' ? 'salary' : 'advance',
+            bankName: !isCash ? bankName : null
+        })
     }
 
     revalidatePath('/admin/staff')

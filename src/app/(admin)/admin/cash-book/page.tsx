@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import CashBookClient from './CashBookClient'
-import type { DayBookEntry } from '@/types/database'
+import type { DayBookEntry, ExpenseCategory } from '@/types/database'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,6 +25,13 @@ export default async function CashBookPage() {
         .eq('restaurant_id', restaurantId)
         .eq('date', todayDate)
         .maybeSingle()
+
+    const { data: expenseCategories } = await supabase
+        .from('expense_categories')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', true)
+        .order('name', { ascending: true })
 
     // Fetch today's entries (if session exists)
     let entries: DayBookEntry[] = []
@@ -116,6 +123,7 @@ export default async function CashBookPage() {
             userRole={currentUser.role}
             previousClosingBalance={previousClosingBalance}
             previousClosingBankBalance={previousClosingBankBalance}
+            expenseCategories={(expenseCategories as ExpenseCategory[]) || []}
         />
     )
 }

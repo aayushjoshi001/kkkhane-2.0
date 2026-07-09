@@ -6,7 +6,7 @@ import {
     TrendingUp, TrendingDown, Plus, X, Loader2,
     Lock, Trash2, CalendarDays, CheckCircle2, AlertCircle, Landmark
 } from 'lucide-react'
-import type { DayBookSession, DayBookEntry, DayBookEntryCategory } from '@/types/database'
+import type { DayBookSession, DayBookEntry, DayBookEntryCategory, ExpenseCategory } from '@/types/database'
 import { toast } from 'react-hot-toast'
 
 interface BankBookClientProps {
@@ -22,6 +22,7 @@ interface BankBookClientProps {
     previousClosingBankBalance: number | null
     previousClosingCashBalance: number
     bankAccounts: Array<{ id: string; name: string; bank_name: string | null; account_number: string | null }>
+    expenseCategories: ExpenseCategory[]
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -32,6 +33,7 @@ const CATEGORY_LABELS: Record<string, string> = {
     withdrawal:       'Cash Withdrawal',
     bank_charges:     'Bank Charges',
     transfer_out:     'Transfer Out',
+    expense:          'Expense',
     other:            'Other',
 }
 
@@ -43,6 +45,7 @@ const CATEGORY_COLORS: Record<string, string> = {
     withdrawal:      'bg-amber-50 text-amber-700 border-amber-100',
     bank_charges:    'bg-rose-50 text-rose-700 border-rose-100',
     transfer_out:    'bg-violet-50 text-violet-700 border-violet-100',
+    expense:         'bg-red-50 text-red-700 border-red-100',
     other:           'bg-gray-100 text-gray-600 border-gray-200',
 }
 
@@ -80,7 +83,8 @@ export default function BankBookClient({
     userRole,
     previousClosingBankBalance,
     previousClosingCashBalance,
-    bankAccounts
+    bankAccounts,
+    expenseCategories
 }: BankBookClientProps) {
     const [session, setSession]   = useState<DayBookSession | null>(initialSession)
     const [entries, setEntries]   = useState<DayBookEntry[]>(initialEntries)
@@ -104,7 +108,7 @@ export default function BankBookClient({
 
     // Add Entry modal
     const [entryModal, setEntryModal] = useState<{ type: 'bank_in' | 'bank_out' } | null>(null)
-    const [entryForm, setEntryForm]   = useState({ amount: '', description: '', category: 'transfer' as DayBookEntryCategory, bank_name: '' })
+    const [entryForm, setEntryForm]   = useState({ amount: '', description: '', category: 'transfer' as DayBookEntryCategory, bank_name: '', expense_category_id: '' })
     const [isSubmittingEntry, setIsSubmittingEntry] = useState(false)
 
     // Close Day
@@ -164,6 +168,10 @@ export default function BankBookClient({
             toast.error('Bank name is required');
             return
         }
+        if (entryForm.category === 'expense' && !entryForm.expense_category_id) {
+            toast.error('Expense category is required');
+            return
+        }
 
         setIsSubmittingEntry(true)
         try {
@@ -177,18 +185,46 @@ export default function BankBookClient({
                     description: entryForm.description.trim(),
                     category: entryForm.category,
                     bank_name: entryForm.bank_name.trim(),
+                    expense_category_id: (entryForm.category === 'expense') ? entryForm.expense_category_id : undefined,
                 }),
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error)
-            
-            toast.success('Bank transaction logged successfully!')
 
-            const updated = [data.data, ...entries]
+            const newEntries = [data.data]
+
+            // If a bank_out is a Cash Withdrawal, automatically insert a matching
+            // cash_in entry so the cash actually lands in the Cash Book register
+            // (mirrors Cash Book's own Bank Deposit -> bank_in auto-pairing).
+            if (entryModal.type === 'bank_out' && entryForm.category === 'withdrawal') {
+                try {
+                    const autoRes = await fetch('/api/day-book/entries', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            session_id: session.id,
+                            type: 'cash_in',
+                            amount,
+                            description: `Cash Withdrawal: ${entryForm.description.trim()}`,
+                            category: 'withdrawal',
+                            bank_name: entryForm.bank_name.trim(),
+                        }),
+                    })
+                    if (autoRes.ok) {
+                        toast.success('Bank Out logged and withdrawn to Cash successfully!')
+                    }
+                } catch (autoErr) {
+                    console.error('Failed to auto-create cash entry', autoErr)
+                }
+            } else {
+                toast.success('Bank transaction logged successfully!')
+            }
+
+            const updated = [...newEntries, ...entries]
             setEntries(updated)
             recalc(updated, session.opening_bank_balance ?? 0)
             setEntryModal(null)
-            setEntryForm({ amount: '', description: '', category: 'transfer', bank_name: '' })
+            setEntryForm({ amount: '', description: '', category: 'transfer', bank_name: '', expense_category_id: '' })
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : 'Failed to add entry'
             toast.error(errMsg)
@@ -612,12 +648,38 @@ export default function BankBookClient({
                                     <option value="qr_payment">QR Payment</option>
                                     <option value="card">Card Payment</option>
                                     <option value="deposit">Bank Deposit</option>
-                                    <option value="withdrawal">Cash Withdrawal</option>
                                     <option value="bank_charges">Bank Charges</option>
                                     <option value="transfer_out">Transfer Out</option>
+                                    {entryModal.type === 'bank_out' && (
+                                        <option value="withdrawal">Cash Withdrawal (Moves to Cash Book)</option>
+                                    )}
+                                    {entryModal.type === 'bank_out' && (
+                                        <option value="expense">Expense</option>
+                                    )}
                                     <option value="other">Other</option>
                                 </select>
                             </div>
+
+                            {entryForm.category === 'expense' && (
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Expense Category</label>
+                                    <select
+                                        value={entryForm.expense_category_id}
+                                        onChange={e => setEntryForm(prev => ({ ...prev, expense_category_id: e.target.value }))}
+                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                    >
+                                        <option value="">Select category...</option>
+                                        {expenseCategories.map(c => (
+                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                        ))}
+                                    </select>
+                                    {expenseCategories.length === 0 && (
+                                        <span className="text-[11px] text-gray-400 font-semibold mt-1 block">
+                                            No expense categories yet — add one from Income &amp; Expenses.
+                                        </span>
+                                    )}
+                                </div>
+                            )}
 
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Bank Name</label>

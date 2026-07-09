@@ -471,6 +471,7 @@ export interface Ingredient {
     reorder_level: number | null
     cost_per_unit: number
     supplier: string | null
+    category_id?: string | null
     is_active: boolean
     updated_at: string
     created_at: string
@@ -1089,6 +1090,7 @@ export interface ExpenseCategory {
     name: string
     description: string | null
     is_active: boolean
+    is_stock_category: boolean
     created_by: string | null
     created_at: string
 }
@@ -1161,6 +1163,7 @@ export interface Supplier {
     phone: string | null
     email: string | null
     address: string | null
+    category_id?: string | null
     is_active: boolean
     created_by: string | null
     created_at: string

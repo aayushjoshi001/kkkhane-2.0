@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
+import { postFinancialTransaction } from '@/lib/ledger'
 
 async function requireManager() {
     return requireRole('super_admin', 'manager')
@@ -190,35 +191,13 @@ export async function createSupplierBillAction(input: {
 
     // 3. Post paid_amount to Day Book if greater than 0
     if (input.paid_amount > 0) {
-        // Find if a session is open for today in NST
-        const now = new Date()
-        const NST_OFFSET_MS = (5 * 60 + 45) * 60 * 1000
-        const todayDateNst = new Date(now.getTime() + NST_OFFSET_MS).toISOString().split('T')[0]
-
-        const { data: openSession } = await supabase
-            .from('day_book_sessions')
-            .select('id')
-            .eq('restaurant_id', user.restaurantId)
-            .eq('date', todayDateNst)
-            .eq('status', 'open')
-            .maybeSingle()
-
-        if (openSession) {
-            const dbType = input.payment_source === 'cash' ? 'cash_out' : 'bank_out'
-            const dbCategory = input.payment_source === 'cash' ? 'expense' : 'transfer_out'
-            const dbDescription = `[Supplier Bill Paid] ${input.text_desc.trim()} (Supplier: ${input.supplier_name})`
-
-            await supabase
-                .from('day_book_entries')
-                .insert({
-                    session_id: openSession.id,
-                    type: dbType,
-                    amount: input.paid_amount,
-                    description: dbDescription,
-                    category: dbCategory,
-                    bank_name: input.payment_source === 'bank' ? input.bank_name?.trim() : null
-                })
-        }
+        await postFinancialTransaction(supabase, user, {
+            type: input.payment_source === 'cash' ? 'cash_out' : 'bank_out',
+            amount: input.paid_amount,
+            description: `[Supplier Bill Paid] ${input.text_desc.trim()} (Supplier: ${input.supplier_name})`,
+            category: input.payment_source === 'cash' ? 'expense' : 'transfer_out',
+            bankName: input.payment_source === 'bank' ? input.bank_name : null
+        })
     }
 
     revalidatePath(PATH)

@@ -76,6 +76,7 @@ export async function createIngredientAction(input: {
     reorder_level: number
     cost_per_unit: number
     supplier?: string | null
+    category_id?: string | null
 }) {
     const supabase = await createAdminClient()
     const { data, error } = await supabase
@@ -94,6 +95,51 @@ export async function updateIngredientAction(id: string, updates: Record<string,
     if (error) return { error: error.message }
     revalidatePath('/admin/ingredients')
     return { success: true }
+}
+
+export async function createIngredientCategoryAction(input: {
+    restaurant_id: string
+    name: string
+    description?: string
+}) {
+    const supabase = await createAdminClient()
+    const { data, error } = await supabase
+        .from('expense_categories')
+        .insert({
+            restaurant_id: input.restaurant_id,
+            name: input.name.trim(),
+            description: input.description?.trim() || null,
+            is_active: true,
+            is_stock_category: true
+        })
+        .select()
+        .single()
+    if (error) return { error: error.message }
+    return { data }
+}
+
+export async function createIngredientSupplierAction(input: {
+    restaurant_id: string
+    name: string
+    phone?: string
+    address?: string
+    category_id?: string | null
+}) {
+    const supabase = await createAdminClient()
+    const { data, error } = await supabase
+        .from('suppliers')
+        .insert({
+            restaurant_id: input.restaurant_id,
+            name: input.name.trim(),
+            phone: input.phone?.trim() || null,
+            address: input.address?.trim() || null,
+            category_id: input.category_id || null,
+            is_active: true
+        })
+        .select()
+        .single()
+    if (error) return { error: error.message }
+    return { data }
 }
 
 export async function addStockMovementAction(input: {

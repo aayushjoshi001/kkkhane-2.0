@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { SupabaseClient } from '@supabase/supabase-js'
+import { postFinancialTransaction, findOpenDayBookSessionId } from '@/lib/ledger'
+import { getNstDateString } from '@/lib/timezone'
 
 const PATH = '/admin/vouchers'
 
@@ -21,12 +23,15 @@ async function requireManager(): Promise<CurrentUserType> {
     }
 }
 
-// Helper to post supplier ledger or staff payroll deductions upon approval
+// Helper to post supplier ledger, staff payroll, or stock-purchase expense
+// entries upon approval
 async function postLedgerEntry(supabase: SupabaseClient, user: CurrentUserType, voucher: {
     voucher_type: 'receipt' | 'payment'
-    category?: 'suppliers' | 'staff' | 'expenses' | 'other'
+    category?: 'suppliers' | 'staff' | 'expenses' | 'stock' | 'other'
     supplier_id?: string
     staff_user_id?: string
+    expense_category_id?: string
+    purchase_date?: string
     party_name: string
     amount: number
     particulars: string
@@ -34,6 +39,67 @@ async function postLedgerEntry(supabase: SupabaseClient, user: CurrentUserType, 
     bank_name?: string
 }) {
     if (voucher.voucher_type !== 'payment') return // Only payments reduce outstanding balances
+
+    if (voucher.category === 'stock') {
+        let categoryId = voucher.expense_category_id
+        if (!categoryId) {
+            const { data: cat } = await supabase
+                .from('expense_categories')
+                .select('id')
+                .eq('restaurant_id', user.restaurantId)
+                .eq('name', 'Stock Purchases')
+                .maybeSingle()
+
+            categoryId = cat?.id
+            if (!categoryId) {
+                const { data: newCat } = await supabase
+                    .from('expense_categories')
+                    .insert({
+                        restaurant_id: user.restaurantId,
+                        name: 'Stock Purchases',
+                        is_stock_category: true,
+                        created_by: user.id
+                    })
+                    .select('id')
+                    .single()
+                categoryId = newCat?.id
+            }
+        }
+
+        let bankAccountId: string | null = null
+        if (voucher.bank_name) {
+            const { data: bankAcc } = await supabase
+                .from('bank_accounts')
+                .select('id')
+                .eq('restaurant_id', user.restaurantId)
+                .eq('name', voucher.bank_name)
+                .maybeSingle()
+            bankAccountId = bankAcc?.id || null
+        }
+
+        // Dated to when the purchase was originally recorded, not when a
+        // cheque happens to get approved — so the expense always lands on
+        // the day it was actually added.
+        const { error: expenseErr } = await supabase
+            .from('expenses')
+            .insert({
+                restaurant_id: user.restaurantId,
+                category_id: categoryId,
+                amount: voucher.amount,
+                description: voucher.particulars,
+                vendor_name: voucher.party_name,
+                bank_account_id: bankAccountId,
+                status: 'paid',
+                created_by: user.id,
+                ...(voucher.purchase_date ? { created_at: `${voucher.purchase_date}T12:00:00.000Z` } : {})
+            })
+
+        if (expenseErr) {
+            console.error('Failed to post stock purchase expense:', expenseErr)
+            throw new Error(`Failed to post expense: ${expenseErr.message}`)
+        }
+        return
+    }
 
     if (voucher.category === 'suppliers' && voucher.supplier_id) {
         // Query the first available expense category
@@ -114,9 +180,10 @@ export async function createVoucherAction(input: {
     particulars: string
     reference_no?: string // Phone Number
     receiver_name?: string
-    category?: 'suppliers' | 'staff' | 'expenses' | 'other'
+    category?: 'suppliers' | 'staff' | 'expenses' | 'stock' | 'other'
     supplier_id?: string
     staff_user_id?: string
+    expense_category_id?: string
     cheque_details?: {
         written_name: string
         bank_cheque: string // Issuer Bank
@@ -138,19 +205,10 @@ export async function createVoucherAction(input: {
     const supabase = await createAdminClient()
 
     // ── Check if there is an active Day Book session open for today (in NST)
-    const now = new Date()
-    const NST_OFFSET_MS = (5 * 60 + 45) * 60 * 1000
-    const todayDateNst = new Date(now.getTime() + NST_OFFSET_MS).toISOString().split('T')[0]
+    const todayDateNst = getNstDateString()
+    const openSessionId = await findOpenDayBookSessionId(supabase, user.restaurantId)
 
-    const { data: openSession } = await supabase
-        .from('day_book_sessions')
-        .select('id')
-        .eq('restaurant_id', user.restaurantId)
-        .eq('date', todayDateNst)
-        .eq('status', 'open')
-        .maybeSingle()
-
-    if (!openSession) {
+    if (!openSessionId) {
         return { error: 'No active Day Book session is open. Please open Cash Book or Bank Book to start a session first.' }
     }
 
@@ -175,7 +233,7 @@ export async function createVoucherAction(input: {
     const { data: existingEntries } = await supabase
         .from('day_book_entries')
         .select('description')
-        .eq('session_id', openSession.id)
+        .eq('session_id', openSessionId)
         .like('description', '{"voucher_type"%')
 
     const voucherCount = existingEntries ? existingEntries.length : 0
@@ -188,10 +246,14 @@ export async function createVoucherAction(input: {
     // Cheque approval rules
     // Receipt normal cheque OR Payment personal cheque requires manager approval
     // If deposited to an A/C Payee account, it is approved immediately.
-    const needsApproval = input.payment_mode === 'cheque' && 
-        (input.voucher_type === 'receipt' 
-            ? (isAcPayeeAccount ? false : input.cheque_details?.cheque_type === 'normal')
-            : isPersonalAccount)
+    // Stock purchase cheques always require approval before they hit the
+    // bank ledger, regardless of account ownership type.
+    const needsApproval = input.payment_mode === 'cheque' &&
+        (input.category === 'stock'
+            ? true
+            : (input.voucher_type === 'receipt'
+                ? (isAcPayeeAccount ? false : input.cheque_details?.cheque_type === 'normal')
+                : isPersonalAccount))
 
     const status = needsApproval ? 'pending_approval' : 'approved'
     const dbAmount = needsApproval ? 0.01 : input.amount // Place 0.01 placeholder to hold record without altering active balances
@@ -211,6 +273,8 @@ export async function createVoucherAction(input: {
         category: input.category || 'other',
         supplier_id: input.supplier_id || '',
         staff_user_id: input.staff_user_id || '',
+        expense_category_id: input.expense_category_id || '',
+        purchase_date: todayDateNst,
         cheque_details: input.payment_mode === 'cheque' ? input.cheque_details : undefined
     })
 
@@ -223,22 +287,18 @@ export async function createVoucherAction(input: {
         ? (input.payment_mode === 'cash' ? 'other' : (input.payment_mode === 'qr' ? 'qr_payment' : 'deposit'))
         : (input.payment_mode === 'cash' ? 'expense' : 'transfer_out')
 
-    const { data: newEntry, error } = await supabase
-        .from('day_book_entries')
-        .insert({
-            session_id: openSession.id,
-            restaurant_id: user.restaurantId,
-            type: dbType,
-            amount: dbAmount,
-            description: voucherDesc,
-            category: dbCategory,
-            bank_name: input.payment_mode !== 'cash' ? input.bank_name?.trim() : null,
-            created_by: user.id
-        })
-        .select('*, day_book_sessions(date)')
-        .single()
+    const postResult = await postFinancialTransaction(supabase, user, {
+        type: dbType,
+        amount: dbAmount,
+        description: voucherDesc,
+        category: dbCategory,
+        bankName: input.payment_mode !== 'cash' ? input.bank_name : null,
+        requireOpenSession: true,
+        selectClause: '*, day_book_sessions(date)'
+    })
 
-    if (error) return { error: error.message }
+    if (postResult.error || !postResult.entry) return { error: postResult.error || 'Failed to post voucher entry.' }
+    const newEntry = postResult.entry
 
     // If approved immediately, post ledger impacts
     if (status === 'approved') {
@@ -247,6 +307,8 @@ export async function createVoucherAction(input: {
             category: input.category,
             supplier_id: input.supplier_id,
             staff_user_id: input.staff_user_id,
+            expense_category_id: input.expense_category_id,
+            purchase_date: todayDateNst,
             party_name: input.party_name,
             amount: input.amount,
             particulars: input.particulars,
@@ -305,6 +367,8 @@ export async function approveChequeAction(id: string) {
             category: parsed.category,
             supplier_id: parsed.supplier_id,
             staff_user_id: parsed.staff_user_id,
+            expense_category_id: parsed.expense_category_id,
+            purchase_date: parsed.purchase_date,
             party_name: parsed.party_name,
             amount: parsed.amount,
             particulars: parsed.particulars,

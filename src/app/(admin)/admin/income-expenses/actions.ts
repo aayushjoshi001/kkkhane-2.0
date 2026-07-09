@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
+import { postFinancialTransaction } from '@/lib/ledger'
 
 async function requireManager() {
     return requireRole('super_admin', 'manager')
@@ -79,19 +80,6 @@ export async function createEntryAction(input: {
 
     const supabase = await createAdminClient()
 
-    // ── Check if there is an active Cash/Bank Book session open for today (in NST)
-    const now = new Date()
-    const NST_OFFSET_MS = (5 * 60 + 45) * 60 * 1000
-    const todayDateNst = new Date(now.getTime() + NST_OFFSET_MS).toISOString().split('T')[0]
-
-    const { data: openSession } = await supabase
-        .from('day_book_sessions')
-        .select('id')
-        .eq('restaurant_id', user.restaurantId)
-        .eq('date', todayDateNst)
-        .eq('status', 'open')
-        .maybeSingle()
-
     let bankAccountId: string | null = null
     if (input.payment_source === 'bank' && input.bank_name) {
         const { data: bankAcc } = await supabase
@@ -147,29 +135,20 @@ export async function createEntryAction(input: {
     }
 
     // ── Auto-post matching entry to Day Book session if open
-    if (openSession && newEntryData) {
-        const dbType = input.type === 'income'
-            ? (input.payment_source === 'cash' ? 'cash_in' : 'bank_in')
-            : (input.payment_source === 'cash' ? 'cash_out' : 'bank_out')
-
-        const dbCategory = input.type === 'income'
-            ? (input.payment_source === 'cash' ? 'other' : 'deposit')
-            : (input.payment_source === 'cash' ? 'expense' : 'transfer_out')
-
-        const dbDescription = input.type === 'income'
-            ? `[Income] ${input.description.trim()}`
-            : `[Expense] ${input.description.trim()}` + (input.vendor_name?.trim() ? ` (Vendor: ${input.vendor_name.trim()})` : '')
-
-        await supabase
-            .from('day_book_entries')
-            .insert({
-                session_id: openSession.id,
-                type: dbType,
-                amount: input.amount,
-                description: dbDescription,
-                category: dbCategory,
-                bank_name: input.payment_source === 'bank' ? input.bank_name?.trim() : null
-            })
+    if (newEntryData) {
+        await postFinancialTransaction(supabase, user, {
+            type: input.type === 'income'
+                ? (input.payment_source === 'cash' ? 'cash_in' : 'bank_in')
+                : (input.payment_source === 'cash' ? 'cash_out' : 'bank_out'),
+            amount: input.amount,
+            description: input.type === 'income'
+                ? `[Income] ${input.description.trim()}`
+                : `[Expense] ${input.description.trim()}` + (input.vendor_name?.trim() ? ` (Vendor: ${input.vendor_name.trim()})` : ''),
+            category: input.type === 'income'
+                ? (input.payment_source === 'cash' ? 'other' : 'deposit')
+                : (input.payment_source === 'cash' ? 'expense' : 'transfer_out'),
+            bankName: input.payment_source === 'bank' ? input.bank_name : null
+        })
     }
 
     revalidatePath(PATH)
