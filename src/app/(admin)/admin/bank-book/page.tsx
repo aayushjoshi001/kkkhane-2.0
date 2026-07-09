@@ -41,7 +41,16 @@ export default async function BankBookPage() {
             .eq('session_id', session.id)
             .in('type', ['bank_in', 'bank_out'])
             .order('created_at', { ascending: false })
-        entries = (entriesData as DayBookEntry[]) || []
+        
+        entries = ((entriesData as DayBookEntry[]) || []).filter(e => {
+            try {
+                if (e.description.startsWith('{')) {
+                    const parsed = JSON.parse(e.description)
+                    if (parsed.status === 'pending_approval') return false
+                }
+            } catch {}
+            return true
+        })
     }
 
     // Calculate bank totals

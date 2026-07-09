@@ -16,10 +16,18 @@ export async function createVoucherAction(input: {
     voucher_type: 'receipt' | 'payment'
     party_name: string
     amount: number
-    payment_mode: 'cash' | 'bank'
-    bank_name?: string
+    payment_mode: 'cash' | 'qr' | 'cheque' | 'bank'
+    bank_name?: string // Destination Bank Account
     particulars: string
-    reference_no?: string
+    reference_no?: string // Payer Phone Number
+    receiver_name?: string
+    cheque_details?: {
+        written_name: string
+        bank_cheque: string // Issuer Bank (e.g. Global IME)
+        cheque_number: string
+        cheque_date: string
+        cheque_type: 'ac_payee' | 'normal'
+    }
 }) {
     let user
     try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
@@ -27,8 +35,8 @@ export async function createVoucherAction(input: {
     if (!input.party_name?.trim()) return { error: 'Party name (Paid to / Received from) is required.' }
     if (!Number.isFinite(input.amount) || input.amount <= 0) return { error: 'Amount must be a positive number.' }
     if (!input.particulars?.trim()) return { error: 'Particulars description is required.' }
-    if (input.payment_mode === 'bank' && !input.bank_name?.trim()) {
-        return { error: 'Bank Name is required when payment mode is Bank.' }
+    if ((input.payment_mode === 'qr' || input.payment_mode === 'cheque' || input.payment_mode === 'bank') && !input.bank_name?.trim()) {
+        return { error: 'Destination bank name is required.' }
     }
 
     const supabase = await createAdminClient()
@@ -51,7 +59,6 @@ export async function createVoucherAction(input: {
     }
 
     // ── Generate sequential Voucher Number
-    // Query all day_book_entries under the current session that contain voucher JSON description
     const { data: existingEntries } = await supabase
         .from('day_book_entries')
         .select('description')
@@ -61,10 +68,14 @@ export async function createVoucherAction(input: {
     const voucherCount = existingEntries ? existingEntries.length : 0
     const sequenceStr = String(voucherCount + 1).padStart(3, '0')
     
-    // Clean formatted date: YYMMDD
     const dateCompact = todayDateNst.replace(/-/g, '').substring(2)
     const prefix = input.voucher_type === 'receipt' ? 'RV' : 'PV'
     const voucherNumber = `${prefix}-${dateCompact}-${sequenceStr}`
+
+    // Cheque approval rules
+    const isNormalCheque = input.payment_mode === 'cheque' && input.cheque_details?.cheque_type === 'normal'
+    const status = isNormalCheque ? 'pending_approval' : 'approved'
+    const dbAmount = isNormalCheque ? 0.01 : input.amount // Use 0.01 for pending cheque to satisfy constraint without altering balances
 
     // ── Package Voucher details into JSON description
     const voucherDesc = JSON.stringify({
@@ -73,8 +84,12 @@ export async function createVoucherAction(input: {
         party_name: input.party_name.trim(),
         particulars: input.particulars.trim(),
         payment_mode: input.payment_mode,
-        bank_name: input.payment_mode === 'bank' ? input.bank_name?.trim() : '',
-        reference_no: input.reference_no?.trim() || ''
+        bank_name: (input.payment_mode !== 'cash' ? input.bank_name?.trim() : '') || '',
+        reference_no: input.reference_no?.trim() || '', // Payer phone
+        receiver_name: input.receiver_name?.trim() || '',
+        status: status,
+        amount: input.amount, // Real amount stored here!
+        cheque_details: input.payment_mode === 'cheque' ? input.cheque_details : undefined
     })
 
     // Determine day book entry properties
@@ -83,10 +98,8 @@ export async function createVoucherAction(input: {
         : (input.payment_mode === 'cash' ? 'cash_out' : 'bank_out')
 
     const dbCategory = input.voucher_type === 'receipt'
-        ? (input.payment_mode === 'cash' ? 'other' : 'deposit')
+        ? (input.payment_mode === 'cash' ? 'other' : (input.payment_mode === 'qr' ? 'qr_payment' : 'deposit'))
         : (input.payment_mode === 'cash' ? 'expense' : 'transfer_out')
-
-    // Find and map bank_account_id if paid via bank
 
     const { data: newEntry, error } = await supabase
         .from('day_book_entries')
@@ -94,10 +107,10 @@ export async function createVoucherAction(input: {
             session_id: openSession.id,
             restaurant_id: user.restaurantId,
             type: dbType,
-            amount: input.amount,
+            amount: dbAmount,
             description: voucherDesc,
             category: dbCategory,
-            bank_name: input.payment_mode === 'bank' ? input.bank_name?.trim() : null,
+            bank_name: input.payment_mode !== 'cash' ? input.bank_name?.trim() : null,
             created_by: user.id
         })
         .select('*, day_book_sessions(date)')
@@ -111,6 +124,94 @@ export async function createVoucherAction(input: {
     revalidatePath('/admin/bank-ledger')
 
     return { data: newEntry }
+}
+
+export async function approveChequeAction(id: string) {
+    let user
+    try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
+
+    const supabase = await createAdminClient()
+
+    // Fetch the target voucher entry
+    const { data: entry, error: fetchError } = await supabase
+        .from('day_book_entries')
+        .select('*')
+        .eq('id', id)
+        .eq('restaurant_id', user.restaurantId)
+        .single()
+
+    if (fetchError || !entry) return { error: 'Voucher entry not found.' }
+
+    try {
+        const parsed = JSON.parse(entry.description)
+        if (parsed.status !== 'pending_approval') {
+            return { error: 'This cheque is not pending approval.' }
+        }
+
+        // Update values
+        parsed.status = 'approved'
+        const updatedDesc = JSON.stringify(parsed)
+
+        const { error: updateError } = await supabase
+            .from('day_book_entries')
+            .update({
+                amount: parsed.amount, // Set the real amount!
+                description: updatedDesc
+            })
+            .eq('id', id)
+
+        if (updateError) return { error: updateError.message }
+
+        revalidatePath(PATH)
+        revalidatePath('/admin/cash-book')
+        revalidatePath('/admin/bank-book')
+        revalidatePath('/admin/bank-ledger')
+
+        return { success: true }
+    } catch {
+        return { error: 'Invalid voucher description format.' }
+    }
+}
+
+export async function rejectChequeAction(id: string) {
+    let user
+    try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
+
+    const supabase = await createAdminClient()
+
+    const { data: entry, error: fetchError } = await supabase
+        .from('day_book_entries')
+        .select('*')
+        .eq('id', id)
+        .eq('restaurant_id', user.restaurantId)
+        .single()
+
+    if (fetchError || !entry) return { error: 'Voucher entry not found.' }
+
+    try {
+        const parsed = JSON.parse(entry.description)
+        parsed.status = 'rejected'
+        const updatedDesc = JSON.stringify(parsed)
+
+        const { error: updateError } = await supabase
+            .from('day_book_entries')
+            .update({
+                amount: 0.01, // Keep dummy amount to keep constraint happy
+                description: updatedDesc
+            })
+            .eq('id', id)
+
+        if (updateError) return { error: updateError.message }
+
+        revalidatePath(PATH)
+        revalidatePath('/admin/cash-book')
+        revalidatePath('/admin/bank-book')
+        revalidatePath('/admin/bank-ledger')
+
+        return { success: true }
+    } catch {
+        return { error: 'Invalid voucher description format.' }
+    }
 }
 
 export async function deleteVoucherAction(id: string) {

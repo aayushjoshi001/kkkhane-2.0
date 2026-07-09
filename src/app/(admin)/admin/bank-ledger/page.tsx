@@ -30,10 +30,20 @@ export default async function BankLedgerPage() {
             .order('created_at', { ascending: false })
     ])
 
+    const filteredBankEntries = (bankEntries || []).filter(e => {
+        try {
+            if (e.description.startsWith('{')) {
+                const parsed = JSON.parse(e.description)
+                if (parsed.status === 'pending_approval') return false
+            }
+        } catch {}
+        return true
+    })
+
     return (
         <BankLedgerManager
             bankAccounts={bankAccounts || []}
-            bankEntries={bankEntries || []}
+            bankEntries={filteredBankEntries}
         />
     )
 }
