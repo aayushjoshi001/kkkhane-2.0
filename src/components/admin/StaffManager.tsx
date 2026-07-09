@@ -1857,9 +1857,9 @@ export default function StaffManager({
                                                         <th className="px-2 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline">Description</th>
                                                         <th className="px-2 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline whitespace-nowrap">Type</th>
                                                         <th className="px-2 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline whitespace-nowrap">Method</th>
-                                                        <th className="px-2 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-right border-r border-hairline whitespace-nowrap">Taken Amt</th>
-                                                        <th className="px-2 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-right border-r border-hairline whitespace-nowrap">Amt to Pay</th>
-                                                        <th className="px-2 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-right whitespace-nowrap">Running Bal</th>
+                                                        <th className="px-2 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-right border-r border-hairline whitespace-nowrap">Paid Out</th>
+                                                        <th className="px-2 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-right border-r border-hairline whitespace-nowrap">Earned / Dues</th>
+                                                        <th className="px-2 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-right whitespace-nowrap">Balance Owed</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-hairline">
