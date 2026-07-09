@@ -34,7 +34,7 @@ export default function PricingPage() {
             </section>
 
             {/* Pricing Section */}
-            <section className="py-16 px-4 max-w-[1200px] mx-auto relative z-20 -mt-8">
+            <section className="py-16 px-4 max-w-[1400px] mx-auto relative z-20 -mt-8">
                 <PricingCards />
             </section>
 

@@ -228,16 +228,16 @@ export default async function FeatureSlugPage({ params }: { params: Promise<{ sl
 
                             <div className="bg-surface-muted rounded-3xl p-8 border border-hairline shadow-inner h-full flex flex-col justify-center">
                                 <h3 className="mb-6 text-xl font-extrabold text-ink">Key Capabilities</h3>
-                                <ul className="space-y-5">
+                                <div className="space-y-4">
                                     {feature.benefits.map((item: string, i: number) => (
-                                        <li key={i} className="flex items-start gap-4 font-medium text-ink-muted">
-                                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-100 mt-0.5">
-                                                <CheckCircle size={14} className="text-green-600" strokeWidth={3} />
+                                        <div key={i} className="group flex items-start gap-4 rounded-2xl border border-hairline bg-white p-4 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md cursor-default">
+                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-600 shadow-inner transition-colors group-hover:bg-green-500 group-hover:text-white">
+                                                <CheckCircle size={18} strokeWidth={2.5} />
                                             </div>
-                                            <span className="leading-snug">{item}</span>
-                                        </li>
+                                            <span className="mt-2 font-bold leading-snug text-ink-muted transition-colors group-hover:text-ink">{item}</span>
+                                        </div>
                                     ))}
-                                </ul>
+                                </div>
                             </div>
                         </div>
                     </div>

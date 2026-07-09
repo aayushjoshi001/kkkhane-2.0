@@ -1,4 +1,4 @@
-import { ShieldCheck, Zap, TrendingUp, HeartHandshake, Lightbulb, Users } from 'lucide-react'
+import { ShieldCheck, Zap, TrendingUp, HeartHandshake, Lightbulb, Users, ArrowRight } from 'lucide-react'
 import { MarketingNav, MarketingFooter, Eyebrow } from '@/components/marketing'
 
 const VALUES = [
