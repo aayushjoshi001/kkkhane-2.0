@@ -15,7 +15,7 @@ import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import Button from '@/components/ui/Button'
 import { usePrinter } from '@/lib/print/usePrinter'
 import { buildInvoiceTicket } from '@/lib/print/templates/invoiceTicket'
-import QuickOrderModal from './QuickOrderModal'
+
 
 type OrderItem = { 
     id?: string
@@ -120,7 +120,7 @@ export default function CashierClient({
     const [splitQrAmount, setSplitQrAmount] = useState<string>('')
 
     const [mounted, setMounted] = useState(false)
-    const [isQuickOrderOpen, setIsQuickOrderOpen] = useState(false)
+
 
     // Sync rooms state when prop changes
     useEffect(() => {
@@ -611,13 +611,7 @@ export default function CashierClient({
                     <h2 className="text-lg font-black text-ink">Cashier POS Dashboard</h2>
                     <p className="text-caption text-ink-subtle">Manage table orders, room stays, billing, and settlements.</p>
                 </div>
-                <button
-                    onClick={() => setIsQuickOrderOpen(true)}
-                    className="flex items-center gap-2 bg-[var(--brand-500)] hover:bg-[var(--brand-600)] text-white font-extrabold text-xs px-4 py-2.5 rounded-xl active:scale-95 transition shadow-sm"
-                >
-                    <ShoppingCart size={14} />
-                    <span>Quick POS Order</span>
-                </button>
+
             </div>
 
             {/* Cashier Tab Navigation */}
@@ -1723,14 +1717,7 @@ export default function CashierClient({
                 </div>,
                 document.body
             )}
-            {isQuickOrderOpen && (
-                <QuickOrderModal
-                    isOpen={true}
-                    onClose={() => setIsQuickOrderOpen(false)}
-                    restaurantId={restaurantId}
-                    activeTables={tables}
-                />
-            )}
+
         </div>
     )
 }
