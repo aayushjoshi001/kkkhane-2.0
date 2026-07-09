@@ -1653,28 +1653,41 @@ export default function StaffManager({
                                 </div>
                             ) : (
                                 <>
-                                    {/* Summary Metrics */}
-                                    <div className="grid grid-cols-3 gap-3">
-                                        <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-card">
-                                            <div className="text-[10px] uppercase tracking-wider font-black text-blue-700">Opening Balance</div>
-                                            <div className="text-xl font-black text-blue-950 mt-1">{formatCurrency(ledgerModal.user.opening_balance ?? 0)}</div>
-                                            <div className="text-[10px] text-blue-500 mt-1">Pre-system balance owed</div>
-                                        </div>
-                                        <div className="p-4 bg-violet-50/50 border border-violet-100 rounded-card">
-                                            <div className="text-[10px] uppercase tracking-wider font-black text-violet-700">Total Salary Due</div>
-                                            <div className="text-xl font-black text-violet-950 mt-1">
-                                                {formatCurrency(Number(ledgerModal.user.opening_balance) + ledgerModal.entries.reduce((sum, e) => e.entry_type === 'accrual' ? sum + Number(e.amount) : sum, 0))}
+                                    {/* Summary Metrics — compact single row */}
+                                    {(() => {
+                                        const openingBal = Number(ledgerModal.user.opening_balance ?? 0)
+                                        const totalDue = openingBal + ledgerModal.entries.reduce((s, e) => e.entry_type === 'accrual' ? s + Number(e.amount) : s, 0)
+                                        const totalPaid = ledgerModal.entries.reduce((s, e) => ['salary_payout','advance_payment','bonus'].includes(e.entry_type) ? s + Number(e.amount) : s, 0)
+                                        const netBalance = totalDue - totalPaid
+                                        return (
+                                            <div className="flex gap-2">
+                                                <div className="flex-1 px-3 py-2.5 bg-blue-50/60 border border-blue-100 rounded-[var(--r-md)] min-w-0">
+                                                    <div className="text-[9px] font-black uppercase tracking-wider text-blue-600 truncate">Opening Bal</div>
+                                                    <div className="text-sm font-black text-blue-900 mt-0.5 truncate">{formatCurrency(openingBal)}</div>
+                                                </div>
+                                                <div className="flex-1 px-3 py-2.5 bg-violet-50/60 border border-violet-100 rounded-[var(--r-md)] min-w-0">
+                                                    <div className="text-[9px] font-black uppercase tracking-wider text-violet-600 truncate">Total Due</div>
+                                                    <div className="text-sm font-black text-violet-900 mt-0.5 truncate">{formatCurrency(totalDue)}</div>
+                                                </div>
+                                                <div className="flex-1 px-3 py-2.5 bg-emerald-50/60 border border-emerald-100 rounded-[var(--r-md)] min-w-0">
+                                                    <div className="text-[9px] font-black uppercase tracking-wider text-emerald-600 truncate">Total Paid</div>
+                                                    <div className="text-sm font-black text-emerald-900 mt-0.5 truncate">{formatCurrency(totalPaid)}</div>
+                                                </div>
+                                                <div className={`flex-1 px-3 py-2.5 border rounded-[var(--r-md)] min-w-0 ${
+                                                    netBalance > 0
+                                                        ? 'bg-amber-50/60 border-amber-100'
+                                                        : 'bg-emerald-50/60 border-emerald-100'
+                                                }`}>
+                                                    <div className={`text-[9px] font-black uppercase tracking-wider truncate ${netBalance > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>Net Owed</div>
+                                                    <div className={`text-sm font-black mt-0.5 truncate ${netBalance > 0 ? 'text-amber-900' : 'text-emerald-900'}`}>{formatCurrency(Math.abs(netBalance))}</div>
+                                                </div>
+                                                <div className="flex-1 px-3 py-2.5 bg-surface-muted/60 border border-hairline rounded-[var(--r-md)] min-w-0">
+                                                    <div className="text-[9px] font-black uppercase tracking-wider text-ink-subtle truncate">Monthly Salary</div>
+                                                    <div className="text-sm font-black text-ink mt-0.5 truncate">{formatCurrency(ledgerModal.user.monthly_salary)}</div>
+                                                </div>
                                             </div>
-                                            <div className="text-[10px] text-violet-500 mt-1">Opening + accruals</div>
-                                        </div>
-                                        <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-card">
-                                            <div className="text-[10px] uppercase tracking-wider font-black text-emerald-700">Total Paid Out</div>
-                                            <div className="text-xl font-black text-emerald-950 mt-1">
-                                                {formatCurrency(ledgerModal.entries.reduce((sum, e) => ['salary_payout','advance_payment','bonus'].includes(e.entry_type) ? sum + Number(e.amount) : sum, 0))}
-                                            </div>
-                                            <div className="text-[10px] text-emerald-500 mt-1">Payouts + advances + bonus</div>
-                                        </div>
-                                    </div>
+                                        )
+                                    })()}
 
                                     {/* Opening Balance Editor */}
                                     <div className="flex items-center gap-3 p-3 bg-blue-50/30 border border-blue-100 rounded-[var(--r-md)]">
@@ -1725,36 +1738,38 @@ export default function StaffManager({
                                             <table className="w-full text-left text-xs border-collapse">
                                                 <thead>
                                                     <tr className="bg-surface-muted border-b-2 border-hairline">
-                                                        <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-center w-8 border-r border-hairline">#</th>
-                                                        <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline">Date & Time</th>
-                                                        <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline">Description</th>
-                                                        <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline">Type</th>
-                                                        <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline">Method</th>
-                                                        <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-right border-r border-hairline">Taken Amount</th>
-                                                        <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-right">Amount to Pay</th>
+                                                        <th className="px-2 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-center w-6 border-r border-hairline">#</th>
+                                                        <th className="px-2 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline whitespace-nowrap">Date & Time</th>
+                                                        <th className="px-2 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline">Description</th>
+                                                        <th className="px-2 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline whitespace-nowrap">Type</th>
+                                                        <th className="px-2 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline whitespace-nowrap">Method</th>
+                                                        <th className="px-2 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-right border-r border-hairline whitespace-nowrap">Taken Amt</th>
+                                                        <th className="px-2 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-right border-r border-hairline whitespace-nowrap">Amt to Pay</th>
+                                                        <th className="px-2 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-right whitespace-nowrap">Running Bal</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-hairline">
                                                     {/* Opening Balance Row */}
                                                     {Number(ledgerModal.user.opening_balance) > 0 && (
                                                         <tr className="bg-blue-50/30 hover:bg-blue-50/50 transition-colors">
-                                                            <td className="px-3 py-2.5 text-center text-[11px] font-black text-ink-muted border-r border-hairline">0</td>
-                                                            <td className="px-3 py-2.5 font-bold text-ink-subtle border-r border-hairline text-[11px]">
-                                                                <div className="italic text-blue-600">Before system</div>
+                                                            <td className="px-2 py-2 text-center text-[11px] font-black text-ink-muted border-r border-hairline">0</td>
+                                                            <td className="px-2 py-2 font-bold text-ink-subtle border-r border-hairline text-[11px]">
+                                                                <div className="italic text-blue-600 whitespace-nowrap">Before system</div>
                                                             </td>
-                                                            <td className="px-3 py-2.5 font-bold text-blue-700 border-r border-hairline text-[11px]">Pre-existing unpaid balance</td>
-                                                            <td className="px-3 py-2.5 border-r border-hairline">
-                                                                <span className="inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase tracking-wider border bg-blue-50 text-blue-700 border-blue-100">Opening Bal</span>
+                                                            <td className="px-2 py-2 font-bold text-blue-700 border-r border-hairline text-[11px]">Pre-existing unpaid balance</td>
+                                                            <td className="px-2 py-2 border-r border-hairline">
+                                                                <span className="inline-flex px-1.5 py-0.5 rounded-[4px] text-[9px] font-black uppercase tracking-wider border bg-blue-50 text-blue-700 border-blue-100 whitespace-nowrap">Opening Bal</span>
                                                             </td>
-                                                            <td className="px-3 py-2.5 text-center text-ink-muted border-r border-hairline">—</td>
-                                                            <td className="px-3 py-2.5 text-right border-r border-hairline">—</td>
-                                                            <td className="px-3 py-2.5 text-right font-black text-blue-700 text-sm">{formatCurrency(ledgerModal.user.opening_balance ?? 0)}</td>
+                                                            <td className="px-2 py-2 text-center text-ink-muted border-r border-hairline">—</td>
+                                                            <td className="px-2 py-2 text-right border-r border-hairline text-ink-muted">—</td>
+                                                            <td className="px-2 py-2 text-right font-black text-blue-700 border-r border-hairline">{formatCurrency(ledgerModal.user.opening_balance ?? 0)}</td>
+                                                            <td className="px-2 py-2 text-right font-black text-blue-700">{formatCurrency(ledgerModal.user.opening_balance ?? 0)}</td>
                                                         </tr>
                                                     )}
                                                     {/* Ledger Entry Rows */}
                                                     {ledgerModal.entries.length === 0 && Number(ledgerModal.user.opening_balance) === 0 ? (
                                                         <tr>
-                                                            <td colSpan={7} className="text-center py-10 text-sm text-ink-muted font-bold">No ledger transactions recorded yet</td>
+                                                            <td colSpan={8} className="text-center py-10 text-sm text-ink-muted font-bold">No ledger transactions recorded yet</td>
                                                         </tr>
                                                     ) : ledgerModal.entries.map((entry, idx) => {
                                                         const isTaken = ['salary_payout', 'advance_payment', 'bonus'].includes(entry.entry_type)
@@ -1769,27 +1784,39 @@ export default function StaffManager({
                                                         const colorClass = typeColors[entry.entry_type] || 'bg-gray-50 text-gray-600 border-gray-100'
                                                         const methodLabel = entry.payment_method === 'bank_transfer' ? 'Bank' : entry.payment_method === 'qr_digital' ? 'QR' : entry.payment_method === 'cash' ? 'Cash' : '—'
 
+                                                        // Running balance: starts from opening, accruals add, payments/deductions subtract
+                                                        const runningBalance = ledgerModal.entries.slice(0, idx + 1).reduce((bal, e) => {
+                                                            if (['salary_payout', 'advance_payment', 'bonus'].includes(e.entry_type)) return bal - Number(e.amount)
+                                                            if (e.entry_type === 'accrual') return bal + Number(e.amount)
+                                                            if (e.entry_type === 'deduction') return bal - Number(e.amount)
+                                                            return bal
+                                                        }, Number(ledgerModal.user?.opening_balance ?? 0))
+
                                                         return (
                                                             <tr key={entry.id} className={`transition-colors hover:bg-brand-50/10 ${idx % 2 === 0 ? 'bg-surface' : 'bg-surface-muted/15'}`}>
-                                                                <td className="px-3 py-2.5 text-center text-[11px] font-black text-ink-muted border-r border-hairline">{idx + 1}</td>
-                                                                <td className="px-3 py-2.5 border-r border-hairline text-[11px] font-bold text-ink-subtle">
+                                                                <td className="px-2 py-2 text-center text-[11px] font-black text-ink-muted border-r border-hairline">{idx + 1}</td>
+                                                                <td className="px-2 py-2 border-r border-hairline text-[11px] font-bold text-ink-subtle whitespace-nowrap">
                                                                     <div>{new Date(entry.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
                                                                     <div className="text-ink-muted text-[10px]">{new Date(entry.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}</div>
                                                                 </td>
-                                                                <td className="px-3 py-2.5 font-bold text-ink border-r border-hairline text-[11px] w-full">
+                                                                <td className="px-2 py-2 font-bold text-ink border-r border-hairline text-[11px] w-full">
                                                                     {entry.note || <span className="text-ink-muted italic">No description</span>}
                                                                 </td>
-                                                                <td className="px-3 py-2.5 border-r border-hairline">
-                                                                    <span className={`inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase tracking-wider border ${colorClass}`}>
+                                                                <td className="px-2 py-2 border-r border-hairline">
+                                                                    <span className={`inline-flex px-1.5 py-0.5 rounded-[4px] text-[9px] font-black uppercase tracking-wider border whitespace-nowrap ${colorClass}`}>
                                                                         {entry.entry_type.replace(/_/g, ' ')}
                                                                     </span>
                                                                 </td>
-                                                                <td className="px-3 py-2.5 font-bold text-ink-subtle border-r border-hairline text-[11px] text-center">{methodLabel}</td>
-                                                                <td className="px-3 py-2.5 text-right font-black border-r border-hairline">
-                                                                    {isTaken ? <span className="text-emerald-600 text-sm">{formatCurrency(entry.amount)}</span> : <span className="text-ink-muted">—</span>}
+                                                                <td className="px-2 py-2 font-bold text-ink-subtle border-r border-hairline text-[11px] text-center whitespace-nowrap">{methodLabel}</td>
+                                                                <td className="px-2 py-2 text-right font-black border-r border-hairline whitespace-nowrap">
+                                                                    {isTaken ? <span className="text-emerald-600 text-xs font-black">{formatCurrency(entry.amount)}</span> : <span className="text-ink-muted">—</span>}
                                                                 </td>
-                                                                <td className="px-3 py-2.5 text-right font-black">
-                                                                    {isAmountToPay ? <span className="text-violet-600 text-sm">{formatCurrency(entry.amount)}</span> : entry.entry_type === 'deduction' ? <span className="text-rose-600 text-sm">-{formatCurrency(entry.amount)}</span> : <span className="text-ink-muted">—</span>}
+                                                                <td className="px-2 py-2 text-right font-black border-r border-hairline whitespace-nowrap">
+                                                                    {isAmountToPay ? <span className="text-violet-600 text-xs font-black">{formatCurrency(entry.amount)}</span> : entry.entry_type === 'deduction' ? <span className="text-rose-600 text-xs font-black">-{formatCurrency(entry.amount)}</span> : <span className="text-ink-muted">—</span>}
+                                                                </td>
+                                                                <td className={`px-2 py-2 text-right font-black text-xs whitespace-nowrap ${runningBalance >= 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                                                    {formatCurrency(Math.abs(runningBalance))}
+                                                                    <div className={`text-[9px] font-bold ${runningBalance >= 0 ? 'text-amber-500' : 'text-emerald-500'}`}>{runningBalance >= 0 ? 'owed' : 'overpaid'}</div>
                                                                 </td>
                                                             </tr>
                                                         )
@@ -1797,12 +1824,33 @@ export default function StaffManager({
                                                 </tbody>
                                                 <tfoot>
                                                     <tr className="bg-surface-muted/70 border-t-2 border-hairline">
-                                                        <td colSpan={5} className="px-3 py-2.5 text-[11px] font-black text-ink uppercase tracking-wider">Totals</td>
-                                                        <td className="px-3 py-2.5 text-right font-black text-sm text-emerald-600 border-r border-hairline">
+                                                        <td colSpan={5} className="px-2 py-2.5 text-[11px] font-black text-ink uppercase tracking-wider">Totals</td>
+                                                        <td className="px-2 py-2.5 text-right font-black text-xs text-emerald-600 border-r border-hairline whitespace-nowrap">
                                                             {formatCurrency(ledgerModal.entries.reduce((sum, e) => ['salary_payout','advance_payment','bonus'].includes(e.entry_type) ? sum + Number(e.amount) : sum, 0))}
                                                         </td>
-                                                        <td className="px-3 py-2.5 text-right font-black text-sm text-violet-600">
-                                                            {formatCurrency(Number(ledgerModal.user.opening_balance) + ledgerModal.entries.reduce((sum, e) => e.entry_type === 'accrual' ? sum + Number(e.amount) : e.entry_type === 'deduction' ? sum - Number(e.amount) : sum, 0))}
+                                                        <td className="px-2 py-2.5 text-right font-black text-xs text-violet-600 border-r border-hairline whitespace-nowrap">
+                                                            {formatCurrency(Number(ledgerModal.user.opening_balance ?? 0) + ledgerModal.entries.reduce((sum, e) => e.entry_type === 'accrual' ? sum + Number(e.amount) : e.entry_type === 'deduction' ? sum - Number(e.amount) : sum, 0))}
+                                                        </td>
+                                                        <td className={`px-2 py-2.5 text-right font-black text-xs whitespace-nowrap ${
+                                                            (() => {
+                                                                const finalBal = ledgerModal.entries.reduce((bal, e) => {
+                                                                    if (['salary_payout','advance_payment','bonus'].includes(e.entry_type)) return bal - Number(e.amount)
+                                                                    if (e.entry_type === 'accrual') return bal + Number(e.amount)
+                                                                    if (e.entry_type === 'deduction') return bal - Number(e.amount)
+                                                                    return bal
+                                                                }, Number(ledgerModal.user.opening_balance ?? 0))
+                                                                return finalBal >= 0 ? 'text-amber-700' : 'text-emerald-700'
+                                                            })()
+                                                        }`}>
+                                                            {(() => {
+                                                                const finalBal = ledgerModal.entries.reduce((bal, e) => {
+                                                                    if (['salary_payout','advance_payment','bonus'].includes(e.entry_type)) return bal - Number(e.amount)
+                                                                    if (e.entry_type === 'accrual') return bal + Number(e.amount)
+                                                                    if (e.entry_type === 'deduction') return bal - Number(e.amount)
+                                                                    return bal
+                                                                }, Number(ledgerModal.user.opening_balance ?? 0))
+                                                                return formatCurrency(Math.abs(finalBal))
+                                                            })()}
                                                         </td>
                                                     </tr>
                                                 </tfoot>
