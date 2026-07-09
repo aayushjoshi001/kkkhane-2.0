@@ -66,7 +66,8 @@ export default function IncomeExpensesManager({
     const [expenses, setExpenses] = useState<ExpenseEntry[]>(initialExpenses)
 
     // Form tab and inputs
-    const [activeTab, setActiveTab] = useState<'income' | 'expense'>('income')
+    const [viewMode, setViewMode] = useState<'income' | 'expense'>('income')
+    const activeTab = viewMode
     const [amount, setAmount] = useState('')
     const [categoryId, setCategoryId] = useState('')
     const [description, setDescription] = useState('')
@@ -83,7 +84,7 @@ export default function IncomeExpensesManager({
     const [submittingCat, setSubmittingCat] = useState(false)
 
     // List tab and filters
-    const [listTab, setListTab] = useState<'income' | 'expense'>('income')
+    const listTab = viewMode
     const [searchQuery, setSearchQuery] = useState('')
     const [timeFilter, setTimeFilter] = useState<'all' | 'today' | 'week' | 'month' | 'year'>('all')
     const [selectedIncomeCat, setSelectedIncomeCat] = useState<string>('all')
@@ -210,11 +211,9 @@ export default function IncomeExpensesManager({
                 if (activeTab === 'income') {
                     const newEntry: IncomeEntry = res.data
                     setIncomeEntries(prev => [newEntry, ...prev])
-                    setListTab('income')
                 } else {
                     const newEntry: ExpenseEntry = res.data
                     setExpenses(prev => [newEntry, ...prev])
-                    setListTab('expense')
                 }
                 // Reset inputs
                 setAmount('')
@@ -321,52 +320,75 @@ export default function IncomeExpensesManager({
                             Track transactions manually. Accessible to all users.
                         </p>
                     </div>
-                    {/* Time Filter Controls */}
-                    <div className="flex flex-wrap gap-1.5 bg-surface-muted/40 p-1.5 border border-hairline rounded-xl">
-                        {(['all', 'today', 'week', 'month', 'year'] as const).map(f => {
-                            const labels = {
-                                all: 'All Time',
-                                today: 'Today',
-                                week: 'This Week',
-                                month: 'This Month',
-                                year: 'This Year'
-                            }
-                            return (
-                                <button
-                                    key={f}
-                                    type="button"
-                                    onClick={() => setTimeFilter(f)}
-                                    className={`px-3 py-1.5 text-xs font-black uppercase tracking-wider rounded-lg transition-all focus-ring ${timeFilter === f ? 'bg-brand-500 text-white shadow-sm' : 'text-ink-subtle hover:text-ink hover:bg-surface-muted'}`}
-                                >
-                                    {labels[f]}
-                                </button>
-                            )
-                        })}
+                    
+                    <div className="flex flex-wrap items-center gap-3">
+                        {/* Screen View Switcher */}
+                        <div className="flex bg-surface-muted/30 border border-hairline rounded-xl p-1 shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => { setViewMode('income'); setCategoryId(''); }}
+                                className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-lg transition-all focus-ring ${viewMode === 'income' ? 'bg-emerald-600 text-white shadow-sm' : 'text-ink-subtle hover:text-ink hover:bg-surface-muted/40'}`}
+                            >
+                                Income Screen
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setViewMode('expense'); setCategoryId(''); }}
+                                className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-lg transition-all focus-ring ${viewMode === 'expense' ? 'bg-rose-600 text-white shadow-sm' : 'text-ink-subtle hover:text-ink hover:bg-surface-muted/40'}`}
+                            >
+                                Expense Screen
+                            </button>
+                        </div>
+
+                        {/* Time Filter Controls */}
+                        <div className="flex flex-wrap gap-1.5 bg-surface-muted/40 p-1.5 border border-hairline rounded-xl">
+                            {(['all', 'today', 'week', 'month', 'year'] as const).map(f => {
+                                const labels = {
+                                    all: 'All Time',
+                                    today: 'Today',
+                                    week: 'This Week',
+                                    month: 'This Month',
+                                    year: 'This Year'
+                                }
+                                return (
+                                    <button
+                                        key={f}
+                                        type="button"
+                                        onClick={() => setTimeFilter(f)}
+                                        className={`px-3 py-1.5 text-xs font-black uppercase tracking-wider rounded-lg transition-all focus-ring ${timeFilter === f ? 'bg-brand-500 text-white shadow-sm' : 'text-ink-subtle hover:text-ink hover:bg-surface-muted'}`}
+                                    >
+                                        {labels[f]}
+                                    </button>
+                                )
+                            })}
+                        </div>
                     </div>
                 </div>
             </div>
 
             {/* Calculations Row */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-surface border border-hairline p-5 rounded-[var(--r-md)] shadow-sm relative overflow-hidden flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shrink-0">
-                        <TrendingUp size={24} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {viewMode === 'income' ? (
+                    <div className="bg-surface border border-hairline p-5 rounded-[var(--r-md)] shadow-sm relative overflow-hidden flex items-center gap-4 animate-in fade-in duration-200">
+                        <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shrink-0">
+                            <TrendingUp size={24} />
+                        </div>
+                        <div>
+                            <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Total Income</p>
+                            <p className="text-xl font-black text-emerald-600 mt-1">{formatCurrency(totalIncome)}</p>
+                        </div>
                     </div>
-                    <div>
-                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Total Income</p>
-                        <p className="text-xl font-black text-emerald-600 mt-1">{formatCurrency(totalIncome)}</p>
+                ) : (
+                    <div className="bg-surface border border-hairline p-5 rounded-[var(--r-md)] shadow-sm relative overflow-hidden flex items-center gap-4 animate-in fade-in duration-200">
+                        <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100 shrink-0">
+                            <TrendingDown size={24} />
+                        </div>
+                        <div>
+                            <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Total Expenses</p>
+                            <p className="text-xl font-black text-rose-600 mt-1">{formatCurrency(totalExpense)}</p>
+                        </div>
                     </div>
-                </div>
-
-                <div className="bg-surface border border-hairline p-5 rounded-[var(--r-md)] shadow-sm relative overflow-hidden flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100 shrink-0">
-                        <TrendingDown size={24} />
-                    </div>
-                    <div>
-                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Total Expenses</p>
-                        <p className="text-xl font-black text-rose-600 mt-1">{formatCurrency(totalExpense)}</p>
-                    </div>
-                </div>
+                )}
 
                 <div className="bg-surface border border-hairline p-5 rounded-[var(--r-md)] shadow-sm relative overflow-hidden flex items-center gap-4">
                     <div className={`w-12 h-12 rounded-xl flex items-center justify-center border shrink-0 ${netCashflow >= 0 ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
@@ -385,25 +407,9 @@ export default function IncomeExpensesManager({
                 {/* Left Side - Quick Entry Form */}
                 <div className="lg:col-span-4 bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm overflow-hidden">
                     <div className="border-b border-hairline bg-surface-muted/30 p-4">
-                        <p className="text-sm font-black text-ink">Quick Record</p>
-                    </div>
-
-                    {/* Sliding Quick Entry Tabs */}
-                    <div className="p-4 bg-surface border-b border-hairline flex gap-2">
-                        <button
-                            type="button"
-                            onClick={() => { setActiveTab('income'); setCategoryId(''); }}
-                            className={`flex-1 py-2 text-xs font-black uppercase tracking-wider border rounded-lg transition-all focus-ring ${activeTab === 'income' ? 'bg-emerald-50 border-emerald-200 text-emerald-700 shadow-sm' : 'bg-surface border-hairline text-ink-subtle hover:text-ink hover:bg-surface-muted/50'}`}
-                        >
-                            Income
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => { setActiveTab('expense'); setCategoryId(''); }}
-                            className={`flex-1 py-2 text-xs font-black uppercase tracking-wider border rounded-lg transition-all focus-ring ${activeTab === 'expense' ? 'bg-rose-50 border-rose-200 text-rose-700 shadow-sm' : 'bg-surface border-hairline text-ink-subtle hover:text-ink hover:bg-surface-muted/50'}`}
-                        >
-                            Expense
-                        </button>
+                        <p className="text-sm font-black text-ink">
+                            Quick Record {viewMode === 'income' ? 'Income' : 'Expense'}
+                        </p>
                     </div>
 
                     <form onSubmit={handleAddEntry} className="p-4 space-y-4">
@@ -600,7 +606,9 @@ export default function IncomeExpensesManager({
                 {/* Right Side - Logs and History */}
                 <div className="lg:col-span-8 bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm overflow-hidden flex flex-col">
                     <div className="border-b border-hairline bg-surface-muted/30 p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                        <p className="text-sm font-black text-ink">Transaction Logs</p>
+                        <p className="text-sm font-black text-ink">
+                            Transaction Logs ({listTab === 'income' ? filteredIncomeEntries.length : filteredExpenses.length})
+                        </p>
 
                         <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
                             {/* Category Filter */}
@@ -644,23 +652,7 @@ export default function IncomeExpensesManager({
                         </div>
                     </div>
 
-                    {/* Sliding List Tabs */}
-                    <div className="border-b border-hairline px-4 bg-surface-muted/10 flex gap-4">
-                        <button
-                            type="button"
-                            onClick={() => setListTab('income')}
-                            className={`py-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all relative ${listTab === 'income' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-ink-subtle hover:text-ink'}`}
-                        >
-                            Income Log ({filteredIncomeEntries.length})
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setListTab('expense')}
-                            className={`py-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all relative ${listTab === 'expense' ? 'border-rose-600 text-rose-600' : 'border-transparent text-ink-subtle hover:text-ink'}`}
-                        >
-                            Expense Log ({filteredExpenses.length})
-                        </button>
-                    </div>
+
 
                     {/* List Content */}
                     <div className="overflow-x-auto">
