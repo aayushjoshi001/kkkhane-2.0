@@ -40,7 +40,7 @@ export default function PricingPage() {
 
 
             {/* FAQ Section */}
-            <section className="py-20 bg-surface border-t border-hairline">
+            <section className="py-20 bg-[#f6eee2] border-t border-hairline">
                 <div className="max-w-[800px] mx-auto px-4">
                     <div className="text-center mb-16">
                         <h2 className="text-3xl font-extrabold text-ink mb-4">Frequently Asked Questions</h2>

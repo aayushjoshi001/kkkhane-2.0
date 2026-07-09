@@ -196,7 +196,7 @@ export default async function Home() {
             </section>
 
             {/* ── 3. Circular Architecture Section ─────────────────────────────── */}
-            <section className="py-32 bg-surface relative overflow-hidden border-y border-hairline">
+            <section className="py-32 bg-[#f6eee2] relative overflow-hidden border-y border-hairline">
                 <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
                     <div className="text-center mb-24 max-w-3xl mx-auto">
                         <h2 className="text-4xl sm:text-5xl font-extrabold mb-6 tracking-tight text-ink">The Perfect Cycle</h2>
@@ -234,7 +234,7 @@ export default async function Home() {
                                 </div>
                                 <h4 className="text-base font-extrabold text-ink mb-2">{item.title}</h4>
                                 <p className="text-xs font-medium text-ink-subtle leading-relaxed">{item.desc}</p>
-                                <div className="absolute -top-3 -right-3 w-8 h-8 bg-ink text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md">
+                                <div className="absolute -top-3 -right-3 w-8 h-8 bg-[var(--color-primary)] text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md">
                                     {item.step}
                                 </div>
                             </div>
@@ -344,7 +344,7 @@ export default async function Home() {
 
 
             {/* ── 6. FAQ Section ─────────────────────────────────────────────── */}
-            <section id="faq" className="py-24 bg-surface">
+            <section id="faq" className="py-24 bg-[#f6eee2]">
                 <div className="max-w-[900px] mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-16">
                         <h2 className="text-4xl font-extrabold text-ink tracking-tight">Frequently Asked Questions</h2>
