@@ -405,8 +405,8 @@ export default function IncomeExpensesManager({
                 {/* Left Side - Quick Entry Form */}
                 <div className="lg:col-span-4 bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm overflow-hidden">
                     <div className="border-b border-hairline bg-surface-muted/30 p-4">
-                        <p className="text-sm font-black text-ink">
-                            Quick Record {viewMode === 'income' ? 'Income' : 'Expense'}
+                        <p className="text-xs font-black uppercase tracking-wider text-ink">
+                            QUICK RECORD {viewMode === 'income' ? 'INCOME' : 'EXPENSE'}
                         </p>
                     </div>
 
@@ -604,8 +604,8 @@ export default function IncomeExpensesManager({
                 {/* Right Side - Logs and History */}
                 <div className="lg:col-span-8 bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm overflow-hidden flex flex-col">
                     <div className="border-b border-hairline bg-surface-muted/30 p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                        <p className="text-sm font-black text-ink">
-                            Transaction Logs ({listTab === 'income' ? filteredIncomeEntries.length : filteredExpenses.length})
+                        <p className="text-xs font-black uppercase tracking-wider text-ink">
+                            TRANSACTION LOGS ({listTab === 'income' ? filteredIncomeEntries.length : filteredExpenses.length})
                         </p>
 
                         <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
