@@ -2,9 +2,12 @@
 
 import { useState, useMemo } from 'react'
 import {
-    Landmark, ArrowRightLeft, TrendingUp, TrendingDown, FileText, LandmarkIcon
+    Landmark, ArrowRightLeft, TrendingUp, TrendingDown, FileText, LandmarkIcon,
+    Plus, X, Loader2
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { createBankAccountAction } from '../bank-book/actions'
+import { toast } from 'react-hot-toast'
 
 interface BankAccount {
     id: string
@@ -61,19 +64,65 @@ export default function BankLedgerManager({
     bankAccounts,
     bankEntries
 }: BankLedgerManagerProps) {
+    const [bankAccountsList, setBankAccountsList] = useState<BankAccount[]>(bankAccounts)
     const [selectedBankId, setSelectedBankId] = useState<string | null>(
         bankAccounts.length > 0 ? bankAccounts[0].id : null
     )
     const [timeFilter, setTimeFilter] = useState<'this_month' | 'this_year' | 'all'>('this_month')
 
+    // Add Bank Modal state
+    const [addBankModalOpen, setAddBankModalOpen] = useState(false)
+    const [newBankName, setNewBankName] = useState('')
+    const [newBankAccountNumber, setNewBankAccountNumber] = useState('')
+    const [newBankDisplayName, setNewBankDisplayName] = useState('')
+    const [submittingBank, setSubmittingBank] = useState(false)
+
+    const handleAddBank = async (e: React.FormEvent) => {
+        e.preventDefault()
+        const bName = newBankName.trim()
+        const accNum = newBankAccountNumber.trim()
+        const dispName = newBankDisplayName.trim() || bName
+
+        if (!bName) { toast.error('Bank Name is required'); return }
+        if (!accNum) { toast.error('Account Number is required'); return }
+
+        setSubmittingBank(true)
+        try {
+            const res = await createBankAccountAction({
+                bank_name: bName,
+                account_number: accNum,
+                display_name: dispName,
+            })
+            if (res.error) {
+                toast.error(res.error)
+            } else if (res.data) {
+                setBankAccountsList(prev => {
+                    const updated = [...prev, res.data].sort((a, b) => a.name.localeCompare(b.name))
+                    return updated
+                })
+                // Auto-select the newly added bank
+                setSelectedBankId(res.data.id)
+                setNewBankName('')
+                setNewBankAccountNumber('')
+                setNewBankDisplayName('')
+                setAddBankModalOpen(false)
+                toast.success('Bank account created successfully!')
+            }
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Failed to create bank account')
+        } finally {
+            setSubmittingBank(false)
+        }
+    }
+
     // Find the currently selected bank account object
     const activeBankAccount = useMemo(() => {
-        return bankAccounts.find(b => b.id === selectedBankId) || null
-    }, [bankAccounts, selectedBankId])
+        return bankAccountsList.find(b => b.id === selectedBankId) || null
+    }, [bankAccountsList, selectedBankId])
 
     // Calculate balances for each bank account in the list
     const bankAccountsWithBalances = useMemo(() => {
-        return bankAccounts.map(b => {
+        return bankAccountsList.map(b => {
             const nameLower = b.name.toLowerCase().trim()
             const entries = bankEntries.filter(e => e.bank_name?.toLowerCase().trim() === nameLower)
             
@@ -87,7 +136,7 @@ export default function BankLedgerManager({
                 currentBalance: Number(b.opening_balance) + totalIn - totalOut
             }
         })
-    }, [bankAccounts, bankEntries])
+    }, [bankAccountsList, bankEntries])
 
     // Filter bank entries by active bank and time filter
     const activeBankEntries = useMemo(() => {
@@ -176,6 +225,14 @@ export default function BankLedgerManager({
                             </p>
                         </div>
                     </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setAddBankModalOpen(true)}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-[#ff5a00] hover:bg-[#e04f00] text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md shadow-brand-500/10 focus-ring"
+                    >
+                        <Plus size={15} /> Add Bank
+                    </button>
                 </div>
             </div>
 
@@ -368,6 +425,79 @@ export default function BankLedgerManager({
                 </div>
 
             </div>
+
+            {/* Add Bank Modal */}
+            {addBankModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    {/* Backdrop */}
+                    <div 
+                        className="fixed inset-0 bg-[#0a0a0a]/60 backdrop-blur-md transition-opacity duration-300"
+                        onClick={() => setAddBankModalOpen(false)}
+                    />
+                    
+                    {/* Modal Box */}
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-2xl w-full max-w-md relative z-10 overflow-hidden animate-in fade-in-50 zoom-in-95 duration-200">
+                        <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                            <div>
+                                <h3 className="font-extrabold text-gray-900 text-sm">Register New Bank Account</h3>
+                                <p className="text-[10px] text-gray-400 mt-0.5">Add to your active bank directories</p>
+                            </div>
+                            <button 
+                                onClick={() => setAddBankModalOpen(false)}
+                                className="p-1.5 hover:bg-gray-150 rounded-xl text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+                        
+                        <form onSubmit={handleAddBank} className="p-5 space-y-4">
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Bank Name *</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. NIC Asia Bank, Nabil Bank"
+                                    value={newBankName}
+                                    onChange={e => setNewBankName(e.target.value)}
+                                    required
+                                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Bank Account Number *</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. 123456789012"
+                                    value={newBankAccountNumber}
+                                    onChange={e => setNewBankAccountNumber(e.target.value)}
+                                    required
+                                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Display Label (Optional)</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. NIC Asia - Main Account"
+                                    value={newBankDisplayName}
+                                    onChange={e => setNewBankDisplayName(e.target.value)}
+                                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
+                                />
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={submittingBank}
+                                className="w-full mt-2 py-3 bg-[#ff5a00] hover:bg-[#e04f00] text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition-colors shadow-md shadow-brand-500/15 flex items-center justify-center gap-2 focus-ring disabled:opacity-50"
+                            >
+                                {submittingBank ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                                Register Bank Account
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
