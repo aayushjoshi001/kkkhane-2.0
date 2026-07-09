@@ -40,17 +40,16 @@ const LEGAL_CONTENT: Record<string, { title: string, subtitle: string, lastUpdat
         subtitle: 'Our cancellation and refund procedures.',
         lastUpdated: 'June 22, 2026',
         content: (
-            <>
-                <p>We want you to be completely satisfied with kkkhane. We offer transparent subscription models and clear refund policies.</p>
-                <h3 className="mb-4 mt-8 text-xl font-extrabold text-ink">1. Subscription Cancellations</h3>
-                <p>You may cancel your subscription at any time. Your access to premium features will continue until the end of your current billing period. Once the period ends, your account will revert to the Free tier.</p>
-                <h3 className="mb-4 mt-8 text-xl font-extrabold text-ink">2. 14-Day Money Back Guarantee</h3>
-                <p>If you are not satisfied with your annual subscription purchase, you may request a full refund within the first 14 days of your initial payment. Monthly subscriptions are non-refundable after the first 48 hours.</p>
-                <h3 className="mb-4 mt-8 text-xl font-extrabold text-ink">3. Hardware Returns</h3>
-                <p>Any POS hardware (Printers, Power Backups, Tablets) purchased through kkkhane can be returned within 7 days of delivery, provided the equipment is unused, undamaged, and in its original packaging. A restocking fee may apply.</p>
-                <h3 className="mb-4 mt-8 text-xl font-extrabold text-ink">4. Process for Requesting Refunds</h3>
-                <p>To request a refund or return, please contact our billing department at support@kkkhane.com. Refunds will be processed to the original method of payment within 5-7 business days.</p>
-            </>
+            <section>
+                <h2>Refund Policy</h2>
+                <p>We stand behind our product. If you are not completely satisfied with your purchase, you may request a full refund within 14 days of your initial subscription payment.</p>
+                <ul>
+                    <li>The refund applies only to the first payment of your subscription.</li>
+                    <li>Setup fees, hardware purchases, or customized development work are non-refundable.</li>
+                    <li>After 14 days, all payments are non-refundable, but you may cancel your subscription at any time to prevent future charges.</li>
+                </ul>
+                <p>To request a refund or return, please contact our billing department at info.kkkhane@gmail.com. Refunds will be processed to the original method of payment within 5-7 business days.</p>
+            </section>
         )
     }
 }

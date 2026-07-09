@@ -204,7 +204,7 @@ export default function PackagesPage() {
                         block
                         variant="secondary"
                         size="lg"
-                        onClick={() => window.location.href = 'mailto:enterprise@kkkhane.com?subject=Enterprise%20Plan%20Inquiry'}
+                        onClick={() => window.location.href = 'mailto:info.kkkhane@gmail.com?subject=Enterprise%20Plan%20Inquiry'}
                     >
                         Contact Sales
                     </Button>
@@ -221,7 +221,7 @@ export default function PackagesPage() {
                         <p className="text-blue-800/80">Our team is here to help you choose the right package.</p>
                     </div>
                 </div>
-                <Button variant="secondary" className="bg-surface text-blue-700 hover:bg-blue-50 border-blue-200 whitespace-nowrap" onClick={() => window.location.href = 'mailto:support@kkkhane.com'}>
+                <Button variant="secondary" className="bg-surface text-blue-700 hover:bg-blue-50 border-blue-200 whitespace-nowrap" onClick={() => window.location.href = 'mailto:info.kkkhane@gmail.com'}>
                     Talk to an Expert
                 </Button>
             </div>

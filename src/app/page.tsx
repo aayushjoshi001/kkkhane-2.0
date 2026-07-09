@@ -73,24 +73,24 @@ export default async function Home() {
                 <div className="max-w-[1200px] mx-auto px-4 relative z-10 text-center">
                     <div className="inline-flex items-center gap-2 bg-surface/60 backdrop-blur-md px-4 py-2 rounded-full mb-8 border border-hairline-strong/60 shadow-sm animate-fade-up">
                         <span className="flex h-2 w-2 rounded-full bg-[var(--color-primary)] animate-pulse" />
-                        <span className="text-ink-muted font-bold text-sm tracking-wide">Coming Soon</span>
+                        <span className="text-ink-muted font-bold text-sm tracking-wide">Built in Nepal 🇳🇵</span>
                     </div>
 
                     {/* Branding Display: "के के खाने?" from image */}
                     <div className="flex justify-center mb-6 animate-fade-up" style={{ animationDelay: '0.05s' }}>
                         <h1 lang="ne" className="text-7xl sm:text-8xl lg:text-[7rem] font-black tracking-tight cursor-default" style={{ fontFamily: 'var(--font-devanagari), var(--font-inter), sans-serif' }}>
-                            <span className="text-[#201F1E] inline-block animate-float">के के </span>
-                            <span className="text-[#E76115] inline-block animate-float-delayed">खाने<span className="text-[#65635B] inline-block animate-pulse">?</span></span>
+                            <span className="text-[#201F1E] inline-block animate-[bounce_2s_infinite]">के के </span>
+                            <span className="text-[#E76115] inline-block animate-[bounce_2.5s_infinite]">खाने<span className="text-[#65635B] inline-block animate-[pulse_2s_infinite]">?</span></span>
                         </h1>
                     </div>
 
                     <h2 className="text-3xl sm:text-5xl font-extrabold text-ink leading-[1.1] mb-8 tracking-tight animate-fade-up" style={{ animationDelay: '0.1s' }}>
                         The oldest question in every Nepali kitchen — <br className="hidden sm:block" />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-primary)] to-amber-500">and soon, the answer for your restaurant.</span>
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-primary)] to-amber-500">and now, the answer for your restaurant.</span>
                     </h2>
 
                     <p className="text-lg sm:text-xl text-ink-subtle mb-12 max-w-2xl mx-auto leading-relaxed font-medium animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                        KKKhane is a mobile-first restaurant ordering & table management system — menus, KOTs, billing and everything in between. We’re plating up the final touches.
+                        KKKhane is a mobile-first restaurant ordering & table management system — menus, KOTs, billing and everything in between. Available now.
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-up" style={{ animationDelay: '0.3s' }}>
@@ -206,11 +206,11 @@ export default async function Home() {
                     {/* Desktop Circular Diagram */}
                     <div className="hidden lg:flex relative w-full max-w-4xl mx-auto aspect-square items-center justify-center">
                         {/* Circular Track */}
-                        <div className="absolute inset-[15%] rounded-full border-[2px] border-dashed border-gray-300" />
+                        <div className="absolute inset-[15%] rounded-full border-[2px] border-dashed border-gray-300 animate-[spin_60s_linear_infinite_reverse]" />
                         <div className="absolute inset-[25%] rounded-full border border-hairline bg-gray-50/30" />
                         
                         {/* Orbiting Particles */}
-                        <div className="absolute inset-[15%] rounded-full border-2 border-transparent animate-[spin_20s_linear_infinite]">
+                        <div className="absolute inset-[15%] rounded-full border-2 border-transparent animate-[spin_10s_linear_infinite]">
                             <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[var(--color-primary)] rounded-full shadow-[0_0_15px_var(--color-primary)]" />
                             <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-amber-400 rounded-full shadow-[0_0_15px_orange]" />
                         </div>

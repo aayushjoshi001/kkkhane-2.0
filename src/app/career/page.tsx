@@ -104,10 +104,10 @@ export default function CareerPage() {
                                 We currently don&apos;t have any specific open roles listed online, but if you believe you would be a fantastic fit for our team, we want to hear from you.
                             </p>
                             <a 
-                                href="mailto:careers@kkkhane.com" 
-                                className="inline-flex items-center justify-center bg-ink text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-gray-800 transition-colors shadow-lg"
+                                href="mailto:info.kkkhane@gmail.com" 
+                                className="inline-flex items-center gap-2 text-[var(--color-primary)] font-bold hover:gap-3 transition-all"
                             >
-                                careers@kkkhane.com
+                                info.kkkhane@gmail.com <ArrowRight size={16} />
                             </a>
                             <p className="mt-4 text-sm text-ink-subtle font-medium">Please include your CV and a brief introduction.</p>
                         </div>

@@ -1,5 +1,6 @@
 import { Star, Globe } from 'lucide-react'
 import { MarketingNav, MarketingFooter, Section, SectionHeading, Eyebrow, MarketingButton } from '@/components/marketing'
+import RandomStatCounter from '@/components/shared/RandomStatCounter'
 
 const REVIEWS = [
     { name: 'Prakash Shrestha', role: 'Owner', platform: 'Google', text: 'I have been using this app since a year now. I like all features. It is simple to setup and it helps me to take orders from customers. The main features I liked of this app is, <highlight>customer can scan qr code and order from their phone which is best... UI is nice</highlight>' },
@@ -14,10 +15,10 @@ const REVIEWS = [
 ]
 
 const STATS = [
-    { value: '7,500+', label: 'Restaurants' },
-    { value: '4.8★', label: 'Average rating' },
-    { value: '1M+', label: 'Orders processed' },
-    { value: '99.9%', label: 'Uptime' },
+    { value: <RandomStatCounter suffix="+" />, label: 'Restaurants' },
+    { value: <RandomStatCounter suffix="★" />, label: 'Average rating' },
+    { value: <RandomStatCounter suffix="M+" />, label: 'Orders processed' },
+    { value: <RandomStatCounter suffix="%" />, label: 'Uptime' },
 ]
 
 function renderText(text: string) {

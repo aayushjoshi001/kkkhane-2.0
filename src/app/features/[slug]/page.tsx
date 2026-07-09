@@ -176,10 +176,10 @@ export default async function FeatureSlugPage({ params }: { params: Promise<{ sl
             <div className="min-h-screen bg-[#FAFAF8] text-ink font-sans">
                 <MarketingNav />
                 <div className="flex min-h-[70vh] flex-col items-center justify-center px-4 pt-20 text-center">
-                    <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-surface shadow-sm border border-hairline text-4xl">🔍</div>
-                    <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-ink">Feature Not Found</h1>
+                    <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-surface shadow-sm border border-hairline text-4xl">🚀</div>
+                    <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-ink">Feature Coming Soon</h1>
                     <p className="mb-8 max-w-md font-medium text-ink-subtle">
-                        We couldn&apos;t find the specific feature you&apos;re looking for.
+                        We are currently crafting this feature. Stay tuned for exciting updates!
                     </p>
                     <MarketingButton href="/">Back to Home</MarketingButton>
                 </div>
@@ -255,11 +255,11 @@ export default async function FeatureSlugPage({ params }: { params: Promise<{ sl
                     {/* Desktop Circular Diagram */}
                     <div className="hidden lg:flex relative w-full max-w-4xl mx-auto aspect-square items-center justify-center">
                         {/* Circular Track with Proper Shading */}
-                        <div className="absolute inset-[15%] rounded-full border-[2px] border-dashed border-gray-300 shadow-[inset_0_0_50px_rgba(0,0,0,0.02)]" />
+                        <div className="absolute inset-[15%] rounded-full border-[2px] border-dashed border-gray-300 shadow-[inset_0_0_50px_rgba(0,0,0,0.02)] animate-[spin_60s_linear_infinite_reverse]" />
                         <div className="absolute inset-[25%] rounded-full border border-gray-200 bg-white/50 shadow-[0_0_40px_rgba(0,0,0,0.03)]" />
                         
                         {/* Orbiting Particles */}
-                        <div className="absolute inset-[15%] rounded-full border-2 border-transparent animate-[spin_20s_linear_infinite]">
+                        <div className="absolute inset-[15%] rounded-full border-2 border-transparent animate-[spin_10s_linear_infinite]">
                             <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[var(--color-primary)] rounded-full shadow-[0_0_15px_var(--color-primary)]" />
                             <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-amber-400 rounded-full shadow-[0_0_15px_orange]" />
                         </div>
