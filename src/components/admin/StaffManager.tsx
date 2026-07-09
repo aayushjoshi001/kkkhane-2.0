@@ -1623,8 +1623,8 @@ export default function StaffManager({
 
             {/* Ledger History Drawer/Modal */}
             {ledgerModal.isOpen && ledgerModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-end">
-                    <div className="bg-surface w-full max-w-lg h-full flex flex-col shadow-2xl border-l border-hairline animate-in slide-in-from-right duration-250">
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-surface w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl rounded-card border border-hairline animate-in fade-in zoom-in-95 duration-200">
                         <div className="px-6 py-5 border-b border-hairline flex items-center justify-between shrink-0 bg-surface-muted/30">
                             <div>
                                 <h3 className="font-extrabold text-ink text-base">Staff Ledger Statement</h3>
@@ -1633,7 +1633,7 @@ export default function StaffManager({
                             <button onClick={() => setLedgerModal(prev => ({ ...prev, isOpen: false }))} className="w-8 h-8 flex items-center justify-center rounded-[var(--r-md)] text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors focus-ring">×</button>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6 min-h-0">
                             {ledgerModal.loading ? (
                                 <div className="flex flex-col items-center justify-center py-20 text-ink-subtle gap-2">
                                     <Loader2 size={24} className="animate-spin" />
@@ -1667,45 +1667,90 @@ export default function StaffManager({
                                     </div>
 
                                     {/* Transaction Ledger Table */}
-                                    <div className="space-y-3">
-                                        <h4 className="text-xs font-black text-ink uppercase tracking-wider">Transaction History</h4>
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <h4 className="text-xs font-black text-ink uppercase tracking-wider">Transaction History</h4>
+                                            <span className="text-[10px] font-bold text-ink-subtle">{ledgerModal.entries.length} entries</span>
+                                        </div>
                                         
                                         {ledgerModal.entries.length === 0 ? (
                                             <div className="text-center py-12 text-sm text-ink-muted bg-surface-muted/20 border border-hairline rounded-card font-bold">
                                                 No ledger transactions recorded yet
                                             </div>
                                         ) : (
-                                            <div className="border border-hairline rounded-card overflow-hidden divide-y divide-hairline">
-                                                {ledgerModal.entries.map((entry) => {
-                                                    const isPayout = ['salary_payout', 'advance_payment', 'bonus'].includes(entry.entry_type)
-                                                    return (
-                                                        <div key={entry.id} className="p-4 hover:bg-surface-muted/10 transition-colors flex items-center justify-between text-sm">
-                                                            <div>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className={`px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase tracking-wider ${
-                                                                        entry.entry_type === 'salary_payout' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                                                                        entry.entry_type === 'advance_payment' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
-                                                                        entry.entry_type === 'bonus' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
-                                                                        entry.entry_type === 'deduction' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
-                                                                        'bg-gray-50 text-gray-700 border border-gray-100'
-                                                                    }`}>
-                                                                        {entry.entry_type.replace('_', ' ')}
-                                                                    </span>
-                                                                    {entry.payment_method && (
-                                                                        <span className="text-[10px] font-bold text-ink-subtle uppercase">
-                                                                            • {entry.payment_method.replace('_', ' ')}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                                <div className="text-xs text-ink-subtle mt-1.5 font-bold">{entry.note || 'No note provided'}</div>
-                                                                <div className="text-[10px] text-ink-muted mt-1">{new Date(entry.created_at).toLocaleString()}</div>
-                                                            </div>
-                                                            <div className={`font-black text-base ${isPayout ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                                {isPayout ? '+' : '-'} {formatCurrency(entry.amount)}
-                                                            </div>
-                                                        </div>
-                                                    )
-                                                })}
+                                            <div className="border border-hairline rounded-card overflow-hidden">
+                                                    <table className="w-full text-left text-xs border-collapse">
+                                                        <thead>
+                                                            <tr className="bg-surface-muted border-b-2 border-hairline">
+                                                                <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-center w-8">#</th>
+                                                                <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px]">Date & Time</th>
+                                                                <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px]">Type</th>
+                                                                <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px]">Method</th>
+                                                                <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px]">Note / Reference</th>
+                                                                <th className="px-3 py-2.5 font-black text-ink-subtle uppercase tracking-wider text-[10px] text-right">Amount</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-hairline">
+                                                            {ledgerModal.entries.map((entry, idx) => {
+                                                                const isPayout = ['salary_payout', 'advance_payment', 'bonus'].includes(entry.entry_type)
+                                                                const typeColors: Record<string, string> = {
+                                                                    salary_payout: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+                                                                    advance_payment: 'bg-amber-50 text-amber-700 border-amber-100',
+                                                                    bonus: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+                                                                    deduction: 'bg-rose-50 text-rose-700 border-rose-100',
+                                                                    accrual: 'bg-gray-50 text-gray-600 border-gray-100',
+                                                                }
+                                                                const colorClass = typeColors[entry.entry_type] || 'bg-gray-50 text-gray-600 border-gray-100'
+                                                                const methodLabel = entry.payment_method
+                                                                    ? entry.payment_method === 'bank_transfer' ? 'Bank'
+                                                                    : entry.payment_method === 'qr_digital' ? 'QR'
+                                                                    : 'Cash'
+                                                                    : '—'
+
+                                                                return (
+                                                                    <tr key={entry.id} className={`transition-colors hover:bg-brand-50/20 ${idx % 2 === 0 ? 'bg-surface' : 'bg-surface-muted/20'}`}>
+                                                                        <td className="px-3 py-2.5 text-center text-[11px] font-black text-ink-muted border-r border-hairline">
+                                                                            {ledgerModal.entries.length - idx}
+                                                                        </td>
+                                                                        <td className="px-3 py-2.5 font-bold text-ink-subtle border-r border-hairline text-[11px]">
+                                                                            <div>{new Date(entry.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                                                                            <div className="text-ink-muted text-[10px]">{new Date(entry.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}</div>
+                                                                        </td>
+                                                                        <td className="px-3 py-2.5 border-r border-hairline">
+                                                                            <span className={`inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase tracking-wider border ${colorClass}`}>
+                                                                                {entry.entry_type.replace(/_/g, ' ')}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="px-3 py-2.5 font-bold text-ink-subtle border-r border-hairline text-[11px] text-center">
+                                                                            {methodLabel}
+                                                                        </td>
+                                                                        <td className="px-3 py-2.5 font-bold text-ink border-r border-hairline text-[11px] w-full" title={entry.note || ''}>
+                                                                            {entry.note || <span className="text-ink-muted italic">—</span>}
+                                                                        </td>
+                                                                        <td className={`px-3 py-2.5 font-black text-right text-sm ${isPayout ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                            {isPayout ? '+' : '−'} {formatCurrency(entry.amount)}
+                                                                        </td>
+                                                                    </tr>
+                                                                )
+                                                            })}
+                                                        </tbody>
+                                                        <tfoot>
+                                                            <tr className="bg-surface-muted/60 border-t-2 border-hairline">
+                                                                <td colSpan={5} className="px-3 py-2.5 text-[11px] font-black text-ink uppercase tracking-wider">Net Balance</td>
+                                                                <td className={`px-3 py-2.5 text-right font-black text-sm ${
+                                                                    ledgerModal.entries.reduce((sum, e) => {
+                                                                        const isPay = ['salary_payout', 'advance_payment', 'bonus'].includes(e.entry_type)
+                                                                        return sum + (isPay ? Number(e.amount) : -Number(e.amount))
+                                                                    }, 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                                                }`}>
+                                                                    {formatCurrency(Math.abs(ledgerModal.entries.reduce((sum, e) => {
+                                                                        const isPay = ['salary_payout', 'advance_payment', 'bonus'].includes(e.entry_type)
+                                                                        return sum + (isPay ? Number(e.amount) : -Number(e.amount))
+                                                                    }, 0)))}
+                                                                </td>
+                                                            </tr>
+                                                        </tfoot>
+                                                    </table>
                                             </div>
                                         )}
                                     </div>
