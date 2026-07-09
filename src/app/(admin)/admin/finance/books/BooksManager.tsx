@@ -6,6 +6,24 @@ import { DataTable, PlaceholderChart, SectionTabs, type SectionTab } from '@/com
 import { formatCurrency } from '@/lib/utils'
 import type { DayBookEntry } from '@/types/database'
 
+function formatDescription(desc: string): string {
+    if (!desc) return ''
+    if (desc.trim().startsWith('{')) {
+        try {
+            const parsed = JSON.parse(desc)
+            if (parsed.voucher_type && parsed.voucher_number) {
+                const typeLabel = parsed.voucher_type === 'receipt' ? 'Receipt' : 'Payment'
+                const partyLabel = parsed.party_name ? ` (To: ${parsed.party_name})` : ''
+                const receivedFromLabel = parsed.party_name && parsed.voucher_type === 'receipt' ? ` (From: ${parsed.party_name})` : partyLabel
+                return `${typeLabel} ${parsed.voucher_number}${receivedFromLabel} - ${parsed.particulars || 'No details'}`
+            }
+        } catch {
+            // fallback
+        }
+    }
+    return desc
+}
+
 export default function BooksManager({ entries }: { entries: DayBookEntry[] }) {
     const [tab, setTab] = useState('daybook')
 
@@ -33,7 +51,7 @@ export default function BooksManager({ entries }: { entries: DayBookEntry[] }) {
                         { key: 'created_at', header: 'Date', render: (e) => new Date(e.created_at).toLocaleString(), sortValue: (e) => e.created_at },
                         { key: 'type', header: 'Type', render: (e) => e.type },
                         { key: 'category', header: 'Category', render: (e) => e.category },
-                        { key: 'description', header: 'Description', render: (e) => e.description },
+                        { key: 'description', header: 'Description', render: (e) => formatDescription(e.description) },
                         { key: 'amount', header: 'Amount', align: 'right', render: (e) => formatCurrency(e.amount), sortValue: (e) => e.amount },
                     ]}
                     rows={rows}
