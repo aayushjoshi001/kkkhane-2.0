@@ -178,7 +178,8 @@ export default function SuppliersLedgerManager({
     }, [supplierExpenses])
 
     return (
-        <div className="space-y-6 pb-16 animate-fade-up">
+        <>
+            <div className="space-y-6 pb-16 animate-fade-up">
             {/* Clean Light Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
@@ -400,10 +401,11 @@ export default function SuppliersLedgerManager({
                 )}
 
             </div>
+        </div>
 
-            {/* Modal Dialog Form */}
-            {modalOpen && (
-                <div className="fixed inset-0 z-50 bg-gray-900/40 flex items-center justify-center p-4">
+        {/* Modal Dialog Form */}
+        {modalOpen && (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-md flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
                         
                         {/* Modal Header */}
@@ -505,6 +507,6 @@ export default function SuppliersLedgerManager({
                     </div>
                 </div>
             )}
-        </div>
+        </>
     )
 }
