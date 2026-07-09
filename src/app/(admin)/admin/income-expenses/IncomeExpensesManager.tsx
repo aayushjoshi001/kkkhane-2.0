@@ -70,15 +70,49 @@ export default function IncomeExpensesManager({
     // List tab and filters
     const [listTab, setListTab] = useState<'income' | 'expense'>('income')
     const [searchQuery, setSearchQuery] = useState('')
+    const [timeFilter, setTimeFilter] = useState<'all' | 'today' | 'week' | 'month' | 'year'>('all')
+
+    // Time-range filtered entries (aligned to Nepal Standard Time boundaries)
+    const timeFilteredEntries = useMemo(() => {
+        const now = new Date()
+        const NST_OFFSET_MS = (5 * 60 + 45) * 60 * 1000
+        const nowNst = new Date(now.getTime() + NST_OFFSET_MS)
+
+        // Reset hours for comparison boundaries in NST
+        const startOfToday = new Date(nowNst.getFullYear(), nowNst.getMonth(), nowNst.getDate())
+        
+        const currentDay = nowNst.getDay() // 0 = Sunday, 1 = Monday, etc.
+        const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay
+        const startOfWeek = new Date(nowNst.getFullYear(), nowNst.getMonth(), nowNst.getDate() + diffToMonday)
+        
+        const startOfMonth = new Date(nowNst.getFullYear(), nowNst.getMonth(), 1)
+        const startOfYear = new Date(nowNst.getFullYear(), 0, 1)
+
+        const filterFn = (createdAtStr: string) => {
+            const entryDate = new Date(createdAtStr)
+            const entryDateNst = new Date(entryDate.getTime() + NST_OFFSET_MS)
+            
+            if (timeFilter === 'today') return entryDateNst >= startOfToday
+            if (timeFilter === 'week') return entryDateNst >= startOfWeek
+            if (timeFilter === 'month') return entryDateNst >= startOfMonth
+            if (timeFilter === 'year') return entryDateNst >= startOfYear
+            return true
+        }
+
+        return {
+            income: incomeEntries.filter(e => filterFn(e.created_at)),
+            expenses: expenses.filter(e => filterFn(e.created_at))
+        }
+    }, [incomeEntries, expenses, timeFilter])
 
     // Calculations
     const totalIncome = useMemo(() => {
-        return incomeEntries.reduce((sum, e) => sum + Number(e.amount), 0)
-    }, [incomeEntries])
+        return timeFilteredEntries.income.reduce((sum, e) => sum + Number(e.amount), 0)
+    }, [timeFilteredEntries.income])
 
     const totalExpense = useMemo(() => {
-        return expenses.reduce((sum, e) => sum + Number(e.amount), 0)
-    }, [expenses])
+        return timeFilteredEntries.expenses.reduce((sum, e) => sum + Number(e.amount), 0)
+    }, [timeFilteredEntries.expenses])
 
     const netCashflow = totalIncome - totalExpense
 
@@ -219,35 +253,57 @@ export default function IncomeExpensesManager({
     // Filtered entries
     const filteredIncomeEntries = useMemo(() => {
         const q = searchQuery.toLowerCase().trim()
-        if (!q) return incomeEntries
-        return incomeEntries.filter(e =>
+        if (!q) return timeFilteredEntries.income
+        return timeFilteredEntries.income.filter(e =>
             e.description.toLowerCase().includes(q) ||
             e.income_categories?.name.toLowerCase().includes(q) ||
             String(e.amount).includes(q)
         )
-    }, [incomeEntries, searchQuery])
+    }, [timeFilteredEntries.income, searchQuery])
 
     const filteredExpenses = useMemo(() => {
         const q = searchQuery.toLowerCase().trim()
-        if (!q) return expenses
-        return expenses.filter(e =>
+        if (!q) return timeFilteredEntries.expenses
+        return timeFilteredEntries.expenses.filter(e =>
             e.description.toLowerCase().includes(q) ||
             e.expense_categories?.name.toLowerCase().includes(q) ||
             e.vendor_name?.toLowerCase().includes(q) ||
             String(e.amount).includes(q)
         )
-    }, [expenses, searchQuery])
+    }, [timeFilteredEntries.expenses, searchQuery])
 
     return (
         <div className="space-y-6">
             {/* Page Title Header */}
             <div className="bg-surface p-5 md:p-6 rounded-[var(--r-md)] border border-hairline shadow-sm">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                     <div>
                         <h1 className="text-2xl font-extrabold text-ink">Income & Expenses</h1>
                         <p className="text-ink-subtle text-sm mt-1">
                             Track transactions manually. Accessible to all users.
                         </p>
+                    </div>
+                    {/* Time Filter Controls */}
+                    <div className="flex flex-wrap gap-1.5 bg-surface-muted/40 p-1.5 border border-hairline rounded-xl">
+                        {(['all', 'today', 'week', 'month', 'year'] as const).map(f => {
+                            const labels = {
+                                all: 'All Time',
+                                today: 'Today',
+                                week: 'This Week',
+                                month: 'This Month',
+                                year: 'This Year'
+                            }
+                            return (
+                                <button
+                                    key={f}
+                                    type="button"
+                                    onClick={() => setTimeFilter(f)}
+                                    className={`px-3 py-1.5 text-xs font-black uppercase tracking-wider rounded-lg transition-all focus-ring ${timeFilter === f ? 'bg-brand-500 text-white shadow-sm' : 'text-ink-subtle hover:text-ink hover:bg-surface-muted'}`}
+                                >
+                                    {labels[f]}
+                                </button>
+                            )
+                        })}
                     </div>
                 </div>
             </div>
