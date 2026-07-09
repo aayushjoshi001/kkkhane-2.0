@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Eye, EyeOff, Lock, Mail, ArrowRight } from 'lucide-react'
 import { Turnstile } from '@marsidev/react-turnstile'
 import { useTurnstile, TURNSTILE_SITE_KEY } from '@/lib/hooks/useTurnstile'
+import { DEMO_ACCOUNTS, DEMO_PASSWORD } from '@/lib/demoAccounts'
 
 const initialState = { error: null as string | null }
 
@@ -187,14 +188,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
                     Development: Show Demo Accounts
                 </summary>
                 <div className="p-4 pt-0 grid grid-cols-2 gap-2 border-t border-hairline">
-                    {[
-                        { label: 'New User', email: 'newuser@srms.app', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200' },
-                        { label: 'Super Admin', email: 'demo@srms.app', color: 'bg-brand-100 text-orange-700 hover:bg-brand-200' },
-                        { label: 'Manager',    email: 'manager@srms.app', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200' },
-                        { label: 'Kitchen',    email: 'kitchen@srms.app', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' },
-                        { label: 'Waiter',     email: 'waiter@srms.app',  color: 'bg-purple-100 text-purple-700 hover:bg-purple-200' },
-                        { label: 'Cashier',    email: 'cashier@srms.app', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200' },
-                    ].map(({ label, email, color }) => (
+                    {DEMO_ACCOUNTS.map(({ label, email, color }) => (
                         <button
                             key={email}
                             type="button"
@@ -204,7 +198,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
                                     const f = document.getElementById('email') as HTMLInputElement | null
                                     const p = document.getElementById('password') as HTMLInputElement | null
                                     if (f) f.value = email
-                                    if (p) p.value = 'Password123!'
+                                    if (p) p.value = DEMO_PASSWORD
                                 }, 10)
                             }}
                         >
