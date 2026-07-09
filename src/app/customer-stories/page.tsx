@@ -5,7 +5,7 @@ const STORIES = [
     {
         name: 'Himalayan Grill',
         location: 'Thamel, Kathmandu',
-        emoji: '🏔️',
+        emoji: '️',
         gradient: 'from-indigo-50 to-blue-50',
         challenge: 'Paper tickets caused constant kitchen mix-ups during peak hours.',
         result: 'Moved the whole kitchen onto the KDS and cut order errors to near zero.',
@@ -29,7 +29,7 @@ const STORIES = [
     {
         name: 'Spice Route',
         location: 'Pokhara',
-        emoji: '🍛',
+        emoji: '',
         gradient: 'from-amber-50 to-yellow-50',
         challenge: 'No visibility into ingredient costs led to silent food waste every week.',
         result: 'Recipe-based inventory now deducts stock per order with low-stock alerts.',
@@ -41,7 +41,7 @@ const STORIES = [
     {
         name: 'Everest Dine',
         location: 'Boudha, Kathmandu',
-        emoji: '🥟',
+        emoji: '',
         gradient: 'from-emerald-50 to-teal-50',
         challenge: 'Manual eSewa/Khalti reconciliation took hours at the end of every day.',
         result: 'Screenshot verification confirms transfers instantly with IRD-compliant billing.',

@@ -73,7 +73,7 @@ export default async function Home() {
                 <div className="max-w-[1200px] mx-auto px-4 relative z-10 text-center">
                     <div className="inline-flex items-center gap-2 bg-surface/60 backdrop-blur-md px-4 py-2 rounded-full mb-8 border border-hairline-strong/60 shadow-sm animate-fade-up">
                         <span className="flex h-2 w-2 rounded-full bg-[var(--color-primary)] animate-pulse" />
-                        <span className="text-ink-muted font-bold text-sm tracking-wide">Built in Nepal 🇳🇵</span>
+                        <span className="text-ink-muted font-bold text-sm tracking-wide">Built in Nepal</span>
                     </div>
 
                     {/* Branding Display: "के के खाने?" from image */}
@@ -153,7 +153,7 @@ export default async function Home() {
                         </div>
 
                         {/* Standard bento block 1 */}
-                        <div className="bg-transparent rounded-[2.5rem] p-10 relative overflow-hidden group border border-hairline hover:border-hairline-strong transition-colors cursor-pointer">
+                        <div className="bg-surface rounded-[2.5rem] p-10 relative overflow-hidden group border border-hairline hover:border-hairline-strong transition-colors cursor-pointer">
                             <div className="h-full flex flex-col justify-between">
                                 <div>
                                     <div className="w-14 h-14 bg-surface rounded-2xl shadow-sm border border-hairline flex items-center justify-center mb-6 text-[var(--color-primary)]">
@@ -166,7 +166,7 @@ export default async function Home() {
                         </div>
 
                         {/* Standard bento block 2 */}
-                        <div className="bg-transparent rounded-[2.5rem] p-10 relative overflow-hidden group border border-hairline hover:border-hairline-strong transition-colors cursor-pointer">
+                        <div className="bg-surface rounded-[2.5rem] p-10 relative overflow-hidden group border border-hairline hover:border-hairline-strong transition-colors cursor-pointer">
                             <div className="h-full flex flex-col justify-between">
                                 <div>
                                     <div className="w-14 h-14 bg-surface rounded-2xl shadow-sm border border-hairline flex items-center justify-center mb-6 text-blue-500">

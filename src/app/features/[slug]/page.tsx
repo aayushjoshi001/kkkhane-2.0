@@ -1,12 +1,12 @@
 import { 
-    CheckCircle, 
-    Smartphone, Printer, Utensils, Receipt, 
+    CheckCircle, ClipboardList, Package, CircleDollarSign, Smartphone, Armchair, LineChart, Gift, Handshake,
+    Printer, Utensils, Receipt, 
     PackagePlus, ShoppingCart, TrendingDown, BellRing, 
     Wallet, FileText, CalendarCheck, PieChart, 
     QrCode, Eye, Pointer, CreditCard, 
     LayoutDashboard, Users, Check, RefreshCw, 
     BarChart3, Activity, Target, Download, 
-    Gift, Star, Heart, Award, 
+    Star, Heart, Award, 
     Share2, Link as LinkIcon, UserPlus, Zap
 } from 'lucide-react'
 import { MarketingNav, MarketingFooter, Eyebrow, MarketingButton } from '@/components/marketing'
@@ -15,7 +15,7 @@ const FEATURE_CONTENT: Record<string, any> = {
     'order-management': {
         title: 'Order Management with KOT',
         subtitle: 'Take orders faster and streamline the workflow from table to kitchen.',
-        icon: '📝',
+        icon: ClipboardList,
         description: 'Perfect for cafés, fine-dine restaurants, bars, or cloud kitchens. Keep everything digital and synchronized instantly. Orders from waiters and QR codes instantly appear on the KDS (Kitchen Display System), tracking prep times and eliminating lost paper tickets.',
         benefits: [
             'Digital KOTs directly to the kitchen display',
@@ -34,7 +34,7 @@ const FEATURE_CONTENT: Record<string, any> = {
     'inventory': {
         title: 'Inventory & Waste Control',
         subtitle: 'Know your stock before it runs out.',
-        icon: '📦',
+        icon: Package,
         description: 'Keep track of raw materials, manage suppliers, and automate low-stock alerts so you never run out of your best-selling ingredients. Every time a dish is sold, the exact ingredients are automatically deducted based on your saved recipes.',
         benefits: [
             'Real-time recipe-based ingredient deduction',
@@ -53,7 +53,7 @@ const FEATURE_CONTENT: Record<string, any> = {
     'accounting': {
         title: 'Accounting & Expense Manager',
         subtitle: 'Track every rupee that flows in and out of your restaurant.',
-        icon: '💰',
+        icon: CircleDollarSign,
         description: 'Stop using messy spreadsheets. Get a built-in expense tracker that connects directly to your sales data. Manage petty cash, supplier payments, utility bills, and instantly generate profit and loss statements.',
         benefits: [
             'Automated Daybook (Daily Closing) generation',
@@ -72,7 +72,7 @@ const FEATURE_CONTENT: Record<string, any> = {
     'qr-menu': {
         title: 'Digital QR Menu',
         subtitle: 'Scan, order, and pay without waiting for a menu.',
-        icon: '📱',
+        icon: Smartphone,
         description: 'Transform your dining experience with instant digital menus. Guests simply scan a QR code placed on their table to browse your full menu with images, customize their orders, and send them straight to the kitchen.',
         benefits: [
             'No app download required for customers',
@@ -91,7 +91,7 @@ const FEATURE_CONTENT: Record<string, any> = {
     'table-management': {
         title: 'Menu & Table Management',
         subtitle: 'Organize your floor plan and control your offerings.',
-        icon: '🪑',
+        icon: Armchair,
         description: 'Design your restaurant floor plan visually. Assign orders to specific tables, track table turnover times, and easily switch menus for different times of the day (Breakfast, Lunch, Happy Hour).',
         benefits: [
             'Visual drag-and-drop table layout editor',
@@ -110,7 +110,7 @@ const FEATURE_CONTENT: Record<string, any> = {
     'analytics': {
         title: 'Real-Time Sales Report',
         subtitle: 'Watch your sales grow in real-time from anywhere.',
-        icon: '📈',
+        icon: LineChart,
         description: 'Stop guessing how your restaurant is performing. Get real-time dashboards showing your revenue, top-selling items, busiest hours, and staff performance. Accessible from your phone no matter where you are.',
         benefits: [
             'Real-time 7-day trend charts',
@@ -129,7 +129,7 @@ const FEATURE_CONTENT: Record<string, any> = {
     'loyalty': {
         title: 'Loyalty & Rewards',
         subtitle: 'Turn first-time guests into regulars.',
-        icon: '🎁',
+        icon: Gift,
         description: 'Build a loyal customer base with our automated rewards system. Let customers earn points on every purchase and automatically send them special discounts or birthday bonuses to keep them coming back.',
         benefits: [
             'Automated points earn and redeem rules',
@@ -148,7 +148,7 @@ const FEATURE_CONTENT: Record<string, any> = {
     'refer-earn': {
         title: 'Refer & Earn',
         subtitle: 'Grow together and get rewarded.',
-        icon: '🤝',
+        icon: Handshake,
         description: 'Love KKKhane? Share it with other restaurant owners and earn rewards for every successful referral. Help us digitize the hospitality industry and get free Premium subscription months for your effort.',
         benefits: [
             'Unique tracking referral codes',
@@ -176,7 +176,7 @@ export default async function FeatureSlugPage({ params }: { params: Promise<{ sl
             <div className="min-h-screen bg-transparent text-ink font-sans">
                 <MarketingNav />
                 <div className="flex min-h-[70vh] flex-col items-center justify-center px-4 pt-20 text-center">
-                    <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-surface shadow-sm border border-hairline text-4xl">🚀</div>
+                    <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-surface shadow-sm border border-hairline text-4xl"></div>
                     <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-ink">Feature Coming Soon</h1>
                     <p className="mb-8 max-w-md font-medium text-ink-subtle">
                         We are currently crafting this feature. Stay tuned for exciting updates!

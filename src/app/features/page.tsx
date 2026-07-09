@@ -1,14 +1,14 @@
 import Link from 'next/link'
-import { ArrowRight, CheckCircle } from 'lucide-react'
+import { ArrowRight, CheckCircle, Smartphone, ChefHat, CreditCard, Users, Gift, BarChart } from 'lucide-react'
 import { MarketingNav, MarketingFooter, Section, Eyebrow, MarketingButton } from '@/components/marketing'
 
 const FEATURES = [
-    { id: 1, title: 'QR Code Ordering', icon: '📱', description: 'Customers scan QR codes at their table to access your menu instantly on any smartphone.', items: ['No app download required', 'Real-time menu updates', 'Multiple modifier groups', 'Image support for dishes'] },
-    { id: 2, title: 'Kitchen Display System', icon: '👨‍🍳', description: 'Real-time order management with live updates and color-coded status tracking for kitchen staff.', items: ['Live order queue', 'Status management', 'Takeout order queue', 'Prep time tracking'] },
-    { id: 3, title: 'Nepal QR Payments', icon: '💳', description: 'Accept all major Nepal payment methods with screenshot verification and full VAT compliance.', items: ['eSewa, Khalti, Fonepay', 'Screenshot verification', 'VAT & PAN compliant', 'Automatic invoice generation'] },
-    { id: 4, title: 'Staff Management', icon: '👥', description: 'Complete staff management with role-based access, shift tracking, and performance analytics.', items: ['4 staff role types', 'Shift clock in/out', 'Break tracking', 'Performance metrics'] },
-    { id: 5, title: 'Loyalty Program', icon: '🎁', description: 'Build customer loyalty with tiered rewards, points systems, and birthday bonuses.', items: ['4 membership tiers', 'Points earn/redeem', 'Birthday bonuses', 'Referral rewards'] },
-    { id: 6, title: 'Analytics & Reports', icon: '📊', description: 'Comprehensive business analytics with revenue trends, KPIs, and detailed Z-reports.', items: ['7-day trend charts', 'EOD Z-reports', 'Revenue tracking', 'COGS analysis'] },
+    { id: 1, title: 'QR Code Ordering', icon: Smartphone, description: 'Customers scan QR codes at their table to access your menu instantly on any smartphone.', items: ['No app download required', 'Real-time menu updates', 'Multiple modifier groups', 'Image support for dishes'] },
+    { id: 2, title: 'Kitchen Display System', icon: ChefHat, description: 'Real-time order management with live updates and color-coded status tracking for kitchen staff.', items: ['Live order queue', 'Status management', 'Takeout order queue', 'Prep time tracking'] },
+    { id: 3, title: 'Nepal QR Payments', icon: CreditCard, description: 'Accept all major Nepal payment methods with screenshot verification and full VAT compliance.', items: ['eSewa, Khalti, Fonepay', 'Screenshot verification', 'VAT & PAN compliant', 'Automatic invoice generation'] },
+    { id: 4, title: 'Staff Management', icon: Users, description: 'Complete staff management with role-based access, shift tracking, and performance analytics.', items: ['4 staff role types', 'Shift clock in/out', 'Break tracking', 'Performance metrics'] },
+    { id: 5, title: 'Loyalty Program', icon: Gift, description: 'Build customer loyalty with tiered rewards, points systems, and birthday bonuses.', items: ['4 membership tiers', 'Points earn/redeem', 'Birthday bonuses', 'Referral rewards'] },
+    { id: 6, title: 'Analytics & Reports', icon: BarChart, description: 'Comprehensive business analytics with revenue trends, KPIs, and detailed Z-reports.', items: ['7-day trend charts', 'EOD Z-reports', 'Revenue tracking', 'COGS analysis'] },
 ]
 
 export default function FeaturesPage() {

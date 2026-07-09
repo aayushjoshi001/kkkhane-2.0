@@ -78,7 +78,7 @@ export default function MarketingFooter() {
                 {/* Contact band */}
                 <div className="mb-12 rounded-3xl border border-hairline bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 p-8 shadow-sm sm:p-10">
                     <div className="mb-8">
-                        <h3 className="mb-2 flex items-center gap-2 text-2xl font-extrabold text-ink">Get in Touch 👋</h3>
+                        <h3 className="mb-2 flex items-center gap-2 text-2xl font-extrabold text-ink">Get in Touch</h3>
                         <p className="font-medium text-ink-muted">Ready to transform your restaurant? Contact our team today.</p>
                     </div>
                     <div className="grid gap-6 md:grid-cols-3">

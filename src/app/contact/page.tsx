@@ -1,4 +1,5 @@
 import { MarketingNav, MarketingFooter, Eyebrow } from '@/components/marketing'
+import { Mail, Phone, MapPin } from 'lucide-react'
 import ContactForm from '@/components/marketing/ContactForm'
 import ContactMapMount from '@/components/marketing/ContactMapMount'
 
