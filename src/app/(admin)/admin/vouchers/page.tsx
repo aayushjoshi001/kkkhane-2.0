@@ -45,12 +45,26 @@ export default async function VouchersPage() {
             .order('full_name', { ascending: true })
     ])
 
+    // Check if active Day Book session is open for today (in NST timezone)
+    const now = new Date()
+    const NST_OFFSET_MS = (5 * 60 + 45) * 60 * 1000
+    const todayDateNst = new Date(now.getTime() + NST_OFFSET_MS).toISOString().split('T')[0]
+
+    const { data: openSession } = await supabase
+        .from('day_book_sessions')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .eq('date', todayDateNst)
+        .eq('status', 'open')
+        .maybeSingle()
+
     return (
         <VouchersManager
             bankAccounts={bankAccounts || []}
             initialEntries={voucherEntries || []}
             suppliers={suppliers || []}
             staffList={staff || []}
+            hasOpenSession={!!openSession}
         />
     )
 }

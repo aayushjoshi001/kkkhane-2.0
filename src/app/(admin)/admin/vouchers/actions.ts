@@ -373,3 +373,79 @@ export async function deleteVoucherAction(id: string) {
 
     return { success: true }
 }
+
+export async function openTodayDayBookSessionAction() {
+    let user
+    try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
+
+    const supabase = await createAdminClient()
+
+    const now = new Date()
+    const NST_OFFSET_MS = (5 * 60 + 45) * 60 * 1000
+    const todayDateNst = new Date(now.getTime() + NST_OFFSET_MS).toISOString().split('T')[0]
+
+    // Calculate opening balances from last closed session
+    const { data: lastSession } = await supabase
+        .from('day_book_sessions')
+        .select('id, opening_balance, opening_bank_balance')
+        .eq('restaurant_id', user.restaurantId)
+        .eq('status', 'closed')
+        .lt('date', todayDateNst)
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+    let openingBalance = 0
+    let openingBankBalance = 0
+
+    if (lastSession) {
+        const { data: totals } = await supabase
+            .from('day_book_entries')
+            .select('type, amount')
+            .eq('session_id', lastSession.id)
+
+        const cashIn = (totals ?? [])
+            .filter((e) => e.type === 'cash_in')
+            .reduce((sum, e) => sum + Number(e.amount), 0)
+
+        const cashOut = (totals ?? [])
+            .filter((e) => e.type === 'cash_out')
+            .reduce((sum, e) => sum + Number(e.amount), 0)
+
+        openingBalance = Number(lastSession.opening_balance) + cashIn - cashOut
+        if (openingBalance < 0) openingBalance = 0
+
+        const bankIn = (totals ?? [])
+            .filter((e) => e.type === 'bank_in')
+            .reduce((sum, e) => sum + Number(e.amount), 0)
+
+        const bankOut = (totals ?? [])
+            .filter((e) => e.type === 'bank_out')
+            .reduce((sum, e) => sum + Number(e.amount), 0)
+
+        openingBankBalance = Number(lastSession.opening_bank_balance ?? 0) + bankIn - bankOut
+        if (openingBankBalance < 0) openingBankBalance = 0
+    }
+
+    const { data: session, error } = await supabase
+        .from('day_book_sessions')
+        .insert({
+            restaurant_id: user.restaurantId,
+            date: todayDateNst,
+            opening_balance: openingBalance,
+            opening_bank_balance: openingBankBalance,
+            status: 'open',
+            created_by: user.id
+        })
+        .select()
+        .single()
+
+    if (error) return { error: error.message }
+
+    revalidatePath(PATH)
+    revalidatePath('/admin/cash-book')
+    revalidatePath('/admin/bank-book')
+    revalidatePath('/admin/bank-ledger')
+
+    return { data: session }
+}

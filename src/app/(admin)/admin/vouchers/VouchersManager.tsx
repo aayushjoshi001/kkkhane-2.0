@@ -5,7 +5,7 @@ import {
     FileText, Plus, Search, Trash2, Printer, X, Loader2, ArrowUpRight, ArrowDownRight, RefreshCw, Check, AlertCircle
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
-import { createVoucherAction, deleteVoucherAction, approveChequeAction, rejectChequeAction } from './actions'
+import { createVoucherAction, deleteVoucherAction, approveChequeAction, rejectChequeAction, openTodayDayBookSessionAction } from './actions'
 import { toast } from 'react-hot-toast'
 
 interface BankAccount {
@@ -63,6 +63,7 @@ interface VouchersManagerProps {
     initialEntries: RawVoucherEntry[]
     suppliers: { id: string; name: string }[]
     staffList: { id: string; full_name: string }[]
+    hasOpenSession: boolean
 }
 
 function amountInWords(amount: number): string {
@@ -90,9 +91,32 @@ export default function VouchersManager({
     bankAccounts,
     initialEntries,
     suppliers,
-    staffList
+    staffList,
+    hasOpenSession
 }: VouchersManagerProps) {
     const [entriesList, setEntriesList] = useState<RawVoucherEntry[]>(initialEntries)
+
+    // Session opening states
+    const [openingSession, setOpeningSession] = useState(false)
+    const [sessionOpenState, setSessionOpenState] = useState(hasOpenSession)
+
+    const handleOpenSession = async () => {
+        setOpeningSession(true)
+        try {
+            const res = await openTodayDayBookSessionAction()
+            if (res.error) {
+                toast.error(res.error)
+            } else {
+                toast.success("Day Book session opened successfully!")
+                setSessionOpenState(true)
+                window.location.reload()
+            }
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Failed to open session")
+        } finally {
+            setOpeningSession(false)
+        }
+    }
 
     // Form Modal states
     const [createModalOpen, setCreateModalOpen] = useState(false)
@@ -426,6 +450,30 @@ export default function VouchersManager({
 
     return (
         <div className="space-y-6 pb-16 animate-fade-up">
+            {/* Session Alert Banner */}
+            {!sessionOpenState && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in">
+                    <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                            <AlertCircle size={20} />
+                        </div>
+                        <div>
+                            <h4 className="font-extrabold text-amber-900 text-sm">No Active Day Book Session Open</h4>
+                            <p className="text-xs text-amber-700 mt-0.5 font-bold">
+                                You must open today&apos;s Day Book session to create vouchers and post entries.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={handleOpenSession}
+                        disabled={openingSession}
+                        className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition shadow-md shadow-amber-600/10 focus-ring shrink-0 flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                        {openingSession ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} Open Today&apos;s Session
+                    </button>
+                </div>
+            )}
+
             {/* Header section */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
@@ -444,13 +492,30 @@ export default function VouchersManager({
 
                 <div className="flex gap-2 shrink-0">
                     <button
-                        onClick={() => { setVoucherType('receipt'); setPaymentMode('cash'); setCreateModalOpen(true); }}
+                        onClick={() => {
+                            if (!sessionOpenState) {
+                                toast.error("Please open today's Day Book session first!")
+                                return
+                            }
+                            setVoucherType('receipt');
+                            setPaymentMode('cash');
+                            setCreateModalOpen(true);
+                        }}
                         className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md shadow-emerald-500/10 focus-ring"
                     >
                         <Plus size={15} /> Receipt Voucher (In)
                     </button>
                     <button
-                        onClick={() => { setVoucherType('payment'); setPaymentMode('cash'); setCreateModalOpen(true); setPayoutCategory('other'); }}
+                        onClick={() => {
+                            if (!sessionOpenState) {
+                                toast.error("Please open today's Day Book session first!")
+                                return
+                            }
+                            setVoucherType('payment');
+                            setPaymentMode('cash');
+                            setCreateModalOpen(true);
+                            setPayoutCategory('other');
+                        }}
                         className="flex items-center gap-1.5 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md shadow-rose-500/10 focus-ring"
                     >
                         <Plus size={15} /> Payment Voucher (Out)
