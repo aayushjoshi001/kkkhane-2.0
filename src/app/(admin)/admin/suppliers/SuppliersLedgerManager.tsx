@@ -31,12 +31,14 @@ interface SuppliersLedgerManagerProps {
     initialSuppliers: Supplier[]
     expenses: Expense[]
     expenseCategories: Array<{ id: string; name: string }>
+    bankAccounts: Array<{ id: string; name: string; bank_name: string | null; account_number: string | null }>
 }
 
 export default function SuppliersLedgerManager({
     initialSuppliers,
     expenses,
-    expenseCategories
+    expenseCategories,
+    bankAccounts
 }: SuppliersLedgerManagerProps) {
     const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers)
     const [expensesList, setExpensesList] = useState<Expense[]>(expenses)
@@ -926,14 +928,20 @@ export default function SuppliersLedgerManager({
                                 {billPaymentSource === 'bank' && (
                                     <div className="animate-in slide-in-from-top-1 duration-150">
                                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Bank Name</label>
-                                        <input
-                                            type="text"
-                                            placeholder="e.g. NIC Asia, Nabil Bank"
+                                        <select
                                             value={billBankName}
                                             onChange={e => setBillBankName(e.target.value)}
                                             required
                                             className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
-                                        />
+                                        >
+                                            <option value="">Select Bank Account</option>
+                                            {bankAccounts.map(b => (
+                                                <option key={b.id} value={b.name}>{b.name} ({b.account_number})</option>
+                                            ))}
+                                            {bankAccounts.length === 0 && (
+                                                <option value="General Bank">General Bank</option>
+                                            )}
+                                        </select>
                                     </div>
                                 )}
                             </div>

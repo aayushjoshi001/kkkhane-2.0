@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { createBankAccountAction } from './actions'
 import {
     TrendingUp, TrendingDown, Plus, X, Loader2,
     Lock, Trash2, CalendarDays, CheckCircle2, AlertCircle, Landmark
@@ -20,6 +21,7 @@ interface BankBookClientProps {
     userRole: string
     previousClosingBankBalance: number | null
     previousClosingCashBalance: number
+    bankAccounts: Array<{ id: string; name: string; bank_name: string | null; account_number: string | null }>
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -60,10 +62,19 @@ export default function BankBookClient({
     userRole,
     previousClosingBankBalance,
     previousClosingCashBalance,
+    bankAccounts
 }: BankBookClientProps) {
     const [session, setSession]   = useState<DayBookSession | null>(initialSession)
     const [entries, setEntries]   = useState<DayBookEntry[]>(initialEntries)
     const [totals, setTotals]     = useState(initialTotals)
+    const [bankAccountsList, setBankAccountsList] = useState(bankAccounts)
+
+    // Add Bank Modal state
+    const [addBankModalOpen, setAddBankModalOpen] = useState(false)
+    const [newBankName, setNewBankName] = useState('')
+    const [newBankAccountNumber, setNewBankAccountNumber] = useState('')
+    const [newBankDisplayName, setNewBankDisplayName] = useState('')
+    const [submittingBank, setSubmittingBank] = useState(false)
 
     // Open Day state
     const [isOpeningDay, setIsOpeningDay]       = useState(false)
@@ -205,6 +216,44 @@ export default function BankBookClient({
         }
     }
 
+    // ── Add Bank Account ──────────────────────────────────────
+    const handleAddBank = async (e: React.FormEvent) => {
+        e.preventDefault()
+        const bName = newBankName.trim()
+        const accNum = newBankAccountNumber.trim()
+        const dispName = newBankDisplayName.trim() || bName
+
+        if (!bName) { toast.error('Bank Name is required'); return }
+        if (!accNum) { toast.error('Account Number is required'); return }
+
+        setSubmittingBank(true)
+        try {
+            const res = await createBankAccountAction({
+                bank_name: bName,
+                account_number: accNum,
+                display_name: dispName,
+            })
+            if (res.error) {
+                toast.error(res.error)
+            } else if (res.data) {
+                setBankAccountsList(prev => [...prev, res.data].sort((a, b) => a.name.localeCompare(b.name)))
+                setNewBankName('')
+                setNewBankAccountNumber('')
+                setNewBankDisplayName('')
+                setAddBankModalOpen(false)
+                
+                // Auto select it in the entry form
+                setEntryForm(prev => ({ ...prev, bank_name: res.data.name }))
+                
+                toast.success('Bank account created successfully!')
+            }
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Failed to create bank account')
+        } finally {
+            setSubmittingBank(false)
+        }
+    }
+
     // ── Re-open Day ──────────────────────────────────────────
     const [isReopeningDay, setIsReopeningDay] = useState(false)
     const handleReopenDay = async () => {
@@ -252,6 +301,14 @@ export default function BankBookClient({
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
+                    {canManage && (
+                        <button
+                            onClick={() => setAddBankModalOpen(true)}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl text-sm transition-all shadow-md shadow-brand-500/20"
+                        >
+                            <Plus size={16} /> Add Bank
+                        </button>
+                    )}
                     {session?.status === 'open' && canManage && (
                         <button
                             onClick={handleCloseDay}
@@ -541,13 +598,20 @@ export default function BankBookClient({
 
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Bank Name</label>
-                                <input
-                                    type="text"
+                                <select
                                     value={entryForm.bank_name}
                                     onChange={e => setEntryForm(prev => ({ ...prev, bank_name: e.target.value }))}
-                                    placeholder="e.g. NIC Asia, Nabil Bank"
+                                    required
                                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                />
+                                >
+                                    <option value="">Select Bank Account</option>
+                                    {bankAccountsList.map(b => (
+                                        <option key={b.id} value={b.name}>{b.name} ({b.account_number})</option>
+                                    ))}
+                                    {bankAccountsList.length === 0 && (
+                                        <option value="General Bank">General Bank</option>
+                                    )}
+                                </select>
                             </div>
 
                             <div>
@@ -576,6 +640,86 @@ export default function BankBookClient({
                                 Add Entry
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── ADD BANK ACCOUNT MODAL ── */}
+            {addBankModalOpen && (
+                <div className="fixed inset-0 z-50 bg-gray-900/40 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
+                        {/* Modal Header */}
+                        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                            <h3 className="font-extrabold text-gray-900 flex items-center gap-2">
+                                <Landmark size={18} className="text-brand-500" />
+                                Add New Bank Account
+                            </h3>
+                            <button onClick={() => setAddBankModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Modal Form Body */}
+                        <form onSubmit={handleAddBank}>
+                            <div className="p-6 space-y-4">
+                                {/* Bank Name */}
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Bank Name *</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. NIC Asia Bank, Nabil Bank"
+                                        value={newBankName}
+                                        onChange={e => setNewBankName(e.target.value)}
+                                        required
+                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                    />
+                                </div>
+
+                                {/* Account Number */}
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Account Number *</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. 1234567890"
+                                        value={newBankAccountNumber}
+                                        onChange={e => setNewBankAccountNumber(e.target.value)}
+                                        required
+                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                    />
+                                </div>
+
+                                {/* Account Display Name / Nickname */}
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Account Display Name (Optional)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. NIC Asia - Main Business"
+                                        value={newBankDisplayName}
+                                        onChange={e => setNewBankDisplayName(e.target.value)}
+                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Modal Footer Actions */}
+                            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-end gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setAddBankModalOpen(false)}
+                                    className="px-4 py-2 text-gray-400 hover:text-gray-600 font-bold text-sm"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={submittingBank}
+                                    className="px-6 py-2 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-colors"
+                                >
+                                    {submittingBank && <Loader2 size={14} className="animate-spin" />}
+                                    Create Bank
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

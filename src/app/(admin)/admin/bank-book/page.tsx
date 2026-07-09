@@ -24,6 +24,14 @@ export default async function BankBookPage() {
         .eq('date', todayDate)
         .single()
 
+    // Fetch active bank accounts
+    const { data: bankAccounts } = await supabase
+        .from('bank_accounts')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', true)
+        .order('name', { ascending: true })
+
     // Fetch today's entries (if session exists)
     let entries: DayBookEntry[] = []
     if (session) {
@@ -114,6 +122,7 @@ export default async function BankBookPage() {
             userRole={currentUser.role}
             previousClosingBankBalance={previousClosingBankBalance}
             previousClosingCashBalance={previousClosingCashBalance}
+            bankAccounts={bankAccounts || []}
         />
     )
 }

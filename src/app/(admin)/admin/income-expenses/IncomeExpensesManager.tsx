@@ -33,13 +33,13 @@ interface ExpenseEntry {
     category_id: string
     expense_categories: Category | null
 }
-
 interface IncomeExpensesManagerProps {
     initialIncomeCategories: Category[]
     initialExpenseCategories: Category[]
     initialIncomeEntries: IncomeEntry[]
     initialExpenses: ExpenseEntry[]
     suppliers: Array<{ id: string; name: string }>
+    bankAccounts: Array<{ id: string; name: string; bank_name: string | null; account_number: string | null }>
 }
 
 export default function IncomeExpensesManager({
@@ -47,7 +47,8 @@ export default function IncomeExpensesManager({
     initialExpenseCategories,
     initialIncomeEntries,
     initialExpenses,
-    suppliers
+    suppliers,
+    bankAccounts
 }: IncomeExpensesManagerProps) {
     // Categories & Entries state
     const [incomeCategories, setIncomeCategories] = useState<Category[]>(initialIncomeCategories)
@@ -508,14 +509,20 @@ export default function IncomeExpensesManager({
                         {paymentSource === 'bank' && (
                             <div>
                                 <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Bank Name</label>
-                                <input
-                                    type="text"
-                                    placeholder="e.g. NIC Asia, Nabil Bank"
+                                <select
                                     value={bankName}
                                     onChange={e => setBankName(e.target.value)}
                                     required
-                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
-                                />
+                                    className="w-full px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
+                                >
+                                    <option value="">Select Bank Account</option>
+                                    {bankAccounts.map(b => (
+                                        <option key={b.id} value={b.name}>{b.name} ({b.account_number})</option>
+                                    ))}
+                                    {bankAccounts.length === 0 && (
+                                        <option value="General Bank">General Bank</option>
+                                    )}
+                                </select>
                             </div>
                         )}
 

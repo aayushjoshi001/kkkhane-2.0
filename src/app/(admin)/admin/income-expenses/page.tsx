@@ -12,13 +12,14 @@ export default async function IncomeExpensesPage() {
     const supabase = await createAdminClient()
     const restaurantId = currentUser.restaurantId
 
-    // Fetch categories, entries, and suppliers in parallel
+    // Fetch categories, entries, suppliers, and bank accounts in parallel
     const [
         { data: incomeCategories },
         { data: expenseCategories },
         { data: incomeEntries },
         { data: expenses },
-        { data: suppliers }
+        { data: suppliers },
+        { data: bankAccounts }
     ] = await Promise.all([
         supabase
             .from('income_categories')
@@ -46,6 +47,12 @@ export default async function IncomeExpensesPage() {
             .from('suppliers')
             .select('id, name')
             .eq('restaurant_id', restaurantId)
+            .order('name', { ascending: true }),
+        supabase
+            .from('bank_accounts')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
             .order('name', { ascending: true })
     ])
 
@@ -56,6 +63,7 @@ export default async function IncomeExpensesPage() {
             initialIncomeEntries={incomeEntries || []}
             initialExpenses={expenses || []}
             suppliers={suppliers || []}
+            bankAccounts={bankAccounts || []}
         />
     )
 }
