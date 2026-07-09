@@ -38,16 +38,40 @@ const getCachedRestaurantStatus = unstable_cache(
 // refresh token is stale. The proxy/middleware clears the bad cookie; a Server
 // Component can't write cookies, so here we just treat it as logged-out so a
 // stale token can't crash a render or spam the logs on every request.
+//
+// A *transient* failure is a different thing entirely. Treating a network blip or
+// a rotation race (`refresh_token_already_used`, raised when parallel requests
+// present the same refresh token) as "logged out" bounces a perfectly valid
+// session to /login mid-navigation — the sudden-logout bug. Retry those once;
+// only a genuinely rejected session falls through to null.
+function isTransientAuthError(error: { code?: string; status?: number; name?: string }): boolean {
+    // The rotation race: another concurrent request already swapped this refresh
+    // token. The session is fine — the retry picks up the rotated cookie.
+    if (error.code === 'refresh_token_already_used') return true
+    if (error.name === 'AuthRetryableFetchError') return true
+    // 5xx, or no response at all, is the auth server or the network — not a
+    // statement about the user's session. A 4xx is a real rejection.
+    const status = error.status ?? 0
+    return status === 0 || status >= 500
+}
+
 async function safeGetUser(
     supabase: Awaited<ReturnType<typeof createServerClient>>
 ) {
-    try {
-        const { data, error } = await supabase.auth.getUser()
-        if (error) return null
-        return data.user
-    } catch {
-        return null
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            const { data, error } = await supabase.auth.getUser()
+            if (!error) return data.user
+            if (attempt === 0 && isTransientAuthError(error)) continue
+            return null
+        } catch {
+            // A thrown fetch failure is always transient — the request never
+            // reached the auth server, so it says nothing about the session.
+            if (attempt === 0) continue
+            return null
+        }
     }
+    return null
 }
 
 async function _getCurrentUser(options?: { allowSuspended?: boolean }): Promise<CurrentUser> {
