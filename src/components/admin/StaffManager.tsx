@@ -273,6 +273,7 @@ export default function StaffManager({
                 toast.error(res.error)
             } else {
                 toast.success('Transaction recorded successfully')
+                const userId = transactionModal.user.id
                 setTransactionModal({
                     isOpen: false,
                     user: null,
@@ -283,6 +284,19 @@ export default function StaffManager({
                     saving: false
                 })
                 mutate()
+                // If ledger modal is open for the same user, refresh its entries
+                setLedgerModal(prev => {
+                    if (prev.isOpen && prev.user?.id === userId) {
+                        fetchStaffLedgerAction(userId).then(data => {
+                            setLedgerModal(p => ({
+                                ...p,
+                                entries: data.entries,
+                                user: p.user ? { ...p.user, opening_balance: data.openingBalance, monthly_salary: data.monthlySalary } : null
+                            }))
+                        }).catch(() => {})
+                    }
+                    return prev
+                })
             }
         } catch (e: any) {
             toast.error(e.message || 'Failed to record transaction')
@@ -1538,7 +1552,7 @@ export default function StaffManager({
 
             {/* Record Payment Transaction Modal */}
             {transactionModal.isOpen && transactionModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
                     <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                         <div className="px-6 py-5 border-b border-hairline flex items-center justify-between bg-surface-muted/30">
                             <div>
@@ -1642,7 +1656,27 @@ export default function StaffManager({
                                 <h3 className="font-extrabold text-ink text-base">Staff Ledger Statement</h3>
                                 <p className="text-[11px] text-ink-subtle uppercase tracking-wider font-bold mt-0.5">{ledgerModal.user.full_name} • Monthly Salary: {formatCurrency(ledgerModal.user.monthly_salary)}</p>
                             </div>
-                            <button onClick={() => setLedgerModal(prev => ({ ...prev, isOpen: false }))} className="w-8 h-8 flex items-center justify-center rounded-[var(--r-md)] text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors">×</button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => {
+                                        if (!ledgerModal.user) return
+                                        setTransactionModal({
+                                            isOpen: true,
+                                            user: ledgerModal.user,
+                                            entryType: 'salary_payout',
+                                            amount: '',
+                                            paymentMethod: 'cash',
+                                            note: '',
+                                            saving: false
+                                        })
+                                    }}
+                                    className="px-3 py-1.5 text-[11px] font-black text-white bg-brand-500 hover:bg-brand-600 rounded-[var(--r-sm)] flex items-center gap-1.5 transition shadow-sm"
+                                >
+                                    <Plus size={12} />
+                                    Add Transaction
+                                </button>
+                                <button onClick={() => setLedgerModal(prev => ({ ...prev, isOpen: false }))} className="w-8 h-8 flex items-center justify-center rounded-[var(--r-md)] text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors">×</button>
+                            </div>
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-6 space-y-5 min-h-0">
