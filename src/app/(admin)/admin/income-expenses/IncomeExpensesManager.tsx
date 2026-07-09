@@ -59,6 +59,8 @@ export default function IncomeExpensesManager({
     const [categoryId, setCategoryId] = useState('')
     const [description, setDescription] = useState('')
     const [vendorName, setVendorName] = useState('')
+    const [paymentSource, setPaymentSource] = useState<'cash' | 'bank'>('cash')
+    const [bankName, setBankName] = useState('')
     const [submitting, setSubmitting] = useState(false)
 
     // Category modal/inline-editor
@@ -168,6 +170,10 @@ export default function IncomeExpensesManager({
             toast.error('Description is required')
             return
         }
+        if (paymentSource === 'bank' && !bankName.trim()) {
+            toast.error('Bank Name is required when payment source is Bank')
+            return
+        }
 
         setSubmitting(true)
         try {
@@ -176,7 +182,9 @@ export default function IncomeExpensesManager({
                 category_id: categoryId,
                 amount: amt,
                 description: description.trim(),
-                vendor_name: activeTab === 'expense' ? vendorName.trim() : undefined
+                vendor_name: activeTab === 'expense' ? vendorName.trim() : undefined,
+                payment_source: paymentSource,
+                bank_name: paymentSource === 'bank' ? bankName.trim() : undefined
             })
 
             if (res.error) {
@@ -196,6 +204,8 @@ export default function IncomeExpensesManager({
                 setCategoryId('')
                 setDescription('')
                 setVendorName('')
+                setPaymentSource('cash')
+                setBankName('')
                 toast.success(`${activeTab === 'income' ? 'Income' : 'Expense'} logged successfully!`)
             }
         } catch (err) {
@@ -464,6 +474,42 @@ export default function IncomeExpensesManager({
                                 </div>
                             )}
                         </div>
+
+                        {/* Payment Source */}
+                        <div>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Payment Source (Post to Cash/Bank Book)</label>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setPaymentSource('cash')}
+                                    className={`flex-1 py-2.5 text-xs font-black uppercase tracking-wider border rounded-xl transition-all focus-ring ${paymentSource === 'cash' ? 'bg-[#ff5a00]/10 border-[#ff5a00]/30 text-[#ff5a00] shadow-sm' : 'bg-surface border-hairline text-ink-subtle hover:text-ink hover:bg-surface-muted/50'}`}
+                                >
+                                    Cash Book
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setPaymentSource('bank')}
+                                    className={`flex-1 py-2.5 text-xs font-black uppercase tracking-wider border rounded-xl transition-all focus-ring ${paymentSource === 'bank' ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm' : 'bg-surface border-hairline text-ink-subtle hover:text-ink hover:bg-surface-muted/50'}`}
+                                >
+                                    Bank Book
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Bank Name (conditional) */}
+                        {paymentSource === 'bank' && (
+                            <div>
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Bank Name</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. NIC Asia, Nabil Bank"
+                                    value={bankName}
+                                    onChange={e => setBankName(e.target.value)}
+                                    required
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
+                                />
+                            </div>
+                        )}
 
                         {/* Vendor (Expenses only) */}
                         {activeTab === 'expense' && (
