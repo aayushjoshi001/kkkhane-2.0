@@ -22,7 +22,7 @@ export default function ContactPage() {
             </section>
 
             {/* Contact form */}
-            <section className="bg-[#FAFAF8] pb-24 pt-4">
+            <section className="bg-[#f6eee2] pb-24 pt-4">
                 <div className="mx-auto max-w-6xl px-4 sm:px-6">
                     <div className="grid gap-12 rounded-3xl border border-hairline bg-surface p-8 shadow-xl md:grid-cols-5 md:p-12 lg:gap-20">
                         {/* Form */}
@@ -32,7 +32,7 @@ export default function ContactPage() {
                         </div>
 
                         {/* Info */}
-                        <div className="h-fit space-y-10 rounded-2xl border border-hairline bg-[#FAFAF8] p-8 md:col-span-2">
+                        <div className="h-fit space-y-10 rounded-2xl border border-hairline bg-[#f6eee2] p-8 md:col-span-2">
                             <div>
                                 <h3 className="mb-3 text-xl font-extrabold text-ink">Direct Contact</h3>
                                 <div className="space-y-4">

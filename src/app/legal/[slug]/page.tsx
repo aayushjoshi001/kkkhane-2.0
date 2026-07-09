@@ -92,7 +92,7 @@ export default async function LegalPage({ params }: { params: Promise<{ slug: st
 
     if (!page) {
         return (
-            <div className="min-h-screen bg-[#FAFAF8] text-ink font-sans">
+            <div className="min-h-screen bg-[#f6eee2] text-ink font-sans">
                 <MarketingNav />
                 <div className="flex min-h-[70vh] flex-col items-center justify-center px-4 pt-20 text-center">
                     <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-surface border border-hairline shadow-sm text-4xl">📄</div>
@@ -106,7 +106,7 @@ export default async function LegalPage({ params }: { params: Promise<{ slug: st
     }
 
     return (
-        <div className="min-h-screen bg-[#FAFAF8] text-ink font-sans">
+        <div className="min-h-screen bg-[#f6eee2] text-ink font-sans">
             <MarketingNav />
 
             <main className="pb-24 pt-32">

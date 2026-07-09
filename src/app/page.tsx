@@ -63,7 +63,7 @@ export default async function Home() {
             />
 
             {/* ── 1. Ultra Premium Hero Section ────────────────────────────────────────────── */}
-            <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden bg-[#FAFAF8]">
+            <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden bg-[#f6eee2]">
                 {/* Stunning Gradient Background */}
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[800px] pointer-events-none">
                     <div className="absolute top-[20%] left-[20%] w-[500px] h-[500px] bg-[var(--color-primary)] opacity-[0.08] blur-[100px] rounded-full mix-blend-multiply animate-pulse" />
@@ -153,7 +153,7 @@ export default async function Home() {
                         </div>
 
                         {/* Standard bento block 1 */}
-                        <div className="bg-[#FAFAF8] rounded-[2.5rem] p-10 relative overflow-hidden group border border-hairline hover:border-hairline-strong transition-colors cursor-pointer">
+                        <div className="bg-[#f6eee2] rounded-[2.5rem] p-10 relative overflow-hidden group border border-hairline hover:border-hairline-strong transition-colors cursor-pointer">
                             <div className="h-full flex flex-col justify-between">
                                 <div>
                                     <div className="w-14 h-14 bg-surface rounded-2xl shadow-sm border border-hairline flex items-center justify-center mb-6 text-[var(--color-primary)]">
@@ -166,7 +166,7 @@ export default async function Home() {
                         </div>
 
                         {/* Standard bento block 2 */}
-                        <div className="bg-[#FAFAF8] rounded-[2.5rem] p-10 relative overflow-hidden group border border-hairline hover:border-hairline-strong transition-colors cursor-pointer">
+                        <div className="bg-[#f6eee2] rounded-[2.5rem] p-10 relative overflow-hidden group border border-hairline hover:border-hairline-strong transition-colors cursor-pointer">
                             <div className="h-full flex flex-col justify-between">
                                 <div>
                                     <div className="w-14 h-14 bg-surface rounded-2xl shadow-sm border border-hairline flex items-center justify-center mb-6 text-blue-500">
@@ -267,7 +267,7 @@ export default async function Home() {
             </section>
 
             {/* ── 4. Cross Platform Section ─────────────────────────────────── */}
-            <section className="py-24 bg-[#FAFAF8]">
+            <section className="py-24 bg-[#f6eee2]">
                 <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="grid lg:grid-cols-2 gap-16 items-center">
                         <div className="order-2 lg:order-1 relative w-full max-w-md mx-auto aspect-[3/4] bg-surface rounded-[3rem] shadow-2xl border-[12px] border-gray-900 overflow-hidden transform -rotate-3 hover:rotate-0 transition-transform duration-500">
@@ -317,7 +317,7 @@ export default async function Home() {
                             { step: '02', title: 'Add Menu & Staff', desc: 'Upload your items, set prices, and invite your team members with custom roles.' },
                             { step: '03', title: 'Start Taking Orders', desc: 'Generate QR codes for tables and let customers order, or use the POS.' },
                         ].map((s, i) => (
-                            <div key={i} className="relative bg-[#FAFAF8] rounded-[2.5rem] p-10 border border-hairline hover:shadow-xl hover:-translate-y-2 transition-all duration-300">
+                            <div key={i} className="relative bg-[#f6eee2] rounded-[2.5rem] p-10 border border-hairline hover:shadow-xl hover:-translate-y-2 transition-all duration-300">
                                 <span className="text-[6rem] font-black text-ink/5 absolute top-4 right-6 pointer-events-none">{s.step}</span>
                                 <div className="w-14 h-14 bg-brand-100 text-brand-600 rounded-2xl flex items-center justify-center font-bold text-xl mb-8 shadow-sm">
                                     {i + 1}
@@ -331,7 +331,7 @@ export default async function Home() {
             </section>
 
             {/* ── Pricing Section ────────────────────────────────────────────── */}
-            <section id="pricing" className="py-32 bg-[#FAFAF8]">
+            <section id="pricing" className="py-32 bg-[#f6eee2]">
                 <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-20 max-w-3xl mx-auto">
                         <h2 className="text-4xl sm:text-5xl font-extrabold text-ink mb-6 tracking-tight">Simple, transparent pricing.</h2>

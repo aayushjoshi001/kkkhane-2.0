@@ -4,7 +4,7 @@ type Tone = 'white' | 'band' | 'gray' | 'dark'
 
 const TONES: Record<Tone, string> = {
     white: 'bg-surface',
-    band: 'bg-[#FAFAF8]',
+    band: 'bg-[#f6eee2]',
     gray: 'bg-surface-muted',
     dark: 'bg-[var(--color-secondary)] text-white',
 }

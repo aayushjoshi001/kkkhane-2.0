@@ -173,7 +173,7 @@ export default async function FeatureSlugPage({ params }: { params: Promise<{ sl
 
     if (!feature) {
         return (
-            <div className="min-h-screen bg-[#FAFAF8] text-ink font-sans">
+            <div className="min-h-screen bg-[#f6eee2] text-ink font-sans">
                 <MarketingNav />
                 <div className="flex min-h-[70vh] flex-col items-center justify-center px-4 pt-20 text-center">
                     <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-surface shadow-sm border border-hairline text-4xl">🚀</div>
@@ -189,7 +189,7 @@ export default async function FeatureSlugPage({ params }: { params: Promise<{ sl
     }
 
     return (
-        <div className="min-h-screen bg-[#FAFAF8] text-ink font-sans">
+        <div className="min-h-screen bg-[#f6eee2] text-ink font-sans">
             <MarketingNav />
 
             <main className="pb-16 pt-32">
@@ -245,7 +245,7 @@ export default async function FeatureSlugPage({ params }: { params: Promise<{ sl
             </main>
 
             {/* ── Circular Architecture Section ─────────────────────────────── */}
-            <section className="py-24 bg-[#FAFAF8] relative overflow-hidden">
+            <section className="py-24 bg-[#f6eee2] relative overflow-hidden">
                 <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
                     <div className="text-center mb-20 max-w-3xl mx-auto">
                         <h2 className="text-4xl sm:text-5xl font-extrabold mb-6 tracking-tight text-ink">How it Works</h2>

@@ -12,7 +12,7 @@ const FAQS = [
 
 export default function PricingPage() {
     return (
-        <div className="min-h-screen bg-[#FAFAF8] text-ink font-sans selection:bg-[var(--color-primary)] selection:text-white">
+        <div className="min-h-screen bg-[#f6eee2] text-ink font-sans selection:bg-[var(--color-primary)] selection:text-white">
             <MarketingNav />
 
             {/* Hero Section */}
