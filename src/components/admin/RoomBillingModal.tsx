@@ -5,6 +5,7 @@ import { X, Loader2 } from 'lucide-react'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import { createPortal } from 'react-dom'
+import { formatDateTime, calculateNights } from '@/lib/utils'
 
 /** Table shape the admin room pages pass in (with its active QR session, if any). */
 export interface BillingTable {
@@ -55,21 +56,9 @@ interface RoomBillingModalProps {
 const money = (amount: number) =>
     'Rs. ' + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-const formatDateTime = (dateStr: string) => {
-    if (!dateStr) return '-'
-    return new Date(dateStr).toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-    })
-}
-
 const calculateStayCost = (room: Room, booking: Booking) => {
     const price = room.room_types?.base_price || 0
-    const diffMs = new Date(booking.check_out).getTime() - new Date(booking.check_in).getTime()
-    const nights = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)))
+    const nights = calculateNights(booking.check_in, booking.check_out)
     return price * nights
 }
 
