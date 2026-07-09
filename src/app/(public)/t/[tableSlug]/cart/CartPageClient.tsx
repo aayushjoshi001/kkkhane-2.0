@@ -15,6 +15,7 @@ import OrderConfirmModal from '@/components/customer/OrderConfirmModal'
 import ItemDetailView from '@/components/customer/ItemDetailView'
 import { getMenuItemsForCart } from './actions'
 import type { MenuItem, CartItemModifier } from '@/types/database'
+import BottomNavbar from '@/components/customer/BottomNavbar'
 
 export default function CartPageClient({ params }: { params: { tableSlug: string } }) {
     const router = useRouter()
@@ -156,7 +157,7 @@ export default function CartPageClient({ params }: { params: { tableSlug: string
     // Empty cart state
     if (count === 0) {
         return (
-            <div className="min-h-screen bg-surface-muted flex flex-col font-sans">
+            <div className="min-h-screen bg-surface-muted flex flex-col font-sans pb-36">
                 <header className="bg-surface border-b border-hairline sticky top-0 z-20 px-4 py-3.5">
                     <div className="max-w-2xl mx-auto flex items-center gap-3">
                         <button
@@ -184,6 +185,7 @@ export default function CartPageClient({ params }: { params: { tableSlug: string
                         Browse Menu
                     </button>
                 </div>
+                <BottomNavbar activeTab="cart" />
             </div>
         )
     }
@@ -418,6 +420,7 @@ export default function CartPageClient({ params }: { params: { tableSlug: string
                     onSaveEdit={handleSaveEdit}
                 />
             )}
+            <BottomNavbar activeTab="cart" />
         </div>
     )
 }

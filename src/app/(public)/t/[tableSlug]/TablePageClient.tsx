@@ -23,6 +23,7 @@ import { useActiveOrders } from '@/lib/stores/activeOrders'
 import { useHydratedStore } from '@/lib/stores/useHydratedStore'
 import { toast } from 'react-hot-toast'
 import CustomerProfileSheet from '@/components/customer/CustomerProfileSheet'
+import BottomNavbar from '@/components/customer/BottomNavbar'
 
 interface TablePageClientProps {
     tableData: {
@@ -466,61 +467,8 @@ export default function TablePageClient({
                 />
             )}
 
-            {/* Fixed Bottom Navigation Bar */}
-            <div 
-                className="fixed bottom-0 left-0 right-0 z-40 bg-brand-500 text-white shadow-[0_-4px_16px_rgba(0,0,0,0.1)] px-4 py-1 flex items-center justify-around h-12 border-t border-orange-600/30"
-                style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-            >
-                {/* Home */}
-                <button
-                    onClick={() => {
-                        window.scrollTo({ top: 0, behavior: 'smooth' })
-                    }}
-                    className="flex flex-col items-center justify-center text-white/80 hover:text-white transition active:scale-95 w-16"
-                >
-                    <Home size={18} className="stroke-[2.5px] text-white" />
-                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Home</span>
-                </button>
-
-                {/* Orders */}
-                <button
-                    onClick={() => {
-                        const activeOrder = currentTableOrders && currentTableOrders.length > 0 ? currentTableOrders[currentTableOrders.length - 1] : null
-                        if (activeOrder) {
-                            window.location.href = `/t/${tableData.qr_token}/order/${activeOrder.id}`
-                        } else {
-                            toast.error("No active orders placed yet")
-                        }
-                    }}
-                    className="flex flex-col items-center justify-center text-white/80 hover:text-white transition active:scale-95 w-16"
-                >
-                    <ChefHat size={18} className="stroke-[2.5px] text-white" />
-                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Orders</span>
-                </button>
-
-                {/* Cart */}
-                <Link
-                    href={`/t/${tableData.qr_token}/cart${isWaiter ? '?w=1' : ''}`}
-                    className="flex flex-col items-center justify-center text-white/80 hover:text-white transition active:scale-95 w-16 relative"
-                >
-                    {cartCount > 0 && (
-                        <span className="absolute -top-1.5 right-3 bg-surface text-brand-500 text-[9px] font-black rounded-full h-[18px] min-w-[18px] px-1 flex items-center justify-center ring-2 ring-[#FB6303]">
-                            {cartCount}
-                        </span>
-                    )}
-                    <ShoppingBag size={18} className="stroke-[2.5px] text-white" />
-                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Cart</span>
-                </Link>
-
-                {/* Payment */}
-                <Link
-                    href={`/t/${tableData.qr_token}/checkout`}
-                    className="flex flex-col items-center justify-center text-white/80 hover:text-white transition active:scale-95 w-16"
-                >
-                    <CreditCard size={18} className="stroke-[2.5px] text-white" />
-                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Pay</span>
-                </Link>
-            </div>
+            {/* Reusable Bottom Navigation Bar */}
+            <BottomNavbar activeTab="home" onHomeClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
         </div>
     )
 

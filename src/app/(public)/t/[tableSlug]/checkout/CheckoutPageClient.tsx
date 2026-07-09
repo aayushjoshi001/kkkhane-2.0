@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { placeOrder } from './actions'
 import { useState, useRef } from 'react'
 import { ArrowLeft, Trash2, Plus, Minus, Loader2 } from 'lucide-react'
+import BottomNavbar from '@/components/customer/BottomNavbar'
 import PromoCodeInput from '@/components/customer/PromoCodeInput'
 import LoyaltyPanel from '@/components/customer/LoyaltyPanel'
 import SplitBillModal from '@/components/customer/SplitBillModal'
@@ -112,7 +113,7 @@ export default function CheckoutPageClient() {
     }
 
     return (
-        <div className="min-h-screen bg-surface-muted pb-32">
+        <div className="min-h-screen bg-surface-muted pb-64">
             {/* Header */}
             <header className="bg-surface px-4 py-4 shadow-sm sticky top-0 z-20 flex items-center gap-3">
                 <button onClick={() => router.back()} className="p-2 -ml-2 text-ink-muted rounded-full active:bg-surface-muted">
@@ -209,7 +210,7 @@ export default function CheckoutPageClient() {
             </main>
 
             {/* Persistent Bottom Checkout Bar */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 z-50 bg-surface border-t border-hairline-strong">
+            <div className="fixed bottom-[88px] left-0 right-0 p-4 z-30 bg-surface border-t border-hairline-strong shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
                 <div className="max-w-xl mx-auto">
                     <div className="space-y-1 mb-4">
                         <div className="flex justify-between text-sm text-ink-subtle">
@@ -266,6 +267,7 @@ export default function CheckoutPageClient() {
                     onClose={() => setShowSplit(false)}
                 />
             )}
+            <BottomNavbar activeTab="pay" />
         </div>
     )
 }

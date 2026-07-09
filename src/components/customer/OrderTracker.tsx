@@ -15,6 +15,7 @@ import Link from 'next/link'
 import OrderPaymentSection from './OrderPaymentSection'
 import OrderSplitBillSection from './OrderSplitBillSection'
 import FeedbackPrompt from './FeedbackPrompt'
+import BottomNavbar from '@/components/customer/BottomNavbar'
 
 type OrderWithItems = Order & {
     order_items?: (OrderItem & {
@@ -118,7 +119,7 @@ export default function OrderTracker({
 
     if (activeShowSuccess) {
         return (
-            <div className="flex flex-col min-h-screen bg-surface text-ink font-sans select-none pb-12 animate-in fade-in duration-300">
+            <div className="flex flex-col min-h-screen bg-surface text-ink font-sans select-none pb-36 animate-in fade-in duration-300">
                 {showConfetti && <Confetti />}
 
                 {/* Top Orange Section */}
@@ -249,12 +250,13 @@ export default function OrderTracker({
                         )}
                     </div>
                 </div>
+                <BottomNavbar activeTab="orders" />
             </div>
         )
     }
 
     return (
-        <div className="flex flex-col min-h-screen bg-surface text-ink font-sans pb-28 select-none">
+        <div className="flex flex-col min-h-screen bg-surface text-ink font-sans pb-64 select-none">
             {showConfetti && <Confetti />}
 
             {/* Tracking Header */}
@@ -377,8 +379,7 @@ export default function OrderTracker({
             {/* Persistent Bottom Payment Control Button */}
             {!isCancelled && order.payment_status !== 'paid' && (
                 <div 
-                    className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur-md shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-4 pt-4 z-40 border-t border-hairline" 
-                    style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 16px) + 12px)' }}
+                    className="fixed bottom-[88px] left-0 right-0 bg-surface/95 backdrop-blur-md shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-4 py-4 z-30 border-t border-hairline" 
                 >
                     <div className="max-w-md mx-auto">
                         {!isDelivered ? (
@@ -399,6 +400,7 @@ export default function OrderTracker({
                     </div>
                 </div>
             )}
+            <BottomNavbar activeTab="orders" />
         </div>
     )
 }
