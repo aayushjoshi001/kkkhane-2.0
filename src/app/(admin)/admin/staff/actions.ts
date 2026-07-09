@@ -5,6 +5,8 @@ import { getCurrentUser } from '@/lib/auth'
 import { getRestaurantFeatures } from '@/lib/features'
 import { FINANCE_GATED_ROLES } from '@/types/database'
 import { revalidatePath } from 'next/cache'
+import { computeMonthlyAccrualPreview, insertAccruals } from '@/lib/payroll'
+import { getNstDateString, getEffectiveJoinDate, isValidDateString, addDays } from '@/lib/timezone'
 
 export async function updateStaffRoleAction(userId: string, targetRoleId: number) {
     const currentUser = await getCurrentUser()
@@ -158,6 +160,147 @@ export async function updateStaffSalaryAction(userId: string, salary: number) {
     return { success: true }
 }
 
+// Sets the date a staff member actually started working (distinct from
+// created_at, which is when their account was created). Used to prorate
+// their salary accrual — see computeMonthlyAccrualPreview in lib/payroll.ts.
+export async function updateStaffJoinDateAction(userId: string, joinDate: string) {
+    const currentUser = await getCurrentUser()
+    const supabase = await createAdminClient()
+
+    const { data: targetUser } = await supabase
+        .from('users')
+        .select('restaurant_id')
+        .eq('id', userId)
+        .single()
+
+    if (targetUser?.restaurant_id !== currentUser.restaurantId) {
+        return { error: 'Unauthorized' }
+    }
+
+    if (!isValidDateString(joinDate)) return { error: 'Invalid join date' }
+
+    const { error } = await supabase
+        .from('users')
+        .update({ join_date: joinDate })
+        .eq('id', userId)
+
+    if (error) return { error: error.message }
+
+    revalidatePath('/admin/staff')
+    return { success: true }
+}
+
+// Records a salary change effective from a given date, optionally ending on a
+// given date (open-ended if omitted, i.e. "until the manager changes it
+// again"). Scoped to a single staff member. Closes out any existing
+// open-ended segment (or backfills the staff member's current flat salary as
+// a historical segment) so accrual calculations never lose track of what was
+// paid before the change. lib/payroll.ts looks up the correct rate per day
+// from this history, so future accruals automatically use the new rate from
+// effectiveFrom onward without any other code needing to change.
+export async function increaseStaffSalaryAction(
+    userId: string,
+    newSalary: number,
+    effectiveFrom: string,
+    effectiveTo?: string | null
+) {
+    const currentUser = await getCurrentUser()
+    const supabase = await createAdminClient()
+
+    const { data: targetUser } = await supabase
+        .from('users')
+        .select('restaurant_id, monthly_salary, join_date, created_at')
+        .eq('id', userId)
+        .single()
+
+    if (targetUser?.restaurant_id !== currentUser.restaurantId) {
+        return { error: 'Unauthorized' }
+    }
+
+    if (newSalary < 0) return { error: 'Salary cannot be negative' }
+    if (!isValidDateString(effectiveFrom)) return { error: 'Invalid start date' }
+    if (effectiveTo && !isValidDateString(effectiveTo)) return { error: 'Invalid end date' }
+    if (effectiveTo && effectiveTo < effectiveFrom) return { error: 'End date must be on or after the start date' }
+
+    const dayBeforeStr = addDays(effectiveFrom, -1)
+
+    const { data: openSegment, error: openSegmentError } = await supabase
+        .from('staff_salary_history')
+        .select('id, monthly_salary, effective_from')
+        .eq('user_id', userId)
+        .is('effective_to', null)
+        .maybeSingle()
+
+    if (openSegmentError) return { error: openSegmentError.message }
+
+    if (openSegment) {
+        if (openSegment.effective_from >= effectiveFrom) {
+            return { error: 'A salary change is already scheduled on or after this start date' }
+        }
+        const { error: closeError } = await supabase
+            .from('staff_salary_history')
+            .update({ effective_to: dayBeforeStr })
+            .eq('id', openSegment.id)
+        if (closeError) return { error: closeError.message }
+
+        // If the new change has a defined end date (a temporary/backdated
+        // adjustment), the old rate needs to keep covering the days after it
+        // ends — otherwise accrual for that gap would silently fall back to
+        // the flat monthly_salary instead of what was actually in effect.
+        if (effectiveTo) {
+            const { error: continuationError } = await supabase
+                .from('staff_salary_history')
+                .insert({
+                    restaurant_id: currentUser.restaurantId,
+                    user_id: userId,
+                    monthly_salary: openSegment.monthly_salary,
+                    effective_from: addDays(effectiveTo, 1),
+                    effective_to: null,
+                    created_by: currentUser.id
+                })
+            if (continuationError) return { error: continuationError.message }
+        }
+    } else if (Number(targetUser.monthly_salary) > 0) {
+        const backfillFrom = getEffectiveJoinDate(targetUser.join_date, targetUser.created_at)
+        if (backfillFrom < effectiveFrom) {
+            const { error: backfillError } = await supabase
+                .from('staff_salary_history')
+                .insert({
+                    restaurant_id: currentUser.restaurantId,
+                    user_id: userId,
+                    monthly_salary: targetUser.monthly_salary,
+                    effective_from: backfillFrom,
+                    effective_to: dayBeforeStr,
+                    created_by: currentUser.id
+                })
+            if (backfillError) return { error: backfillError.message }
+        }
+    }
+
+    const { error: insertError } = await supabase
+        .from('staff_salary_history')
+        .insert({
+            restaurant_id: currentUser.restaurantId,
+            user_id: userId,
+            monthly_salary: newSalary,
+            effective_from: effectiveFrom,
+            effective_to: effectiveTo || null,
+            created_by: currentUser.id
+        })
+
+    if (insertError) return { error: insertError.message }
+
+    // If the new rate is already in effect today, refresh the flat
+    // monthly_salary field so the rest of the UI shows the current rate
+    const today = getNstDateString()
+    if (effectiveFrom <= today && (!effectiveTo || effectiveTo >= today)) {
+        await supabase.from('users').update({ monthly_salary: newSalary }).eq('id', userId)
+    }
+
+    revalidatePath('/admin/staff')
+    return { success: true }
+}
+
 export async function recordLedgerTransactionAction(
     userId: string,
     amount: number,
@@ -232,8 +375,8 @@ export async function fetchStaffLedgerAction(userId: string) {
 
     return {
         entries: ledgerResult.data || [],
-        openingBalance: (userResult.data as any)?.opening_balance ?? 0,
-        monthlySalary: (userResult.data as any)?.monthly_salary ?? 0,
+        openingBalance: userResult.data?.opening_balance ?? 0,
+        monthlySalary: userResult.data?.monthly_salary ?? 0,
     }
 }
 
@@ -267,75 +410,7 @@ export async function updateOpeningBalanceAction(userId: string, openingBalance:
 export async function fetchAutoAccrualPreviewAction(year: number, month: number) {
     const currentUser = await getCurrentUser()
     const supabase = await createAdminClient()
-
-    // 1. Get all active staff in the restaurant
-    const { data: staff, error: staffError } = await supabase
-        .from('users')
-        .select('id, full_name, created_at, monthly_salary')
-        .eq('restaurant_id', currentUser.restaurantId)
-        .eq('is_active', true)
-
-    if (staffError) throw new Error(staffError.message)
-
-    // Month boundaries
-    const startDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0))
-    const endDate = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999))
-    const totalDaysInMonth = new Date(year, month, 0).getDate()
-
-    // 2. Fetch all accruals already recorded in this month's date range
-    const { data: existingAccruals, error: accrualError } = await supabase
-        .from('staff_ledger')
-        .select('user_id')
-        .eq('restaurant_id', currentUser.restaurantId)
-        .eq('entry_type', 'accrual')
-        .gte('created_at', startDate.toISOString())
-        .lte('created_at', endDate.toISOString())
-
-    if (accrualError) throw new Error(accrualError.message)
-
-    const processedUserIds = new Set(existingAccruals?.map(a => a.user_id) || [])
-
-    const preview = staff.map(member => {
-        const joinedDate = new Date(member.created_at)
-        const isProcessed = processedUserIds.has(member.id)
-
-        // Clear time components for clean date comparisons
-        const joinedUTC = Date.UTC(joinedDate.getUTCFullYear(), joinedDate.getUTCMonth(), joinedDate.getUTCDate())
-        const startUTC = Date.UTC(year, month - 1, 1)
-        const endUTC = Date.UTC(year, month, 0)
-
-        // Calculate proration
-        let computedAmount = Number(member.monthly_salary)
-        let note = 'Previous month salary'
-        let daysWorked = totalDaysInMonth
-
-        if (joinedUTC > endUTC) {
-            // Not joined yet
-            computedAmount = 0
-            note = 'Not hired yet during this period'
-            daysWorked = 0
-        } else if (joinedUTC > startUTC) {
-            // Joined mid-month
-            const joinedDay = new Date(joinedUTC).getUTCDate()
-            daysWorked = totalDaysInMonth - joinedDay + 1
-            computedAmount = Math.round(Number(member.monthly_salary) * (daysWorked / totalDaysInMonth) * 100) / 100
-            note = `Previous month salary (Prorated: ${daysWorked}/${totalDaysInMonth} days)`
-        }
-
-        return {
-            userId: member.id,
-            fullName: member.full_name,
-            joinedDate: member.created_at,
-            monthlySalary: Number(member.monthly_salary),
-            computedAmount,
-            daysWorked,
-            totalDaysInMonth,
-            note,
-            isProcessed
-        }
-    })
-
-    return preview
+    return computeMonthlyAccrualPreview(supabase, currentUser.restaurantId, year, month)
 }
 
 export async function executeAutoAccrualAction(
@@ -348,25 +423,11 @@ export async function executeAutoAccrualAction(
 
     if (accruals.length === 0) return { success: true }
 
-    // Date for the accrual (last second of the processed month)
-    const accrualDate = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999)).toISOString()
-
-    const records = accruals.map(acc => ({
-        restaurant_id: currentUser.restaurantId,
-        user_id: acc.userId,
-        amount: acc.amount,
-        entry_type: 'accrual',
-        payment_method: null,
-        note: acc.note,
-        created_by: currentUser.id,
-        created_at: accrualDate
-    }))
-
-    const { error } = await supabase
-        .from('staff_ledger')
-        .insert(records)
-
-    if (error) return { error: error.message }
+    try {
+        await insertAccruals(supabase, currentUser.restaurantId, year, month, accruals, currentUser.id)
+    } catch (e) {
+        return { error: e instanceof Error ? e.message : 'Failed to record salary accruals' }
+    }
 
     revalidatePath('/admin/staff')
     return { success: true }

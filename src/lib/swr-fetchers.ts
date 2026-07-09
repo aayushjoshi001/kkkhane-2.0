@@ -44,6 +44,7 @@ export const fetchStaffData = async (restaurantId: string) => {
                 email,
                 department_id,
                 monthly_salary,
+                join_date,
                 created_at,
                 roles (
                     id,

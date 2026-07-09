@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/refresh-item-pairings",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/accrue-salaries",
+      "schedule": "15 18 * * *"
     }
   ]
 }
