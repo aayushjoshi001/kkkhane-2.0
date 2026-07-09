@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Building2, ShoppingBag, Crown, Ban, CheckCircle, Loader2, ChevronDown, Plus, X, Store, UserRound, Mail, KeyRound, Phone, MapPin, Check, CreditCard, AlertTriangle, Search, Filter, Wallet } from 'lucide-react'
 import { createTenantWithOwner, suspendRestaurant, updateSubscriptionTier, sendPasswordResetEmail, updateOwnerContact, recordSubscriptionPayment, toggleRestaurantFinance } from './actions'
+import { TIER_LIMITS, TIERS, TIER_LABELS, FINANCE_TIERS, isUnlimited, type Tier } from '@/lib/tiers'
 import { toast } from 'react-hot-toast'
 
 interface Restaurant {
@@ -30,10 +31,13 @@ interface SaasMetrics {
     tierBreakdown: Record<string, number>
 }
 
+// Keyed loosely: subscription_tier arrives from the DB as a plain string, so an
+// unrecognised value falls through to the caller's fallback rather than crashing.
 const TIER_COLORS: Record<string, string> = {
     free:       'bg-surface-muted text-ink-muted border-hairline-strong',
     basic:      'bg-blue-100 text-blue-700 border-blue-200',
-    pro:        'bg-purple-100 text-purple-700 border-purple-200',
+    premium:    'bg-purple-100 text-purple-700 border-purple-200',
+    platinum:   'bg-slate-200 text-slate-800 border-slate-300',
     enterprise: 'bg-amber-100 text-amber-700 border-amber-200',
 }
 
@@ -73,13 +77,13 @@ export default function SuperAdminDashboard({
         ownerPassword: '',
         contactPhone: '',
         address: '',
-        subscriptionTier: 'free' as 'free' | 'basic' | 'pro' | 'enterprise',
+        subscriptionTier: 'free' as Tier,
         businessType: 'Restaurant',
     })
     const router = useRouter()
 
     const [searchQuery, setSearchQuery] = useState('')
-    const [tierFilter, setTierFilter] = useState<'all' | 'free' | 'basic' | 'pro' | 'enterprise'>('all')
+    const [tierFilter, setTierFilter] = useState<'all' | Tier>('all')
     const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all')
 
     const filteredItems = useMemo(() => {
@@ -179,20 +183,17 @@ export default function SuperAdminDashboard({
         setLoading(null)
     }
 
-    const handleTierChange = async (id: string, tier: 'free' | 'basic' | 'pro' | 'enterprise') => {
+    const handleTierChange = async (id: string, tier: Tier) => {
         setLoading(id)
         const res = await updateSubscriptionTier(id, tier)
         if (res.success) {
-            const limitsMap: Record<string, { max_staff: number; max_menu_items: number }> = {
-                free: { max_staff: 3, max_menu_items: 20 },
-                basic: { max_staff: 10, max_menu_items: 100 },
-                pro: { max_staff: 50, max_menu_items: 500 },
-                enterprise: { max_staff: 999, max_menu_items: 9999 },
-            }
+            // Mirror what updateSubscriptionTier just wrote, so the row updates
+            // without a refetch. Same source as the server action.
+            const { max_staff, max_menu_items } = TIER_LIMITS[tier]
             setItems(prev =>
                 prev.map(r =>
                     r.id === id
-                        ? { ...r, subscription_tier: tier, ...limitsMap[tier] }
+                        ? { ...r, subscription_tier: tier, max_staff, max_menu_items }
                         : r
                 )
             )
@@ -300,7 +301,7 @@ export default function SuperAdminDashboard({
                 <MetricCard icon={Building2}   color="indigo"  label="Total Tenants"  value={metrics.totalRestaurants} />
                 <MetricCard icon={CheckCircle} color="emerald" label="Active"         value={metrics.activeRestaurants} />
                 <MetricCard icon={ShoppingBag} color="blue"    label="Total Orders"   value={metrics.totalOrders} />
-                <MetricCard icon={Crown}       color="purple"  label="Pro+ Accounts"  value={(metrics.tierBreakdown.pro || 0) + (metrics.tierBreakdown.enterprise || 0)} />
+                <MetricCard icon={Crown}       color="purple"  label="Premium+ Accounts"  value={(metrics.tierBreakdown.premium || 0) + (metrics.tierBreakdown.platinum || 0) + (metrics.tierBreakdown.enterprise || 0)} />
             </div>
 
             {/* Tier Breakdown */}
@@ -376,10 +377,9 @@ export default function SuperAdminDashboard({
                             className="rounded-xl border border-hairline-strong bg-surface px-3 py-2 text-sm text-ink-muted outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 w-full sm:w-auto"
                         >
                             <option value="all">All Tiers</option>
-                            <option value="free">Free</option>
-                            <option value="basic">Basic</option>
-                            <option value="pro">Pro</option>
-                            <option value="enterprise">Enterprise</option>
+                            {TIERS.map(t => (
+                                <option key={t} value={t}>{TIER_LABELS[t]}</option>
+                            ))}
                         </select>
                         <select
                             value={statusFilter}
@@ -421,8 +421,8 @@ export default function SuperAdminDashboard({
                                 <p className="text-sm text-ink-subtle mt-1">
                                     {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                                     {restaurant.users?.email || 'No owner'} •
-                                    Staff: {restaurant.max_staff} • 
-                                    Items: {restaurant.max_menu_items}
+                                    Staff: {isUnlimited(restaurant.max_staff) ? 'Unlimited' : restaurant.max_staff} •
+                                    Items: {isUnlimited(restaurant.max_menu_items) ? 'Unlimited' : restaurant.max_menu_items}
                                 </p>
                             </div>
 
@@ -463,37 +463,36 @@ export default function SuperAdminDashboard({
                                 <div className="relative">
                                     <select
                                         value={restaurant.subscription_tier || 'free'}
-                                        onChange={(e) => handleTierChange(restaurant.id, e.target.value as 'free' | 'basic' | 'pro' | 'enterprise')}
+                                        onChange={(e) => handleTierChange(restaurant.id, e.target.value as Tier)}
                                         disabled={loading === restaurant.id}
                                         className="appearance-none bg-surface border border-hairline-strong rounded-lg px-3 py-2 pr-8 text-sm font-medium disabled:opacity-50"
                                     >
-                                        <option value="free">Free</option>
-                                        <option value="basic">Basic</option>
-                                        <option value="pro">Pro</option>
-                                        <option value="enterprise">Enterprise</option>
+                                        {TIERS.map(t => (
+                                            <option key={t} value={t}>{TIER_LABELS[t]}</option>
+                                        ))}
                                     </select>
                                     <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" />
                                 </div>
 
                                 {/* Finance Toggle */}
-                                <div 
+                                <div
                                     className={`flex items-center gap-2 px-3 py-2 border rounded-lg bg-surface transition-all ${
-                                        restaurant.subscription_tier === 'enterprise' 
-                                            ? 'border-hairline-strong' 
+                                        (FINANCE_TIERS as readonly string[]).includes(restaurant.subscription_tier)
+                                            ? 'border-hairline-strong'
                                             : 'border-hairline opacity-50 bg-surface-muted/30'
                                     }`}
-                                    title={restaurant.subscription_tier !== 'enterprise' ? "Available on Enterprise tier only" : "Toggle Finance Feature"}
+                                    title={!(FINANCE_TIERS as readonly string[]).includes(restaurant.subscription_tier) ? "Available on Premium tier and above" : "Toggle Finance Feature"}
                                 >
                                     <Wallet size={14} className={restaurant.financeEnabled ? "text-amber-500" : "text-ink-subtle"} />
                                     <span className="text-xs font-semibold text-ink-muted hidden sm:inline">Finance</span>
                                     <label className={`relative inline-flex items-center group ${
-                                        restaurant.subscription_tier === 'enterprise' ? 'cursor-pointer' : 'cursor-not-allowed'
+                                        (FINANCE_TIERS as readonly string[]).includes(restaurant.subscription_tier) ? 'cursor-pointer' : 'cursor-not-allowed'
                                     }`}>
                                         <input
                                             type="checkbox"
                                             className="sr-only peer"
                                             checked={restaurant.financeEnabled || false}
-                                            disabled={loading === restaurant.id || restaurant.subscription_tier !== 'enterprise'}
+                                            disabled={loading === restaurant.id || !(FINANCE_TIERS as readonly string[]).includes(restaurant.subscription_tier)}
                                             onChange={(e) => handleFinanceToggle(restaurant.id, e.target.checked)}
                                         />
                                         <div className="w-9 h-5 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500 peer-checked:border-amber-500 shadow-inner group-hover:shadow-md transition-all peer-disabled:opacity-40"></div>
@@ -710,10 +709,9 @@ export default function SuperAdminDashboard({
                                         onChange={(e) => handleCreateFormChange('subscriptionTier', e.target.value)}
                                         className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                                     >
-                                        <option value="free">Free</option>
-                                        <option value="basic">Basic</option>
-                                        <option value="pro">Pro</option>
-                                        <option value="enterprise">Enterprise</option>
+                                        {TIERS.map(t => (
+                                            <option key={t} value={t}>{TIER_LABELS[t]}</option>
+                                        ))}
                                     </select>
                                 </Field>
 
