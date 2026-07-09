@@ -144,29 +144,32 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
 
     return (
         <>
-        <div style={{ boxShadow: '0 6px 20px -4px rgba(255,122,46,0.45), 0 2px 8px -2px rgba(0,0,0,0.18)' }} className={`group relative bg-brand-500 rounded-[32px] hover:shadow-[0_12px_32px_-4px_rgba(255,122,46,0.65),0_4px_12px_-2px_rgba(0,0,0,0.22)] hover:brightness-105 active:scale-[0.97] active:shadow-md transition-all duration-300 ease-out flex flex-col w-full p-3 pt-3.5 pb-3 gap-2.5 ${!item.is_available ? 'opacity-70' : ''}`}>
+        <div 
+            style={{ boxShadow: '0 4px 16px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.04)' }}
+            className={`group relative bg-surface border border-hairline rounded-[28px] hover:border-brand-500/30 hover:shadow-[0_8px_30px_rgba(255,122,46,0.12)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 ease-out flex flex-col w-full p-3 pt-3.5 pb-3 gap-2.5 ${!item.is_available ? 'opacity-70' : ''}`}
+        >
             {/* Top: Dish name with Veg/Non-Veg Logo (Starts from Left Corner) */}
-            <div className="flex items-center gap-1.5 px-1.5 w-full justify-start text-left">
-                <div className={`w-3.5 h-3.5 border-2 ${isVeg ? 'border-emerald-600' : 'border-red-700'} flex items-center justify-center p-0.5 shrink-0 bg-surface rounded-xs`}>
-                    <div className={`w-1.5 h-1.5 rounded-full ${isVeg ? 'bg-emerald-600' : 'bg-red-700'}`} />
+            <div className="flex items-center gap-1.5 px-1 w-full justify-start text-left">
+                <div className={`w-3.5 h-3.5 border-[1.5px] ${isVeg ? 'border-emerald-600 bg-emerald-50' : 'border-red-600 bg-red-50'} flex items-center justify-center p-0.5 shrink-0 rounded-sm`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${isVeg ? 'bg-emerald-600' : 'bg-red-600'}`} />
                 </div>
-                <h3 className="font-black text-[11px] text-white leading-tight uppercase line-clamp-1 truncate text-left drop-shadow-sm">
+                <h3 className="font-extrabold text-[12px] text-ink leading-tight uppercase line-clamp-1 truncate text-left">
                     {displayName}
                 </h3>
             </div>
 
             {/* Middle: Centered Wide Image Container */}
-            <div className="relative w-full aspect-[16/10] rounded-[20px] bg-black/5 overflow-hidden shrink-0 shadow-sm border border-white/10 z-10">
+            <div className="relative w-full aspect-[16/10] rounded-[20px] bg-surface-muted overflow-hidden shrink-0 shadow-sm border border-hairline z-10">
                 {item.image_url ? (
                     <Image
                         src={item.image_url}
                         alt={displayName}
                         fill
-                        className="object-cover group-hover:scale-[1.03] transition-transform duration-500"
+                        className="object-cover group-hover:scale-[1.04] transition-transform duration-500"
                         sizes="200px"
                     />
                 ) : (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/10">
+                    <div className="absolute inset-0 flex items-center justify-center bg-surface-muted">
                         <span className="text-xl opacity-20">🍽️</span>
                     </div>
                 )}
@@ -174,7 +177,7 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
                 {/* Sold out overlay */}
                 {!item.is_available && (
                     <div className="absolute inset-0 bg-surface/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
-                        <span className="bg-surface text-ink-muted font-bold px-1.5 py-0.5 rounded text-[8px] border border-gray-205 shadow-xs">
+                        <span className="bg-surface text-ink-muted font-bold px-1.5 py-0.5 rounded text-[8px] border border-hairline shadow-xs">
                             Sold Out
                         </span>
                     </div>
@@ -182,9 +185,9 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
             </div>
 
             {/* Bottom Row: Price and Horizontal Quantity Controls */}
-            <div className="flex items-center justify-between w-full px-1.5 mt-0.5 gap-2 z-20">
+            <div className="flex items-center justify-between w-full px-1 mt-0.5 gap-2 z-20">
                 {/* Left: Price */}
-                <span className="font-black text-[13px] text-white tabular-nums text-left leading-none drop-shadow-sm">
+                <span className="font-black text-[13px] text-brand-500 tabular-nums text-left leading-none">
                     {priceDisplay}
                 </span>
 
@@ -194,25 +197,25 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
                         <button
                             onClick={handleAdd}
                             disabled={!item.is_available}
-                            className="bg-surface text-brand-500 px-3.5 py-1.5 rounded-full flex items-center justify-center font-black active:scale-95 transition-all shadow-sm text-[10px] tracking-wider uppercase leading-none min-w-[56px] text-center hover:bg-brand-50"
+                            className="bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-50 px-4 py-2 rounded-full flex items-center justify-center font-black active:scale-95 transition-all shadow-[0_4px_12px_rgba(251,99,3,0.2)] text-[10px] tracking-wider uppercase leading-none min-w-[56px] text-center"
                             aria-label={`Add ${displayName} to cart`}
                         >
-                            Add to cart
+                            Add
                         </button>
                     ) : (
-                        <div className="bg-surface rounded-full flex flex-row items-center gap-2 p-1 px-1.5 shadow-sm h-7">
+                        <div className="bg-brand-50 border border-brand-100/50 rounded-full flex flex-row items-center gap-2 p-0.5 px-1 shadow-xs h-7">
                             <button 
                                 onClick={handleRemove}
                                 aria-label={`Remove one ${displayName}`}
-                                className="w-5 h-5 rounded-full bg-brand-100 hover:bg-brand-200 flex items-center justify-center text-brand-500 active:scale-90 transition"
+                                className="w-5 h-5 rounded-full bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center active:scale-90 transition"
                             >
                                 <Minus size={9} strokeWidth={4.5} />
                             </button>
-                            <span className="text-[11px] font-black leading-none tabular-nums text-brand-500 min-w-[12px] text-center my-0.5">{quantity}</span>
+                            <span className="text-[11px] font-black leading-none tabular-nums text-brand-600 min-w-[12px] text-center my-0.5">{quantity}</span>
                             <button 
                                 onClick={handleAdd}
                                 aria-label={`Add one ${displayName}`}
-                                className="w-5 h-5 rounded-full bg-brand-100 hover:bg-brand-200 flex items-center justify-center text-brand-500 active:scale-90 transition"
+                                className="w-5 h-5 rounded-full bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center active:scale-90 transition"
                             >
                                 <Plus size={9} strokeWidth={4.5} />
                             </button>
