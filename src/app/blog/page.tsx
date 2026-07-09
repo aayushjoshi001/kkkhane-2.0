@@ -1,3 +1,4 @@
+import { BookOpen } from 'lucide-react'
 import { MarketingNav, MarketingFooter, MarketingButton } from '@/components/marketing'
 
 export default function BlogPage() {
@@ -5,7 +6,9 @@ export default function BlogPage() {
         <div className="min-h-screen bg-transparent text-ink font-sans">
             <MarketingNav />
             <div className="flex min-h-[70vh] flex-col items-center justify-center px-4 pt-20 text-center">
-                <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-surface shadow-sm border border-hairline text-4xl"></div>
+                <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] shadow-sm border border-[var(--color-primary)]/20">
+                    <BookOpen size={40} strokeWidth={1.5} />
+                </div>
                 <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-ink">Feature Coming Soon</h1>
                 <p className="mb-8 max-w-md font-medium text-ink-subtle">
                     We are currently crafting our blog. Stay tuned for exciting updates, tips, and industry news!

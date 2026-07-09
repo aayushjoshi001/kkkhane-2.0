@@ -38,8 +38,8 @@ export default function FeaturesPage() {
                             href={`/features/${feature.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
                             className="group relative flex h-full flex-col overflow-hidden rounded-3xl border border-hairline bg-surface p-8 transition-all duration-300 hover:-translate-y-1 hover:border-[var(--color-primary)]/30 hover:shadow-2xl">
                             <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-[var(--color-primary)]/5 blur-2xl transition-colors group-hover:bg-[var(--color-primary)]/10" />
-                            <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border border-hairline bg-surface-muted text-3xl shadow-sm transition-all group-hover:scale-110 group-hover:border-[var(--color-primary)]/20 group-hover:bg-[var(--color-primary)]/10">
-                                {feature.icon}
+                            <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border border-hairline bg-surface-muted text-[var(--color-primary)] shadow-sm transition-all group-hover:scale-110 group-hover:border-[var(--color-primary)]/20 group-hover:bg-[var(--color-primary)]/10">
+                                <feature.icon size={28} strokeWidth={1.5} />
                             </div>
                             <h3 className="mb-3 text-xl font-extrabold text-ink transition-colors group-hover:text-[var(--color-primary)]">{feature.title}</h3>
                             <p className="mb-8 flex-1 font-medium leading-relaxed text-ink-subtle">{feature.description}</p>

@@ -201,8 +201,8 @@ export default async function FeatureSlugPage({ params }: { params: Promise<{ sl
 
                         <div className="relative z-10 p-8 sm:p-12 md:p-16 grid md:grid-cols-[1fr_400px] gap-12 items-center">
                             <div>
-                                <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-hairline bg-surface-muted text-3xl shadow-sm">
-                                    {feature.icon}
+                                <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-hairline bg-[var(--color-primary)]/10 text-[var(--color-primary)] shadow-sm">
+                                    <feature.icon size={32} strokeWidth={1.5} />
                                 </div>
 
                                 <div className="mb-4"><Eyebrow tone="brand">Features</Eyebrow></div>
@@ -266,7 +266,7 @@ export default async function FeatureSlugPage({ params }: { params: Promise<{ sl
 
                         {/* Center Hub */}
                         <div className="relative z-10 w-48 h-48 bg-white rounded-full shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] flex flex-col items-center justify-center border-[8px] border-gray-50">
-                            <span className="text-4xl mb-2">{feature.icon}</span>
+                            <div className="text-[var(--color-primary)] mb-4 flex justify-center"><feature.icon size={48} strokeWidth={1} /></div>
                             <span className="text-sm font-black text-ink tracking-tight text-center px-4 leading-tight">{feature.title}</span>
                         </div>
 
