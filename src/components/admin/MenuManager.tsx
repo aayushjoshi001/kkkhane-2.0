@@ -286,6 +286,11 @@ export default function MenuManager({
                 toast.error('All variations must have a name and a valid price')
                 return
             }
+            const normalizedNames = itemVariations.map(v => v.name.toLowerCase().trim())
+            if (new Set(normalizedNames).size !== normalizedNames.length) {
+                toast.error('Variation names must be unique (recipes are matched by name)')
+                return
+            }
         }
 
         setIsSubmitting(true)
@@ -967,7 +972,15 @@ export default function MenuManager({
                                                         )}
                                                         <button
                                                             type="button"
-                                                            onClick={() => setItemVariations(itemVariations.filter((_, i) => i !== idx))}
+                                                            onClick={() => {
+                                                                setItemVariations(itemVariations.filter((_, i) => i !== idx))
+                                                                // Drop any recipe rows scoped to this variation — otherwise they'd
+                                                                // silently reattach to the whole item on save.
+                                                                setRecipe(prev => prev.filter(r =>
+                                                                    (v.id ? r.variation_id !== v.id : true) &&
+                                                                    r.variation_name?.toLowerCase().trim() !== v.name.toLowerCase().trim()
+                                                                ))
+                                                            }}
                                                             className="p-2 text-ink-subtle hover:text-danger-fg hover:bg-danger-bg rounded-[var(--r-md)] shrink-0 ml-auto transition-colors"
                                                         >
                                                             <Trash2 size={16} />
@@ -1098,13 +1111,30 @@ export default function MenuManager({
                                         </div>
                                     </div>
                                 ) : (
-                                    <button
-                                        type="button"
-                                        onClick={() => setRecipe([{ ingredient_id: '', quantity_needed: 0, input_quantity: 0, input_unit: '' }])}
-                                        className="w-full py-2.5 border-2 border-dashed border-hairline text-ink-subtle hover:text-brand-500 hover:border-brand-400 hover:bg-brand-50 rounded-[var(--r-md)] text-xs font-bold flex items-center justify-center gap-1.5 transition-all bg-surface mt-2 focus-ring"
-                                    >
-                                        <Plus size={16} /> Add Recipe
-                                    </button>
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => setRecipe([{ ingredient_id: '', quantity_needed: 0, input_quantity: 0, input_unit: '' }])}
+                                            className="w-full py-2.5 border-2 border-dashed border-hairline text-ink-subtle hover:text-brand-500 hover:border-brand-400 hover:bg-brand-50 rounded-[var(--r-md)] text-xs font-bold flex items-center justify-center gap-1.5 transition-all bg-surface mt-2 focus-ring"
+                                        >
+                                            <Plus size={16} /> Add Recipe
+                                        </button>
+                                        <div className="mt-3 bg-surface-muted/30 p-3.5 rounded-[var(--r-lg)] border border-hairline">
+                                            <label className="text-xs font-bold text-ink block mb-1">Estimated Cost Price (optional)</label>
+                                            <span className="text-[11px] text-ink-subtle block mb-2">No recipe means stock won&apos;t auto-deduct for this item. Enter an estimated ingredient cost so profit reports still account for it.</span>
+                                            <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={itemFormData.estimated_cost_price ?? ''}
+                                                onChange={e => {
+                                                    const val = e.target.value
+                                                    if (/^\d*\.?\d*$/.test(val)) setItemFormData({ ...itemFormData, estimated_cost_price: val === '' ? null : Number(val) })
+                                                }}
+                                                placeholder="e.g. 45.00"
+                                                className="w-full sm:w-40 border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 text-xs p-2.5 border bg-surface text-ink transition-all tabular-nums"
+                                            />
+                                        </div>
+                                    </>
                                 )}
                             </div>
 

@@ -109,12 +109,12 @@ export async function generateEodReport(restaurantId: string, reportDate: string
     }
 
     // Fetch each paid order's line items ONCE; both best-sellers and COGS reuse it.
-    type SoldItem = { menu_item_id: string; quantity: number | null; unit_price: number | null; menu_items: { name?: string } | { name?: string }[] | null }
+    type SoldItem = { menu_item_id: string; menu_item_variation_id: string | null; quantity: number | null; unit_price: number | null; menu_items: { name?: string; estimated_cost_price?: number | null } | { name?: string; estimated_cost_price?: number | null }[] | null }
     let soldItems: SoldItem[] = []
     if (paidOrderIds.length > 0) {
         const { data: items, error: itemsError } = await supabase
             .from('order_items')
-            .select('menu_item_id, quantity, unit_price, menu_items ( name )')
+            .select('menu_item_id, menu_item_variation_id, quantity, unit_price, menu_items ( name, estimated_cost_price )')
             .in('order_id', paidOrderIds)
 
         if (itemsError) throw new Error(`Failed to fetch order items: ${itemsError.message}`)
@@ -171,15 +171,20 @@ export async function generateEodReport(restaurantId: string, reportDate: string
     // 8. COGS and Gross Profit calculation (reuses the single soldItems fetch above)
     let totalCogs = 0
     if (soldItems.length > 0) {
-        // Collect menu item IDs from the paid order items for the report day
+        // Collect menu item IDs and variation IDs from the paid order items for the report day
         const menuItemIds = Array.from(new Set(soldItems.map(item => item.menu_item_id).filter(Boolean)))
+        const variationIds = Array.from(new Set(soldItems.map(item => item.menu_item_variation_id).filter((v): v is string => !!v)))
 
         if (menuItemIds.length > 0) {
-            // Query only recipes for menu items actually sold that day
-            const { data: recipes, error: recipesError } = await supabase
+            // Query recipes for menu items actually sold that day, whether attached to the
+            // base item or to one of its variations (variation-scoped rows have menu_item_id = NULL).
+            const recipeQuery = supabase
                 .from('recipes')
-                .select('menu_item_id, ingredient_id, quantity_needed')
-                .in('menu_item_id', menuItemIds)
+                .select('menu_item_id, menu_item_variation_id, ingredient_id, quantity_needed')
+
+            const { data: recipes, error: recipesError } = variationIds.length > 0
+                ? await recipeQuery.or(`menu_item_id.in.(${menuItemIds.join(',')}),menu_item_variation_id.in.(${variationIds.join(',')})`)
+                : await recipeQuery.in('menu_item_id', menuItemIds)
 
             if (recipesError) throw recipesError
 
@@ -191,15 +196,31 @@ export async function generateEodReport(restaurantId: string, reportDate: string
             if (ingredientsError) throw ingredientsError
 
             const costMap = new Map(ingredients?.map(i => [i.id, i.cost_per_unit || 0]))
-            const menuItemCostMap = new Map<string, number>()
+            // Two maps, mirroring place_order's deduction fallback: prefer a variation's own
+            // recipe cost, and fall back to the base item's recipe cost when the variation has none.
+            const variationCostMap = new Map<string, number>()
+            const baseCostMap = new Map<string, number>()
 
             for (const r of recipes || []) {
                 const itemCost = (r.quantity_needed || 0) * (costMap.get(r.ingredient_id) || 0)
-                menuItemCostMap.set(r.menu_item_id, (menuItemCostMap.get(r.menu_item_id) || 0) + itemCost)
+                if (r.menu_item_variation_id) {
+                    variationCostMap.set(r.menu_item_variation_id, (variationCostMap.get(r.menu_item_variation_id) || 0) + itemCost)
+                } else if (r.menu_item_id) {
+                    baseCostMap.set(r.menu_item_id, (baseCostMap.get(r.menu_item_id) || 0) + itemCost)
+                }
             }
 
             for (const item of soldItems) {
-                const cost = menuItemCostMap.get(item.menu_item_id) || 0
+                let cost: number
+                if (item.menu_item_variation_id && variationCostMap.has(item.menu_item_variation_id)) {
+                    cost = variationCostMap.get(item.menu_item_variation_id)!
+                } else if (baseCostMap.has(item.menu_item_id)) {
+                    cost = baseCostMap.get(item.menu_item_id)!
+                } else {
+                    // No recipe at all for this item — fall back to the admin-entered estimate, if any.
+                    const mi = item.menu_items
+                    cost = (Array.isArray(mi) ? mi[0]?.estimated_cost_price : mi?.estimated_cost_price) || 0
+                }
                 totalCogs += cost * (item.quantity || 0)
             }
         }

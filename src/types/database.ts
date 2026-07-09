@@ -156,6 +156,7 @@ export interface MenuItem {
     allergens: string[] | null
     tags: string[] | null
     is_combo?: boolean
+    estimated_cost_price?: number | null
     created_at: string
     updated_at: string
     // Joined fields

@@ -122,16 +122,22 @@ export async function addItemAction(
 
     // 2. If recipe is provided, insert it
     if (recipe && recipe.length > 0) {
-        const recipesToInsert = recipe.map(r => {
-            const varName = r.variation_name?.toLowerCase().trim()
-            const varId = varName ? variationNameIdMap[varName] : null
-            return {
-                menu_item_id: varId ? null : data.id,
-                menu_item_variation_id: varId || null,
-                ingredient_id: r.ingredient_id,
-                quantity_needed: Number(r.quantity_needed)
-            }
-        })
+        const recipesToInsert = recipe
+            .map(r => {
+                const varName = r.variation_name?.toLowerCase().trim()
+                // varName set but unresolvable means the row references a variation that
+                // was never created (client bug) — drop it rather than silently attaching
+                // it to the whole item, which would over-deduct on every order.
+                if (varName && !variationNameIdMap[varName]) return null
+                const varId = varName ? variationNameIdMap[varName] : null
+                return {
+                    menu_item_id: varId ? null : data.id,
+                    menu_item_variation_id: varId || null,
+                    ingredient_id: r.ingredient_id,
+                    quantity_needed: Number(r.quantity_needed)
+                }
+            })
+            .filter((r): r is NonNullable<typeof r> => r !== null)
         const { error: recipeError } = await supabase
             .from('recipes')
             .insert(recipesToInsert)
@@ -253,17 +259,24 @@ export async function updateItemAction(
         await deleteQuery
 
         if (recipe.length > 0) {
-            const recipesToInsert = recipe.map(r => {
-                const varRef = (r.variation_id || r.variation_name)?.toLowerCase().trim()
-                const varId = varRef ? variationNameIdMap[varRef] : null
+            const recipesToInsert = recipe
+                .map(r => {
+                    const varRef = (r.variation_id || r.variation_name)?.toLowerCase().trim()
+                    // varRef set but unresolvable means this row references a variation that
+                    // no longer exists (e.g. deleted in this same edit) — drop it rather than
+                    // silently attaching it to the whole item, which would over-deduct on
+                    // every order regardless of which variation was ordered.
+                    if (varRef && !variationNameIdMap[varRef]) return null
+                    const varId = varRef ? variationNameIdMap[varRef] : null
 
-                return {
-                    menu_item_id: varId ? null : id,
-                    menu_item_variation_id: varId || null,
-                    ingredient_id: r.ingredient_id,
-                    quantity_needed: Number(r.quantity_needed)
-                }
-            })
+                    return {
+                        menu_item_id: varId ? null : id,
+                        menu_item_variation_id: varId || null,
+                        ingredient_id: r.ingredient_id,
+                        quantity_needed: Number(r.quantity_needed)
+                    }
+                })
+                .filter((r): r is NonNullable<typeof r> => r !== null)
 
             const { error: recipeError } = await supabase
                 .from('recipes')
