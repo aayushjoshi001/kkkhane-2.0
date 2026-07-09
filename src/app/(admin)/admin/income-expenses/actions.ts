@@ -64,6 +64,8 @@ export async function createEntryAction(input: {
     amount: number
     description: string
     vendor_name?: string
+    payment_source: 'cash' | 'bank'
+    bank_name?: string
 }) {
     let user
     try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
@@ -71,8 +73,26 @@ export async function createEntryAction(input: {
     if (!input.category_id) return { error: 'A category is required.' }
     if (!Number.isFinite(input.amount) || input.amount <= 0) return { error: 'Amount must be a positive number.' }
     if (!input.description?.trim()) return { error: 'Description is required.' }
+    if (input.payment_source === 'bank' && !input.bank_name?.trim()) {
+        return { error: 'Bank name is required when payment source is Bank.' }
+    }
 
     const supabase = await createAdminClient()
+
+    // ── Check if there is an active Cash/Bank Book session open for today (in NST)
+    const now = new Date()
+    const NST_OFFSET_MS = (5 * 60 + 45) * 60 * 1000
+    const todayDateNst = new Date(now.getTime() + NST_OFFSET_MS).toISOString().split('T')[0]
+
+    const { data: openSession } = await supabase
+        .from('day_book_sessions')
+        .select('id')
+        .eq('restaurant_id', user.restaurantId)
+        .eq('date', todayDateNst)
+        .eq('status', 'open')
+        .maybeSingle()
+
+    let newEntryData: any = null
 
     if (input.type === 'income') {
         const { data, error } = await supabase
@@ -88,8 +108,7 @@ export async function createEntryAction(input: {
             .single()
 
         if (error) return { error: error.message }
-        revalidatePath(PATH)
-        return { data }
+        newEntryData = data
     } else {
         const { data, error } = await supabase
             .from('expenses')
@@ -108,9 +127,41 @@ export async function createEntryAction(input: {
             .single()
 
         if (error) return { error: error.message }
-        revalidatePath(PATH)
-        return { data }
+        newEntryData = data
     }
+
+    // ── Auto-post matching entry to Day Book session if open
+    if (openSession && newEntryData) {
+        const dbType = input.type === 'income'
+            ? (input.payment_source === 'cash' ? 'cash_in' : 'bank_in')
+            : (input.payment_source === 'cash' ? 'cash_out' : 'bank_out')
+
+        const dbCategory = input.type === 'income'
+            ? (input.payment_source === 'cash' ? 'other' : 'deposit')
+            : (input.payment_source === 'cash' ? 'expense' : 'transfer_out')
+
+        const dbDescription = input.type === 'income'
+            ? `[Income] ${input.description.trim()}`
+            : `[Expense] ${input.description.trim()}` + (input.vendor_name?.trim() ? ` (Vendor: ${input.vendor_name.trim()})` : '')
+
+        await supabase
+            .from('day_book_entries')
+            .insert({
+                session_id: openSession.id,
+                type: dbType,
+                amount: input.amount,
+                description: dbDescription,
+                category: dbCategory,
+                bank_name: input.payment_source === 'bank' ? input.bank_name?.trim() : null
+            })
+    }
+
+    revalidatePath(PATH)
+    // Also revalidate the cash/bank books path to reflect new auto-posted entries immediately!
+    revalidatePath('/admin/cash-book')
+    revalidatePath('/admin/bank-book')
+
+    return { data: newEntryData }
 }
 
 export async function deleteEntryAction(id: string, type: 'income' | 'expense') {
