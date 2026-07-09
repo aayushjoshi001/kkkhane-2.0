@@ -4,7 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import Image from 'next/image'
 import { Shield, ChefHat, Users, User, Check, AlertTriangle, Loader2, Pencil, Trash2, Eye, EyeOff, Banknote, Search, Mail, X, RotateCw, DollarSign, List, Plus } from 'lucide-react'
-import { updateStaffRoleAction, toggleStaffStatusAction, updateStaffNameAction, resetStaffPasswordAction, deleteStaffAction, updateStaffSalaryAction, recordLedgerTransactionAction, fetchStaffLedgerAction, updateOpeningBalanceAction } from '@/app/(admin)/admin/staff/actions'
+import { updateStaffRoleAction, toggleStaffStatusAction, updateStaffNameAction, resetStaffPasswordAction, deleteStaffAction, updateStaffSalaryAction, recordLedgerTransactionAction, fetchStaffLedgerAction, updateOpeningBalanceAction, fetchAutoAccrualPreviewAction, executeAutoAccrualAction } from '@/app/(admin)/admin/staff/actions'
 import { createDepartmentAction, updateDepartmentAction, deleteDepartmentAction, updateStaffDepartmentAction } from '@/app/(admin)/admin/staff/department-actions'
 import { createInvitationAction, revokeInvitationAction, resendInvitationAction } from '@/app/(admin)/admin/staff/invite-actions'
 import { toast } from 'react-hot-toast'
@@ -131,6 +131,24 @@ export default function StaffManager({
         loading: false,
         openingBalanceEdit: '',
         savingOpeningBalance: false
+    })
+
+    const prevMonthDate = new Date()
+    prevMonthDate.setMonth(prevMonthDate.getMonth() - 1)
+    const [autoAccrualModal, setAutoAccrualModal] = useState<{
+        isOpen: boolean
+        year: number
+        month: number
+        previewData: any[]
+        loading: boolean
+        saving: boolean
+    }>({
+        isOpen: false,
+        year: prevMonthDate.getFullYear(),
+        month: prevMonthDate.getMonth() + 1, // 1-12
+        previewData: [],
+        loading: false,
+        saving: false
     })
 
     const [submittingId, setSubmittingId] = useState<string | null>(null)
@@ -319,6 +337,56 @@ export default function StaffManager({
         } catch (err: any) {
             toast.error(err.message || 'Failed to fetch ledger')
             setLedgerModal(prev => ({ ...prev, loading: false }))
+        }
+    }
+
+    const loadAutoAccrualPreview = async (yr: number, mth: number) => {
+        setAutoAccrualModal(prev => ({ ...prev, loading: true, year: yr, month: mth }))
+        try {
+            const data = await fetchAutoAccrualPreviewAction(yr, mth)
+            setAutoAccrualModal(prev => ({ ...prev, previewData: data, loading: false }))
+        } catch (e: any) {
+            toast.error(e.message || 'Failed to load preview')
+            setAutoAccrualModal(prev => ({ ...prev, loading: false }))
+        }
+    }
+
+    const handleExecuteAutoAccrual = async () => {
+        const toProcess = autoAccrualModal.previewData.filter(p => !p.isProcessed && p.computedAmount > 0)
+        if (toProcess.length === 0) {
+            toast.error('No pending accruals to process')
+            return
+        }
+
+        const isOk = await confirm({
+            title: 'Confirm Bulk Accrual?',
+            message: `This will record salary accruals for ${toProcess.length} staff members for ${new Date(autoAccrualModal.year, autoAccrualModal.month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}. This cannot be undone.`,
+            confirmText: 'Accrue Salaries'
+        })
+        if (!isOk) return
+
+        setAutoAccrualModal(prev => ({ ...prev, saving: true }))
+        try {
+            const res = await executeAutoAccrualAction(
+                autoAccrualModal.year,
+                autoAccrualModal.month,
+                toProcess.map(p => ({
+                    userId: p.userId,
+                    amount: p.computedAmount,
+                    note: p.note
+                }))
+            )
+            if (res.error) {
+                toast.error(res.error)
+            } else {
+                toast.success('Salaries processed and accrued successfully')
+                setAutoAccrualModal(prev => ({ ...prev, isOpen: false }))
+                mutate()
+            }
+        } catch (e: any) {
+            toast.error(e.message || 'Failed to process accruals')
+        } finally {
+            setAutoAccrualModal(prev => ({ ...prev, saving: false }))
         }
     }
 
@@ -995,7 +1063,7 @@ export default function StaffManager({
 
             {activeTab === 'salaries' && (
                 <div className="bg-surface rounded-card border border-hairline overflow-hidden shadow-sm animate-in fade-in duration-200">
-                    <div className="px-5 md:px-6 py-4 border-b border-hairline bg-surface">
+                    <div className="px-5 md:px-6 py-4 border-b border-hairline bg-surface flex items-center justify-between gap-4">
                         <div className="relative w-full max-w-md">
                             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-subtle" />
                             <input
@@ -1006,6 +1074,18 @@ export default function StaffManager({
                                 className="w-full pl-10 pr-4 py-2.5 rounded-[var(--r-md)] border border-hairline bg-surface text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
                             />
                         </div>
+                        <button
+                            onClick={() => {
+                                const yr = autoAccrualModal.year
+                                const mth = autoAccrualModal.month
+                                setAutoAccrualModal(prev => ({ ...prev, isOpen: true }))
+                                loadAutoAccrualPreview(yr, mth)
+                            }}
+                            className="px-4 py-2.5 text-xs font-bold text-white bg-brand-500 hover:bg-brand-600 rounded-[var(--r-md)] flex items-center gap-1.5 transition shadow-[0_4px_12px_rgba(251,99,3,0.15)] whitespace-nowrap"
+                        >
+                            <DollarSign size={14} />
+                            Process Monthly Salaries
+                        </button>
                     </div>
 
                     <div className="overflow-x-auto">
@@ -1902,6 +1982,144 @@ export default function StaffManager({
                             >
                                 Close Statement
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Bulk Process Monthly Salaries Modal */}
+            {autoAccrualModal.isOpen && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-surface w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl rounded-card border border-hairline animate-in fade-in zoom-in-95 duration-200">
+                        {/* Header */}
+                        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between shrink-0 bg-surface-muted/30">
+                            <div>
+                                <h3 className="font-extrabold text-ink text-base">Process Monthly Salaries</h3>
+                                <p className="text-[11px] text-ink-subtle uppercase tracking-wider font-bold mt-0.5">Bulk record salary accruals for active staff</p>
+                            </div>
+                            <button onClick={() => setAutoAccrualModal(prev => ({ ...prev, isOpen: false }))} className="w-8 h-8 flex items-center justify-center rounded-[var(--r-md)] text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors">×</button>
+                        </div>
+
+                        {/* Month/Year Selectors */}
+                        <div className="px-6 py-4 border-b border-hairline flex items-center gap-3 bg-surface shrink-0">
+                            <span className="text-xs font-bold text-ink-subtle uppercase tracking-wider">Select Payroll Period:</span>
+                            <select
+                                value={autoAccrualModal.month}
+                                onChange={e => {
+                                    const m = parseInt(e.target.value)
+                                    loadAutoAccrualPreview(autoAccrualModal.year, m)
+                                }}
+                                className="px-2.5 py-1.5 text-xs font-bold border border-hairline rounded-[var(--r-sm)] bg-surface text-ink outline-none focus:ring-2 focus:ring-brand-500/10 focus:border-brand-500"
+                            >
+                                {Array.from({ length: 12 }, (_, i) => (
+                                    <option key={i + 1} value={i + 1}>
+                                        {new Date(2000, i).toLocaleString('default', { month: 'long' })}
+                                    </option>
+                                ))}
+                            </select>
+                            <select
+                                value={autoAccrualModal.year}
+                                onChange={e => {
+                                    const y = parseInt(e.target.value)
+                                    loadAutoAccrualPreview(y, autoAccrualModal.month)
+                                }}
+                                className="px-2.5 py-1.5 text-xs font-bold border border-hairline rounded-[var(--r-sm)] bg-surface text-ink outline-none focus:ring-2 focus:ring-brand-500/10 focus:border-brand-500"
+                            >
+                                {Array.from({ length: 3 }, (_, i) => {
+                                    const y = new Date().getFullYear() - i
+                                    return <option key={y} value={y}>{y}</option>
+                                })}
+                            </select>
+                        </div>
+
+                        {/* Preview Table */}
+                        <div className="flex-1 overflow-y-auto p-6 min-h-0">
+                            {autoAccrualModal.loading ? (
+                                <div className="flex flex-col items-center justify-center py-20 text-ink-subtle gap-2">
+                                    <Loader2 size={24} className="animate-spin" />
+                                    <span className="text-xs font-bold">Calculating payroll preview...</span>
+                                </div>
+                            ) : autoAccrualModal.previewData.length === 0 ? (
+                                <div className="text-center py-12 text-sm text-ink-muted bg-surface-muted/20 border border-hairline rounded-card font-bold">
+                                    No active staff members found to process
+                                </div>
+                            ) : (
+                                <div className="border border-hairline rounded-card overflow-hidden">
+                                    <table className="w-full text-left text-xs border-collapse">
+                                        <thead>
+                                            <tr className="bg-surface-muted border-b border-hairline">
+                                                <th className="px-4 py-3 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline">Staff Member</th>
+                                                <th className="px-4 py-3 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline whitespace-nowrap">Join Date</th>
+                                                <th className="px-4 py-3 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline text-center whitespace-nowrap">Days Worked</th>
+                                                <th className="px-4 py-3 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline text-right whitespace-nowrap">Monthly Salary</th>
+                                                <th className="px-4 py-3 font-black text-ink-subtle uppercase tracking-wider text-[10px] border-r border-hairline text-right whitespace-nowrap">Calculated Accrual</th>
+                                                <th className="px-4 py-3 font-black text-ink-subtle uppercase tracking-wider text-[10px] whitespace-nowrap">Status / Note</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-hairline">
+                                            {autoAccrualModal.previewData.map((item) => (
+                                                <tr key={item.userId} className={`transition-colors ${item.isProcessed ? 'bg-surface-muted/30 text-ink-muted' : 'hover:bg-brand-50/5'}`}>
+                                                    <td className="px-4 py-3 font-black text-ink border-r border-hairline">{item.fullName}</td>
+                                                    <td className="px-4 py-3 font-bold border-r border-hairline">
+                                                        {new Date(item.joinedDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                    </td>
+                                                    <td className="px-4 py-3 font-bold text-center border-r border-hairline whitespace-nowrap">
+                                                        {item.daysWorked} / {item.totalDaysInMonth} days
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-black border-r border-hairline">{formatCurrency(item.monthlySalary)}</td>
+                                                    <td className={`px-4 py-3 text-right font-black border-r border-hairline text-sm ${item.isProcessed ? 'text-ink-muted' : 'text-violet-600'}`}>
+                                                        {formatCurrency(item.computedAmount)}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        {item.isProcessed ? (
+                                                            <span className="inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase tracking-wider border bg-emerald-50 text-emerald-700 border-emerald-100">
+                                                                Already Processed
+                                                            </span>
+                                                        ) : item.computedAmount === 0 ? (
+                                                            <span className="text-ink-muted italic text-[11px]">{item.note}</span>
+                                                        ) : item.daysWorked < item.totalDaysInMonth ? (
+                                                            <span className="inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase tracking-wider border bg-amber-50 text-amber-700 border-amber-100" title={item.note}>
+                                                                Prorated First Month
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-ink-subtle text-[11px] font-bold">Ready to accrue</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-6 py-5 bg-surface-muted/30 border-t border-hairline flex items-center justify-between shrink-0">
+                            <div className="text-xs font-bold text-ink-subtle">
+                                {(() => {
+                                    const pending = autoAccrualModal.previewData.filter(p => !p.isProcessed && p.computedAmount > 0)
+                                    const totalAccrual = pending.reduce((sum, p) => sum + p.computedAmount, 0)
+                                    return (
+                                        <span>Total to accrue: <strong className="text-violet-600 text-sm">{formatCurrency(totalAccrual)}</strong> for {pending.length} staff</span>
+                                    )
+                                })()}
+                            </div>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setAutoAccrualModal(prev => ({ ...prev, isOpen: false }))}
+                                    className="px-4 py-2 text-xs font-bold text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    disabled={autoAccrualModal.saving || autoAccrualModal.previewData.filter(p => !p.isProcessed && p.computedAmount > 0).length === 0}
+                                    onClick={handleExecuteAutoAccrual}
+                                    className="px-5 py-2 text-xs font-black text-white bg-brand-500 hover:bg-brand-600 rounded-[var(--r-md)] flex items-center gap-1.5 transition shadow-[0_4px_12px_rgba(251,99,3,0.15)] disabled:opacity-50"
+                                >
+                                    {autoAccrualModal.saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                                    Process & Accrue
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

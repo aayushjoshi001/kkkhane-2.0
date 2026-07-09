@@ -263,3 +263,112 @@ export async function updateOpeningBalanceAction(userId: string, openingBalance:
     revalidatePath('/admin/staff')
     return { success: true }
 }
+
+export async function fetchAutoAccrualPreviewAction(year: number, month: number) {
+    const currentUser = await getCurrentUser()
+    const supabase = await createAdminClient()
+
+    // 1. Get all active staff in the restaurant
+    const { data: staff, error: staffError } = await supabase
+        .from('users')
+        .select('id, full_name, created_at, monthly_salary')
+        .eq('restaurant_id', currentUser.restaurantId)
+        .eq('is_active', true)
+
+    if (staffError) throw new Error(staffError.message)
+
+    // Month boundaries
+    const startDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0))
+    const endDate = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999))
+    const totalDaysInMonth = new Date(year, month, 0).getDate()
+
+    // 2. Fetch all accruals already recorded in this month's date range
+    const { data: existingAccruals, error: accrualError } = await supabase
+        .from('staff_ledger')
+        .select('user_id')
+        .eq('restaurant_id', currentUser.restaurantId)
+        .eq('entry_type', 'accrual')
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString())
+
+    if (accrualError) throw new Error(accrualError.message)
+
+    const processedUserIds = new Set(existingAccruals?.map(a => a.user_id) || [])
+
+    const preview = staff.map(member => {
+        const joinedDate = new Date(member.created_at)
+        const isProcessed = processedUserIds.has(member.id)
+
+        // Clear time components for clean date comparisons
+        const joinedUTC = Date.UTC(joinedDate.getUTCFullYear(), joinedDate.getUTCMonth(), joinedDate.getUTCDate())
+        const startUTC = Date.UTC(year, month - 1, 1)
+        const endUTC = Date.UTC(year, month, 0)
+
+        // Calculate proration
+        let computedAmount = Number(member.monthly_salary)
+        let note = 'Previous month salary'
+        let daysWorked = totalDaysInMonth
+
+        if (joinedUTC > endUTC) {
+            // Not joined yet
+            computedAmount = 0
+            note = 'Not hired yet during this period'
+            daysWorked = 0
+        } else if (joinedUTC > startUTC) {
+            // Joined mid-month
+            const joinedDay = new Date(joinedUTC).getUTCDate()
+            daysWorked = totalDaysInMonth - joinedDay + 1
+            computedAmount = Math.round(Number(member.monthly_salary) * (daysWorked / totalDaysInMonth) * 100) / 100
+            note = `Previous month salary (Prorated: ${daysWorked}/${totalDaysInMonth} days)`
+        }
+
+        return {
+            userId: member.id,
+            fullName: member.full_name,
+            joinedDate: member.created_at,
+            monthlySalary: Number(member.monthly_salary),
+            computedAmount,
+            daysWorked,
+            totalDaysInMonth,
+            note,
+            isProcessed
+        }
+    })
+
+    return preview
+}
+
+export async function executeAutoAccrualAction(
+    year: number,
+    month: number,
+    accruals: Array<{ userId: string; amount: number; note: string }>
+) {
+    const currentUser = await getCurrentUser()
+    const supabase = await createAdminClient()
+
+    if (accruals.length === 0) return { success: true }
+
+    // Date for the accrual (last second of the processed month)
+    const accrualDate = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999)).toISOString()
+
+    const records = accruals.map(acc => ({
+        restaurant_id: currentUser.restaurantId,
+        user_id: acc.userId,
+        amount: acc.amount,
+        entry_type: 'accrual',
+        payment_method: null,
+        note: acc.note,
+        created_by: currentUser.id,
+        created_at: accrualDate
+    }))
+
+    const { error } = await supabase
+        .from('staff_ledger')
+        .insert(records)
+
+    if (error) return { error: error.message }
+
+    revalidatePath('/admin/staff')
+    return { success: true }
+}
+
