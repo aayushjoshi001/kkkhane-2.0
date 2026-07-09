@@ -3,6 +3,48 @@ import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
 
+type AdminClient = Awaited<ReturnType<typeof createAdminClient>>
+
+/**
+ * Fully settles every non-cancelled order matching the given session or
+ * booking: marks every order_item 'served' and the order 'delivered' +
+ * 'paid', so it drops out of the kitchen queue and the waiter/room-billing
+ * panels the same moment the guest checks out — not just payment_status,
+ * which previously left the kitchen thinking these orders were still active.
+ */
+async function settleOrdersMatching(
+    supabase: AdminClient,
+    restaurantId: string,
+    match: { session_id: string } | { booking_id: string },
+) {
+    let query = supabase
+        .from('orders')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .neq('status', 'cancelled')
+
+    query = 'session_id' in match
+        ? query.eq('session_id', match.session_id)
+        : query.eq('booking_id', match.booking_id)
+
+    const { data: orders } = await query
+    const orderIds = (orders || []).map(o => o.id)
+    if (orderIds.length === 0) return
+
+    const now = new Date().toISOString()
+
+    await supabase
+        .from('order_items')
+        .update({ status: 'served' })
+        .in('order_id', orderIds)
+        .neq('status', 'cancelled')
+
+    await supabase
+        .from('orders')
+        .update({ status: 'delivered', payment_status: 'paid', paid_at: now })
+        .in('id', orderIds)
+}
+
 export async function POST(req: Request) {
     try {
         const currentUser = await getCurrentUser()
@@ -70,8 +112,17 @@ export async function POST(req: Request) {
 
         if (roomError) throw roomError
 
-        // 3. If the room's QR session was folded into this bill, settle its
-        // orders and close the session so the cashier can't collect them again.
+        // 3. Settle every order billed to this stay — the room's own QR orders
+        // (linked via orders.booking_id, stamped at placement) plus, defensively,
+        // anything still reachable by the room session's own id. This marks them
+        // 'delivered'/'paid' so they drop out of the kitchen queue and stop
+        // reappearing on the guest's order tracker after checkout.
+        await settleOrdersMatching(supabase, currentUser.restaurantId, { booking_id })
+        if (session_id) {
+            await settleOrdersMatching(supabase, currentUser.restaurantId, { session_id })
+        }
+
+        // 3b. Close the room's own session so the cashier can't collect its orders again.
         if (session_id) {
             const { data: session } = await supabase
                 .from('sessions')
@@ -81,17 +132,9 @@ export async function POST(req: Request) {
                 .maybeSingle()
 
             if (session) {
-                const now = new Date().toISOString()
-                await supabase
-                    .from('orders')
-                    .update({ payment_status: 'paid', paid_at: now })
-                    .eq('session_id', session_id)
-                    .eq('restaurant_id', currentUser.restaurantId)
-                    .neq('status', 'cancelled')
-                    .neq('payment_status', 'paid')
                 await supabase
                     .from('sessions')
-                    .update({ status: 'closed', closed_at: now })
+                    .update({ status: 'closed', closed_at: new Date().toISOString() })
                     .eq('id', session_id)
                     .eq('status', 'active')
             }
@@ -111,13 +154,7 @@ export async function POST(req: Request) {
             for (const sid of linkedIds) {
                 // Skip if already handled above
                 if (sid === session_id) continue
-                await supabase
-                    .from('orders')
-                    .update({ payment_status: 'paid', paid_at: now })
-                    .eq('session_id', sid)
-                    .eq('restaurant_id', currentUser.restaurantId)
-                    .neq('status', 'cancelled')
-                    .neq('payment_status', 'paid')
+                await settleOrdersMatching(supabase, currentUser.restaurantId, { session_id: sid })
                 await supabase
                     .from('sessions')
                     .update({ status: 'closed', closed_at: now })
