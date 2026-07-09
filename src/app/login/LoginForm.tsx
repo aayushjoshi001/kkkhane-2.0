@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Eye, EyeOff, Lock, Mail, ArrowRight } from 'lucide-react'
 import { Turnstile } from '@marsidev/react-turnstile'
 import { useTurnstile, TURNSTILE_SITE_KEY } from '@/lib/hooks/useTurnstile'
-import { DEMO_ACCOUNTS, DEMO_PASSWORD } from '@/lib/demoAccounts'
+import { DEMO_ACCOUNTS, DEMO_PASSWORD, DEMO_GROUPS } from '@/lib/demoAccounts'
 
 const initialState = { error: null as string | null }
 
@@ -187,23 +187,30 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
                 <summary className="text-xs font-semibold text-ink-subtle p-4 cursor-pointer flex justify-center hover:text-ink-muted transition-colors list-none text-center outline-none">
                     Development: Show Demo Accounts
                 </summary>
-                <div className="p-4 pt-0 grid grid-cols-2 gap-2 border-t border-hairline">
-                    {DEMO_ACCOUNTS.map(({ label, email, color }) => (
-                        <button
-                            key={email}
-                            type="button"
-                            className={`text-[11px] font-bold py-2 px-3 rounded-lg transition shadow-sm ${color}`}
-                            onClick={() => {
-                                setTimeout(() => {
-                                    const f = document.getElementById('email') as HTMLInputElement | null
-                                    const p = document.getElementById('password') as HTMLInputElement | null
-                                    if (f) f.value = email
-                                    if (p) p.value = DEMO_PASSWORD
-                                }, 10)
-                            }}
-                        >
-                            {label}
-                        </button>
+                <div className="p-4 pt-0 flex flex-col gap-3 border-t border-hairline">
+                    {DEMO_GROUPS.map(({ tenant, title }) => (
+                        <div key={tenant} className="flex flex-col gap-2">
+                            <span className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mt-2">{title}</span>
+                            <div className="grid grid-cols-2 gap-2">
+                                {DEMO_ACCOUNTS.filter(a => a.tenant === tenant).map(({ label, email, color }) => (
+                                    <button
+                                        key={email}
+                                        type="button"
+                                        className={`text-[11px] font-bold py-2 px-3 rounded-lg transition shadow-sm ${color}`}
+                                        onClick={() => {
+                                            setTimeout(() => {
+                                                const f = document.getElementById('email') as HTMLInputElement | null
+                                                const p = document.getElementById('password') as HTMLInputElement | null
+                                                if (f) f.value = email
+                                                if (p) p.value = DEMO_PASSWORD
+                                            }, 10)
+                                        }}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     ))}
                 </div>
             </details>

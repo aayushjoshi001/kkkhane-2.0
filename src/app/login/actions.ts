@@ -7,12 +7,14 @@ import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/ratelimit'
 import { ROLE_LANDING } from '@/lib/roleLanding'
 import { verifyTurnstileToken } from '@/lib/turnstile'
 import { provisionRestaurant } from '@/lib/provisioning'
+import { seedDemoHotel } from '@/lib/demoHotel'
 import {
     DEMO_ACCOUNTS,
     DEMO_PASSWORD,
-    DEMO_RESTAURANT,
+    DEMO_TENANTS,
     findDemoAccount,
     type DemoAccount,
+    type DemoTenant,
 } from '@/lib/demoAccounts'
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>
@@ -49,44 +51,64 @@ async function ensureDemoAuthUser(admin: AdminClient, account: DemoAccount): Pro
     return existing?.id ?? null
 }
 
-// The single demo restaurant every staff demo account belongs to. Idempotent:
-// looks up by slug first, only provisioning (menu, tables, settings) when absent.
-async function ensureDemoRestaurant(admin: AdminClient): Promise<string | null> {
+// Ensure the demo restaurant for a tenant (Restaurant or Hotel) exists.
+// Idempotent: looks up by slug first, only provisioning (menu, tables, settings)
+// when absent. For the hotel tenant it also seeds rooms, bookings and a live
+// in-room order so the check-in → order → checkout flow is demoable immediately.
+async function ensureDemoTenant(admin: AdminClient, tenant: DemoTenant): Promise<string | null> {
+    const cfg = DEMO_TENANTS[tenant]
+
     const { data: existing } = await admin
         .from('restaurants')
         .select('id')
-        .eq('slug', DEMO_RESTAURANT.slug)
+        .eq('slug', cfg.slug)
         .maybeSingle()
-    if (existing?.id) return existing.id
+    let restaurantId = existing?.id ?? null
 
-    const owner = DEMO_ACCOUNTS.find(a => a.isOwner)
-    if (!owner) return null
-    const ownerId = await ensureDemoAuthUser(admin, owner)
-    if (!ownerId) return null
+    if (!restaurantId) {
+        const owner = DEMO_ACCOUNTS.find(a => a.isOwner && a.tenant === tenant)
+        if (!owner) return null
+        const ownerId = await ensureDemoAuthUser(admin, owner)
+        if (!ownerId) return null
 
-    const result = await provisionRestaurant({
-        ownerId,
-        ownerEmail: owner.email,
-        ownerName: owner.fullName,
-        name: DEMO_RESTAURANT.name,
-        slug: DEMO_RESTAURANT.slug,
-        businessType: DEMO_RESTAURANT.businessType,
-        tier: 'pro',
-    })
-    if (result.restaurantId) return result.restaurantId
+        const result = await provisionRestaurant({
+            ownerId,
+            ownerEmail: owner.email,
+            ownerName: owner.fullName,
+            name: cfg.name,
+            slug: cfg.slug,
+            businessType: cfg.businessType,
+            tier: 'pro',
+        })
+        restaurantId = result.restaurantId ?? null
 
-    // Provisioning may have lost a race (slug taken between our check and insert).
-    console.error('Demo restaurant provisioning failed:', result.error)
-    const { data: retry } = await admin
-        .from('restaurants')
-        .select('id')
-        .eq('slug', DEMO_RESTAURANT.slug)
-        .maybeSingle()
-    return retry?.id ?? null
+        if (!restaurantId) {
+            // Provisioning may have lost a race (slug taken between check and insert).
+            console.error('Demo tenant provisioning failed:', result.error)
+            const { data: retry } = await admin
+                .from('restaurants')
+                .select('id')
+                .eq('slug', cfg.slug)
+                .maybeSingle()
+            restaurantId = retry?.id ?? null
+        }
+    }
+
+    // Seed hotel-specific data (rooms, bookings, room-numbered tables). Idempotent
+    // and best-effort — a seeding hiccup must never block the demo login.
+    if (restaurantId && tenant === 'hotel') {
+        try {
+            await seedDemoHotel(admin, restaurantId)
+        } catch (e) {
+            console.error('Demo hotel seed failed:', e)
+        }
+    }
+
+    return restaurantId
 }
 
 // Self-heal a demo account so its login always succeeds: ensure the auth user,
-// its role, and (for staff) its membership in the shared demo restaurant exist.
+// its role, and (for staff) its membership in its tenant's demo restaurant exist.
 async function provisionDemoAccount(admin: AdminClient, account: DemoAccount): Promise<void> {
     await admin.from('roles').upsert(DEMO_ROLES, { onConflict: 'id' })
 
@@ -97,7 +119,7 @@ async function provisionDemoAccount(admin: AdminClient, account: DemoAccount): P
         return
     }
 
-    const restaurantId = await ensureDemoRestaurant(admin)
+    const restaurantId = await ensureDemoTenant(admin, account.tenant)
     if (!restaurantId) return
 
     const userId = await ensureDemoAuthUser(admin, account)
