@@ -36,13 +36,17 @@ export default function ContactPage() {
                             <div>
                                 <h3 className="mb-3 text-xl font-extrabold text-ink">Direct Contact</h3>
                                 <div className="space-y-4">
-                                    <a href="mailto:hello@kkkhane.com" className="flex items-center gap-3 font-medium text-ink-muted transition hover:text-[var(--color-primary)]">
+                                    <a href="mailto:info.kkkhane@gmail.com" className="flex items-center gap-3 font-medium text-ink-muted transition hover:text-[var(--color-primary)]">
                                         <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-hairline bg-surface shadow-sm">📧</div>
-                                        hello@kkkhane.com
+                                        <div className="text-sm">Sales: info.kkkhane@gmail.com</div>
                                     </a>
-                                    <a href="tel:+9779800000000" className="flex items-center gap-3 font-medium text-ink-muted transition hover:text-[var(--color-primary)]">
+                                    <a href="mailto:siddantasodari123@gmail.com" className="flex items-center gap-3 font-medium text-ink-muted transition hover:text-[var(--color-primary)]">
+                                        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-hairline bg-surface shadow-sm">✉️</div>
+                                        <div className="text-sm">Gen: siddantasodari123@gmail.com</div>
+                                    </a>
+                                    <a href="tel:+9779765662427" className="flex items-center gap-3 font-medium text-ink-muted transition hover:text-[var(--color-primary)]">
                                         <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-hairline bg-surface shadow-sm">📞</div>
-                                        +977 9800000000
+                                        +977 9765662427
                                     </a>
                                 </div>
                             </div>
@@ -50,15 +54,19 @@ export default function ContactPage() {
                                 <h3 className="mb-3 text-xl font-extrabold text-ink">Headquarters</h3>
                                 <div className="flex items-start gap-3 font-medium text-ink-muted">
                                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-hairline bg-surface shadow-sm">📍</div>
-                                    <p className="mt-2">Kathmandu, Nepal<br />South Asia</p>
+                                    <p className="mt-2 text-sm">Bhojad, Bharatpur<br />Nepal</p>
                                 </div>
                             </div>
                             <div className="border-t border-hairline-strong pt-6">
                                 <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-ink-subtle">Connect on Social</h3>
-                                <div className="flex gap-3">
-                                    {['Twitter', 'Facebook', 'Instagram', 'LinkedIn'].map((social) => (
-                                        <a key={social} href="#" className="flex-1 rounded-lg border border-hairline-strong bg-surface py-2.5 text-center text-sm font-bold text-ink-muted shadow-sm transition hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]">
-                                            {social}
+                                <div className="flex gap-2">
+                                    {[
+                                        { name: 'Facebook', url: 'https://www.facebook.com/profile.php?id=61591962652382' },
+                                        { name: 'Instagram', url: 'https://www.instagram.com/kkkhane_/' },
+                                        { name: 'LinkedIn', url: 'https://www.linkedin.com/company/kkkhane/?viewAsMember=true' }
+                                    ].map((social) => (
+                                        <a key={social.name} href={social.url} target="_blank" rel="noopener noreferrer" className="flex-1 rounded-lg border border-hairline-strong bg-surface py-2 text-center text-[11px] sm:text-xs font-bold text-ink-muted shadow-sm transition hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]">
+                                            {social.name}
                                         </a>
                                     ))}
                                 </div>
@@ -73,7 +81,7 @@ export default function ContactPage() {
                 <div className="mx-auto max-w-6xl px-4 sm:px-6">
                     <div className="text-center mb-10">
                         <h2 className="text-3xl font-extrabold tracking-tight text-ink">Find Us Here</h2>
-                        <p className="text-ink-subtle font-medium mt-3">Visit our headquarters in the heart of Kathmandu.</p>
+                        <p className="text-ink-subtle font-medium mt-3">Visit our headquarters in Bhojad, Bharatpur.</p>
                     </div>
                     <div className="w-full h-[450px] rounded-[2.5rem] overflow-hidden shadow-2xl border-8 border-gray-50 relative group">
                         <div className="absolute inset-0 z-0">
@@ -88,7 +96,7 @@ export default function ContactPage() {
                                 </div>
                                 <div>
                                     <h3 className="font-extrabold text-ink text-base">Global HQ</h3>
-                                    <p className="text-ink-subtle font-bold text-xs uppercase tracking-wider">Kathmandu, Nepal</p>
+                                    <p className="text-ink-subtle font-bold text-xs uppercase tracking-wider">Bhojad, Bharatpur</p>
                                 </div>
                             </div>
                             <a href="https://maps.google.com" target="_blank" rel="noopener noreferrer" className="block text-center w-full py-2 mt-3 bg-ink text-white rounded-xl text-xs font-bold hover:bg-black transition-colors">

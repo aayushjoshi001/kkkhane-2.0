@@ -34,15 +34,15 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL('https://kkkhane.com'),
   title: {
-    default: 'KKKhane | Best SaaS for Cafes & Restaurants in Nepal',
+    default: 'KKKhane | Best SaaS from Cafes to Restaurants in Nepal',
     template: '%s | KKKhane'
   },
-  description: 'KKKhane is an ultra-premium SaaS application best for cafes and restaurants. Features include QR Menus, POS, Inventory, and Real-Time Reporting in Nepal.',
+  description: 'KKKhane is an ultra-premium SaaS application best from cafes to restaurants. Features include QR Menus, POS, Inventory, and Real-Time Reporting in Nepal.',
   keywords: ['restaurant software', 'cafe POS', 'Nepal POS', 'QR menu', 'restaurant management system', 'KKKhane', 'Bhojad', 'Bharatpur'],
   authors: [{ name: 'KKKhane' }],
   openGraph: {
-    title: 'KKKhane | Best SaaS for Cafes & Restaurants in Nepal',
-    description: 'An ultra-premium management software. Best for cafes and restaurants in Nepal.',
+    title: 'KKKhane | Best SaaS from Cafes to Restaurants in Nepal',
+    description: 'An ultra-premium management software. Best from cafes to restaurants in Nepal.',
     url: 'https://kkkhane.com',
     siteName: 'KKKhane',
     locale: 'en_US',
@@ -50,8 +50,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'KKKhane | Best SaaS for Cafes & Restaurants in Nepal',
-    description: 'An ultra-premium management software. Best for cafes and restaurants in Nepal.',
+    title: 'KKKhane | Best SaaS from Cafes to Restaurants in Nepal',
+    description: 'An ultra-premium management software. Best from cafes to restaurants in Nepal.',
   },
   manifest: '/manifest.json',
   icons: {

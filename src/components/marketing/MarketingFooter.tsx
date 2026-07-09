@@ -3,14 +3,13 @@ import Logo from '@/components/shared/Logo'
 import CopyrightYear from '@/components/shared/CopyrightYear'
 import {
     Phone, MapPin,
-    Facebook, Instagram, Youtube, Twitter,
+    Facebook, Instagram, Linkedin,
 } from 'lucide-react'
 
 const SOCIALS = [
-    { icon: Facebook, url: 'https://facebook.com/kkkhane' },
-    { icon: Instagram, url: 'https://instagram.com/kkkhane' },
-    { icon: Youtube, url: 'https://youtube.com/@kkkhane' },
-    { icon: Twitter, url: 'https://twitter.com/kkkhane' },
+    { icon: Facebook, url: 'https://www.facebook.com/profile.php?id=61591962652382' },
+    { icon: Instagram, url: 'https://www.instagram.com/kkkhane_/' },
+    { icon: Linkedin, url: 'https://www.linkedin.com/company/kkkhane/?viewAsMember=true' },
 ]
 
 const FEATURE_LINKS = [
@@ -40,7 +39,7 @@ export default function MarketingFooter() {
                     <div>
                         <Logo className="mb-6 h-8" />
                         <p className="mb-8 text-sm font-medium leading-relaxed text-ink-subtle">
-                            #1 Software to manage and grow your cafe or restaurant — smarter, faster.
+                            From cafes to restaurants, we serve you — smarter, faster.
                         </p>
                         <div className="flex gap-3">
                             {SOCIALS.map(({ icon: Icon, url }) => (
@@ -91,13 +90,13 @@ export default function MarketingFooter() {
                         <div className="rounded-2xl border border-white bg-surface/80 p-6 shadow-sm backdrop-blur">
                             <div className="mb-4 flex items-center gap-2 font-bold text-green-600"><Phone size={18} /> General Inquiry</div>
                             <p className="mb-2 text-sm font-bold text-ink">+977 9765662427</p>
-                            <p className="text-sm font-bold text-ink">info.kkkhane@gmail.com</p>
+                            <p className="text-sm font-bold text-ink">siddantasodari123@gmail.com</p>
                         </div>
                         <div className="rounded-2xl border border-white bg-surface/80 p-6 shadow-sm backdrop-blur">
                             <div className="mb-4 flex items-center gap-2 font-bold text-[var(--color-primary)]"><MapPin size={18} /> Headquarters</div>
                             <p className="text-sm font-medium leading-relaxed text-ink-muted">
                                 Bhojad, Bharatpur, Nepal <br/>
-                                Serving Cafe and Restaurants nationwide.
+                                Serving from cafes to restaurants nationwide.
                             </p>
                         </div>
                     </div>

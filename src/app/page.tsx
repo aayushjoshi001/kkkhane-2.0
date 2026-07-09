@@ -47,7 +47,7 @@ export default async function Home() {
                         "name": "KKKhane",
                         "url": "https://kkkhane.com",
                         "logo": "https://kkkhane.com/icons/kkkhane.png",
-                        "description": "The ultimate SaaS application best for cafe to restaurants. Manage orders, inventory, and QR menus with ease.",
+                        "description": "The ultimate SaaS application best from cafe to restaurants. Manage orders, inventory, and QR menus with ease.",
                         "applicationCategory": "BusinessApplication",
                         "operatingSystem": "All",
                         "email": "info.kkkhane@gmail.com",
@@ -86,7 +86,7 @@ export default async function Home() {
 
                     <h2 className="text-3xl sm:text-5xl font-extrabold text-ink leading-[1.1] mb-8 tracking-tight animate-fade-up" style={{ animationDelay: '0.1s' }}>
                         The SaaS Platform built <br className="hidden sm:block" />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-primary)] to-amber-500">for Cafes & Restaurants.</span>
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-primary)] to-amber-500">from Cafes to Restaurants.</span>
                     </h2>
 
                     <p className="text-lg sm:text-xl text-ink-subtle mb-12 max-w-2xl mx-auto leading-relaxed font-medium animate-fade-up" style={{ animationDelay: '0.2s' }}>
@@ -303,8 +303,8 @@ export default async function Home() {
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-[var(--color-primary)]/20 blur-[120px] rounded-full pointer-events-none" />
                         
                         <div className="relative z-10 max-w-2xl mx-auto">
-                            <h2 className="text-4xl sm:text-5xl font-extrabold text-white mb-6 tracking-tight">Ready to elevate your cafe or restaurant?</h2>
-                            <p className="text-xl text-ink-subtle mb-10 font-medium">Join thousands of businesses. Start on the free plan and upgrade whenever you outgrow it.</p>
+                            <h2 className="text-4xl sm:text-5xl font-extrabold text-white mb-6 tracking-tight">Ready to elevate your business?</h2>
+                            <p className="text-xl text-ink-subtle mb-10 font-medium">From cafes to restaurants, we serve you. Start on the free plan and upgrade whenever you outgrow it.</p>
                             <Link href="/signup" className="inline-flex items-center justify-center bg-[var(--color-primary)] text-white px-10 py-5 rounded-2xl font-extrabold text-xl hover:scale-105 transition-transform shadow-[0_0_40px_rgba(251,99,3,0.4)]">
                                 Get started free
                             </Link>
