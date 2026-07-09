@@ -11,6 +11,7 @@ import { seedDemoHotel } from '@/lib/demoHotel'
 import {
     DEMO_ACCOUNTS,
     DEMO_PASSWORD,
+    DEMO_LOGIN_ENABLED,
     DEMO_TENANTS,
     findDemoAccount,
     type DemoAccount,
@@ -213,9 +214,11 @@ export async function loginAction(prevState: { error: string | null }, formData:
     const adminSupabase = await createAdminClient()
 
     // Self-heal built-in demo accounts on demand so their buttons always work,
-    // even on a fresh database with no seeded users.
+    // even on a fresh database with no seeded users. Disabled on the production
+    // deployment (DEMO_LOGIN_ENABLED) so a stranger can't recreate/reset a demo
+    // account there by POSTing the known password — the chips are hidden there too.
     const demoAccount = findDemoAccount(email)
-    if (demoAccount && password === DEMO_PASSWORD) {
+    if (DEMO_LOGIN_ENABLED && demoAccount && password === DEMO_PASSWORD) {
         try {
             await provisionDemoAccount(adminSupabase, demoAccount)
         } catch (e) {
