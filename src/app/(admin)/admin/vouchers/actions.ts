@@ -156,6 +156,7 @@ export async function createVoucherAction(input: {
 
     // Determine ownership type if Bank selected
     let isPersonalAccount = false
+    let isAcPayeeAccount = false
     if ((input.payment_mode === 'qr' || input.payment_mode === 'cheque' || input.payment_mode === 'bank') && input.bank_name) {
         const { data: bankAcc } = await supabase
             .from('bank_accounts')
@@ -165,6 +166,8 @@ export async function createVoucherAction(input: {
             .maybeSingle()
         if (bankAcc?.bank_name?.startsWith('personal:')) {
             isPersonalAccount = true
+        } else if (bankAcc?.bank_name?.startsWith('ac_payee:')) {
+            isAcPayeeAccount = true
         }
     }
 
@@ -184,9 +187,10 @@ export async function createVoucherAction(input: {
 
     // Cheque approval rules
     // Receipt normal cheque OR Payment personal cheque requires manager approval
+    // If deposited to an A/C Payee account, it is approved immediately.
     const needsApproval = input.payment_mode === 'cheque' && 
         (input.voucher_type === 'receipt' 
-            ? input.cheque_details?.cheque_type === 'normal'
+            ? (isAcPayeeAccount ? false : input.cheque_details?.cheque_type === 'normal')
             : isPersonalAccount)
 
     const status = needsApproval ? 'pending_approval' : 'approved'

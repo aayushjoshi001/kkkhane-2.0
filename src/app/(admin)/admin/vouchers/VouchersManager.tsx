@@ -160,7 +160,7 @@ export default function VouchersManager({
     const parsedBankAccounts = useMemo(() => {
         return bankAccounts.map(b => {
             const bName = b.bank_name || ''
-            let ownership: 'company' | 'personal' = 'company'
+            let ownership: 'company' | 'personal' | 'ac_payee' = 'company'
             let displayName = bName
             if (bName.startsWith('personal:')) {
                 ownership = 'personal'
@@ -168,6 +168,9 @@ export default function VouchersManager({
             } else if (bName.startsWith('company:')) {
                 ownership = 'company'
                 displayName = bName.split('company:')[1]
+            } else if (bName.startsWith('ac_payee:')) {
+                ownership = 'ac_payee'
+                displayName = bName.split('ac_payee:')[1]
             }
             return {
                 ...b,
@@ -922,7 +925,7 @@ export default function VouchersManager({
                                         <option value="">Select Account</option>
                                         {parsedBankAccounts.map(b => (
                                             <option key={b.id} value={b.name}>
-                                                {b.name} ({b.displayName} — {b.ownership === 'personal' ? 'Personal Account' : 'Company Account'})
+                                                {b.name} ({b.displayName} — {b.ownership === 'personal' ? 'Personal' : (b.ownership === 'ac_payee' ? 'A/C Payee' : 'Company')})
                                             </option>
                                         ))}
                                     </select>
