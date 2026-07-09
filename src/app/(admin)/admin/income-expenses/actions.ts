@@ -92,6 +92,7 @@ export async function createEntryAction(input: {
         .eq('status', 'open')
         .maybeSingle()
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let newEntryData: any = null
 
     if (input.type === 'income') {
