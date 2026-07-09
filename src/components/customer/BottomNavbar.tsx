@@ -36,7 +36,23 @@ export default function BottomNavbar({ activeTab, onHomeClick }: BottomNavbarPro
         ? allOrders.filter(o => o.slug === tableSlug && o.type === 'dine_in')
         : []
 
-    const latestOrder = currentTableOrders.length > 0 ? currentTableOrders[currentTableOrders.length - 1] : null
+    const [dbOrders, setDbOrders] = useState<{ id: string; status: string }[]>([])
+
+    useEffect(() => {
+        if (!tableSlug) return
+        fetch(`/api/tables/active-orders?tableSlug=${tableSlug}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.orders) {
+                    setDbOrders(data.orders)
+                }
+            })
+            .catch(err => console.error('Failed to load active orders from DB:', err))
+    }, [tableSlug])
+
+    const latestOrder = dbOrders.length > 0
+        ? dbOrders[dbOrders.length - 1]
+        : (currentTableOrders.length > 0 ? currentTableOrders[currentTableOrders.length - 1] : null)
 
     if (!tableSlug) return null
 
