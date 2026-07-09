@@ -231,7 +231,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                             <p className="font-extrabold text-xs text-indigo-600">Service Orders (QR + Dining)</p>
                                             <div className="space-y-1.5 pl-3 border-l-2 border-indigo-100">
                                                 {allServiceOrderItems.map((item, idx) => (
-                                                    <div key={item.id || idx} className="flex justify-between text-[10px] text-gray-600">
+                                                    <div key={`service-item-${item.id || 'item'}-${idx}`} className="flex justify-between text-[10px] text-gray-600">
                                                         <span>{item.menu_items?.name || 'Item'} ({item.quantity}×)</span>
                                                         <span className="tabular-nums font-semibold">{money(item.unit_price * item.quantity)}</span>
                                                     </div>
