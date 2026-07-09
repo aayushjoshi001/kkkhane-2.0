@@ -5,6 +5,7 @@ import {
     Plus, X, Search, Loader2, Trash2, Edit2, FileText, Phone, DollarSign, Truck, Tag
 } from 'lucide-react'
 import { createSupplierAction, updateSupplierAction, deleteSupplierAction, createSupplierBillAction } from './actions'
+import { createCategoryAction } from '../income-expenses/actions'
 import { toast } from 'react-hot-toast'
 import { formatCurrency } from '@/lib/utils'
 
@@ -39,6 +40,7 @@ export default function SuppliersLedgerManager({
 }: SuppliersLedgerManagerProps) {
     const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers)
     const [expensesList, setExpensesList] = useState<Expense[]>(expenses)
+    const [expenseCategoriesList, setExpenseCategoriesList] = useState(expenseCategories)
     const [searchQuery, setSearchQuery] = useState('')
 
     // Form modals
@@ -67,6 +69,12 @@ export default function SuppliersLedgerManager({
     const [billPaymentSource, setBillPaymentSource] = useState<'cash' | 'bank'>('cash')
     const [billBankName, setBillBankName] = useState('')
     const [submittingBill, setSubmittingBill] = useState(false)
+
+    // Inline Category Creator inside Record Bill
+    const [showNewCatForm, setShowNewCatForm] = useState(false)
+    const [newCatName, setNewCatName] = useState('')
+    const [newCatDesc, setNewCatDesc] = useState('')
+    const [submittingCat, setSubmittingCat] = useState(false)
 
     // Open add modal
     const openAddModal = () => {
@@ -159,6 +167,32 @@ export default function SuppliersLedgerManager({
         }
     }
 
+    // Inline Category Submit
+    const handleAddCategory = async (e: React.MouseEvent) => {
+        e.preventDefault()
+        const nameVal = newCatName.trim()
+        if (!nameVal) return
+
+        setSubmittingCat(true)
+        try {
+            const res = await createCategoryAction(nameVal, 'expense', newCatDesc.trim())
+            if (res.error) {
+                toast.error(res.error)
+            } else if (res.data) {
+                setExpenseCategoriesList(prev => [...prev, res.data].sort((a, b) => a.name.localeCompare(b.name)))
+                setBillCategory(res.data.id)
+                setNewCatName('')
+                setNewCatDesc('')
+                setShowNewCatForm(false)
+                toast.success('Category created and selected!')
+            }
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Failed to create category')
+        } finally {
+            setSubmittingCat(false)
+        }
+    }
+
     // Handle Record Bill Submit
     const handleRecordBill = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -201,7 +235,7 @@ export default function SuppliersLedgerManager({
             if (res.error) {
                 toast.error(res.error)
             } else if (res.data) {
-                const categoryObj = expenseCategories.find(c => c.id === billCategory)
+                const categoryObj = expenseCategoriesList.find(c => c.id === billCategory)
                 const newEntry: Expense = {
                     ...res.data,
                     expense_categories: categoryObj ? { name: categoryObj.name } : null
@@ -462,7 +496,10 @@ export default function SuppliersLedgerManager({
                             </div>
                             <div className="flex items-center gap-3">
                                 <button
-                                    onClick={() => setBillModalOpen(true)}
+                                    onClick={() => {
+                                        setShowNewCatForm(false)
+                                        setBillModalOpen(true)
+                                    }}
                                     className="flex items-center gap-1.5 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white font-extrabold rounded-xl text-xs shadow-sm transition-colors"
                                 >
                                     <Plus size={14} /> Record Bill / Purchase
@@ -708,20 +745,65 @@ export default function SuppliersLedgerManager({
                         {/* Modal Form Body */}
                         <form onSubmit={handleRecordBill}>
                             <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-                                {/* Category select */}
+                                {/* Category select & Add Category */}
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Expense Category *</label>
-                                    <select
-                                        value={billCategory}
-                                        onChange={e => setBillCategory(e.target.value)}
-                                        required
-                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
-                                    >
-                                        <option value="">Select Category</option>
-                                        {expenseCategories.map(cat => (
-                                            <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                        ))}
-                                    </select>
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">Expense Category *</label>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowNewCatForm(!showNewCatForm)}
+                                            className="text-[10px] font-extrabold text-brand-600 hover:text-brand-700 flex items-center gap-1 focus:outline-none"
+                                        >
+                                            {showNewCatForm ? <X size={10} /> : <Plus size={10} />}
+                                            {showNewCatForm ? 'Cancel' : 'New Category'}
+                                        </button>
+                                    </div>
+
+                                    {showNewCatForm ? (
+                                        <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl space-y-3 mb-3 animate-in slide-in-from-top-1 duration-150">
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">New Category Name</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="e.g. Vegetables, Ingredients"
+                                                    value={newCatName}
+                                                    onChange={e => setNewCatName(e.target.value)}
+                                                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">Description (Optional)</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Brief description of purchases"
+                                                    value={newCatDesc}
+                                                    onChange={e => setNewCatDesc(e.target.value)}
+                                                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+                                                />
+                                            </div>
+                                            <button
+                                                type="button"
+                                                disabled={submittingCat || !newCatName.trim()}
+                                                onClick={handleAddCategory}
+                                                className="w-full py-1.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-extrabold text-xs rounded-lg flex items-center justify-center gap-1 transition-colors shadow-sm"
+                                            >
+                                                {submittingCat && <Loader2 size={10} className="animate-spin" />}
+                                                Create & Select Category
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <select
+                                            value={billCategory}
+                                            onChange={e => setBillCategory(e.target.value)}
+                                            required={!showNewCatForm}
+                                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                        >
+                                            <option value="">Select Category</option>
+                                            {expenseCategoriesList.map(cat => (
+                                                <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                            ))}
+                                        </select>
+                                    )}
                                 </div>
 
                                 {/* Description */}
