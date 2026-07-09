@@ -15,7 +15,7 @@ import { useParams } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import { playVoice } from '@/lib/voice'
 
-export default function CheckoutPageClient() {
+export default function CheckoutPageClient({ isHotelRoom = true }: { isHotelRoom?: boolean }) {
     const params = useParams<{ tableSlug: string }>()
     const money = useCurrency()
     const features = useFeatures()
@@ -47,13 +47,13 @@ export default function CheckoutPageClient() {
     const idempotencyKey = storeIdempotencyKey || fallbackKey
 
     const [stayBilling, setStayBilling] = useState<any | null>(null)
-    const [loadingStay, setLoadingStay] = useState(true)
+    // The server already knows whether this table is a hotel room (it queried the
+    // same row for the IP check) — only the non-hotel majority case gets to skip
+    // this fetch/spinner entirely; a hotel room still needs the full billing detail.
+    const [loadingStay, setLoadingStay] = useState(isHotelRoom)
 
     useEffect(() => {
-        if (!params.tableSlug) {
-            setLoadingStay(false)
-            return
-        }
+        if (!isHotelRoom || !params.tableSlug) return
         fetch(`/api/rooms/stay-billing?tableSlug=${params.tableSlug}`)
             .then(res => res.json())
             .then(data => {
@@ -63,7 +63,7 @@ export default function CheckoutPageClient() {
             })
             .catch(err => console.error('Failed to load stay billing:', err))
             .finally(() => setLoadingStay(false))
-    }, [params.tableSlug])
+    }, [isHotelRoom, params.tableSlug])
 
     if (loadingStay) {
         return (

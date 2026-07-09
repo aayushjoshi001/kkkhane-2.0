@@ -1,15 +1,13 @@
-import { createAdminClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import { getRestaurantFeatures, getMenuLayout } from '@/lib/features'
 import { getCachedMenuData } from '@/lib/menu-cache'
+import { getTableByToken } from '@/lib/tables'
 import type { MenuItem } from '@/types/database'
 import TablePageClient from './TablePageClient'
-import { verifyClientIp } from '@/lib/ip-check'
-import { getOrCreateActiveSession } from '@/lib/sessions'
-import { getOptionalUser } from '@/lib/auth'
 import { getHomepageConfig } from '@/lib/homepage'
 import { getRoomContextForTable } from '@/lib/rooms'
 import RoomNotCheckedIn from '@/components/customer/RoomNotCheckedIn'
+import { createAdminClient } from '@/lib/supabase/server'
 
 import type { Metadata } from 'next'
 
@@ -31,12 +29,7 @@ export async function generateMetadata(props: {
     params: Promise<{ tableSlug: string }>
 }): Promise<Metadata> {
     const params = await props.params;
-    const supabase = await createAdminClient()
-    const { data: tableData } = await supabase
-        .from('tables')
-        .select('restaurant_id')
-        .eq('qr_token', params.tableSlug)
-        .single()
+    const tableData = await getTableByToken(params.tableSlug)
 
     if (tableData?.restaurant_id) {
         return {
@@ -177,20 +170,16 @@ export default async function CustomerMenuPage(props: {
     const params = await props.params;
     const tableToken = params.tableSlug
 
-    const supabase = await createAdminClient()
-
-    // 1. FAST QUERY: Find the table and restaurant ID
-    const { data: tableData } = await supabase
-        .from('tables')
-        .select('id, restaurant_id, label, restaurants(name, slug, logo_url, physical_menu_urls)')
-        .eq('qr_token', tableToken)
-        .single()
+    // Same lookup layout.tsx and generateMetadata already ran this request —
+    // React.cache() returns their result instead of a third round-trip.
+    const tableData = await getTableByToken(tableToken)
 
     if (!tableData) return notFound()
 
     // A room's QR only opens once a guest is checked in — otherwise the order
     // would belong to no stay and could never be billed. Ordinary dining tables
     // (room_id IS NULL) return null here and fall through untouched.
+    const supabase = await createAdminClient()
     const roomContext = await getRoomContextForTable(supabase, tableData.id)
     if (roomContext && !roomContext.bookingId) {
         const restaurant = tableData.restaurants as unknown as { name?: string } | null

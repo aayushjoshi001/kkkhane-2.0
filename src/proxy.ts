@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
 import { Ratelimit } from '@upstash/ratelimit'
-import { Redis } from '@upstash/redis'
+import { getRedis } from '@/lib/redis'
 import { ROLE_LANDING } from '@/lib/roleLanding'
 
 // Route protection rules — first match wins
@@ -17,13 +17,26 @@ const ROUTE_RULES: Array<{
 
 // Rate limiter for public QR/table pages — lazy-initialised, Edge-compatible.
 // Limits to 60 requests/min per IP to prevent DoS on public menu pages.
+//
+// Shares the Redis client from lib/redis.ts (retry:false + a real per-request
+// AbortSignal, plus its circuit breaker) instead of a bare Redis.fromEnv(). The
+// old version raced the call against an external 500ms setTimeout, which is
+// exactly the anti-pattern documented at the top of lib/redis.ts: the external
+// timeout always won before the client's own 5-retry/~4.5s backoff surfaced the
+// real error, so every request paid the full 500ms whenever Upstash was slow —
+// forever, with nothing ever tripping a breaker.
 let _qrLimiter: Ratelimit | null | undefined
 
 function getQrLimiter(): Ratelimit | null {
     if (_qrLimiter !== undefined) return _qrLimiter
+    const redis = getRedis()
+    if (!redis) {
+        _qrLimiter = null
+        return _qrLimiter
+    }
     try {
         _qrLimiter = new Ratelimit({
-            redis: Redis.fromEnv(),
+            redis,
             limiter: Ratelimit.slidingWindow(60, '60 s'),
             prefix: 'srms:rl:QR',
             analytics: false,
@@ -43,21 +56,27 @@ function getRequestIp(request: NextRequest): string {
     )
 }
 
+// True if this request carries a Supabase auth cookie. An anonymous customer
+// scanning a QR code never has one, so there is no session to refresh and the
+// getUser() round-trip in updateSession() can be skipped entirely for them.
+function hasAuthCookie(request: NextRequest): boolean {
+    return request.cookies.getAll().some(c => c.name.startsWith('sb-') && c.name.includes('-auth-token'))
+}
+
 export async function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl
+    const isPublicQrPath = /^\/t\//.test(pathname) || /^\/takeout\//.test(pathname) || /^\/invite\//.test(pathname)
 
     // Rate-limit public QR/table pages to prevent DoS.
     // Wrapped in try/catch so a transient Redis failure never 500s a customer.
-    if (/^\/t\//.test(pathname) || /^\/takeout\//.test(pathname) || /^\/invite\//.test(pathname)) {
+    // The deadline now lives inside the Redis client itself (see getRedis()),
+    // so no external race is needed here.
+    if (isPublicQrPath) {
         const limiter = getQrLimiter()
         if (limiter) {
             try {
                 const ip = getRequestIp(request)
-                // Race the ratelimiter against a 500ms timeout to avoid 5s cold start latency
-                const timeoutPromise = new Promise<{ success: boolean }>((resolve) => 
-                    setTimeout(() => resolve({ success: true }), 500)
-                )
-                const { success } = await Promise.race([limiter.limit(ip), timeoutPromise])
+                const { success } = await limiter.limit(ip)
                 if (!success) {
                     return new NextResponse('Too many requests. Please slow down.', {
                         status: 429,
@@ -68,6 +87,14 @@ export async function proxy(request: NextRequest) {
                 // Redis unreachable — allow the request through rather than hard-failing
             }
         }
+    }
+
+    // A fully public QR page hit by an anonymous customer (no Supabase auth
+    // cookie at all) has no session to refresh — skip the getUser() round-trip
+    // entirely. Staff testing a customer page while logged in still carry the
+    // cookie, so they still get the full session-refresh path below.
+    if (isPublicQrPath && !hasAuthCookie(request)) {
+        return NextResponse.next()
     }
 
     // Always refresh the Supabase session cookie — this is required by @supabase/ssr
