@@ -152,15 +152,29 @@ export default async function RootLayout({
           disable={process.env.NODE_ENV === 'development'}
           reloadOnOnline
         >
-          {/* Global Fixed Overlay: KK Watermark (Placed behind content) */}
+          {/* ── GLOBAL EDITORIAL BACKGROUND ── */}
           <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
-              {/* Faded Watermark on the left */}
-              <div className="absolute -left-[5vw] top-1/2 -translate-y-1/2 text-[28vw] leading-none font-black text-ink opacity-[0.08] select-none mix-blend-multiply whitespace-nowrap flex items-center">
-                  <span style={{ WebkitTextStroke: '8px #181614', color: 'transparent', letterSpacing: '-0.15em' }}>KK</span>
-                  <span className="ml-16 font-[family-name:var(--font-devanagari)]">खाने?</span>
+              {/* Paper Grain Texture */}
+              <div className="absolute inset-0 opacity-[0.25] mix-blend-multiply pointer-events-none" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }} />
+              
+              {/* Soft Ambient Orange Glow (Top-Left) */}
+              <div className="absolute -top-[30%] -left-[10%] w-[90vw] h-[90vw] bg-[radial-gradient(circle_at_center,rgba(251,99,3,0.06)_0%,transparent_60%)] mix-blend-multiply" />
+              
+              {/* Subtle Beige Radial Gradient (Center) */}
+              <div className="absolute top-[10%] left-[20%] w-[60vw] h-[60vw] bg-[radial-gradient(circle_at_center,rgba(235,225,210,0.5)_0%,transparent_70%)] mix-blend-multiply" />
+              
+              {/* Gentle Vignette (Edges) */}
+              <div className="absolute inset-0 shadow-[inset_0_0_120px_rgba(0,0,0,0.02)] pointer-events-none" />
+              
+              {/* Oversized Faded Serif Letters (3-4% Opacity) */}
+              <div className="absolute -left-[3vw] top-1/2 -translate-y-1/2 flex items-center select-none mix-blend-multiply whitespace-nowrap opacity-[0.035]">
+                  <span className="font-[family-name:var(--font-playfair)] font-black tracking-tight text-[38vw] text-ink leading-none">
+                      KK
+                  </span>
+                  <span className="ml-10 font-[family-name:var(--font-devanagari)] font-bold text-[18vw] text-ink leading-none mt-12">
+                      खाने?
+                  </span>
               </div>
-              {/* Faint orange vignette gradient */}
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_40%,rgba(251,99,3,0.04)_100%)] mix-blend-multiply" />
           </div>
 
           <div className="relative z-10 flex-1 flex flex-col">
