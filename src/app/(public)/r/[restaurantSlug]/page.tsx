@@ -2,6 +2,8 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import RestaurantMainClient from './RestaurantMainClient'
 import { getRestaurantFeatures } from '@/lib/features'
+import { Suspense } from 'react'
+import { Loader2 } from 'lucide-react'
 
 import type { Metadata } from 'next'
 
@@ -67,11 +69,17 @@ export default async function RestaurantMainPage(props: {
     const features = await getRestaurantFeatures(restaurant.id)
 
     return (
-        <RestaurantMainClient
-            restaurant={restaurant}
-            tables={tables || []}
-            restaurantSlug={params.restaurantSlug}
-            dineInEnabled={features?.dineInEnabled ?? true}
-        />
+        <Suspense fallback={
+            <div className="min-h-screen bg-surface-muted flex flex-col items-center justify-center p-4">
+                <Loader2 className="animate-spin text-brand-500" size={32} />
+            </div>
+        }>
+            <RestaurantMainClient
+                restaurant={restaurant}
+                tables={tables || []}
+                restaurantSlug={params.restaurantSlug}
+                dineInEnabled={features?.dineInEnabled ?? true}
+            />
+        </Suspense>
     )
 }
