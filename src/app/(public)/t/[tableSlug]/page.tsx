@@ -11,16 +11,19 @@ import { getHomepageConfig } from '@/lib/homepage'
 
 import type { Metadata } from 'next'
 
-// `runtime = 'edge'` is incompatible with on-demand ISR (generateStaticParams
-// below) in this Next.js version, and this page transitively imports
-// getOrCreateActiveSession from @/lib/sessions, which uses Node's `crypto` —
-// not Edge-compatible either way. ISR still serves cache hits from Vercel's
-// Edge Network regardless of which runtime rendered them.
-export const revalidate = 600
-
-export function generateStaticParams() {
-    return []
-}
+// This route must render dynamically. Two things in its data path are
+// request-dynamic and throw under a static/ISR render:
+//   1. fetchWithCache -> the Upstash SDK issues fetch(..., {cache: 'no-store'}),
+//      which trips "Page changed from static to dynamic at runtime".
+//   2. getHomepageConfig previously read cookies() -> DYNAMIC_SERVER_USAGE.
+// It was previously declared `revalidate = 600` with a generateStaticParams that
+// returns [], so nothing was ever prerendered and every request was a cache MISS
+// anyway — the ISR declaration bought no cache hits and 500'd the page whenever
+// the Redis hot-read cache missed. Read caching still comes from Upstash.
+//
+// `runtime = 'edge'` is not an option either: this page transitively imports
+// getOrCreateActiveSession from @/lib/sessions, which uses Node's `crypto`.
+export const dynamic = 'force-dynamic'
 
 export async function generateMetadata(props: {
     params: Promise<{ tableSlug: string }>

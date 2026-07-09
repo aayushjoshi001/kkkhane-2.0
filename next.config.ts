@@ -9,6 +9,28 @@ import { withSentryConfig } from '@sentry/nextjs'
 // via a Route Handler (src/app/serwist/[path]/route.ts) — bundler-agnostic. The actual
 // runtimeCaching/fallbacks config now lives in src/sw.ts, not here.
 
+const isDev = process.env.NODE_ENV === 'development'
+
+// A local Supabase stack is served from http://127.0.0.1:54321, which no
+// production CSP source matches (`https://*.supabase.co` covers hosted projects
+// only). Without this, every browser-side Supabase call — signOut(), Realtime —
+// is blocked before it leaves the page and surfaces as `TypeError: Failed to
+// fetch`. Derived from the env var rather than hardcoded so a non-default port
+// still works, and only ever added in development.
+const devSupabaseCsp = (() => {
+  if (!isDev) return []
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!url) return []
+  try {
+    const { origin, host, protocol } = new URL(url)
+    // Hosted URLs are already covered by the *.supabase.co sources.
+    if (host.endsWith('.supabase.co')) return []
+    return [origin, `${protocol === 'https:' ? 'wss' : 'ws'}://${host}`]
+  } catch {
+    return []
+  }
+})()
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   images: {
@@ -54,7 +76,7 @@ const nextConfig: NextConfig = {
             value: [
               "default-src 'self'",
               // 'unsafe-eval' is only needed by the dev/HMR runtime — never ship it to prod.
-              `script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`,
+              `script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com${isDev ? " 'unsafe-eval'" : ''}`,
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://*.supabase.co https://images.unsplash.com https://*.tile.openstreetmap.org",
               // QZ Tray (thermal printer bridge) runs a local WebSocket server on the
@@ -62,7 +84,7 @@ const nextConfig: NextConfig = {
               // via the localhost.qz.io hostname (resolves to loopback) so a page
               // served over HTTPS can open a "secure" wss:// handshake to it without
               // being blocked as mixed content — both host forms need to be allowed.
-              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://nominatim.openstreetmap.org https://challenges.cloudflare.com ws://localhost:* wss://localhost:* ws://localhost.qz.io:* wss://localhost.qz.io:*",
+              ["connect-src 'self' https://*.supabase.co wss://*.supabase.co https://nominatim.openstreetmap.org https://challenges.cloudflare.com ws://localhost:* wss://localhost:* ws://localhost.qz.io:* wss://localhost.qz.io:*", ...devSupabaseCsp].join(' '),
               "font-src 'self' https://fonts.gstatic.com",
               "media-src 'self' blob:",
               "frame-src 'self' https://challenges.cloudflare.com",
