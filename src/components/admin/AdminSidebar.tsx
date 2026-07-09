@@ -156,6 +156,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/cash-book"   icon={Wallet}          label="Cash Book"       path={pathname} />
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/bank-book"   icon={Landmark}        label="Bank Book"       path={pathname} />
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/bank-ledger" icon={Landmark}        label="Bank Ledger"     path={pathname} />
+                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/vouchers"    icon={FileText}        label="Vouchers Ledger" path={pathname} />
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/income-expenses" icon={TrendingUp}  label="Income & Expenses" path={pathname} />
 
                 {financeEnabled && (
