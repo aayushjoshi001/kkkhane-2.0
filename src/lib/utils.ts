@@ -81,3 +81,28 @@ export function timeAgo(timestamp: string): string {
     if (hours < 24) return `${hours}h ago`
     return `${Math.floor(hours / 24)}d ago`
 }
+
+/**
+ * Format ISO datetime string into human readable locale string.
+ */
+export function formatDateTime(dateStr: string | Date | null | undefined): string {
+    if (!dateStr) return '-'
+    const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr
+    return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+    })
+}
+
+/**
+ * Calculate stay night duration (ceiling value, minimum 1 night).
+ */
+export function calculateNights(checkIn: string | Date, checkOut: string | Date): number {
+    const inDate = typeof checkIn === 'string' ? new Date(checkIn) : checkIn
+    const outDate = typeof checkOut === 'string' ? new Date(checkOut) : checkOut
+    const diffMs = outDate.getTime() - inDate.getTime()
+    return Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)))
+}

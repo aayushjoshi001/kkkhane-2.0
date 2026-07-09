@@ -9,6 +9,7 @@ import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { type TableWithSession } from './CashierTableManager'
+import { formatDateTime, calculateNights } from '@/lib/utils'
 
 export interface RoomWithTypes {
     id: string
@@ -242,12 +243,7 @@ export default function CashierRoomManager({
         if (!selectedRoom || !activeBooking) return { nights: 0, cost: 0 }
         
         const price = selectedRoom.room_types?.base_price || 0
-        const inDate = new Date(activeBooking.check_in)
-        const outDate = new Date(activeBooking.check_out)
-        
-        // Calculate nights (ceiling value, minimum 1 night)
-        const diffMs = outDate.getTime() - inDate.getTime()
-        const nights = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)))
+        const nights = calculateNights(activeBooking.check_in, activeBooking.check_out)
         const cost = price * nights
 
         return { nights, cost }
@@ -383,16 +379,7 @@ export default function CashierRoomManager({
         }
     }
 
-    const formatDateTime = (dateStr: string) => {
-        if (!dateStr) return '-'
-        return new Date(dateStr).toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
-        })
-    }
+
 
     return (
         <div className="w-full">

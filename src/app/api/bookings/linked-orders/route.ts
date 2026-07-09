@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
             .in('session_id', sessionIds)
             .eq('restaurant_id', currentUser.restaurantId)
             .neq('status', 'cancelled')
+            .neq('payment_status', 'paid')
 
         if (ordErr) {
             console.error('[linked-orders] Error fetching orders:', ordErr)
