@@ -20,6 +20,13 @@ export interface DemoAccount {
     fullName: string
     /** public.roles.id for this account, or null for the onboarding-only demo. */
     roleId: number | null
+    /**
+     * When set, provisioning resolves the role id by NAME instead of trusting
+     * roleId. Needed for roles whose id differs across environments — bartender
+     * is seeded at MAX(id)+1, so it is 7 locally but higher on production where
+     * the finance roles already took ids 7-9.
+     */
+    roleName?: string
     /** Which demo tenant this account signs into. */
     tenant: DemoTenant
     /** Owns the tenant's demo restaurant. Exactly one account per tenant sets this. */
@@ -29,13 +36,16 @@ export interface DemoAccount {
 }
 
 // role ids come from public.roles: 1=super_admin 2=manager 3=kitchen
-// 4=waiter 5=customer 6=cashier (see supabase/seed.sql).
+// 4=waiter 5=customer 6=cashier (see supabase/seed.sql). bartender is seeded at
+// MAX(id)+1 so its id is environment-dependent — it carries roleName so
+// provisioning resolves the real id by name rather than trusting the 7 below.
 export const DEMO_ACCOUNTS: DemoAccount[] = [
     // ── Restaurant (counter-service) ─────────────────────────────────────────
     { email: 'newuser@srms.app', label: 'New User',    fullName: 'New Onboarding User', roleId: null,             tenant: 'restaurant', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200' },
     { email: 'demo@srms.app',    label: 'Super Admin', fullName: 'Demo Super Admin',    roleId: 1, isOwner: true, tenant: 'restaurant', color: 'bg-brand-100 text-orange-700 hover:bg-brand-200' },
     { email: 'manager@srms.app', label: 'Manager',     fullName: 'Demo Manager',        roleId: 2,                tenant: 'restaurant', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200' },
     { email: 'kitchen@srms.app', label: 'Kitchen',     fullName: 'Demo Kitchen',        roleId: 3,                tenant: 'restaurant', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' },
+    { email: 'bar@srms.app',     label: 'Bartender',   fullName: 'Demo Bartender',      roleId: 7, roleName: 'bartender', tenant: 'restaurant', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200' },
     { email: 'waiter@srms.app',  label: 'Waiter',      fullName: 'Demo Waiter',         roleId: 4,                tenant: 'restaurant', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200' },
     { email: 'cashier@srms.app', label: 'Cashier',     fullName: 'Demo Cashier',        roleId: 6,                tenant: 'restaurant', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200' },
 

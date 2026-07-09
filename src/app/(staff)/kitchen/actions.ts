@@ -11,7 +11,7 @@ const KITCHEN_ORDER_SELECT = `
   id, status, order_type, needs_confirmation, total_amount, placed_at, customer_note,
   sessions ( tables ( label ) ),
   order_items (
-    id, menu_item_id, quantity, unit_price, special_request, status, claimed_by, claimed_at,
+    id, menu_item_id, quantity, unit_price, special_request, status, station, claimed_by, claimed_at,
     menu_items ( id, name, is_combo ),
     order_item_modifiers ( modifier_name, price_adjustment )
   )
@@ -23,7 +23,7 @@ const KITCHEN_ORDER_SELECT = `
  * and whenever the realtime channel reconnects, to catch up on missed events.
  */
 export async function getKitchenOrders(restaurantId: string) {
-    await requireRole('kitchen', 'manager', 'super_admin', 'cashier')
+    await requireRole('kitchen', 'bartender', 'manager', 'super_admin', 'cashier')
     const adminSupabase = await createAdminClient()
     const { data, error } = await adminSupabase
         .from('orders')
@@ -74,7 +74,7 @@ export async function setOrderItemsStatus(
     actorUserId?: string
 ): Promise<{ success?: boolean; error?: string; conflict?: boolean }> {
     if (itemIds.length === 0) return { error: 'No items selected' }
-    await requireRole('kitchen', 'manager', 'super_admin', 'cashier')
+    await requireRole('kitchen', 'bartender', 'manager', 'super_admin', 'cashier')
     const adminSupabase = await createAdminClient()
 
     // Build the write, then constrain it so only legal transitions land — the DB,
@@ -173,6 +173,7 @@ export async function setOrderItemsStatus(
     }
 
     revalidatePath('/kitchen')
+    revalidatePath('/bar')
     revalidatePath('/waiter')
     return { success: true }
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { ReactNode, useEffect, useState } from 'react'
-import { LogOut, ChefHat, LogIn, Loader2, PartyPopper } from 'lucide-react'
+import { LogOut, LogIn, Loader2, PartyPopper } from 'lucide-react'
 import Logo from '@/components/shared/Logo'
 import SoundEnableButton from '@/components/shared/SoundEnableButton'
 import PrinterSettingsButton from '@/components/shared/PrinterSettingsButton'
@@ -12,6 +12,7 @@ import CommandPaletteMount from '@/components/ui/CommandPaletteMount'
 import { clockIn, clockOut, getShiftStats } from '@/app/api/staff/actions'
 import { toast } from 'react-hot-toast'
 import Link from 'next/link'
+import { STATION_META, type StationKind } from '@/lib/stations'
 
 interface Props {
     children: ReactNode
@@ -22,10 +23,14 @@ interface Props {
     onShift?: boolean
     shiftsEnabled?: boolean
     notificationSoundUrl?: string | null
+    /** Which station this shell frames — drives the badge, printer, and links. */
+    station?: StationKind
 }
 
-export default function KitchenLayoutClient({ children, staffName, userId, restaurantId, onShift = false, shiftsEnabled = false, notificationSoundUrl }: Props) {
+export default function KitchenLayoutClient({ children, staffName, userId, restaurantId, onShift = false, shiftsEnabled = false, notificationSoundUrl, station = 'kitchen' }: Props) {
     const router = useRouter()
+    const meta = STATION_META[station]
+    const StationIcon = meta.icon
     const [shift, setShift] = useState(onShift)
     const [busy, setBusy] = useState(false)
     const [meals, setMeals] = useState<number | null>(null) // non-null → show congrats
@@ -69,13 +74,13 @@ export default function KitchenLayoutClient({ children, staffName, userId, resta
                 <div className="flex items-center gap-2.5 min-w-0">
                     <Logo className="h-7 shrink-0" />
                     <div className="min-w-0">
-                        <Link 
-                            href="/kitchen/profile" 
+                        <Link
+                            href={`${meta.route}/profile`}
                             className="flex items-center gap-2 hover:bg-surface-muted p-1 rounded-md transition-colors cursor-pointer group"
                         >
                             <span className="font-extrabold text-ink leading-none truncate max-w-30 group-hover:text-brand-500 transition-colors">{staffName || 'Staff'}</span>
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-brand-500 bg-[#FFEAD9] px-2 py-0.5 rounded-full group-hover:bg-brand-500 group-hover:text-white transition-colors">
-                                <ChefHat size={11} /> Kitchen
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full group-hover:text-white transition-colors" style={{ color: meta.accent, background: meta.soft }}>
+                                <StationIcon size={11} /> {meta.label}
                             </span>
                         </Link>
                         {shiftsEnabled && (
@@ -90,7 +95,7 @@ export default function KitchenLayoutClient({ children, staffName, userId, resta
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
-                    <PrinterSettingsButton role="kot" />
+                    <PrinterSettingsButton role={meta.printerRole} />
                     <SoundEnableButton />
                     {shiftsEnabled && !shift && (
                         <button
@@ -115,7 +120,7 @@ export default function KitchenLayoutClient({ children, staffName, userId, resta
             <main className="flex-1 overflow-hidden">
                 {children}
             </main>
-            <CommandPaletteMount role="kitchen" theme="light" />
+            <CommandPaletteMount role={station === 'bar' ? 'bartender' : 'kitchen'} theme="light" />
 
             {/* End-of-shift send-off */}
             {meals !== null && (
@@ -123,12 +128,12 @@ export default function KitchenLayoutClient({ children, staffName, userId, resta
                     <div className="bg-surface rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden text-center p-7">
                         <PartyPopper size={44} className="mx-auto text-brand-500 mb-2" />
                         <h3 className="text-2xl font-black text-ink">Amazing Work!</h3>
-                        <p className="text-ink-subtle text-sm mt-1">Thank you, <span className="font-bold text-ink">{staffName || 'chef'}</span></p>
+                        <p className="text-ink-subtle text-sm mt-1">Thank you, <span className="font-bold text-ink">{staffName || (station === 'bar' ? 'bartender' : 'chef')}</span></p>
 
                         <div className="my-5 rounded-2xl bg-[#FFF4EC] py-6 px-4">
                             <p className="text-ink-subtle text-sm">Today you completed</p>
                             <p className="text-6xl font-black text-brand-500 leading-none my-1.5">{meals}</p>
-                            <p className="font-extrabold text-ink">meal{meals === 1 ? '' : 's'} cooked successfully!</p>
+                            <p className="font-extrabold text-ink">{station === 'bar' ? `drink${meals === 1 ? '' : 's'} made` : `meal${meals === 1 ? '' : 's'} cooked`} successfully!</p>
                         </div>
 
                         <p className="text-brand-500 font-bold text-sm mb-5">Congratulations! See you next shift! 👋</p>
