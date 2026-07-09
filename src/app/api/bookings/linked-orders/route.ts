@@ -24,10 +24,12 @@ export async function GET(req: NextRequest) {
 
         const supabase = await createAdminClient()
 
-        // Find all sessions linked to this booking
+        // Find all sessions linked to this booking. Pull the session's table so we
+        // can tell an ordinary dining table (room_id NULL) from the room's own
+        // in-room QR table.
         const { data: linkedSessions, error: sessErr } = await supabase
             .from('sessions')
-            .select('id, status, table_id')
+            .select('id, status, table_id, tables:table_id(room_id)')
             .eq('booking_id', bookingId)
 
         if (sessErr) {
@@ -35,13 +37,17 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'Failed to fetch sessions' }, { status: 500 })
         }
 
-        console.log('[linked-orders API] Found linkedSessions:', linkedSessions)
+        // Exclude the room's own in-room QR session: those orders are already shown
+        // as room service on the folio, so returning them here too would double-count.
+        const diningSessions = (linkedSessions || []).filter(
+            (s: { tables?: { room_id?: string | null } | null }) => !s.tables?.room_id
+        )
 
-        if (!linkedSessions || linkedSessions.length === 0) {
+        if (diningSessions.length === 0) {
             return NextResponse.json({ success: true, items: [] })
         }
 
-        const sessionIds = linkedSessions.map((s: { id: string }) => s.id)
+        const sessionIds = diningSessions.map((s: { id: string }) => s.id)
 
         // Fetch all order items from these sessions
         const { data: orders, error: ordErr } = await supabase

@@ -1,63 +1,9 @@
 import { requireRole } from '@/lib/auth'
 import { Settings, CheckCircle, XCircle, Shield } from 'lucide-react'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { TIER_FEATURES, TIER_LIMITS, TIERS, TIER_LABELS, isUnlimited, type Tier } from '@/lib/tiers'
 
 export const dynamic = 'force-dynamic'
-
-// Mirrors TIER_FEATURES and TIER_LIMITS from actions.ts — source of truth
-const TIER_FEATURES = {
-    free: {
-        loyaltyEnabled: false,
-        promosEnabled: true,
-        takeoutEnabled: false,
-        multiLanguageEnabled: false,
-        serviceRequestsEnabled: true,
-        splitBillingEnabled: true,
-        dynamicPricingEnabled: false,
-        ingredientTrackingEnabled: false,
-        staffShiftsEnabled: false,
-    },
-    basic: {
-        loyaltyEnabled: false,
-        promosEnabled: true,
-        takeoutEnabled: true,
-        multiLanguageEnabled: false,
-        serviceRequestsEnabled: true,
-        splitBillingEnabled: true,
-        dynamicPricingEnabled: false,
-        ingredientTrackingEnabled: false,
-        staffShiftsEnabled: false,
-    },
-    pro: {
-        loyaltyEnabled: true,
-        promosEnabled: true,
-        takeoutEnabled: true,
-        multiLanguageEnabled: false,
-        serviceRequestsEnabled: true,
-        splitBillingEnabled: true,
-        dynamicPricingEnabled: true,
-        ingredientTrackingEnabled: true,
-        staffShiftsEnabled: true,
-    },
-    enterprise: {
-        loyaltyEnabled: true,
-        promosEnabled: true,
-        takeoutEnabled: true,
-        multiLanguageEnabled: true,
-        serviceRequestsEnabled: true,
-        splitBillingEnabled: true,
-        dynamicPricingEnabled: true,
-        ingredientTrackingEnabled: true,
-        staffShiftsEnabled: true,
-    },
-}
-
-const TIER_LIMITS = {
-    free: { max_staff: 3, max_menu_items: 20 },
-    basic: { max_staff: 10, max_menu_items: 100 },
-    pro: { max_staff: 50, max_menu_items: 500 },
-    enterprise: { max_staff: 999, max_menu_items: 9999 },
-}
 
 const FEATURE_LABELS: Record<string, string> = {
     loyaltyEnabled: 'Loyalty Program',
@@ -69,12 +15,15 @@ const FEATURE_LABELS: Record<string, string> = {
     dynamicPricingEnabled: 'Dynamic Pricing',
     ingredientTrackingEnabled: 'Ingredient Tracking',
     staffShiftsEnabled: 'Staff Shifts',
+    waiterSessionEnabled: 'Waiter-Opened Sessions',
+    waiterOrderConfirmation: 'Waiter Order Confirmation',
 }
 
-const TIER_STYLE: Record<string, string> = {
+const TIER_STYLE: Record<Tier, string> = {
     free: 'bg-surface-muted text-ink-muted border-hairline-strong',
     basic: 'bg-blue-50 text-blue-700 border-blue-200',
-    pro: 'bg-purple-50 text-purple-700 border-purple-200',
+    premium: 'bg-purple-50 text-purple-700 border-purple-200',
+    platinum: 'bg-slate-100 text-slate-800 border-slate-300',
     enterprise: 'bg-amber-50 text-amber-700 border-amber-200',
 }
 
@@ -89,7 +38,7 @@ const DEFAULT_PLATFORM = {
 export default async function ConfigPage() {
     await requireRole('super_admin')
 
-    const tiers = ['free', 'basic', 'pro', 'enterprise'] as const
+    const tiers = TIERS
     const featureKeys = Object.keys(TIER_FEATURES.free) as (keyof typeof TIER_FEATURES.free)[]
 
     return (
@@ -117,7 +66,7 @@ export default async function ConfigPage() {
                                 <th className="px-5 py-4 text-left text-xs font-semibold text-ink-subtle uppercase tracking-wide bg-surface-muted">Feature</th>
                                 {tiers.map(tier => (
                                     <th key={tier} className={`px-5 py-4 text-center text-xs font-bold uppercase tracking-wide border-l border-hairline ${TIER_STYLE[tier]}`}>
-                                        {tier}
+                                        {TIER_LABELS[tier]}
                                     </th>
                                 ))}
                             </tr>
@@ -161,14 +110,14 @@ export default async function ConfigPage() {
                                 <tr key={tier} className="group hover:bg-surface-muted/50 transition-colors">
                                     <td className="px-5 py-4">
                                         <span className={`px-3 py-1.5 rounded-full text-xs font-bold border ${TIER_STYLE[tier]}`}>
-                                            {tier.charAt(0).toUpperCase() + tier.slice(1)}
+                                            {TIER_LABELS[tier]}
                                         </span>
                                     </td>
                                     <td className="px-5 py-4 text-right font-semibold text-ink">
-                                        {TIER_LIMITS[tier].max_staff === 999 ? 'Unlimited' : TIER_LIMITS[tier].max_staff}
+                                        {isUnlimited(TIER_LIMITS[tier].max_staff) ? 'Unlimited' : TIER_LIMITS[tier].max_staff}
                                     </td>
                                     <td className="px-5 py-4 text-right font-semibold text-ink">
-                                        {TIER_LIMITS[tier].max_menu_items === 9999 ? 'Unlimited' : TIER_LIMITS[tier].max_menu_items}
+                                        {isUnlimited(TIER_LIMITS[tier].max_menu_items) ? 'Unlimited' : TIER_LIMITS[tier].max_menu_items}
                                     </td>
                                 </tr>
                             ))}

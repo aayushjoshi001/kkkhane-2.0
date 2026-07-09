@@ -2,11 +2,11 @@ import { redirect } from 'next/navigation'
 import { getOptionalUser } from '@/lib/auth'
 import Link from 'next/link'
 import Image from 'next/image'
-import { MarketingNav, MarketingFooter } from '@/components/marketing'
+import { MarketingNav, MarketingFooter, PricingCards } from '@/components/marketing'
 import {
     QrCode, ArrowRight, BarChart3,
     Globe, CheckCircle,
-    Star, Plus, ChefHat, Receipt, LayoutDashboard
+    Plus, ChefHat, Receipt, LayoutDashboard
 } from 'lucide-react'
 
 const ROLE_LANDING: Record<string, string> = {
@@ -18,12 +18,12 @@ const ROLE_LANDING: Record<string, string> = {
 }
 
 const faqs = [
-    { q: "What is kkkhane?", a: "kkkhane Nepal is an ultra-premium restaurant management software with smart features to run and manage all the operations of your restaurant flawlessly." },
-    { q: "What are the features of kkkhane?", a: "It provides robust features including Order Management, Inventory Tracking, Accounting, Digital QR Menu, and Real-Time Reporting." },
-    { q: "Can I use the kkkhane software for free?", a: "Yes, we offer a completely free tier with essential tools for small businesses." },
-    { q: "How secure is my restaurant data?", a: "We use top-tier cloud encryption and role-based access control to ensure complete security." },
-    { q: "Is kkkhane Nepal available on mobile devices?", a: "Yes, you can access our platform on any device with a modern web browser." },
-    { q: "Do you offer a QR code menu feature?", a: "Absolutely. Our digital QR menus allow contactless ordering seamlessly." },
+    { q: "What is kkkhane?", a: "kkkhane is a mobile-first restaurant ordering and table management system built in Nepal — menus, KOTs, billing, and everything in between." },
+    { q: "What are the features of kkkhane?", a: "Order management, digital QR menus, kitchen tickets, billing, inventory tracking, accounting, and real-time reporting. Which of these you get depends on your plan." },
+    { q: "Can I use kkkhane for free?", a: "Yes. The Free plan is free forever and covers up to 100 dishes, 10 categories and 3 staff logins. No credit card required." },
+    { q: "How secure is my restaurant data?", a: "Data is encrypted in transit and at rest, isolated per restaurant by row-level security, and access is governed by per-role permissions." },
+    { q: "Is kkkhane available on mobile devices?", a: "Yes, you can access the platform on any device with a modern web browser." },
+    { q: "Do you offer a QR code menu feature?", a: "Yes. Guests scan a table QR code to browse the menu and order from their own phone, on every plan." },
 ]
 
 export default async function Home() {
@@ -48,8 +48,15 @@ export default async function Home() {
                 <div className="max-w-[1200px] mx-auto px-4 relative z-10 text-center">
                     <div className="inline-flex items-center gap-2 bg-surface/60 backdrop-blur-md px-4 py-2 rounded-full mb-8 border border-hairline-strong/60 shadow-sm animate-fade-up">
                         <span className="flex h-2 w-2 rounded-full bg-[var(--color-primary)] animate-pulse" />
-                        <span className="text-ink-muted font-bold text-sm tracking-wide">The New Standard for Nepali Restaurants 🇳🇵</span>
+                        <span className="text-ink-muted font-bold text-sm tracking-wide">Built in Nepal 🇳🇵</span>
                     </div>
+
+                    <p
+                        className="font-[family-name:var(--font-devanagari)] text-4xl sm:text-5xl font-bold text-[var(--color-primary)] mb-4 animate-fade-up"
+                        lang="ne"
+                    >
+                        के के खाने?
+                    </p>
 
                     <h1 className="text-5xl sm:text-7xl lg:text-[5.5rem] font-extrabold text-ink leading-[1.05] mb-8 tracking-tight animate-fade-up" style={{ animationDelay: '0.1s' }}>
                         Run your restaurant <br className="hidden sm:block" />
@@ -57,12 +64,12 @@ export default async function Home() {
                     </h1>
 
                     <p className="text-lg sm:text-xl text-ink-subtle mb-12 max-w-2xl mx-auto leading-relaxed font-medium animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                        An ultra-premium OS that handles orders, inventory, billing, and staff. Elevate your dining experience with world-class technology.
+                        A mobile-first restaurant ordering and table management system. Menus, KOTs, billing, and everything in between.
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-up" style={{ animationDelay: '0.3s' }}>
                         <Link href="/signup" className="w-full sm:w-auto inline-flex items-center justify-center bg-ink text-white px-8 py-4 rounded-2xl font-bold text-lg hover:bg-black hover:scale-105 transition-all shadow-xl shadow-gray-900/20">
-                            Start 14-Day Free Trial <ArrowRight size={20} className="ml-2" />
+                            Get started free <ArrowRight size={20} className="ml-2" />
                         </Link>
                         <Link href="#features" className="w-full sm:w-auto inline-flex items-center justify-center bg-surface text-ink border border-hairline-strong px-8 py-4 rounded-2xl font-bold text-lg hover:bg-surface-muted hover:scale-105 transition-all shadow-sm">
                             Explore Features
@@ -96,24 +103,7 @@ export default async function Home() {
                 </div>
             </section>
 
-            {/* ── 2. Client Logo Marquee ─────────────────────────────────────── */}
-            <section className="py-12 border-b border-hairline bg-surface overflow-hidden">
-                <p className="text-center text-ink-subtle font-bold tracking-wide uppercase text-xs mb-8">Trusted by 7,500+ restaurants of all sizes</p>
-                <div className="relative flex overflow-x-hidden group opacity-60">
-                    <div className="animate-marquee flex whitespace-nowrap items-center gap-24 px-12 text-ink font-black text-2xl uppercase tracking-widest">
-                        {['Cafe Mocha', 'The Pizza Hub', 'Himalayan Grill', 'Kathmandu Kitchen', 'Spice Route', 'Urban Burger', 'Everest Dine', 'Bistro Nepal'].map(logo => (
-                            <span key={logo} className="hover:text-[var(--color-primary)] transition-colors cursor-pointer">{logo}</span>
-                        ))}
-                    </div>
-                    <div className="absolute top-0 animate-marquee2 flex whitespace-nowrap items-center gap-24 px-12 text-ink font-black text-2xl uppercase tracking-widest">
-                        {['Cafe Mocha', 'The Pizza Hub', 'Himalayan Grill', 'Kathmandu Kitchen', 'Spice Route', 'Urban Burger', 'Everest Dine', 'Bistro Nepal'].map(logo => (
-                            <span key={logo + '2'} className="hover:text-[var(--color-primary)] transition-colors cursor-pointer">{logo}</span>
-                        ))}
-                    </div>
-                </div>
-            </section>
-
-            {/* ── 3. Bento Grid Features ────────────────────────────────────────── */}
+            {/* ── 2. Bento Grid Features ────────────────────────────────────────── */}
             <section id="features" className="py-32 bg-surface relative">
                 <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-20 max-w-3xl mx-auto">
@@ -170,8 +160,8 @@ export default async function Home() {
                                     <div className="w-14 h-14 bg-surface rounded-2xl shadow-sm border border-hairline flex items-center justify-center mb-6 text-indigo-600">
                                         <Receipt size={28} />
                                     </div>
-                                    <h3 className="text-3xl sm:text-4xl font-extrabold text-ink mb-4 tracking-tight">IRD Approved Billing</h3>
-                                    <p className="text-ink-muted text-lg max-w-md leading-relaxed">Generate legal, VAT/PAN compliant invoices in seconds. Fully approved by the Inland Revenue Department of Nepal.</p>
+                                    <h3 className="text-3xl sm:text-4xl font-extrabold text-ink mb-4 tracking-tight">IRD-Compliant Billing</h3>
+                                    <p className="text-ink-muted text-lg max-w-md leading-relaxed">VAT/PAN-ready invoices with sequential, tamper-evident numbering — built to Nepal&apos;s Inland Revenue Department billing rules.</p>
                                 </div>
                             </div>
                         </div>
@@ -234,50 +224,6 @@ export default async function Home() {
                 </div>
             </section>
 
-            {/* ── 5. Testimonials Masonry ────────────────────────────────────── */}
-            <section className="py-32 bg-surface">
-                <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="text-center mb-20 max-w-3xl mx-auto">
-                        <h2 className="text-4xl sm:text-5xl font-extrabold text-ink mb-6 tracking-tight">
-                            Loved by the best.
-                        </h2>
-                        <p className="text-xl text-ink-subtle font-medium">Stories, feedback, and experiences shared by businesses growing with our software.</p>
-                    </div>
-
-                    <div className="columns-1 md:columns-2 lg:columns-3 gap-6 space-y-6">
-                        {[
-                            { name: "Prakash Shrestha", role: "Owner", text: "I have been using this app since a year now. I like all features. It is simple to setup and it helps me to take orders from customers. The main features I liked of this app is, <highlight>customer can scan qr code and oder from their phone</highlight> which best... UI is nice" },
-                            { name: "Shrutika Gurung", role: "Cafe Owner", text: "As a cafe owner in Nepal, kkkhane has been a game-changer for my daily operations. Order taking, billing, stock tracking—sabal kura ekdam sajilo bhayo. <highlight>Customers love the QR menu</highlight>, and the support team is quick." },
-                            { name: "Raj Kumar Gurung", role: "Owner", text: "The dashboard is clean and easy to understand. <highlight>I love how I can see daily reports and trends at a glance.</highlight> really helps me plan ahead." },
-                            { name: "Darshan Thapa", role: "Owner", text: "I've been using this POS software for my two cafés, and it's been a great experience so far. The system is <highlight>easy to use, with a clean and minimal interface</highlight> that makes daily operations smooth." },
-                            { name: "Celina Dangol", role: "Owner", text: "What I love most is I don't need extra hardware. <highlight>I can manage everything on my phone.</highlight> It's the most flexible restaurant management software in Nepal." },
-                            { name: "Anup Gautam", role: "Owner", text: "<highlight>No more paper menus or miscommunication.</highlight> Our customers love the QR code menu and easy ordering. keeps everything digital and efficient." }
-                        ].map((r, i) => (
-                            <div key={i} className="break-inside-avoid bg-[#FAFAF8] p-8 rounded-[2rem] border border-hairline hover:border-hairline-strong transition-colors">
-                                <div className="flex justify-between items-start mb-6">
-                                    <div className="flex gap-4 items-center">
-                                        <div className="w-12 h-12 rounded-full bg-ink flex items-center justify-center font-bold text-white text-lg uppercase shadow-sm">
-                                            {r.name.substring(0, 2)}
-                                        </div>
-                                        <div>
-                                            <h5 className="font-bold text-ink">{r.name}</h5>
-                                            <p className="text-xs font-bold text-ink-subtle uppercase tracking-wider">{r.role}</p>
-                                        </div>
-                                    </div>
-                                    <Globe size={18} className="text-gray-300" />
-                                </div>
-                                <div className="flex gap-1 mb-6 text-amber-400">
-                                    {[...Array(5)].map((_, idx) => <Star key={idx} size={14} fill="currentColor" />)}
-                                </div>
-                                <p className="text-ink-muted text-balance font-medium leading-relaxed text-sm" dangerouslySetInnerHTML={{
-                                    __html: r.text.replace(/<highlight>(.*?)<\/highlight>/g, '<span class="bg-[var(--color-primary)]/10 text-[var(--color-primary)] px-1.5 py-0.5 rounded font-bold">$1</span>')
-                                }} />
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </section>
-
             {/* ── Pricing Section ────────────────────────────────────────────── */}
             <section id="pricing" className="py-32 bg-[#FAFAF8]">
                 <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
@@ -286,72 +232,10 @@ export default async function Home() {
                         <p className="text-xl text-ink-subtle font-medium">No hidden fees, no hardware lock-in. Choose the plan that fits your growth.</p>
                     </div>
 
-                    <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-                        {/* Free Tier */}
-                        <div className="bg-surface rounded-[2.5rem] p-10 border border-hairline-strong hover:border-hairline-strong transition-all hover:shadow-xl flex flex-col">
-                            <h3 className="text-2xl font-extrabold text-ink mb-2">Free Starter</h3>
-                            <p className="text-ink-subtle font-medium mb-6">Perfect for small food stalls or testing the waters.</p>
-                            <div className="mb-8">
-                                <span className="text-5xl font-black text-ink">Free</span>
-                            </div>
-                            <ul className="space-y-4 mb-10 flex-1">
-                                {['Up to 1 Staff Member (Owner)', 'Max 20 Menu Items', 'Basic POS Features', 'Standard Email Support'].map((f, i) => (
-                                    <li key={i} className="flex items-center gap-3 font-medium text-ink-muted">
-                                        <CheckCircle className="text-brand-500 shrink-0" size={20} />
-                                        {f}
-                                    </li>
-                                ))}
-                            </ul>
-                            <Link href="/signup" className="w-full text-center bg-surface-muted text-ink font-bold py-4 rounded-2xl border border-hairline-strong hover:bg-surface-muted transition-colors">
-                                Start for Free
-                            </Link>
-                        </div>
-
-                        {/* Pro Tier */}
-                        <div className="bg-ink rounded-[2.5rem] p-10 border border-gray-800 hover:border-gray-700 transition-all hover:shadow-2xl shadow-xl shadow-gray-900/20 relative flex flex-col overflow-hidden transform md:scale-105 z-10">
-                            <div className="absolute top-0 right-0 w-64 h-64 bg-brand-500 opacity-20 blur-[80px] rounded-full pointer-events-none" />
-                            <div className="absolute top-6 right-8 bg-brand-500 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">Most Popular</div>
-                            <h3 className="text-2xl font-extrabold text-white mb-2">Pro Business</h3>
-                            <p className="text-ink-subtle font-medium mb-6">Everything you need to run and scale a growing restaurant.</p>
-                            <div className="mb-8 flex items-end gap-2">
-                                <span className="text-5xl font-black text-white">Rs. 14,400</span>
-                                <span className="text-ink-subtle font-medium mb-2">/year</span>
-                            </div>
-                            <ul className="space-y-4 mb-10 flex-1">
-                                {['Unlimited Staff & Roles', 'Unlimited Menu Items', 'Kitchen Display System (KDS)', 'Advanced Analytics & Reports', 'Priority 24/7 Support'].map((f, i) => (
-                                    <li key={i} className="flex items-center gap-3 font-medium text-gray-300">
-                                        <CheckCircle className="text-brand-400 shrink-0" size={20} />
-                                        {f}
-                                    </li>
-                                ))}
-                            </ul>
-                            <Link href="/signup" className="w-full text-center bg-brand-500 text-white font-extrabold py-4 rounded-2xl hover:bg-brand-400 transition-colors shadow-lg shadow-brand-500/20">
-                                Start 14-Day Free Trial
-                            </Link>
-                        </div>
-
-                        {/* Enterprise Tier */}
-                        <div className="bg-surface rounded-[2.5rem] p-10 border border-hairline-strong hover:border-hairline-strong transition-all hover:shadow-xl flex flex-col">
-                            <h3 className="text-2xl font-extrabold text-ink mb-2">Enterprise</h3>
-                            <p className="text-ink-subtle font-medium mb-6">Tailored solutions for franchises and large chains.</p>
-                            <div className="mb-8 flex items-end gap-2">
-                                <span className="text-5xl font-black text-ink">Custom</span>
-                            </div>
-                            <ul className="space-y-4 mb-10 flex-1">
-                                {['Multi-Location Management', 'Custom POS Hardware', 'Dedicated Account Manager', 'On-site Training & Setup', 'Custom Feature Dev'].map((f, i) => (
-                                    <li key={i} className="flex items-center gap-3 font-medium text-ink-muted">
-                                        <CheckCircle className="text-brand-500 shrink-0" size={20} />
-                                        {f}
-                                    </li>
-                                ))}
-                            </ul>
-                            <Link href="mailto:enterprise@kkkhane.com" className="w-full text-center bg-surface-muted text-ink font-bold py-4 rounded-2xl border border-hairline-strong hover:bg-surface-muted transition-colors">
-                                Contact Sales
-                            </Link>
-                        </div>
-                    </div>
+                    <PricingCards />
                 </div>
             </section>
+
 
             {/* ── 6. FAQ Section ─────────────────────────────────────────────── */}
             <section id="faq" className="py-24 bg-surface">
@@ -385,12 +269,12 @@ export default async function Home() {
                         
                         <div className="relative z-10 max-w-2xl mx-auto">
                             <h2 className="text-4xl sm:text-5xl font-extrabold text-white mb-6 tracking-tight">Ready to elevate your restaurant?</h2>
-                            <p className="text-xl text-ink-subtle mb-10 font-medium">Join thousands of restaurants running their operations on our modern platform.</p>
-                            
+                            <p className="text-xl text-ink-subtle mb-10 font-medium">Start on the free plan and upgrade whenever you outgrow it.</p>
+
                             <Link href="/signup" className="inline-flex items-center justify-center bg-[var(--color-primary)] text-white px-10 py-5 rounded-2xl font-extrabold text-xl hover:scale-105 transition-transform shadow-[0_0_40px_rgba(251,99,3,0.4)]">
-                                Start your free trial today
+                                Get started free
                             </Link>
-                            <p className="mt-6 text-sm text-ink-subtle font-bold uppercase tracking-widest">No credit card required. Setup in 2 minutes.</p>
+                            <p className="mt-6 text-sm text-ink-subtle font-bold uppercase tracking-widest">No credit card required.</p>
                         </div>
                     </div>
                 </div>

@@ -12,7 +12,8 @@ INSERT INTO public.roles (id, name, description) VALUES
     (3, 'kitchen',     'Views and updates order preparation status'),
     (4, 'waiter',      'Takes and serves orders on the floor'),
     (5, 'customer',    'Places orders via the QR menu'),
-    (6, 'cashier',     'Payment collection and bill settlement at the counter')
+    (6, 'cashier',     'Payment collection and bill settlement at the counter'),
+    (7, 'bartender',   'Views and updates drink preparation status at the bar')
 ON CONFLICT (id) DO UPDATE
     SET name = EXCLUDED.name,
         description = EXCLUDED.description;

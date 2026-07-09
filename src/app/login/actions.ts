@@ -78,7 +78,7 @@ async function ensureDemoTenant(admin: AdminClient, tenant: DemoTenant): Promise
             name: cfg.name,
             slug: cfg.slug,
             businessType: cfg.businessType,
-            tier: 'pro',
+            tier: 'premium',
         })
         restaurantId = result.restaurantId ?? null
 

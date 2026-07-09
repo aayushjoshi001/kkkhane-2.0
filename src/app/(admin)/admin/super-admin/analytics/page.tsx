@@ -8,15 +8,29 @@ export const dynamic = 'force-dynamic'
 const TIER_COLORS: Record<string, string> = {
     free: 'bg-surface-muted',
     basic: 'bg-blue-400',
-    pro: 'bg-purple-500',
+    premium: 'bg-purple-500',
+    platinum: 'bg-slate-500',
     enterprise: 'bg-amber-500',
 }
 
 const TIER_TEXT: Record<string, string> = {
     free: 'text-ink-muted',
     basic: 'text-blue-700',
-    pro: 'text-purple-700',
+    premium: 'text-purple-700',
+    platinum: 'text-slate-800',
     enterprise: 'text-amber-700',
+}
+
+/**
+ * Full class strings, not interpolated fragments — Tailwind only emits classes it
+ * can find literally in the source, so `bg-${tier}-100` never produced a rule.
+ */
+const TIER_BADGE: Record<string, string> = {
+    free: 'bg-surface-muted text-ink-muted',
+    basic: 'bg-blue-100 text-blue-700',
+    premium: 'bg-purple-100 text-purple-700',
+    platinum: 'bg-slate-100 text-slate-800',
+    enterprise: 'bg-amber-100 text-amber-700',
 }
 
 export default async function AnalyticsPage() {
@@ -169,7 +183,7 @@ export default async function AnalyticsPage() {
                                         <td className="px-5 py-3 text-ink-subtle text-xs font-medium">{i + 1}</td>
                                         <td className="px-5 py-3 font-medium text-ink">{r.name}</td>
                                         <td className="px-5 py-3">
-                                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${TIER_COLORS[r.tier] ? `bg-${r.tier === 'enterprise' ? 'amber' : r.tier === 'pro' ? 'purple' : r.tier === 'basic' ? 'blue' : 'gray'}-100 ${TIER_TEXT[r.tier]}` : 'bg-surface-muted text-ink-muted'}`}>
+                                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${TIER_BADGE[r.tier] ?? 'bg-surface-muted text-ink-muted'}`}>
                                                 {r.tier}
                                             </span>
                                         </td>
