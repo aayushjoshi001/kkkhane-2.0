@@ -82,17 +82,26 @@ async function postLedgerEntry(supabase: SupabaseClient, user: CurrentUserType, 
             })
     } else if (voucher.category === 'staff' && voucher.staff_user_id) {
         // Post payment to staff_ledger to reduce owed balance
-        await supabase
+        const paymentMethodVal = voucher.payment_mode === 'cash'
+            ? 'cash'
+            : (voucher.payment_mode === 'qr' ? 'qr_digital' : 'bank_transfer')
+
+        const { error: insertErr } = await supabase
             .from('staff_ledger')
             .insert({
                 restaurant_id: user.restaurantId,
                 user_id: voucher.staff_user_id,
                 amount: voucher.amount,
                 entry_type: 'salary_payout',
-                payment_method: voucher.payment_mode === 'cash' ? 'cash' : 'bank',
+                payment_method: paymentMethodVal,
                 note: `Payment Voucher: ${voucher.particulars}`,
                 created_by: user.id
             })
+
+        if (insertErr) {
+            console.error("Failed to post staff ledger entry:", insertErr)
+            throw new Error(`Failed to post staff ledger: ${insertErr.message}`)
+        }
     }
 }
 

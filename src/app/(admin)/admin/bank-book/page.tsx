@@ -13,8 +13,10 @@ export default async function BankBookPage() {
     const supabase = await createAdminClient()
     const restaurantId = currentUser.restaurantId
 
-    // Today's date in YYYY-MM-DD
-    const todayDate = new Date().toISOString().split('T')[0]
+    // Today's date in YYYY-MM-DD (NST timezone)
+    const now = new Date()
+    const NST_OFFSET_MS = (5 * 60 + 45) * 60 * 1000
+    const todayDate = new Date(now.getTime() + NST_OFFSET_MS).toISOString().split('T')[0]
 
     // Fetch today's session (if exists)
     const { data: session } = await supabase
@@ -22,7 +24,7 @@ export default async function BankBookPage() {
         .select('*')
         .eq('restaurant_id', restaurantId)
         .eq('date', todayDate)
-        .single()
+        .maybeSingle()
 
     // Fetch active bank accounts
     const { data: bankAccounts } = await supabase
