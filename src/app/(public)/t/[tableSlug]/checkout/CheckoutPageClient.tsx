@@ -74,6 +74,40 @@ export default function CheckoutPageClient() {
     }
 
     if (stayBilling) {
+        if (stayBilling.hasActiveBooking === false) {
+            return (
+                <div className="min-h-screen bg-surface-muted pb-32 text-ink font-sans flex flex-col justify-between">
+                    <div>
+                        {/* Header */}
+                        <header className="bg-surface px-4 py-4 shadow-sm sticky top-0 z-20 flex items-center gap-3">
+                            <button onClick={() => router.back()} className="p-2 -ml-2 text-ink-muted rounded-full active:bg-surface-muted">
+                                <ArrowLeft size={20} />
+                            </button>
+                            <h1 className="text-xl font-bold text-ink">Room Bill Details</h1>
+                        </header>
+
+                        <main className="max-w-xl mx-auto px-4 mt-12 text-center space-y-4">
+                            <div className="text-ink-subtle flex justify-center">
+                                <ShoppingBagIcon className="w-16 h-16 opacity-50" />
+                            </div>
+                            <h2 className="text-xl font-black text-ink">No Active Stay</h2>
+                            <p className="text-sm font-semibold text-ink-subtle max-w-sm mx-auto">
+                                There is no active stay/booking checked in to Room {stayBilling.roomNumber} at the moment.
+                            </p>
+                            <button
+                                onClick={() => router.back()}
+                                className="bg-[var(--color-primary)] text-white font-bold text-xs px-5 py-3 rounded-xl active:scale-95 transition shadow-md"
+                            >
+                                Go Back
+                            </button>
+                        </main>
+                    </div>
+
+                    <BottomNavbar activeTab="pay" />
+                </div>
+            )
+        }
+
         return (
             <div className="min-h-screen bg-surface-muted pb-64 text-ink font-sans flex flex-col justify-between">
                 <div>

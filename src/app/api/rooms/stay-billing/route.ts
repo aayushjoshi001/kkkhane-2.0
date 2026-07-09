@@ -20,13 +20,21 @@ export async function GET(req: Request) {
             .eq('qr_token', tableSlug)
             .single()
 
-        if (!tableData) {
+        if (!tableData || !tableData.room_id) {
             return NextResponse.json({ isHotelRoom: false })
         }
 
         const roomContext = await getRoomContextForTable(supabase, tableData.id)
-        if (!roomContext || !roomContext.bookingId) {
+        if (!roomContext) {
             return NextResponse.json({ isHotelRoom: false })
+        }
+
+        if (!roomContext.bookingId) {
+            return NextResponse.json({
+                isHotelRoom: true,
+                hasActiveBooking: false,
+                roomNumber: roomContext.roomNumber
+            })
         }
 
         // 2. Fetch active booking details
