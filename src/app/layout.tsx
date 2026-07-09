@@ -152,6 +152,14 @@ export default async function RootLayout({
           disable={process.env.NODE_ENV === 'development'}
           reloadOnOnline
         >
+          {/* Global Fixed Overlay: KK Watermark */}
+          <div className="pointer-events-none fixed inset-0 z-[9999] overflow-hidden">
+              {/* Faded KK Watermark on the left */}
+              <div className="absolute -left-[10vw] top-1/2 -translate-y-1/2 text-[45vw] leading-none font-black text-ink opacity-[0.03] select-none tracking-tighter mix-blend-multiply">
+                  KK
+              </div>
+          </div>
+
           {children}
         </SerwistProvider>
         <PwaInstallPrompt />
