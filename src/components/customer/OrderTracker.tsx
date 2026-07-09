@@ -7,7 +7,7 @@ import { playVoice } from '@/lib/voice'
 import { toast } from 'react-hot-toast'
 import { timeAgo } from '@/lib/utils'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
-import { CheckCircle, Clock, ChefHat, Package, PartyPopper, ChevronLeft, MapPin } from 'lucide-react'
+import { CheckCircle, Clock, ChefHat, Package, PartyPopper, ChevronLeft, MapPin, Plus } from 'lucide-react'
 import type { Order, OrderItem, MenuItem, OrderItemModifier } from '@/types/database'
 import Confetti from '@/components/customer/Confetti'
 import { useRouter } from 'next/navigation'
@@ -46,6 +46,7 @@ export default function OrderTracker({
     features,
     restaurantInfo,
     tableSlug,
+    sessionOrders = [],
 }: {
     orderId: string
     initialOrder: OrderWithItems
@@ -53,6 +54,7 @@ export default function OrderTracker({
     features: any
     restaurantInfo: any
     tableSlug: string
+    sessionOrders?: OrderWithItems[]
 }) {
     const [order, setOrder] = useState<OrderWithItems>(initialOrder)
     const money = useCurrency()
@@ -61,6 +63,9 @@ export default function OrderTracker({
     const [showPayment, setShowPayment] = useState(false)
     const supabaseRef = useRef(createClient())
     const router = useRouter()
+
+    const isHotelRoom = !!(order as any).booking_id
+    const activeShowSuccess = isHotelRoom ? true : showSuccessScreen
 
     useEffect(() => {
         const supabase = supabaseRef.current
@@ -108,9 +113,12 @@ export default function OrderTracker({
         0
     ) || 0
 
-    if (showSuccessScreen) {
+    const displayOrders = sessionOrders.length > 0 ? sessionOrders : [order]
+    const grandTotal = displayOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0)
+
+    if (activeShowSuccess) {
         return (
-            <div className="flex flex-col min-h-screen bg-surface text-ink font-sans select-none pb-12">
+            <div className="flex flex-col min-h-screen bg-surface text-ink font-sans select-none pb-12 animate-in fade-in duration-300">
                 {showConfetti && <Confetti />}
 
                 {/* Top Orange Section */}
@@ -137,44 +145,56 @@ export default function OrderTracker({
                     <div className="bg-surface rounded-3xl border border-hairline p-5 shadow-xl">
                         <div className="flex items-center justify-between border-b border-hairline pb-3 mb-4">
                             <span className="font-black text-xs text-ink-subtle uppercase tracking-wider flex items-center gap-1">
-                                📋 Your Order
+                                📋 {isHotelRoom ? 'Your Room Orders' : 'Your Order'}
                             </span>
                             <span className="font-black text-xs text-ink bg-surface-muted px-2.5 py-1 rounded-lg">
                                 Table {tableLabel}
                             </span>
                         </div>
 
-                        {/* Items List */}
-                        <div className="divide-y divide-[#F5EDE6] max-h-48 overflow-y-auto scrollbar-thin pr-1">
-                            {order.order_items?.map((item) => (
-                                <div key={item.id} className="py-2.5 flex justify-between gap-3 text-sm">
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-baseline gap-1">
-                                            <span className="font-bold text-ink-subtle tabular-nums text-xs">{item.quantity}×</span>
-                                            <span className="font-bold text-ink leading-snug">{item.menu_items?.name}</span>
+                        {/* Cumulative Orders/Items List */}
+                        <div className="divide-y divide-[#F5EDE6] max-h-64 overflow-y-auto scrollbar-thin pr-1 space-y-3">
+                            {displayOrders.map((o) => (
+                                <div key={o.id} className="pt-2.5 first:pt-0">
+                                    {displayOrders.length > 1 && (
+                                        <div className="flex justify-between items-center mb-1.5 text-[9px] font-black text-ink-muted/80 tracking-wider">
+                                            <span>ORDER #{o.id.substring(0, 6).toUpperCase()}</span>
+                                            <span className="bg-brand-50 text-brand-600 px-1.5 py-0.5 rounded uppercase">{o.status}</span>
                                         </div>
-                                        {item.order_item_modifiers && item.order_item_modifiers.length > 0 && (
-                                            <div className="flex flex-wrap gap-1 mt-1">
-                                                {item.order_item_modifiers.map(m => (
-                                                    <span key={m.id} className="text-[9px] bg-surface-muted border border-hairline text-ink-subtle px-1.5 py-0.5 rounded-full">
-                                                        {m.modifier_name}
-                                                    </span>
-                                                ))}
+                                    )}
+                                    <div className="divide-y divide-[#F5EDE6]/50">
+                                        {o.order_items?.map((item) => (
+                                            <div key={item.id} className="py-2 flex justify-between gap-3 text-xs">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-baseline gap-1">
+                                                        <span className="font-bold text-ink-subtle tabular-nums text-[10px]">{item.quantity}×</span>
+                                                        <span className="font-bold text-ink leading-snug">{item.menu_items?.name}</span>
+                                                    </div>
+                                                    {item.order_item_modifiers && item.order_item_modifiers.length > 0 && (
+                                                        <div className="flex flex-wrap gap-1 mt-1">
+                                                            {item.order_item_modifiers.map(m => (
+                                                                <span key={m.id} className="text-[8px] bg-surface-muted border border-hairline text-ink-subtle px-1.5 py-0.5 rounded-full">
+                                                                    {m.modifier_name}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <span className="font-black text-brand-500 tabular-nums">
+                                                    {money(item.unit_price * item.quantity)}
+                                                </span>
                                             </div>
-                                        )}
+                                        ))}
                                     </div>
-                                    <span className="font-black text-brand-500 tabular-nums">
-                                        {money(item.unit_price * item.quantity)}
-                                    </span>
                                 </div>
                             ))}
                         </div>
 
                         {/* Total amount */}
                         <div className="flex justify-between items-center border-t border-hairline pt-4 mt-3">
-                            <span className="text-sm font-bold text-ink-subtle">Total Amount</span>
+                            <span className="text-sm font-bold text-ink-subtle">{isHotelRoom ? 'Grand Total' : 'Total Amount'}</span>
                             <span className="font-black text-lg text-brand-500 tabular-nums">
-                                {money(order.total_amount)}
+                                {money(grandTotal)}
                             </span>
                         </div>
 
@@ -200,7 +220,7 @@ export default function OrderTracker({
                                     <PartyPopper size={24} className="text-white" />
                                 </div>
                                 <div className="flex-1">
-                                    <h4 className="font-bold text-sm">Claim {Math.floor(order.total_amount * 0.1)} Points! 🎁</h4>
+                                    <h4 className="font-bold text-sm">Claim {Math.floor(grandTotal * 0.1)} Points! 🎁</h4>
                                     <p className="text-xs text-white/80 mt-0.5">Save your profile to earn loyalty rewards.</p>
                                 </div>
                                 <ChevronLeft size={20} className="rotate-180 text-white/50" />
@@ -208,15 +228,25 @@ export default function OrderTracker({
                         </Link>
                     </div>
 
-                    {/* Track Your Order Button */}
+                    {/* Action Button */}
                     <div className="mt-8">
-                        <button
-                            onClick={() => setShowSuccessScreen(false)}
-                            className="w-full bg-brand-500 text-white font-black text-sm py-4 rounded-2xl active:scale-[0.98] transition-transform shadow-md shadow-[#FB6303]/15 flex items-center justify-center gap-2"
-                        >
-                            <MapPin size={16} />
-                            Track Your Order
-                        </button>
+                        {isHotelRoom ? (
+                            <button
+                                onClick={() => router.push(`/t/${tableSlug}`)}
+                                className="w-full bg-brand-500 text-white font-black text-sm py-4 rounded-2xl active:scale-[0.98] transition-transform shadow-md shadow-[#FB6303]/15 flex items-center justify-center gap-2"
+                            >
+                                <Plus size={16} />
+                                Order More Items
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => setShowSuccessScreen(false)}
+                                className="w-full bg-brand-500 text-white font-black text-sm py-4 rounded-2xl active:scale-[0.98] transition-transform shadow-md shadow-[#FB6303]/15 flex items-center justify-center gap-2"
+                            >
+                                <MapPin size={16} />
+                                Track Your Order
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

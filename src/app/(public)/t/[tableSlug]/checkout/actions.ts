@@ -156,13 +156,14 @@ export async function placeOrder(
     }
 
     const sessionUuid = sessionData.id
+    const isHotelRoom = !!roomContext
 
     const features = await getRestaurantFeatures(sessionData.restaurant_id)
     const waiterSessionEnabled = (features as { waiterSessionEnabled?: boolean } | null)?.waiterSessionEnabled === true
 
     // 2b. Prevent multiple active orders per session (anti-spam / kitchen overload)
-    // Only apply this anti-spam check if waiter sessions are disabled (self-service mode)
-    if (!waiterSessionEnabled) {
+    // Only apply this anti-spam check if waiter sessions are disabled (self-service mode) and it is NOT a hotel room stay
+    if (!waiterSessionEnabled && !isHotelRoom) {
         const { count: activeUndelivered } = await supabase
             .from('orders')
             .select('*', { count: 'exact', head: true })
