@@ -48,7 +48,7 @@ const VALUES = [
 
 export default function CareerPage() {
     return (
-        <div className="min-h-screen bg-surface text-ink font-sans">
+        <div className="min-h-screen bg-transparent text-ink font-sans">
             <MarketingNav />
 
             {/* Hero Section */}

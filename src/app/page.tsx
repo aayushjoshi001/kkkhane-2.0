@@ -34,7 +34,7 @@ export default async function Home() {
     }
 
     return (
-        <div className="min-h-screen bg-surface text-ink overflow-x-hidden font-sans">
+        <div className="min-h-screen bg-transparent text-ink overflow-x-hidden font-sans">
             <MarketingNav />
 
             {/* ── SEO: JSON-LD Schema for Local Business & Software ──────────────── */}
@@ -130,7 +130,7 @@ export default async function Home() {
             </section>
 
             {/* ── 2. Bento Grid Features ────────────────────────────────────────── */}
-            <section id="features" className="pt-16 pb-24 bg-surface relative">
+            <section id="features" className="pt-16 pb-24 bg-transparent relative">
                 <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-20 max-w-3xl mx-auto">
                         <h2 className="text-4xl sm:text-5xl font-extrabold text-ink mb-6 tracking-tight">Everything you need. <br/><span className="text-ink-subtle">Nothing you don&apos;t.</span></h2>
@@ -303,7 +303,7 @@ export default async function Home() {
             </section>
 
             {/* ── How It Works ─────────────────────────────────────────────── */}
-            <section id="how-it-works" className="py-32 bg-surface border-y border-hairline">
+            <section id="how-it-works" className="py-32 bg-transparent border-y border-hairline">
                 <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-20 max-w-3xl mx-auto">
                         <h2 className="text-4xl sm:text-5xl font-extrabold text-ink mb-6 tracking-tight">
@@ -367,7 +367,7 @@ export default async function Home() {
             </section>
 
             {/* ── 7. CTA Banner ─────────────────────────────────────────────── */}
-            <section className="py-32 bg-surface relative overflow-hidden">
+            <section className="py-32 bg-transparent relative overflow-hidden">
                 <div className="max-w-[1200px] mx-auto px-4">
                     <div className="relative bg-ink rounded-[3rem] p-16 sm:p-24 text-center overflow-hidden shadow-2xl">
                         {/* Decorative glowing background */}

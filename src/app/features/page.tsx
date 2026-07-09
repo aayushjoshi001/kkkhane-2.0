@@ -13,11 +13,11 @@ const FEATURES = [
 
 export default function FeaturesPage() {
     return (
-        <div className="min-h-screen bg-surface text-ink">
+        <div className="min-h-screen bg-transparent text-ink">
             <MarketingNav />
 
             {/* Hero */}
-            <section className="relative overflow-hidden bg-surface pb-14 pt-36 text-center">
+            <section className="relative overflow-hidden bg-transparent pb-14 pt-36 text-center">
                 <div className="pointer-events-none absolute left-1/2 top-1/2 h-[700px] w-[700px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--color-primary)]/5 blur-[120px]" />
                 <div className="relative mx-auto max-w-3xl px-4 sm:px-6">
                     <Eyebrow tone="brand">Platform Capabilities</Eyebrow>
