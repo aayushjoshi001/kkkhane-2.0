@@ -94,7 +94,7 @@ export default function CustomerStoriesPage() {
                                     <p><span className="font-bold text-ink">Challenge:</span> {s.challenge}</p>
                                     <p><span className="font-bold text-ink">Result:</span> {s.result}</p>
                                 </div>
-                                <blockquote className="mt-auto rounded-2xl border border-hairline bg-[#f6eee2] p-6">
+                                <blockquote className="mt-auto rounded-2xl border border-hairline bg-transparent p-6">
                                     <Quote size={20} className="mb-2 text-[var(--color-primary)]" />
                                     <p className="font-medium italic leading-relaxed text-ink-muted">&ldquo;{s.quote}&rdquo;</p>
                                     <p className="mt-3 text-xs font-bold text-ink">— {s.person}</p>

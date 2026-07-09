@@ -2,7 +2,7 @@ import { MarketingNav, MarketingFooter, MarketingButton } from '@/components/mar
 
 export default function BlogPage() {
     return (
-        <div className="min-h-screen bg-[#f6eee2] text-ink font-sans">
+        <div className="min-h-screen bg-transparent text-ink font-sans">
             <MarketingNav />
             <div className="flex min-h-[70vh] flex-col items-center justify-center px-4 pt-20 text-center">
                 <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-surface shadow-sm border border-hairline text-4xl">🚀</div>

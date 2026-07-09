@@ -52,7 +52,7 @@ export default function CareerPage() {
             <MarketingNav />
 
             {/* Hero Section */}
-            <section className="pt-32 pb-20 px-4 relative overflow-hidden bg-[#f6eee2] border-b border-hairline text-center">
+            <section className="pt-32 pb-20 px-4 relative overflow-hidden bg-transparent border-b border-hairline text-center">
                 <div className="absolute top-0 right-0 -mr-32 -mt-32 w-96 h-96 bg-purple-50 rounded-full blur-3xl opacity-50"></div>
                 <div className="max-w-[800px] mx-auto relative z-10">
                     <div className="mb-6 inline-flex justify-center"><Eyebrow tone="brand">Join Our Team</Eyebrow></div>
@@ -86,7 +86,7 @@ export default function CareerPage() {
             </section>
 
             {/* Open Positions Section */}
-            <section className="py-20 px-4 bg-[#f6eee2] border-t border-hairline">
+            <section className="py-20 px-4 bg-transparent border-t border-hairline">
                 <div className="max-w-[800px] mx-auto text-center">
                     <div className="mb-12">
                         <h2 className="text-3xl font-extrabold text-ink mb-4">Current Openings!</h2>
