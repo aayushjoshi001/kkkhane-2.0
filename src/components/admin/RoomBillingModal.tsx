@@ -11,6 +11,8 @@ import { formatDateTime, calculateNights } from '@/lib/utils'
 export interface BillingTable {
     id: string
     label: string
+    /** Set when this table is a room's in-room QR (see tables.room_id). */
+    room_id?: string | null
     activeSession?: { id: string } | null
 }
 
@@ -95,9 +97,9 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         return () => { cancelled = true }
     }, [booking])
 
-    // Rooms are joined to QR ordering through a table labelled after the room
-    // number ("12" or "Room 12") — the same convention the cashier screen uses.
-    const matchingTable = tables.find(t => t.label === room.room_number || t.label === 'Room ' + room.room_number)
+    // Rooms are joined to QR ordering by key: tables.room_id points at the room
+    // this table is the in-room QR for (migration 20260709140000).
+    const matchingTable = tables.find(t => t.room_id === room.id)
     const sessionId = matchingTable?.activeSession?.id ?? null
 
     // Orders from the room's own QR session

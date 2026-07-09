@@ -35,7 +35,7 @@ export interface Role {
     description: string | null
 }
 
-export type SubscriptionTier = 'free' | 'basic' | 'pro' | 'enterprise'
+export type SubscriptionTier = 'free' | 'basic' | 'premium' | 'platinum' | 'enterprise'
 export type SubscriptionStatus = 'active' | 'past_due' | 'suspended' | 'cancelled'
 export type PaymentMethod = 'qr_scan' | 'esewa' | 'khalti' | 'fonepay' | 'cash' | 'card'
 
@@ -115,6 +115,9 @@ export interface Table {
     capacity: number | null
     is_active: boolean
     table_status: TableStatus
+    // The hotel room this table is the in-room QR for. Null for dining tables.
+    // This is the keyed room↔order bridge the folio matches on.
+    room_id?: string | null
     // Cleaning ownership: set when a waiter claims a dirty table ("I am going");
     // only this waiter may mark it clean. Null when available/occupied/unclaimed.
     cleaning_claimed_by?: string | null

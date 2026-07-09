@@ -49,7 +49,7 @@ export default async function CashierPage() {
         // All active tables
         adminSupabase
             .from('tables')
-            .select('id, label, capacity, table_status, cleaning_claimed_by, cleaning_claimed_at, qr_token')
+            .select('id, label, capacity, table_status, cleaning_claimed_by, cleaning_claimed_at, qr_token, room_id')
             .eq('restaurant_id', restaurantId)
             .eq('is_active', true)
             .order('label', { ascending: true }),
