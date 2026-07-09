@@ -39,13 +39,15 @@ interface IncomeExpensesManagerProps {
     initialExpenseCategories: Category[]
     initialIncomeEntries: IncomeEntry[]
     initialExpenses: ExpenseEntry[]
+    suppliers: Array<{ id: string; name: string }>
 }
 
 export default function IncomeExpensesManager({
     initialIncomeCategories,
     initialExpenseCategories,
     initialIncomeEntries,
-    initialExpenses
+    initialExpenses,
+    suppliers
 }: IncomeExpensesManagerProps) {
     // Categories & Entries state
     const [incomeCategories, setIncomeCategories] = useState<Category[]>(initialIncomeCategories)
@@ -58,6 +60,7 @@ export default function IncomeExpensesManager({
     const [amount, setAmount] = useState('')
     const [categoryId, setCategoryId] = useState('')
     const [description, setDescription] = useState('')
+    const [vendorSelection, setVendorSelection] = useState('')
     const [vendorName, setVendorName] = useState('')
     const [paymentSource, setPaymentSource] = useState<'cash' | 'bank'>('cash')
     const [bankName, setBankName] = useState('')
@@ -175,6 +178,10 @@ export default function IncomeExpensesManager({
             return
         }
 
+        const resolvedVendor = activeTab === 'expense'
+            ? (vendorSelection === 'custom' ? vendorName.trim() : vendorSelection.trim())
+            : undefined
+
         setSubmitting(true)
         try {
             const res = await createEntryAction({
@@ -182,7 +189,7 @@ export default function IncomeExpensesManager({
                 category_id: categoryId,
                 amount: amt,
                 description: description.trim(),
-                vendor_name: activeTab === 'expense' ? vendorName.trim() : undefined,
+                vendor_name: resolvedVendor || undefined,
                 payment_source: paymentSource,
                 bank_name: paymentSource === 'bank' ? bankName.trim() : undefined
             })
@@ -204,6 +211,7 @@ export default function IncomeExpensesManager({
                 setCategoryId('')
                 setDescription('')
                 setVendorName('')
+                setVendorSelection('')
                 setPaymentSource('cash')
                 setBankName('')
                 toast.success(`${activeTab === 'income' ? 'Income' : 'Expense'} logged successfully!`)
@@ -514,19 +522,37 @@ export default function IncomeExpensesManager({
                         {/* Vendor (Expenses only) */}
                         {activeTab === 'expense' && (
                             <div>
-                                <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Vendor Name (Optional)</label>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-ink-subtle">
-                                        <User size={14} />
-                                    </span>
-                                    <input
-                                        type="text"
-                                        placeholder="e.g. Electricity Office, Supplier"
-                                        value={vendorName}
-                                        onChange={e => setVendorName(e.target.value)}
-                                        className="w-full pl-9 pr-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
-                                    />
-                                </div>
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Supplier / Vendor (Optional)</label>
+                                <select
+                                    value={vendorSelection}
+                                    onChange={e => {
+                                        setVendorSelection(e.target.value)
+                                        if (e.target.value !== 'custom') setVendorName('')
+                                    }}
+                                    className="w-full px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
+                                >
+                                    <option value="">No Supplier</option>
+                                    {suppliers.map(s => (
+                                        <option key={s.id} value={s.name}>{s.name}</option>
+                                    ))}
+                                    <option value="custom">Custom Vendor...</option>
+                                </select>
+
+                                {vendorSelection === 'custom' && (
+                                    <div className="relative mt-2 animate-in slide-in-from-top-1 duration-150">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-ink-subtle">
+                                            <User size={14} />
+                                        </span>
+                                        <input
+                                            type="text"
+                                            placeholder="Enter vendor name..."
+                                            value={vendorName}
+                                            onChange={e => setVendorName(e.target.value)}
+                                            required
+                                            className="w-full pl-9 pr-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
+                                        />
+                                    </div>
+                                )}
                             </div>
                         )}
 
