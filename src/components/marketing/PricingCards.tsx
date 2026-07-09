@@ -219,8 +219,8 @@ export default function PricingCards() {
     const enterprise = PLANS.find(p => p.price.kind === 'contact')
 
     return (
-        <div className="mx-auto max-w-[1200px]">
-            <div className="grid items-start gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="mx-auto max-w-[1400px]">
+            <div className="grid items-start gap-6 md:grid-cols-2 xl:grid-cols-4">
                 {selfServe.map(plan => (
                     <PlanCard key={plan.tier} plan={plan} />
                 ))}

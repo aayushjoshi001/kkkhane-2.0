@@ -39,8 +39,14 @@ export async function GET(req: NextRequest) {
 
         // Exclude the room's own in-room QR session: those orders are already shown
         // as room service on the folio, so returning them here too would double-count.
+        // The embedded `tables` relation may come back as an object or a single-row
+        // array depending on how PostgREST types the join, so normalize both.
+        const roomIdOf = (t: unknown): string | null => {
+            const rel = Array.isArray(t) ? t[0] : t
+            return (rel as { room_id?: string | null } | null)?.room_id ?? null
+        }
         const diningSessions = (linkedSessions || []).filter(
-            (s: { tables?: { room_id?: string | null } | null }) => !s.tables?.room_id
+            (s: { tables?: unknown }) => !roomIdOf(s.tables)
         )
 
         if (diningSessions.length === 0) {

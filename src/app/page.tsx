@@ -73,24 +73,24 @@ export default async function Home() {
                 <div className="max-w-[1200px] mx-auto px-4 relative z-10 text-center">
                     <div className="inline-flex items-center gap-2 bg-surface/60 backdrop-blur-md px-4 py-2 rounded-full mb-8 border border-hairline-strong/60 shadow-sm animate-fade-up">
                         <span className="flex h-2 w-2 rounded-full bg-[var(--color-primary)] animate-pulse" />
-                        <span className="text-ink-muted font-bold text-sm tracking-wide">Built in Nepal 🇳🇵</span>
+                        <span className="text-ink-muted font-bold text-sm tracking-wide">Coming Soon</span>
                     </div>
 
                     {/* Branding Display: "के के खाने?" from image */}
-                    <div className="flex justify-center mb-6 animate-fade-up group" style={{ animationDelay: '0.05s' }}>
-                        <h1 lang="ne" className="text-7xl sm:text-8xl lg:text-[7rem] font-black tracking-tight transform transition-all duration-700 hover:scale-105 cursor-default" style={{ fontFamily: 'var(--font-devanagari), var(--font-inter), sans-serif' }}>
-                            <span className="text-[#201F1E] inline-block transition-transform duration-500 group-hover:-translate-y-2 group-hover:-rotate-2">के के </span>
-                            <span className="text-[#E76115] inline-block transition-transform duration-500 delay-75 group-hover:-translate-y-2 group-hover:rotate-1">खाने<span className="text-[#65635B] inline-block transition-transform duration-500 delay-150 group-hover:scale-125 group-hover:rotate-12 group-hover:text-amber-500">?</span></span>
+                    <div className="flex justify-center mb-6 animate-fade-up" style={{ animationDelay: '0.05s' }}>
+                        <h1 lang="ne" className="text-7xl sm:text-8xl lg:text-[7rem] font-black tracking-tight cursor-default" style={{ fontFamily: 'var(--font-devanagari), var(--font-inter), sans-serif' }}>
+                            <span className="text-[#201F1E] inline-block animate-float">के के </span>
+                            <span className="text-[#E76115] inline-block animate-float-delayed">खाने<span className="text-[#65635B] inline-block animate-pulse">?</span></span>
                         </h1>
                     </div>
 
                     <h2 className="text-3xl sm:text-5xl font-extrabold text-ink leading-[1.1] mb-8 tracking-tight animate-fade-up" style={{ animationDelay: '0.1s' }}>
-                        The SaaS Platform built <br className="hidden sm:block" />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-primary)] to-amber-500">from Cafes to Restaurants.</span>
+                        The oldest question in every Nepali kitchen — <br className="hidden sm:block" />
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-primary)] to-amber-500">and soon, the answer for your restaurant.</span>
                     </h2>
 
                     <p className="text-lg sm:text-xl text-ink-subtle mb-12 max-w-2xl mx-auto leading-relaxed font-medium animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                        An ultra-premium OS that handles orders, inventory, billing, and staff seamlessly. Built natively for businesses in Nepal, starting from Bhojad, Bharatpur.
+                        KKKhane is a mobile-first restaurant ordering & table management system — menus, KOTs, billing and everything in between. We’re plating up the final touches.
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-up" style={{ animationDelay: '0.3s' }}>
@@ -195,6 +195,40 @@ export default async function Home() {
                 </div>
             </section>
 
+            {/* ── 3. Flow Chart Section ────────────────────────────────────────── */}
+            <section className="py-32 bg-[#1B263B] text-white relative overflow-hidden border-y border-[#2c3d5a]">
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-[var(--color-primary)]/10 blur-[120px] rounded-full pointer-events-none" />
+                <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+                    <div className="text-center mb-20 max-w-3xl mx-auto">
+                        <h2 className="text-4xl sm:text-5xl font-extrabold mb-6 tracking-tight">The Perfect Flow</h2>
+                        <p className="text-xl text-white/70 font-medium">From the moment your customer sits down to the final billing, every step is flawlessly connected.</p>
+                    </div>
+
+                    <div className="relative">
+                        {/* Connecting Line for Desktop */}
+                        <div className="hidden lg:block absolute top-[50%] left-0 w-full h-1 bg-gradient-to-r from-transparent via-[var(--color-primary)] to-transparent opacity-30 -translate-y-1/2 z-0" />
+                        
+                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                            {[
+                                { step: '01', title: 'Customer Scans QR', desc: 'Guests scan the table QR code to view the digital menu and place their order directly.', icon: QrCode },
+                                { step: '02', title: 'Kitchen Gets KOT', desc: 'The order instantly prints or appears on the Kitchen Display System (KDS) for preparation.', icon: ChefHat },
+                                { step: '03', title: 'Serve & Enjoy', desc: 'Waiters are notified when the food is ready, ensuring hot food is served immediately.', icon: CheckCircle },
+                                { step: '04', title: 'Auto Billing', desc: 'The final bill is automatically generated and synced with accounting and analytics.', icon: Receipt },
+                            ].map((item, i) => (
+                                <div key={i} className="relative z-10 bg-[#25324b] border border-white/5 p-8 rounded-3xl shadow-xl hover:-translate-y-2 transition-transform duration-300">
+                                    <div className="w-14 h-14 bg-[var(--color-primary)] rounded-2xl flex items-center justify-center text-white mb-6 shadow-[0_0_30px_rgba(251,99,3,0.3)]">
+                                        <item.icon size={28} />
+                                    </div>
+                                    <h4 className="text-xl font-bold mb-3">{item.title}</h4>
+                                    <p className="text-white/60 leading-relaxed font-medium text-sm">{item.desc}</p>
+                                    <div className="absolute top-8 right-8 text-6xl font-black text-white/5 pointer-events-none">{item.step}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             {/* ── 4. Cross Platform Section ─────────────────────────────────── */}
             <section className="py-24 bg-[#FAFAF8]">
                 <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
@@ -261,7 +295,7 @@ export default async function Home() {
 
             {/* ── Pricing Section ────────────────────────────────────────────── */}
             <section id="pricing" className="py-32 bg-[#FAFAF8]">
-                <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-20 max-w-3xl mx-auto">
                         <h2 className="text-4xl sm:text-5xl font-extrabold text-ink mb-6 tracking-tight">Simple, transparent pricing.</h2>
                         <p className="text-xl text-ink-subtle font-medium">No hidden fees, no hardware lock-in. Choose the plan that fits your growth.</p>
