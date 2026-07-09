@@ -54,6 +54,24 @@ function timeStr(iso: string) {
     return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
 }
 
+function formatDescription(desc: string): string {
+    if (!desc) return ''
+    if (desc.trim().startsWith('{')) {
+        try {
+            const parsed = JSON.parse(desc)
+            if (parsed.voucher_type && parsed.voucher_number) {
+                const typeLabel = parsed.voucher_type === 'receipt' ? 'Receipt' : 'Payment'
+                const partyLabel = parsed.party_name ? ` (To: ${parsed.party_name})` : ''
+                const receivedFromLabel = parsed.party_name && parsed.voucher_type === 'receipt' ? ` (From: ${parsed.party_name})` : partyLabel
+                return `${typeLabel} ${parsed.voucher_number}${receivedFromLabel} - ${parsed.particulars || 'No details'}`
+            }
+        } catch {
+            // fallback
+        }
+    }
+    return desc
+}
+
 export default function BankBookClient({
     initialSession,
     initialEntries,
@@ -525,7 +543,7 @@ export default function BankBookClient({
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 font-bold text-gray-800">{e.bank_name || 'N/A'}</td>
-                                                <td className="px-6 py-4 font-bold text-gray-800">{e.description}</td>
+                                                <td className="px-6 py-4 font-bold text-gray-800">{formatDescription(e.description)}</td>
                                                 <td className={`px-6 py-4 text-right font-extrabold text-sm ${
                                                     e.type === 'bank_in' ? 'text-emerald-600' : 'text-rose-600'
                                                 }`}>

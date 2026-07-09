@@ -60,6 +60,24 @@ const CATEGORY_COLORS: Record<string, string> = {
     other:           'bg-gray-100 text-gray-600 border-gray-200',
 }
 
+function formatDescription(desc: string): string {
+    if (!desc) return ''
+    if (desc.trim().startsWith('{')) {
+        try {
+            const parsed = JSON.parse(desc)
+            if (parsed.voucher_type && parsed.voucher_number) {
+                const typeLabel = parsed.voucher_type === 'receipt' ? 'Receipt' : 'Payment'
+                const partyLabel = parsed.party_name ? ` (To: ${parsed.party_name})` : ''
+                const receivedFromLabel = parsed.party_name && parsed.voucher_type === 'receipt' ? ` (From: ${parsed.party_name})` : partyLabel
+                return `${typeLabel} ${parsed.voucher_number}${receivedFromLabel} - ${parsed.particulars || 'No details'}`
+            }
+        } catch {
+            // fallback
+        }
+    }
+    return desc
+}
+
 export default function BankLedgerManager({
     bankAccounts,
     bankEntries
@@ -388,7 +406,7 @@ export default function BankLedgerManager({
                                                             {new Date(e.day_book_sessions?.date || e.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
                                                         </td>
                                                         {/* Description */}
-                                                        <td className="px-4 py-3 font-bold text-gray-800">{e.description}</td>
+                                                        <td className="px-4 py-3 font-bold text-gray-800">{formatDescription(e.description)}</td>
                                                         {/* Bank In */}
                                                         <td className="px-4 py-3 text-right font-black text-xs text-emerald-600">
                                                             {e.type === 'bank_in' ? `+${formatCurrency(e.amount)}` : '-'}
