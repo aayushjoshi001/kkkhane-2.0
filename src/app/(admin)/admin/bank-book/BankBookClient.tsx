@@ -2,10 +2,10 @@
 
 import { useState, useCallback } from 'react'
 import {
-    TrendingUp, TrendingDown, BookOpen, Plus, X, Loader2,
+    TrendingUp, TrendingDown, Plus, X, Loader2,
     Lock, Trash2, CalendarDays, CheckCircle2, AlertCircle, Landmark
 } from 'lucide-react'
-import type { DayBookSession, DayBookEntry, DayBookEntryType, DayBookEntryCategory } from '@/types/database'
+import type { DayBookSession, DayBookEntry, DayBookEntryCategory } from '@/types/database'
 import { toast } from 'react-hot-toast'
 
 interface BankBookClientProps {
@@ -103,7 +103,6 @@ export default function BankBookClient({
             const res = await fetch('/api/day-book/session', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                // Retain previous closing cash balance so cash ledger isn't wiped out
                 body: JSON.stringify({ opening_balance: previousClosingCashBalance, opening_bank_balance: bankBal, date: todayDate }),
             })
             const data = await res.json()
@@ -117,8 +116,9 @@ export default function BankBookClient({
             })
             setIsOpeningDay(false)
             toast.success('Bank Book opened successfully!')
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to open Bank Book')
+        } catch (e) {
+            const errMsg = e instanceof Error ? e.message : 'Failed to open Bank Book'
+            toast.error(errMsg)
         } finally {
             setIsSubmittingOpen(false)
         }
@@ -159,8 +159,9 @@ export default function BankBookClient({
             recalc(updated, session.opening_bank_balance ?? 0)
             setEntryModal(null)
             setEntryForm({ amount: '', description: '', category: 'transfer', bank_name: '' })
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to add entry')
+        } catch (e) {
+            const errMsg = e instanceof Error ? e.message : 'Failed to add entry'
+            toast.error(errMsg)
         } finally {
             setIsSubmittingEntry(false)
         }
@@ -176,8 +177,9 @@ export default function BankBookClient({
             setEntries(updated)
             recalc(updated, session!.opening_bank_balance ?? 0)
             toast.success('Entry deleted')
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to delete')
+        } catch (e) {
+            const errMsg = e instanceof Error ? e.message : 'Failed to delete'
+            toast.error(errMsg)
         }
     }
 
@@ -195,8 +197,9 @@ export default function BankBookClient({
             if (!res.ok) throw new Error(data.error)
             setSession(data.data)
             toast.success('Bank Book closed successfully!')
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to close day')
+        } catch (e) {
+            const errMsg = e instanceof Error ? e.message : 'Failed to close day'
+            toast.error(errMsg)
         } finally {
             setIsClosingDay(false)
         }
@@ -217,8 +220,9 @@ export default function BankBookClient({
             if (!res.ok) throw new Error(data.error)
             setSession(data.data)
             toast.success('Bank Book re-opened successfully!')
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to re-open day book')
+        } catch (e) {
+            const errMsg = e instanceof Error ? e.message : 'Failed to re-open day book'
+            toast.error(errMsg)
         } finally {
             setIsReopeningDay(false)
         }
@@ -292,7 +296,7 @@ export default function BankBookClient({
                         <Landmark size={18} className="text-indigo-600" /> Open Bank Book
                     </h3>
                     <p className="text-sm text-gray-500 mb-5">
-                        Initialize today's bank ledger opening balance. Yesterday's closing bank balance is pre-filled if available.
+                        Initialize today&apos;s bank ledger opening balance. Yesterday&apos;s closing bank balance is pre-filled if available.
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mb-5">
                         <div>
@@ -335,7 +339,7 @@ export default function BankBookClient({
                     </div>
                     <h3 className="font-extrabold text-gray-900 text-xl mb-2">Bank Book Not Opened</h3>
                     <p className="text-gray-500 text-sm max-w-sm mx-auto mb-6">
-                        Open today's bank book ledger to start tracking bank transactions.
+                        Open today&apos;s bank book ledger to start tracking bank transactions.
                     </p>
                     {canManage && (
                         <button
@@ -493,7 +497,7 @@ export default function BankBookClient({
             {/* ── Add Entry Modal ── */}
             {entryModal && (
                 <div className="fixed inset-0 z-50 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl max-w-md w-full border border-gray-150 shadow-xl overflow-hidden animate-in zoom-in-95 duration-150">
+                    <div className="bg-white rounded-2xl max-w-md w-full border border-gray-155 shadow-xl overflow-hidden animate-in zoom-in-95 duration-150">
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                             <h3 className="font-extrabold text-gray-900 flex items-center gap-2">
                                 {entryModal.type === 'bank_in' ? <TrendingUp className="text-emerald-500" size={18} /> : <TrendingDown className="text-rose-500" size={18} />}

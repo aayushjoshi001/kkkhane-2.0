@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import CashBookClient from './CashBookClient'
+import type { DayBookEntry } from '@/types/database'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,7 +25,7 @@ export default async function CashBookPage() {
         .single()
 
     // Fetch today's entries (if session exists)
-    let entries: any[] = []
+    let entries: DayBookEntry[] = []
     if (session) {
         const { data: entriesData } = await supabase
             .from('day_book_entries')
@@ -32,12 +33,12 @@ export default async function CashBookPage() {
             .eq('session_id', session.id)
             .in('type', ['cash_in', 'cash_out'])
             .order('created_at', { ascending: false })
-        entries = entriesData || []
+        entries = (entriesData as DayBookEntry[]) || []
     }
 
     // Calculate cash totals
-    const totalCashIn  = entries.filter(e => e.type === 'cash_in').reduce((s: number, e: any) => s + Number(e.amount), 0)
-    const totalCashOut = entries.filter(e => e.type === 'cash_out').reduce((s: number, e: any) => s + Number(e.amount), 0)
+    const totalCashIn  = entries.filter(e => e.type === 'cash_in').reduce((s: number, e: DayBookEntry) => s + Number(e.amount), 0)
+    const totalCashOut = entries.filter(e => e.type === 'cash_out').reduce((s: number, e: DayBookEntry) => s + Number(e.amount), 0)
     const openingBal   = Number(session?.opening_balance ?? 0)
 
     const initialTotals = {

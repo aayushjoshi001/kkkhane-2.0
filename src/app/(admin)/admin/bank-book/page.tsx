@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import BankBookClient from './BankBookClient'
+import type { DayBookEntry } from '@/types/database'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,7 +25,7 @@ export default async function BankBookPage() {
         .single()
 
     // Fetch today's entries (if session exists)
-    let entries: any[] = []
+    let entries: DayBookEntry[] = []
     if (session) {
         const { data: entriesData } = await supabase
             .from('day_book_entries')
@@ -32,12 +33,12 @@ export default async function BankBookPage() {
             .eq('session_id', session.id)
             .in('type', ['bank_in', 'bank_out'])
             .order('created_at', { ascending: false })
-        entries = entriesData || []
+        entries = (entriesData as DayBookEntry[]) || []
     }
 
     // Calculate bank totals
-    const totalBankIn  = entries.filter(e => e.type === 'bank_in').reduce((s: number, e: any) => s + Number(e.amount), 0)
-    const totalBankOut = entries.filter(e => e.type === 'bank_out').reduce((s: number, e: any) => s + Number(e.amount), 0)
+    const totalBankIn  = entries.filter(e => e.type === 'bank_in').reduce((s: number, e: DayBookEntry) => s + Number(e.amount), 0)
+    const totalBankOut = entries.filter(e => e.type === 'bank_out').reduce((s: number, e: DayBookEntry) => s + Number(e.amount), 0)
     const openingBankBal = Number(session?.opening_bank_balance ?? 0)
 
     const initialTotals = {

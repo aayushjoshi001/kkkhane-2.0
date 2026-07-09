@@ -2,10 +2,10 @@
 
 import { useState, useCallback } from 'react'
 import {
-    TrendingUp, TrendingDown, BookOpen, Plus, X, Loader2,
+    TrendingUp, TrendingDown, Plus, X, Loader2,
     Wallet, Lock, Trash2, CalendarDays, CheckCircle2, AlertCircle
 } from 'lucide-react'
-import type { DayBookSession, DayBookEntry, DayBookEntryType, DayBookEntryCategory } from '@/types/database'
+import type { DayBookSession, DayBookEntry, DayBookEntryCategory } from '@/types/database'
 import { toast } from 'react-hot-toast'
 
 interface CashBookClientProps {
@@ -105,7 +105,6 @@ export default function CashBookClient({
             const res = await fetch('/api/day-book/session', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                // Retain previous closing bank balance so bank ledger isn't wiped out
                 body: JSON.stringify({ opening_balance: bal, opening_bank_balance: previousClosingBankBalance, date: todayDate }),
             })
             const data = await res.json()
@@ -119,8 +118,9 @@ export default function CashBookClient({
             })
             setIsOpeningDay(false)
             toast.success('Cash Book opened successfully!')
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to open Cash Book')
+        } catch (e) {
+            const errMsg = e instanceof Error ? e.message : 'Failed to open Cash Book'
+            toast.error(errMsg)
         } finally {
             setIsSubmittingOpen(false)
         }
@@ -154,7 +154,7 @@ export default function CashBookClient({
             const data = await res.json()
             if (!res.ok) throw new Error(data.error)
             
-            let newEntries = [data.data]
+            const newEntries = [data.data]
 
             // If cash_out is a bank_deposit, automatically insert a matching bank_in entry of category 'deposit'
             if (entryModal.type === 'cash_out' && entryForm.category === 'bank_deposit') {
@@ -171,7 +171,6 @@ export default function CashBookClient({
                             bank_name: entryForm.bank_name.trim(),
                         }),
                     })
-                    const autoData = await autoRes.json()
                     if (autoRes.ok) {
                         toast.success('Cash Out logged and deposited to Bank successfully!')
                     }
@@ -187,8 +186,9 @@ export default function CashBookClient({
             recalc(updated, session.opening_balance)
             setEntryModal(null)
             setEntryForm({ amount: '', description: '', category: 'other', bank_name: '' })
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to add entry')
+        } catch (e) {
+            const errMsg = e instanceof Error ? e.message : 'Failed to add entry'
+            toast.error(errMsg)
         } finally {
             setIsSubmittingEntry(false)
         }
@@ -204,8 +204,9 @@ export default function CashBookClient({
             setEntries(updated)
             recalc(updated, session!.opening_balance)
             toast.success('Entry deleted')
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to delete')
+        } catch (e) {
+            const errMsg = e instanceof Error ? e.message : 'Failed to delete'
+            toast.error(errMsg)
         }
     }
 
@@ -223,8 +224,9 @@ export default function CashBookClient({
             if (!res.ok) throw new Error(data.error)
             setSession(data.data)
             toast.success('Cash Book closed successfully!')
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to close day')
+        } catch (e) {
+            const errMsg = e instanceof Error ? e.message : 'Failed to close day'
+            toast.error(errMsg)
         } finally {
             setIsClosingDay(false)
         }
@@ -245,8 +247,9 @@ export default function CashBookClient({
             if (!res.ok) throw new Error(data.error)
             setSession(data.data)
             toast.success('Cash Book re-opened successfully!')
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to re-open day book')
+        } catch (e) {
+            const errMsg = e instanceof Error ? e.message : 'Failed to re-open day book'
+            toast.error(errMsg)
         } finally {
             setIsReopeningDay(false)
         }
@@ -296,7 +299,7 @@ export default function CashBookClient({
                     )}
                     {isClosed && (
                         <div className="flex items-center gap-2">
-                            <span className="flex items-center gap-2 px-4 py-2.5 bg-gray-150 text-gray-600 font-bold rounded-xl text-sm border border-gray-200">
+                            <span className="flex items-center gap-2 px-4 py-2.5 bg-gray-155 text-gray-600 font-bold rounded-xl text-sm border border-gray-200">
                                 <CheckCircle2 size={15} className="text-emerald-500" /> Cash Book Closed
                             </span>
                             {['manager', 'super_admin'].includes(userRole) && (
@@ -320,7 +323,7 @@ export default function CashBookClient({
                         <Wallet size={18} className="text-amber-600" /> Open Cash Book
                     </h3>
                     <p className="text-sm text-gray-500 mb-5">
-                        Initialize today's cash ledger opening balance. Yesterday's closing cash balance is filled automatically if available.
+                        Initialize today&apos;s cash ledger opening balance. Yesterday&apos;s closing cash balance is filled automatically if available.
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mb-5">
                         <div>
@@ -363,7 +366,7 @@ export default function CashBookClient({
                     </div>
                     <h3 className="font-extrabold text-gray-900 text-xl mb-2">Cash Book Not Opened</h3>
                     <p className="text-gray-500 text-sm max-w-sm mx-auto mb-6">
-                        Open today's cash book ledger to start recording cash transactions.
+                        Open today&apos;s cash book ledger to start recording cash transactions.
                     </p>
                     {canManage && (
                         <button
