@@ -12,10 +12,11 @@ export default async function SuppliersLedgerPage() {
     const supabase = await createAdminClient()
     const restaurantId = currentUser.restaurantId
 
-    // Fetch suppliers and expenses in parallel
+    // Fetch suppliers, expenses, and expense categories in parallel
     const [
         { data: suppliers },
-        { data: expenses }
+        { data: expenses },
+        { data: expenseCategories }
     ] = await Promise.all([
         supabase
             .from('suppliers')
@@ -26,13 +27,19 @@ export default async function SuppliersLedgerPage() {
             .from('expenses')
             .select('*, expense_categories(*)')
             .eq('restaurant_id', restaurantId)
-            .order('created_at', { ascending: false })
+            .order('created_at', { ascending: false }),
+        supabase
+            .from('expense_categories')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .order('name', { ascending: true })
     ])
 
     return (
         <SuppliersLedgerManager
             initialSuppliers={suppliers || []}
             expenses={expenses || []}
+            expenseCategories={expenseCategories || []}
         />
     )
 }
