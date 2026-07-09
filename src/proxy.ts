@@ -58,8 +58,8 @@ function getRequestIp(request: NextRequest): string {
 }
 
 // True if this request carries a Supabase auth cookie. An anonymous customer
-// scanning a QR code never has one, so there is no session to refresh and the
-// getUser() round-trip in updateSession() can be skipped entirely for them.
+// scanning a QR code never has one, so there is no session to verify or refresh
+// and updateSession() can be skipped entirely for them.
 function hasAuthCookie(request: NextRequest): boolean {
     return request.cookies.getAll().some(c => c.name.startsWith('sb-') && c.name.includes('-auth-token'))
 }
@@ -91,7 +91,7 @@ export async function proxy(request: NextRequest) {
     }
 
     // A fully public QR page hit by an anonymous customer (no Supabase auth
-    // cookie at all) has no session to refresh — skip the getUser() round-trip
+    // cookie at all) has no session to verify or refresh — skip updateSession()
     // entirely. Staff testing a customer page while logged in still carry the
     // cookie, so they still get the full session-refresh path below.
     if (isPublicQrPath && !hasAuthCookie(request)) {
