@@ -38,7 +38,8 @@ export const OrderItemSchema = z.object({
   special_request: z.string().max(500, 'Special request too long').nullable().optional(),
   modifiers: z.array(z.object({
     modifier_id: UUID
-  })).optional().default([])
+  })).optional().default([]),
+  variation_id: UUID.nullable().optional()
 })
 
 export const PlaceOrderSchema = z.object({
