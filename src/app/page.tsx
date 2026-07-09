@@ -63,67 +63,48 @@ export default async function Home() {
             />
 
             {/* ── 1. Ultra Premium Hero Section ────────────────────────────────────────────── */}
-            <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden bg-transparent">
-                {/* Stunning Gradient Background */}
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[800px] pointer-events-none">
-                    <div className="absolute top-[20%] left-[20%] w-[500px] h-[500px] bg-[var(--color-primary)] opacity-[0.08] blur-[100px] rounded-full mix-blend-multiply animate-pulse" />
-                    <div className="absolute top-[30%] right-[20%] w-[600px] h-[600px] bg-indigo-500 opacity-[0.05] blur-[120px] rounded-full mix-blend-multiply" />
-                </div>
-                
-                <div className="max-w-[1200px] mx-auto px-4 relative z-10 text-center">
-                    <div className="inline-flex items-center gap-2 bg-surface/60 backdrop-blur-md px-4 py-2 rounded-full mb-8 border border-hairline-strong/60 shadow-sm animate-fade-up">
-                        <span className="flex h-2 w-2 rounded-full bg-[var(--color-primary)] animate-pulse" />
-                        <span className="text-ink-muted font-bold text-sm tracking-wide">Built in Nepal</span>
-                    </div>
-
-                    {/* Branding Display: "के के खाने?" from image */}
-                    <div className="flex justify-center mb-6 animate-fade-up" style={{ animationDelay: '0.05s' }}>
-                        <h1 lang="ne" className="text-7xl sm:text-8xl lg:text-[7rem] font-black tracking-tight cursor-default" style={{ fontFamily: 'var(--font-devanagari), var(--font-inter), sans-serif' }}>
-                            <span className="text-[#201F1E] inline-block animate-[bounce_2s_infinite]">के के </span>
-                            <span className="text-[#E76115] inline-block animate-[bounce_2.5s_infinite]">खाने<span className="text-[#65635B] inline-block animate-[pulse_2s_infinite]">?</span></span>
-                        </h1>
-                    </div>
-
-                    <h2 className="text-3xl sm:text-5xl font-extrabold text-ink leading-[1.1] mb-8 tracking-tight animate-fade-up" style={{ animationDelay: '0.1s' }}>
-                        The oldest question in every Nepali kitchen — <br className="hidden sm:block" />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-primary)] to-amber-500">and now, the answer for your restaurant.</span>
-                    </h2>
-
-                    <p className="text-lg sm:text-xl text-ink-subtle mb-12 max-w-2xl mx-auto leading-relaxed font-medium animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                        KKKhane is a mobile-first restaurant ordering & table management system — menus, KOTs, billing and everything in between. Available now.
-                    </p>
-
-                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-up" style={{ animationDelay: '0.3s' }}>
-                        <Link href="/signup" className="w-full sm:w-auto inline-flex items-center justify-center bg-ink text-white px-8 py-4 rounded-2xl font-bold text-lg hover:bg-black hover:scale-105 transition-all shadow-xl shadow-gray-900/20">
-                            Get started free <ArrowRight size={20} className="ml-2" />
-                        </Link>
-                        <Link href="#features" className="w-full sm:w-auto inline-flex items-center justify-center bg-surface text-ink border border-hairline-strong px-8 py-4 rounded-2xl font-bold text-lg hover:bg-surface-muted hover:scale-105 transition-all shadow-sm">
-                            Explore Features
-                        </Link>
-                    </div>
-
-                    {/* Dashboard Hero Image */}
-                    <div className="relative mt-20 max-w-5xl mx-auto animate-fade-up" style={{ animationDelay: '0.4s' }}>
-                        <div className="rounded-[2.5rem] overflow-hidden shadow-[0_30px_60px_rgba(0,0,0,0.12)] border-8 border-white/80 bg-surface relative aspect-[16/10] sm:aspect-video transform transition-transform hover:-translate-y-2 duration-500">
-                            <Image src="/images/mockups/custom_mockup_1_hd.png" alt="Dashboard Mockup" fill className="object-cover object-top" priority sizes="(max-width: 1024px) 100vw, 1024px" quality={100} />
-                            <div className="absolute inset-0 bg-gradient-to-t from-gray-900/5 to-transparent pointer-events-none" />
+            <section 
+                className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden" 
+                style={{ background: 'radial-gradient(circle at top left, #f7d8b8 0%, #fbf7f2 45%, #ffffff 100%)' }}
+            >
+                <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+                    <div className="max-w-3xl relative z-10">
+                        <div className="flex items-center gap-4 text-xs font-bold tracking-[0.15em] text-ink-muted uppercase mb-8 animate-fade-up">
+                            <div className="w-10 h-[1.5px] bg-[var(--color-primary)]"></div>
+                            BUILT IN NEPAL &middot; AVAILABLE NOW
                         </div>
-                        
-                        {/* Floating elements */}
-                        <div className="hidden lg:flex absolute -left-12 top-1/4 bg-surface/95 backdrop-blur-xl rounded-2xl shadow-2xl p-4 border border-white items-center gap-4 animate-float">
-                            <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center text-green-600"><CheckCircle size={24} /></div>
-                            <div className="text-left">
-                                <p className="font-extrabold text-ink text-sm">Table 04 Paid</p>
-                                <p className="text-xs text-ink-subtle font-medium">Rs. 1,450 via eSewa</p>
-                            </div>
+
+                        {/* Branding Display: "के के खाने?" from image */}
+                        <div className="mb-6 animate-fade-up" style={{ animationDelay: '0.05s' }}>
+                            <h1 lang="ne" className="text-7xl sm:text-8xl lg:text-[7.5rem] font-black tracking-tight cursor-default leading-none" style={{ fontFamily: 'var(--font-devanagari), var(--font-inter), sans-serif' }}>
+                                <span className="text-[#201F1E] inline-block animate-[bounce_2s_infinite]">के के </span>
+                                <span className="text-[#E76115] inline-block animate-[bounce_2.5s_infinite]">खाने<span className="text-[#65635B] inline-block drop-shadow-sm animate-[pulse_2s_infinite]">?</span></span>
+                            </h1>
                         </div>
-                        
-                        <div className="hidden lg:flex absolute -right-8 bottom-1/4 bg-surface/95 backdrop-blur-xl rounded-2xl shadow-2xl p-4 border border-white items-center gap-4 animate-float-delayed">
-                            <div className="w-12 h-12 bg-brand-100 rounded-xl flex items-center justify-center text-brand-600"><ChefHat size={24} /></div>
-                            <div className="text-left">
-                                <p className="font-extrabold text-ink text-sm">New KOT Sent</p>
-                                <p className="text-xs text-ink-subtle font-medium">Kitchen preparing</p>
-                            </div>
+
+                        <h2 className="text-3xl sm:text-4xl lg:text-5xl text-ink leading-[1.3] mb-8 animate-fade-up font-[family-name:var(--font-playfair)] italic font-semibold" style={{ animationDelay: '0.1s' }}>
+                            The oldest question in every Nepali kitchen — and <br className="hidden sm:block" />
+                            now, <span className="text-[var(--color-primary)] not-italic font-bold">the answer for your restaurant.</span>
+                        </h2>
+
+                        <p className="text-lg text-ink-subtle mb-10 max-w-2xl leading-relaxed font-medium animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                            kkkhane is a mobile-first restaurant ordering & table management <br className="hidden sm:block" />
+                            system — menus, KOTs, billing and everything in between. Available now.
+                        </p>
+
+                        <div className="flex flex-col sm:flex-row items-start gap-4 animate-fade-up" style={{ animationDelay: '0.3s' }}>
+                            <Link href="/signup" className="w-full sm:w-auto inline-flex items-center justify-center bg-[#1A1916] text-white px-8 py-4 rounded-[2rem] font-bold text-lg hover:bg-black hover:scale-105 transition-all shadow-xl shadow-gray-900/20">
+                                Get started free <ArrowRight size={20} className="ml-2" />
+                            </Link>
+                        </div>
+                        <p className="mt-6 text-sm font-medium text-ink-subtle animate-fade-up" style={{ animationDelay: '0.4s' }}>Be the first table we serve.</p>
+                    </div>
+
+                    {/* Top Right Badge */}
+                    <div className="hidden lg:block absolute top-0 right-4 sm:right-8 z-20">
+                        <div className="rounded-full border border-green-300/60 px-4 py-1.5 flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                            <span className="text-[10px] font-bold tracking-[0.1em] text-green-600 uppercase">NOW LIVE</span>
                         </div>
                     </div>
                 </div>

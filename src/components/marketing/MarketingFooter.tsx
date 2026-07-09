@@ -118,7 +118,14 @@ export default function MarketingFooter() {
                         <Link href="/legal/privacy" className="transition-colors hover:text-ink">Privacy Policy</Link>
                         <Link href="/legal/terms" className="transition-colors hover:text-ink">Terms &amp; Conditions</Link>
                     </div>
-                    <p>&copy; <CopyrightYear /> KKKhane. All Rights Reserved.</p>
+                    <div className="flex flex-col items-center sm:items-end gap-2">
+                        <p>&copy; <CopyrightYear /> KKKhane. All Rights Reserved.</p>
+                        <a href="#" className="flex items-center gap-1.5 hover:text-ink transition-colors group">
+                            <span>Powered by</span>
+                            <span className="font-extrabold text-[var(--color-primary)]" style={{ fontFamily: 'var(--font-inter), sans-serif' }}>OmX Lab..</span>
+                            <img src="/images/omx-logo.png" alt="OmX Lab Logo" className="h-5 w-auto object-contain group-hover:scale-110 transition-transform" />
+                        </a>
+                    </div>
                 </div>
             </div>
         </footer>
