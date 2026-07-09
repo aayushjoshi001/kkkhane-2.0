@@ -71,6 +71,8 @@ export default function IncomeExpensesManager({
     const [listTab, setListTab] = useState<'income' | 'expense'>('income')
     const [searchQuery, setSearchQuery] = useState('')
     const [timeFilter, setTimeFilter] = useState<'all' | 'today' | 'week' | 'month' | 'year'>('all')
+    const [selectedIncomeCat, setSelectedIncomeCat] = useState<string>('all')
+    const [selectedExpenseCat, setSelectedExpenseCat] = useState<string>('all')
 
     // Time-range filtered entries (aligned to Nepal Standard Time boundaries)
     const timeFilteredEntries = useMemo(() => {
@@ -252,25 +254,33 @@ export default function IncomeExpensesManager({
 
     // Filtered entries
     const filteredIncomeEntries = useMemo(() => {
+        let items = timeFilteredEntries.income
+        if (selectedIncomeCat !== 'all') {
+            items = items.filter(e => e.category_id === selectedIncomeCat)
+        }
         const q = searchQuery.toLowerCase().trim()
-        if (!q) return timeFilteredEntries.income
-        return timeFilteredEntries.income.filter(e =>
+        if (!q) return items
+        return items.filter(e =>
             e.description.toLowerCase().includes(q) ||
             e.income_categories?.name.toLowerCase().includes(q) ||
             String(e.amount).includes(q)
         )
-    }, [timeFilteredEntries.income, searchQuery])
+    }, [timeFilteredEntries.income, searchQuery, selectedIncomeCat])
 
     const filteredExpenses = useMemo(() => {
+        let items = timeFilteredEntries.expenses
+        if (selectedExpenseCat !== 'all') {
+            items = items.filter(e => e.category_id === selectedExpenseCat)
+        }
         const q = searchQuery.toLowerCase().trim()
-        if (!q) return timeFilteredEntries.expenses
-        return timeFilteredEntries.expenses.filter(e =>
+        if (!q) return items
+        return items.filter(e =>
             e.description.toLowerCase().includes(q) ||
             e.expense_categories?.name.toLowerCase().includes(q) ||
             e.vendor_name?.toLowerCase().includes(q) ||
             String(e.amount).includes(q)
         )
-    }, [timeFilteredEntries.expenses, searchQuery])
+    }, [timeFilteredEntries.expenses, searchQuery, selectedExpenseCat])
 
     return (
         <div className="space-y-6">
@@ -501,21 +511,48 @@ export default function IncomeExpensesManager({
 
                 {/* Right Side - Logs and History */}
                 <div className="lg:col-span-8 bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm overflow-hidden flex flex-col">
-                    <div className="border-b border-hairline bg-surface-muted/30 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="border-b border-hairline bg-surface-muted/30 p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
                         <p className="text-sm font-black text-ink">Transaction Logs</p>
 
-                        {/* Search Input */}
-                        <div className="relative w-full sm:w-64">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted">
-                                <Search size={14} />
-                            </span>
-                            <input
-                                type="text"
-                                placeholder="Search logs..."
-                                value={searchQuery}
-                                onChange={e => setSearchQuery(e.target.value)}
-                                className="w-full pl-9 pr-4 py-1.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)]"
-                            />
+                        <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+                            {/* Category Filter */}
+                            {listTab === 'income' ? (
+                                <select
+                                    value={selectedIncomeCat}
+                                    onChange={e => setSelectedIncomeCat(e.target.value)}
+                                    className="px-3 py-1.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)] w-full sm:w-44"
+                                >
+                                    <option value="all">All Income Categories</option>
+                                    {incomeCategories.map(cat => (
+                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <select
+                                    value={selectedExpenseCat}
+                                    onChange={e => setSelectedExpenseCat(e.target.value)}
+                                    className="px-3 py-1.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)] w-full sm:w-44"
+                                >
+                                    <option value="all">All Expense Categories</option>
+                                    {expenseCategories.map(cat => (
+                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                    ))}
+                                </select>
+                            )}
+
+                            {/* Search Input */}
+                            <div className="relative w-full sm:w-64">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted">
+                                    <Search size={14} />
+                                </span>
+                                <input
+                                    type="text"
+                                    placeholder="Search logs..."
+                                    value={searchQuery}
+                                    onChange={e => setSearchQuery(e.target.value)}
+                                    className="w-full pl-9 pr-4 py-1.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)]"
+                                />
+                            </div>
                         </div>
                     </div>
 
