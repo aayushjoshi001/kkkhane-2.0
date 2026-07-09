@@ -6,8 +6,9 @@ import Logo from '@/components/shared/Logo'
 import MobileNav from '@/app/MobileNav'
 import {
     ChevronDown, FileText, LayoutGrid, PiggyBank, QrCode, Gift,
-    Clock, Globe, MessageCircle, Users2,
+    Clock, Globe, MessageCircle, Users2, ArrowLeft
 } from 'lucide-react'
+import { usePathname } from 'next/navigation'
 
 const FEATURE_LINKS = [
     { title: 'Order Management with KOT', desc: 'Take orders perfectly and reduce errors.', icon: FileText, href: '/features/order-management' },
@@ -33,6 +34,7 @@ const RESOURCE_LINKS = [
 /** Shared marketing top nav (full desktop dropdowns + mobile). */
 export default function MarketingNav() {
     const [scrolled, setScrolled] = useState(false)
+    const pathname = usePathname()
 
     useEffect(() => {
         const handleScroll = () => {
@@ -44,6 +46,12 @@ export default function MarketingNav() {
     }, [])
 
     return (
+        <>
+            {pathname !== '/' && (
+                <Link href="/" className="fixed top-[100px] right-6 z-[100] flex items-center gap-2 bg-white text-ink border border-hairline px-4 py-2 rounded-full shadow-lg hover:scale-105 transition-all text-sm font-bold">
+                    <ArrowLeft size={16} /> BACK
+                </Link>
+            )}
         <nav className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 bg-surface/75 backdrop-blur-md ${scrolled ? 'shadow-md border-b border-hairline-strong' : 'border-b border-transparent'}`}>
             <div className="mx-auto flex h-20 max-w-[1400px] items-center justify-between px-4 sm:px-6 lg:px-8">
                 <Link href="/" className="flex shrink-0 items-center gap-2">
@@ -104,7 +112,6 @@ export default function MarketingNav() {
                         </div>
                     </div>
 
-                    <Link href="/" className="transition-colors hover:text-[var(--color-primary)]">Home</Link>
                     <Link href="/pricing" className="transition-colors hover:text-[var(--color-primary)]">Pricing</Link>
                     <Link href="/career" className="transition-colors hover:text-[var(--color-primary)]">Career</Link>
                     <Link href="/contact" className="transition-colors hover:text-[var(--color-primary)]">Contact</Link>
@@ -121,5 +128,6 @@ export default function MarketingNav() {
                 </div>
             </div>
         </nav>
+        </>
     )
 }

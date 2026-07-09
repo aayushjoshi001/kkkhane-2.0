@@ -75,7 +75,7 @@ export default function ReviewsPage() {
                         to { transform: translateY(-50%); }
                     }
                     .animate-marquee-vertical {
-                        animation: marquee-vertical 40s linear infinite;
+                        animation: marquee-vertical 8s linear infinite;
                     }
                     .animate-marquee-vertical:hover {
                         animation-play-state: paused;
