@@ -67,6 +67,14 @@ export default async function StaffManagementPage() {
         .eq('restaurant_id', restaurantId)
         .order('created_at', { ascending: false })
 
+    // 6. Fetch active bank accounts
+    const { data: bankAccounts } = await adminSupabase
+        .from('bank_accounts')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', true)
+        .order('name', { ascending: true })
+
     return (
         <div className="space-y-6">
             <PremiumPageHeader 
@@ -84,6 +92,7 @@ export default async function StaffManagementPage() {
                 currentUserRole={currentUserRole}
                 currentUserId={userId}
                 restaurantId={restaurantId}
+                bankAccounts={bankAccounts || []}
             />
         </div>
     )

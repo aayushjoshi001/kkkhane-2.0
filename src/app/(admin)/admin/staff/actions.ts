@@ -306,7 +306,8 @@ export async function recordLedgerTransactionAction(
     amount: number,
     entryType: 'salary_payout' | 'advance_payment' | 'bonus' | 'deduction' | 'accrual',
     paymentMethod: 'cash' | 'bank_transfer' | 'qr_digital' | null,
-    note: string | null
+    note: string | null,
+    bankName?: string
 ) {
     const currentUser = await getCurrentUser()
     const supabase = await createAdminClient()
@@ -314,7 +315,7 @@ export async function recordLedgerTransactionAction(
     // Verify target user belongs to the same restaurant
     const { data: targetUser } = await supabase
         .from('users')
-        .select('restaurant_id')
+        .select('restaurant_id, full_name')
         .eq('id', userId)
         .single()
 
@@ -324,6 +325,10 @@ export async function recordLedgerTransactionAction(
 
     if (amount <= 0) return { error: 'Amount must be greater than zero' }
 
+    const finalNote = note?.trim()
+        ? `${note.trim()}` + (bankName ? ` (Paid via: ${bankName})` : '')
+        : (bankName ? `Paid via: ${bankName}` : '')
+
     const { error } = await supabase
         .from('staff_ledger')
         .insert({
@@ -332,13 +337,51 @@ export async function recordLedgerTransactionAction(
             amount: amount,
             entry_type: entryType,
             payment_method: paymentMethod,
-            note: note || '',
+            note: finalNote || '',
             created_by: currentUser.id
         })
 
     if (error) return { error: error.message }
 
+    // ── Auto-post matching entry to Day Book session if open and is a payout
+    const isPayout = entryType === 'salary_payout' || entryType === 'advance_payment'
+    if (isPayout && paymentMethod) {
+        const now = new Date()
+        const NST_OFFSET_MS = (5 * 60 + 45) * 60 * 1000
+        const todayDateNst = new Date(now.getTime() + NST_OFFSET_MS).toISOString().split('T')[0]
+
+        const { data: openSession } = await supabase
+            .from('day_book_sessions')
+            .select('id')
+            .eq('restaurant_id', currentUser.restaurantId)
+            .eq('date', todayDateNst)
+            .eq('status', 'open')
+            .maybeSingle()
+
+        if (openSession) {
+            const isCash = paymentMethod === 'cash'
+            const dbType = isCash ? 'cash_out' : 'bank_out'
+            const dbCategory = entryType === 'salary_payout' ? 'salary' : 'advance'
+            const staffName = targetUser?.full_name || 'Staff'
+            const dbDescription = `[Staff Payout] Paid ${entryType === 'salary_payout' ? 'Salary' : 'Advance'} to ${staffName}` + (note?.trim() ? ` (${note.trim()})` : '')
+
+            await supabase
+                .from('day_book_entries')
+                .insert({
+                    session_id: openSession.id,
+                    type: dbType,
+                    amount: amount,
+                    description: dbDescription,
+                    category: dbCategory,
+                    bank_name: !isCash ? bankName?.trim() : null
+                })
+        }
+    }
+
     revalidatePath('/admin/staff')
+    revalidatePath('/admin/cash-book')
+    revalidatePath('/admin/bank-book')
+    revalidatePath('/admin/bank-ledger')
     return { success: true }
 }
 
