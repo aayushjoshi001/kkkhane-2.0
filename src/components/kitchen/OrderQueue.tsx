@@ -99,24 +99,27 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     // function (never from inside a setState updater — React 18 StrictMode
     // double-invokes those in dev, which would double-print every ticket).
     const printKotWithFallback = useCallback((order: KitchenOrder) => {
-        void printKot(buildKotTicket(order)).then((result) => {
+        // `order` is already projected to this station's lines, so an all-food
+        // order reaching the bar board has an empty item list — nothing to print.
+        if (!(order.order_items || []).length) return
+        void printKot(buildStationTicket(order, station)).then((result) => {
             if (result.ok) return
             setKotFallbackQueue(q => [...q, order])
             toast.error(
                 result.status === 'no-printer-selected'
-                    ? 'No KOT printer set — printed via browser instead. Set one in Printer Settings.'
-                    : 'KOT printer not connected — printed via browser instead.'
+                    ? `No ${stationMeta.ticketAbbr} printer set — printed via browser instead. Set one in Printer Settings.`
+                    : `${stationMeta.ticketAbbr} printer not connected — printed via browser instead.`
             )
         })
-    }, [printKot])
+    }, [printKot, station, stationMeta.ticketAbbr])
 
     // Resync: fetch fresh orders from DB on mount and whenever the realtime
     // channel reconnects. This recovers any orders missed during a disconnect
     // (e.g. logout → login, network blip, token refresh).
     const resync = useCallback(async () => {
         const fresh = await getKitchenOrders(restaurantId)
-        setOrders(fresh as unknown as KitchenOrder[])
-    }, [restaurantId])
+        setOrders(projectStation(fresh as unknown as KitchenOrder[]))
+    }, [restaurantId, projectStation])
 
     useEffect(() => {
         resync() // always refresh on mount
