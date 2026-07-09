@@ -216,7 +216,7 @@ export default function SuppliersLedgerManager({
                                 placeholder="Search suppliers..."
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+                                className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                             />
                         </div>
                     </div>
@@ -249,7 +249,7 @@ export default function SuppliersLedgerManager({
                                         const isSelected = ledgerSupplier?.id === s.id
 
                                         return (
-                                            <tr key={s.id} className={`transition-colors ${isSelected ? 'bg-indigo-50/30' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/20'} hover:bg-gray-50/50`}>
+                                            <tr key={s.id} className={`transition-colors ${isSelected ? 'bg-brand-50/20' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/20'} hover:bg-gray-50/50`}>
                                                 
                                                 {/* Details (Name & Phone) */}
                                                 <td className="px-4 py-3">
@@ -267,7 +267,7 @@ export default function SuppliersLedgerManager({
                                                         </span>
                                                     )}
                                                     {parsed.vat && (
-                                                        <span className="block text-[9px] font-black uppercase px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                                        <span className="block text-[9px] font-black uppercase px-2 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-100">
                                                             VAT: {parsed.vat}
                                                         </span>
                                                     )}
@@ -285,7 +285,7 @@ export default function SuppliersLedgerManager({
                                                 <td className="px-4 py-3 text-center space-x-1.5 whitespace-nowrap">
                                                     <button
                                                         onClick={() => setLedgerSupplier(s)}
-                                                        className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] uppercase border transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-200 text-gray-500 hover:text-gray-800'}`}
+                                                        className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] uppercase border transition-all ${isSelected ? 'bg-brand-500 border-brand-500 text-white shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-200 text-gray-500 hover:text-gray-800'}`}
                                                     >
                                                         Ledger
                                                     </button>
@@ -324,7 +324,7 @@ export default function SuppliersLedgerManager({
                         </button>
                         
                         <div className="p-5 border-b border-gray-100 bg-gray-50/50">
-                            <span className="text-[9px] font-black uppercase text-indigo-600 tracking-wider">Active Statement</span>
+                            <span className="text-[9px] font-black uppercase text-brand-600 tracking-wider">Active Statement</span>
                             <h3 className="text-lg font-extrabold text-gray-900 mt-1 truncate pr-8">{ledgerSupplier.name}</h3>
                             
                             <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
@@ -395,13 +395,13 @@ export default function SuppliersLedgerManager({
 
             {/* Modal Dialog Form */}
             {modalOpen && (
-                <div className="fixed inset-0 z-50 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-50 bg-gray-900/40 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
                         
                         {/* Modal Header */}
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                             <h3 className="font-extrabold text-gray-900 flex items-center gap-2">
-                                <FileText size={18} className="text-indigo-600" />
+                                <FileText size={18} className="text-brand-500" />
                                 {modalOpen === 'create' ? 'Create Supplier profile' : 'Edit Supplier details'}
                             </h3>
                             <button onClick={() => setModalOpen(null)} className="text-gray-400 hover:text-gray-600">
@@ -421,7 +421,7 @@ export default function SuppliersLedgerManager({
                                         value={name}
                                         onChange={e => setName(e.target.value)}
                                         required
-                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                     />
                                 </div>
 
@@ -434,7 +434,7 @@ export default function SuppliersLedgerManager({
                                         value={phone}
                                         onChange={e => setPhone(e.target.value)}
                                         required
-                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                     />
                                 </div>
 
@@ -447,7 +447,7 @@ export default function SuppliersLedgerManager({
                                             placeholder="9 digits"
                                             value={pan}
                                             onChange={e => setPan(e.target.value)}
-                                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+                                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                         />
                                     </div>
                                     <div>
@@ -457,7 +457,7 @@ export default function SuppliersLedgerManager({
                                             placeholder="VAT ID"
                                             value={vat}
                                             onChange={e => setVat(e.target.value)}
-                                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+                                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                         />
                                     </div>
                                 </div>
@@ -470,7 +470,7 @@ export default function SuppliersLedgerManager({
                                         placeholder="e.g. Kalimati, Kathmandu"
                                         value={address}
                                         onChange={e => setAddress(e.target.value)}
-                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                     />
                                 </div>
                             </div>
@@ -487,7 +487,7 @@ export default function SuppliersLedgerManager({
                                 <button
                                     type="submit"
                                     disabled={submitting}
-                                    className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-colors"
+                                    className="px-6 py-2 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-colors"
                                 >
                                     {submitting && <Loader2 size={14} className="animate-spin" />}
                                     {modalOpen === 'create' ? 'Create Supplier' : 'Save Changes'}
