@@ -157,7 +157,7 @@ export default function CashierClient({
         }
     })
 
-    // Load booking stay details and manual charges when room is selected
+    // Load booking stay details, manual charges, and linked dining orders concurrently when room is selected
     useEffect(() => {
         if (selectedBillingRoom) {
             // Always clear first so UI doesn't flash stale data
@@ -170,31 +170,43 @@ export default function CashierClient({
             // This prevents showing old/orphaned bookings that were never checked out
             fetch(`/api/rooms/booking?roomId=${selectedBillingRoom.id}`)
                 .then(res => res.json())
-                .then(data => {
+                .then(async (data) => {
                     if (data.success && data.data) {
                         const booking = data.data
-                        setBillingStayBooking(booking)
-                        
-                        // Fetch charges for this specific (newest) booking
-                        fetch(`/api/rooms/charges?bookingId=${booking.id}`)
-                            .then(r => r.json())
-                            .then(chargesData => {
-                                if (chargesData.success) setBillingRoomCharges(chargesData.data || [])
-                            })
-
-                        // Fetch waiter-linked dining orders for this booking
-                        fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`)
-                            .then(r => r.json())
-                            .then(ordersData => {
-                                if (ordersData.success) setBillingLinkedOrders(ordersData.items || [])
-                            })
+                        try {
+                            // Concurrently fetch charges and linked dining orders
+                            const [chargesRes, ordersRes] = await Promise.all([
+                                fetch(`/api/rooms/charges?bookingId=${booking.id}`).then(r => r.json()),
+                                fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`).then(r => r.json())
+                            ])
+                            
+                            // Set all states simultaneously
+                            setBillingStayBooking(booking)
+                            if (chargesRes.success) {
+                                setBillingRoomCharges(chargesRes.data || [])
+                            }
+                            if (ordersRes.success) {
+                                setBillingLinkedOrders(ordersRes.items || [])
+                            }
+                        } catch (err) {
+                            console.error('Error loading secondary billing details:', err)
+                            // Set basic stay booking at least
+                            setBillingStayBooking(booking)
+                            setBillingRoomCharges([])
+                            setBillingLinkedOrders([])
+                        }
                     } else {
                         setBillingStayBooking(null)
                         setBillingRoomCharges([])
                         setBillingLinkedOrders([])
                     }
                 })
-                .catch(err => console.error('Error loading billing data:', err))
+                .catch(err => {
+                    console.error('Error loading billing data:', err)
+                    setBillingStayBooking(null)
+                    setBillingRoomCharges([])
+                    setBillingLinkedOrders([])
+                })
                 .finally(() => setLoadingStayDetails(false))
         } else {
             setBillingStayBooking(null)

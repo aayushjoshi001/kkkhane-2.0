@@ -135,36 +135,40 @@ export default function CashierRoomManager({
         setAdvancePayMethod('cash')
     }
 
-    // Fetch active booking details, manual charges, and linked dining orders when selected room is occupied
+    // Fetch active booking details, manual charges, and linked dining orders concurrently when selected room is occupied
     useEffect(() => {
         if (selectedRoom && selectedRoom.status === 'occupied') {
             setLoadingBooking(true)
             fetch(`/api/rooms/booking?roomId=${selectedRoom.id}`)
                 .then(res => res.json())
-                .then(data => {
+                .then(async (data) => {
                     if (data.success && data.data) {
-                        setActiveBooking(data.data)
-                        // Fetch manual stay charges
-                        setLoadingCharges(true)
-                        fetch(`/api/rooms/charges?bookingId=${data.data.id}`)
-                            .then(res => res.json())
-                            .then(chargesRes => {
-                                if (chargesRes.success) {
-                                    setManualCharges(chargesRes.data || [])
-                                }
-                            })
-                            .catch(err => console.error("Error fetching room charges:", err))
-                            .finally(() => setLoadingCharges(false))
-
-                        // Fetch waiter-linked dining orders
-                        fetch(`/api/bookings/linked-orders?bookingId=${data.data.id}`)
-                            .then(res => res.json())
-                            .then(linkedRes => {
-                                if (linkedRes.success) {
-                                    setLinkedDiningOrders(linkedRes.items || [])
-                                }
-                            })
-                            .catch(err => console.error("Error fetching linked dining orders:", err))
+                        const booking = data.data
+                        try {
+                            setLoadingCharges(true)
+                            // Concurrently fetch charges and linked dining orders
+                            const [chargesRes, linkedRes] = await Promise.all([
+                                fetch(`/api/rooms/charges?bookingId=${booking.id}`).then(r => r.json()),
+                                fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`).then(r => r.json())
+                            ])
+                            
+                            // Set all states simultaneously
+                            setActiveBooking(booking)
+                            if (chargesRes.success) {
+                                setManualCharges(chargesRes.data || [])
+                            }
+                            if (linkedRes.success) {
+                                setLinkedDiningOrders(linkedRes.items || [])
+                            }
+                        } catch (err) {
+                            console.error("Error fetching secondary stay details:", err)
+                            // Set basic stay booking at least
+                            setActiveBooking(booking)
+                            setManualCharges([])
+                            setLinkedDiningOrders([])
+                        } finally {
+                            setLoadingCharges(false)
+                        }
                     } else {
                         setActiveBooking(null)
                         setManualCharges([])
