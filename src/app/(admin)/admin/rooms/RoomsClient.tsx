@@ -23,7 +23,7 @@ export default function RoomsClient({
     initialRooms, 
     roomTypes, 
     restaurantSlug, 
-    restaurantName = 'KKKHANEY', 
+    restaurantName = 'KKKhane', 
     tables = [], 
     activeOrders = [] 
 }: RoomsClientProps) {
@@ -384,13 +384,13 @@ export default function RoomsClient({
             ctx.fillStyle = orangeColor
             ctx.fillRect(0, footerY * scale, exportCanvas.width, footerHeight * scale)
 
-            // Draw Footer Text "Powered by KKKHANEY"
+            // Draw Footer Text "Powered by KKKhane"
             ctx.fillStyle = '#ffffff'
             ctx.font = `bold ${16 * scale}px ${fontStack}`
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
             
-            const footerText = 'Powered by KKKHANEY'
+            const footerText = 'Powered by KKKhane'
             const textCenterY = (footerY + footerHeight / 2) * scale
             
             const textWidth = ctx.measureText(footerText).width
@@ -830,7 +830,7 @@ export default function RoomsClient({
                                 {/* Hotel / Restaurant Name */}
                                 <div className="text-center flex-1 flex flex-col justify-center pb-1 min-h-[40px] px-1 overflow-hidden shrink-0 mt-0.5">
                                     <p className="font-extrabold text-[12px] text-gray-900 truncate max-w-[190px] leading-tight" title={restaurantName}>
-                                        {restaurantName || 'KKKHANEY'}
+                                        {restaurantName || 'KKKhane'}
                                     </p>
                                 </div>
 
@@ -840,7 +840,7 @@ export default function RoomsClient({
                                         className="text-white text-[9px] font-extrabold tracking-wider uppercase" 
                                         style={{ fontFamily: 'var(--font-outfit), var(--font-inter), system-ui, sans-serif' }}
                                     >
-                                        Powered by KKKHANEY
+                                        Powered by KKKhane
                                     </span>
                                     <div className="relative w-4 h-4 rounded-full border-[1.5px] border-white shrink-0 shadow-sm overflow-hidden bg-white">
                                         <NextImage
