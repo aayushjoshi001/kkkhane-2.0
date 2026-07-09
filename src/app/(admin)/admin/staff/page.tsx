@@ -37,7 +37,6 @@ export default async function StaffManagementPage() {
             email,
             department_id,
             monthly_salary,
-            opening_balance,
             created_at,
             roles (
                 id,

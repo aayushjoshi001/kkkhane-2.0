@@ -23,7 +23,7 @@ type StaffMember = {
     email: string | null
     department_id: string | null
     monthly_salary: number
-    opening_balance: number
+    opening_balance?: number   // optional until migration is applied
     created_at: string
     // Supabase can return arrays for joins depending on the query shape
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1651,7 +1651,7 @@ export default function StaffManager({
                                     <div className="grid grid-cols-3 gap-3">
                                         <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-card">
                                             <div className="text-[10px] uppercase tracking-wider font-black text-blue-700">Opening Balance</div>
-                                            <div className="text-xl font-black text-blue-950 mt-1">{formatCurrency(ledgerModal.user.opening_balance)}</div>
+                                            <div className="text-xl font-black text-blue-950 mt-1">{formatCurrency(ledgerModal.user.opening_balance ?? 0)}</div>
                                             <div className="text-[10px] text-blue-500 mt-1">Pre-system balance owed</div>
                                         </div>
                                         <div className="p-4 bg-violet-50/50 border border-violet-100 rounded-card">
@@ -1742,7 +1742,7 @@ export default function StaffManager({
                                                             </td>
                                                             <td className="px-3 py-2.5 text-center text-ink-muted border-r border-hairline">—</td>
                                                             <td className="px-3 py-2.5 text-right border-r border-hairline">—</td>
-                                                            <td className="px-3 py-2.5 text-right font-black text-blue-700 text-sm">{formatCurrency(ledgerModal.user.opening_balance)}</td>
+                                                            <td className="px-3 py-2.5 text-right font-black text-blue-700 text-sm">{formatCurrency(ledgerModal.user.opening_balance ?? 0)}</td>
                                                         </tr>
                                                     )}
                                                     {/* Ledger Entry Rows */}
