@@ -321,49 +321,47 @@ export default function IncomeExpensesManager({
                         </p>
                     </div>
                     
-                    <div className="flex flex-wrap items-center gap-3">
-                        {/* Screen View Switcher */}
-                        <div className="flex bg-surface-muted/30 border border-hairline rounded-xl p-1 shrink-0">
-                            <button
-                                type="button"
-                                onClick={() => { setViewMode('income'); setCategoryId(''); }}
-                                className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-lg transition-all focus-ring ${viewMode === 'income' ? 'bg-emerald-600 text-white shadow-sm' : 'text-ink-subtle hover:text-ink hover:bg-surface-muted/40'}`}
-                            >
-                                Income Screen
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => { setViewMode('expense'); setCategoryId(''); }}
-                                className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-lg transition-all focus-ring ${viewMode === 'expense' ? 'bg-rose-600 text-white shadow-sm' : 'text-ink-subtle hover:text-ink hover:bg-surface-muted/40'}`}
-                            >
-                                Expense Screen
-                            </button>
-                        </div>
-
-                        {/* Time Filter Controls */}
-                        <div className="flex flex-wrap gap-1.5 bg-surface-muted/40 p-1.5 border border-hairline rounded-xl">
-                            {(['all', 'today', 'week', 'month', 'year'] as const).map(f => {
-                                const labels = {
-                                    all: 'All Time',
-                                    today: 'Today',
-                                    week: 'This Week',
-                                    month: 'This Month',
-                                    year: 'This Year'
-                                }
-                                return (
-                                    <button
-                                        key={f}
-                                        type="button"
-                                        onClick={() => setTimeFilter(f)}
-                                        className={`px-3 py-1.5 text-xs font-black uppercase tracking-wider rounded-lg transition-all focus-ring ${timeFilter === f ? 'bg-brand-500 text-white shadow-sm' : 'text-ink-subtle hover:text-ink hover:bg-surface-muted'}`}
-                                    >
-                                        {labels[f]}
-                                    </button>
-                                )
-                            })}
-                        </div>
+                    {/* Time Filter Controls */}
+                    <div className="flex flex-wrap gap-1.5 bg-surface-muted/40 p-1.5 border border-hairline rounded-xl">
+                        {(['all', 'today', 'week', 'month', 'year'] as const).map(f => {
+                            const labels = {
+                                all: 'All Time',
+                                today: 'Today',
+                                week: 'This Week',
+                                month: 'This Month',
+                                year: 'This Year'
+                            }
+                            return (
+                                <button
+                                    key={f}
+                                    type="button"
+                                    onClick={() => setTimeFilter(f)}
+                                    className={`px-3 py-1.5 text-xs font-black uppercase tracking-wider rounded-lg transition-all focus-ring ${timeFilter === f ? 'bg-brand-500 text-white shadow-sm' : 'text-ink-subtle hover:text-ink hover:bg-surface-muted'}`}
+                                >
+                                    {labels[f]}
+                                </button>
+                            )
+                        })}
                     </div>
                 </div>
+            </div>
+
+            {/* Huge Full-Width Switcher Tabs */}
+            <div className="grid grid-cols-2 bg-surface border border-hairline rounded-[var(--r-md)] p-1.5 shadow-sm">
+                <button
+                    type="button"
+                    onClick={() => { setViewMode('income'); setCategoryId(''); }}
+                    className={`py-3.5 text-sm font-black uppercase tracking-wider rounded-lg transition-all focus-ring text-center ${viewMode === 'income' ? 'bg-emerald-600 text-white shadow-md' : 'text-ink-subtle hover:text-ink hover:bg-surface-muted/40'}`}
+                >
+                    Income
+                </button>
+                <button
+                    type="button"
+                    onClick={() => { setViewMode('expense'); setCategoryId(''); }}
+                    className={`py-3.5 text-sm font-black uppercase tracking-wider rounded-lg transition-all focus-ring text-center ${viewMode === 'expense' ? 'bg-rose-600 text-white shadow-md' : 'text-ink-subtle hover:text-ink hover:bg-surface-muted/40'}`}
+                >
+                    Expense
+                </button>
             </div>
 
             {/* Calculations Row */}
