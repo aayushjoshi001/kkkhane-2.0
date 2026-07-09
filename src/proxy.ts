@@ -112,6 +112,13 @@ export async function proxy(request: NextRequest) {
 
     // ── Role check ──────────────────────────────────────────────────────────────
     if (rule.allowedRoles) {
+        // Next.js Server Actions cannot handle standard 307 redirects from middleware.
+        // If this is a Server Action request, bypass the role-based redirect check and let Next.js run the action.
+        if (request.headers.has('next-action')) {
+            console.log(`[PROXY_LOG] Server Action, bypassing role check redirect: ${pathname}`);
+            return supabaseResponse
+        }
+
         // getClaims() verifies the JWT signature and returns its decoded claims —
         // including the app_role injected by the custom_access_token_hook
         // (004_jwt_claims_hook.sql). Unlike decoding the raw cookie, a tampered
