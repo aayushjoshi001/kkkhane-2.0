@@ -105,7 +105,7 @@ export default async function Home() {
                     {/* Dashboard Hero Image */}
                     <div className="relative mt-20 max-w-5xl mx-auto animate-fade-up" style={{ animationDelay: '0.4s' }}>
                         <div className="rounded-[2.5rem] overflow-hidden shadow-[0_30px_60px_rgba(0,0,0,0.12)] border-8 border-white/80 bg-surface relative aspect-[16/10] sm:aspect-video transform transition-transform hover:-translate-y-2 duration-500">
-                            <Image src="/images/mockups/custom_mockup_1.png" alt="Dashboard Mockup" fill className="object-cover object-top" priority sizes="(max-width: 1024px) 100vw, 1024px" quality={100} />
+                            <Image src="/images/mockups/custom_mockup_1_hd.png" alt="Dashboard Mockup" fill className="object-cover object-top" priority sizes="(max-width: 1024px) 100vw, 1024px" quality={100} />
                             <div className="absolute inset-0 bg-gradient-to-t from-gray-900/5 to-transparent pointer-events-none" />
                         </div>
                         
@@ -272,7 +272,7 @@ export default async function Home() {
                     <div className="grid lg:grid-cols-2 gap-16 items-center">
                         <div className="order-2 lg:order-1 relative w-full max-w-md mx-auto aspect-[3/4] bg-surface rounded-[3rem] shadow-2xl border-[12px] border-gray-900 overflow-hidden transform -rotate-3 hover:rotate-0 transition-transform duration-500">
                             <div className="absolute top-0 inset-x-0 h-7 bg-ink rounded-b-2xl z-10 w-40 mx-auto" />
-                            <Image src="/images/mockups/custom_mockup_2.png" alt="Mobile View" fill className="object-cover object-top" sizes="(max-width: 768px) 80vw, 384px" quality={100} />
+                            <Image src="/images/mockups/custom_mockup_2_hd.png" alt="Mobile View" fill className="object-cover object-top" sizes="(max-width: 768px) 80vw, 384px" quality={100} />
                         </div>
                         
                         <div className="order-1 lg:order-2 text-center lg:text-left">
