@@ -114,6 +114,7 @@ export default function CashierClient({
     const [loadingStayDetails, setLoadingStayDetails] = useState(false)
     const [billingStayBooking, setBillingStayBooking] = useState<any | null>(null)
     const [billingRoomCharges, setBillingRoomCharges] = useState<any[]>([])
+    const [billingLinkedOrders, setBillingLinkedOrders] = useState<any[]>([])
     const [billingPaymentMethod, setBillingPaymentMethod] = useState<'cash' | 'qr_digital' | 'both'>('cash')
     const [splitCashAmount, setSplitCashAmount] = useState<string>('')
     const [splitQrAmount, setSplitQrAmount] = useState<string>('')
@@ -162,6 +163,7 @@ export default function CashierClient({
             // Always clear first so UI doesn't flash stale data
             setBillingStayBooking(null)
             setBillingRoomCharges([])
+            setBillingLinkedOrders([])
             setLoadingStayDetails(true)
 
             // Fetch newest checked_in booking from API (ORDER BY created_at DESC)
@@ -172,15 +174,24 @@ export default function CashierClient({
                     if (data.success && data.data) {
                         const booking = data.data
                         setBillingStayBooking(booking)
-                        // Now fetch charges for this specific (newest) booking
-                        return fetch(`/api/rooms/charges?bookingId=${booking.id}`)
+                        
+                        // Fetch charges for this specific (newest) booking
+                        fetch(`/api/rooms/charges?bookingId=${booking.id}`)
                             .then(r => r.json())
                             .then(chargesData => {
                                 if (chargesData.success) setBillingRoomCharges(chargesData.data || [])
                             })
+
+                        // Fetch waiter-linked dining orders for this booking
+                        fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`)
+                            .then(r => r.json())
+                            .then(ordersData => {
+                                if (ordersData.success) setBillingLinkedOrders(ordersData.items || [])
+                            })
                     } else {
                         setBillingStayBooking(null)
                         setBillingRoomCharges([])
+                        setBillingLinkedOrders([])
                     }
                 })
                 .catch(err => console.error('Error loading billing data:', err))
@@ -188,6 +199,7 @@ export default function CashierClient({
         } else {
             setBillingStayBooking(null)
             setBillingRoomCharges([])
+            setBillingLinkedOrders([])
             setBillingPaymentMethod('cash')
             setSplitCashAmount('')
             setSplitQrAmount('')
@@ -265,8 +277,9 @@ export default function CashierClient({
     const calculateGrandTotal = (room: any, booking: any) => {
         const stayCost = calculateStayCost(room, booking)
         const qrOrdersTotal = getRoomQrOrders(room).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
+        const linkedOrdersTotal = billingLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
         const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
-        return stayCost + qrOrdersTotal + manualChargesTotal
+        return stayCost + qrOrdersTotal + linkedOrdersTotal + manualChargesTotal
     }
 
     const compileInvoice = (type: 'room' | 'table', item: any) => {
@@ -288,8 +301,9 @@ export default function CashierClient({
             const sessionOrders = matchingTable?.activeSession ? getRoomQrOrders(room) : []
             const qrOrdersTotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
 
+            const linkedOrdersTotal = billingLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
             const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
-            const total = stayCost + qrOrdersTotal + manualChargesTotal
+            const total = stayCost + qrOrdersTotal + linkedOrdersTotal + manualChargesTotal
 
             // Advance already paid at booking
             const advancePaid = Number(booking.paid_amount) || 0
@@ -317,6 +331,12 @@ export default function CashierClient({
                 stayCost,
                 qrOrders: getRoomQrOrders(room),
                 qrOrdersTotal,
+                linkedOrders: billingLinkedOrders.map(item => ({
+                    name: item.menu_items?.name || 'Item',
+                    quantity: item.quantity,
+                    unitPrice: Number(item.unit_price)
+                })),
+                linkedOrdersTotal,
                 manualCharges: billingRoomCharges,
                 manualChargesTotal,
                 total,
@@ -388,7 +408,8 @@ export default function CashierClient({
                         room_id: activeInvoice.roomId,
                         total_amount: activeInvoice.total,
                         cash_paid: activeInvoice.cashPaid,
-                        qr_paid: activeInvoice.qrPaid
+                        qr_paid: activeInvoice.qrPaid,
+                        session_id: sessionId || null
                     })
                 })
                 const data = await res.json()
@@ -403,11 +424,13 @@ export default function CashierClient({
                 ))
 
                 toast.success('Room billing settled and guest checked out successfully!')
+                setTimeout(() => { window.location.reload() }, 1000)
             } else {
                 const res = await closeSession(activeInvoice.sessionId)
                 if (res.error) throw new Error(res.error)
 
                 toast.success('Table session settled and closed successfully!')
+                setTimeout(() => { window.location.reload() }, 1000)
             }
 
             // Auto-print the invoice. Falls back to the browser print dialog
@@ -878,7 +901,7 @@ export default function CashierClient({
                                                 billingSubTab === 'tables' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
                                             }`}
                                         >
-                                            Tables ({tables.filter(t => t.activeSession !== null).length})
+                                            Tables ({tables.filter(t => t.activeSession !== null && !(t.activeSession as any).booking_id).length})
                                         </button>
                                     </div>
                                 </div>
@@ -891,7 +914,7 @@ export default function CashierClient({
                                 </h2>
                             )}
 
-                            {((isHotel && billingSubTab === 'rooms') ? roomsState.filter(r => r.status === 'occupied') : tables.filter(t => t.activeSession !== null)).length === 0 ? (
+                            {((isHotel && billingSubTab === 'rooms') ? roomsState.filter(r => r.status === 'occupied') : tables.filter(t => t.activeSession !== null && !(t.activeSession as any).booking_id)).length === 0 ? (
                                 <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-10 text-center">
                                     <CheckCircle size={32} className="mx-auto text-emerald-300 mb-2" />
                                     <p className="text-sm font-medium text-ink-subtle">All bills settled</p>
@@ -935,7 +958,7 @@ export default function CashierClient({
                                     ) : (
                                         // Occupied Tables Grid
                                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                                            {tables.filter(t => t.activeSession !== null).map(table => {
+                                            {tables.filter(t => t.activeSession !== null && !(t.activeSession as any).booking_id).map(table => {
                                                 const sessionItems = getTableSessionItems(table)
                                                 const total = sessionItems.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
                                                 
@@ -1200,6 +1223,20 @@ export default function CashierClient({
                                                         <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
                                                             <span>{item.name} ({item.quantity}×)</span>
                                                             <span className="tabular-nums font-semibold">{money(item.unitPrice * item.quantity)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {billingLinkedOrders.length > 0 && (
+                                            <div className="p-4 space-y-2">
+                                                <p className="font-extrabold text-xs text-emerald-650 font-semibold">Restaurant dining (table orders)</p>
+                                                <div className="space-y-1.5 pl-3 border-l-2 border-emerald-100">
+                                                    {billingLinkedOrders.map((item, idx) => (
+                                                        <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
+                                                            <span>{item.menu_items?.name || 'Item'} ({item.quantity}×)</span>
+                                                            <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -1558,7 +1595,7 @@ export default function CashierClient({
                                     </div>
                                 ))}
 
-                                {/* QR / Session order items */}
+                                 {/* QR / Session order items */}
                                 {activeInvoice.type === 'room' ? (
                                     activeInvoice.qrOrders && activeInvoice.qrOrders.map((item: any, idx: number) => (
                                         <div key={idx} className="flex justify-between py-0.5">
@@ -1578,6 +1615,16 @@ export default function CashierClient({
                                         </div>
                                     ))
                                 )}
+
+                                {/* Waiter-linked Dining table orders */}
+                                {activeInvoice.linkedOrders && activeInvoice.linkedOrders.map((item: any, idx: number) => (
+                                    <div key={idx} className="flex justify-between py-0.5">
+                                        <span className="w-1/2 text-left truncate font-medium">Dine: {item.name}</span>
+                                        <span className="w-12 text-center">{item.quantity}</span>
+                                        <span className="w-16 text-right">{money(item.unitPrice)}</span>
+                                        <span className="w-16 text-right font-bold text-black">{money(item.unitPrice * item.quantity)}</span>
+                                    </div>
+                                ))}
                             </div>
                         </div>
 
