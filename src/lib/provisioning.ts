@@ -145,31 +145,32 @@ export async function provisionRestaurant(input: ProvisionInput): Promise<Provis
         restaurantId = restaurant.id
         const rid: string = restaurant.id
 
-        // 2. Owner users row (full_name is NOT NULL — always set it)
-        const { error: userRowError } = await supabase.from('users').upsert({
-            id: input.ownerId,
-            restaurant_id: rid,
-            full_name: input.ownerName || input.ownerEmail,
-            email: input.ownerEmail,
-            role_id: MANAGER_ROLE_ID,
-            is_active: true,
-        }, { onConflict: 'id' })
-        if (userRowError) throw new Error(userRowError.message)
-
-        // 3. Settings
-        const { error: settingsError } = await supabase.from('settings').insert({
-            restaurant_id: rid,
-            theme: DEFAULT_THEME,
-            features: DEFAULT_FEATURES_V1,
-            features_v2: buildFeaturesV2(tier, mode),
-            business_hours: null,
-        })
-        if (settingsError) throw new Error(settingsError.message)
-
-        // 4. Seed starter menu + tables so the app is usable immediately.
-        if (seed) {
-            await seedStarterData(supabase, rid, tableCount)
-        }
+        // Steps 2-4 each only need the restaurant id, so run them concurrently
+        // instead of three sequential round-trips. Any rejection is caught below
+        // and rolls the restaurant back (FK cascade cleans up whatever landed).
+        //   2. Owner users row (full_name is NOT NULL — always set it)
+        //   3. Settings
+        //   4. Seed starter menu + tables so the app is usable immediately
+        const [userRes, settingsRes] = await Promise.all([
+            supabase.from('users').upsert({
+                id: input.ownerId,
+                restaurant_id: rid,
+                full_name: input.ownerName || input.ownerEmail,
+                email: input.ownerEmail,
+                role_id: MANAGER_ROLE_ID,
+                is_active: true,
+            }, { onConflict: 'id' }),
+            supabase.from('settings').insert({
+                restaurant_id: rid,
+                theme: DEFAULT_THEME,
+                features: DEFAULT_FEATURES_V1,
+                features_v2: buildFeaturesV2(tier, mode),
+                business_hours: null,
+            }),
+            seed ? seedStarterData(supabase, rid, tableCount) : Promise.resolve(),
+        ])
+        if (userRes.error) throw new Error(userRes.error.message)
+        if (settingsRes.error) throw new Error(settingsRes.error.message)
 
         return { restaurantId: rid }
     } catch (err) {
@@ -207,7 +208,8 @@ async function seedStarterData(
         (insertedCategories || []).map(c => [c.name as string, c.id as string]),
     )
 
-    // Items
+    // Items depend on the category ids above; tables don't depend on either, so
+    // once categories exist the items and tables inserts run concurrently.
     const itemRows = SAMPLE_MENU.flatMap(c =>
         c.items.map(item => ({
             restaurant_id: restaurantId,
@@ -218,21 +220,24 @@ async function seedStarterData(
             is_available: true,
         })),
     )
-    const { error: itemError } = await supabase.from('menu_items').insert(itemRows)
-    if (itemError) throw new Error(`Seed menu items failed: ${itemError.message}`)
 
     // Generate qr_token in JS — the DB default uses encode(...,'base64url'), which
     // this Postgres version rejects ("unrecognized encoding: base64url"). Node's
     // base64url is fine; this matches how addTableAction supplies the token.
     // tableCount is 0 for delivery-only restaurants — skip the insert entirely
     // rather than calling .insert([]) on an empty array.
-    if (tableCount > 0) {
-        const tableRows = Array.from({ length: tableCount }, (_, i) => ({
+    const tableRows = tableCount > 0
+        ? Array.from({ length: tableCount }, (_, i) => ({
             restaurant_id: restaurantId,
             label: `T${i + 1}`,
             qr_token: randomBytes(18).toString('base64url'),
         }))
-        const { error: tableError } = await supabase.from('tables').insert(tableRows)
-        if (tableError) throw new Error(`Seed tables failed: ${tableError.message}`)
-    }
+        : []
+
+    const [{ error: itemError }, tableRes] = await Promise.all([
+        supabase.from('menu_items').insert(itemRows),
+        tableRows.length ? supabase.from('tables').insert(tableRows) : Promise.resolve({ error: null }),
+    ])
+    if (itemError) throw new Error(`Seed menu items failed: ${itemError.message}`)
+    if (tableRes.error) throw new Error(`Seed tables failed: ${tableRes.error.message}`)
 }

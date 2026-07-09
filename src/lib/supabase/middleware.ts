@@ -31,11 +31,22 @@ export async function updateSession(request: NextRequest) {
         }
     )
 
-    // IMPORTANT: Avoid writing any logic between createServerClient and
-    // supabase.auth.getUser(). A simple mistake could make your application
-    // very slow due to unnecessary session refreshing.
-    const { data, error } = await supabase.auth.getUser()
-    const user = error ? null : data.user
+    // IMPORTANT: Avoid writing any logic between createServerClient and the
+    // auth read below. A simple mistake could make your application very slow
+    // due to unnecessary session refreshing.
+    //
+    // getClaims() rather than getUser(): with asymmetric (ES256) signing keys —
+    // which this project uses — getClaims verifies the JWT signature locally
+    // against a process-global, 10-minute-cached JWKS, so a valid token costs no
+    // network call. getUser() hit /auth/v1/user on EVERY request (every page,
+    // every RSC prefetch), a full round-trip to the auth server. getClaims still
+    // refreshes an expired session under the hood (via getSession), so the token
+    // stays fresh — the round-trip now happens only when a refresh is actually
+    // due, not on every request. Returning the claims lets the proxy reuse them
+    // for its role check instead of decoding a second time.
+    const { data, error } = await supabase.auth.getClaims()
+    const claims = (!error && data?.claims?.sub) ? (data.claims as TokenClaims) : null
+    const user = claims ? { id: claims.sub } : null
 
     if (error && isDeadRefreshToken(error)) {
         for (const cookie of request.cookies.getAll()) {
@@ -45,7 +56,17 @@ export async function updateSession(request: NextRequest) {
         }
     }
 
-    return { user, supabaseResponse, supabase }
+    return { user, claims, supabaseResponse, supabase }
+}
+
+// The subset of access-token claims the middleware and proxy read. app_role and
+// restaurant_id are injected by the custom_access_token hook (production); sub
+// and email are always present.
+export interface TokenClaims {
+    sub: string
+    email?: string
+    app_role?: unknown
+    restaurant_id?: unknown
 }
 
 /**

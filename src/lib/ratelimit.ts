@@ -65,7 +65,20 @@ export async function checkRateLimit(key: string, requests: number = 10, windowS
 
   try {
     const ip = await getClientIp()
-    const response = await ratelimit.limit(ip)
+    // Race the limiter against an 800ms budget. Upstash is a network hop and a
+    // cold edge/region can take seconds — without this a slow Redis stalls every
+    // login/checkout it guards. Timing out fails open (same as an error), which
+    // is acceptable: the limiter is a DoS backstop, not an auth gate.
+    const TIMEOUT = Symbol('rl-timeout')
+    const response = await Promise.race([
+      ratelimit.limit(ip),
+      new Promise<typeof TIMEOUT>((resolve) => setTimeout(() => resolve(TIMEOUT), 800)),
+    ])
+
+    if (response === TIMEOUT) {
+      console.warn(`Rate limit check timed out for ${key} — allowing request`)
+      return null
+    }
 
     if (!response.success) {
       const resetTime = response.reset ? new Date(response.reset).getTime() - Date.now() : 60000
