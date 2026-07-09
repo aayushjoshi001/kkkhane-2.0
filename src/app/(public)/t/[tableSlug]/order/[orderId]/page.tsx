@@ -96,7 +96,7 @@ export default async function OrderPage(props: {
             `)
             .eq('session_id', order.session_id)
             .neq('status', 'cancelled')
-            .order('created_at', { ascending: true })
+            .order('placed_at', { ascending: true })
 
         if (siblingError) {
             console.error("Sibling orders fetch error:", siblingError)
