@@ -229,7 +229,8 @@ export default function CashierClient({
 
     const getRoomQrOrders = (room: any) => {
         if (!room) return []
-        const matchingTable = tables.find(t => t.label === room.room_number || t.label === 'Room ' + room.room_number)
+        // Keyed on tables.room_id (see migration 20260709140000) — no label matching.
+        const matchingTable = tables.find(t => t.room_id === room.id)
         if (!matchingTable?.activeSession) return []
 
         const sessionId = matchingTable.activeSession.id
@@ -294,7 +295,7 @@ export default function CashierClient({
             const nights = calculateNights(booking.check_in, booking.check_out)
             const stayCost = price * nights
 
-            const matchingTable = tables.find(t => t.label === room.room_number || t.label === 'Room ' + room.room_number)
+            const matchingTable = tables.find(t => t.room_id === room.id)
             const sessionOrders = matchingTable?.activeSession ? getRoomQrOrders(room) : []
             const qrOrdersTotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
 
@@ -377,8 +378,8 @@ export default function CashierClient({
         setIsSettlingInvoice(true)
         try {
             // Settle all unpaid orders associated with this room or table
-            const sessionId = activeInvoice.type === 'room' 
-                ? (tables.find(t => t.label === activeInvoice.label.replace('Room ', '') || t.label === activeInvoice.label)?.activeSession?.id)
+            const sessionId = activeInvoice.type === 'room'
+                ? tables.find(t => t.room_id === activeInvoice.roomId)?.activeSession?.id
                 : activeInvoice.sessionId
 
             if (sessionId) {

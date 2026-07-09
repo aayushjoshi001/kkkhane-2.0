@@ -32,7 +32,7 @@ export default async function BookingsPage() {
                 .order('room_number', { ascending: true }),
             adminSupabase
                 .from('tables')
-                .select('id, label, capacity, table_status, cleaning_claimed_by, cleaning_claimed_at')
+                .select('id, label, capacity, table_status, cleaning_claimed_by, cleaning_claimed_at, room_id')
                 .eq('restaurant_id', restaurantId)
                 .eq('is_active', true)
                 .order('label', { ascending: true }),

@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { verifyClientIp } from '@/lib/ip-check'
 import { getOrCreateActiveSession } from '@/lib/sessions'
 import { getOptionalUser } from '@/lib/auth'
+import { getRoomContextForTable } from '@/lib/rooms'
 
 export async function initTableSession(
     tableId: string,
@@ -55,9 +56,33 @@ export async function initTableSession(
         }
     }
 
-    // 3. Auto-open session if needed
+    // 3. Room context: an in-room QR binds its session to the guest's stay, and
+    //    lives as long as the booking rather than the 4-hour dining default.
+    //    Null for ordinary dining tables, which behave exactly as before.
+    const roomContext = await getRoomContextForTable(supabase, tableId)
+
+    // A room with nobody checked in never opens a session — its orders could
+    // never be billed to a folio. The QR page surfaces this to the guest.
+    if (roomContext && !roomContext.bookingId) {
+        return {
+            sessionToken: null,
+            sessionUUID: undefined,
+            isIpRestricted,
+            clientIp: ipCheckResult.clientIp,
+            roomNotCheckedIn: true,
+        }
+    }
+
+    // 4. Auto-open session if needed
     if (!sessionToken && !isIpRestricted && !waiterSessionEnabled) {
-        const session = await getOrCreateActiveSession(supabase, tableId, restaurantId)
+        const session = await getOrCreateActiveSession(
+            supabase,
+            tableId,
+            restaurantId,
+            roomContext?.bookingId
+                ? { bookingId: roomContext.bookingId, expiresAt: await getStayExpiry(supabase, roomContext.bookingId) }
+                : undefined,
+        )
         if (session) {
             sessionToken = session.session_token
             sessionUUID = session.id
@@ -68,6 +93,25 @@ export async function initTableSession(
         sessionToken,
         sessionUUID,
         isIpRestricted,
-        clientIp: ipCheckResult.clientIp
+        clientIp: ipCheckResult.clientIp,
+        roomNotCheckedIn: false,
     }
+}
+
+/** A room session should live until the guest checks out, not 4 hours. */
+async function getStayExpiry(
+    supabase: Awaited<ReturnType<typeof createAdminClient>>,
+    bookingId: string,
+): Promise<string | null> {
+    const { data } = await supabase
+        .from('bookings')
+        .select('check_out')
+        .eq('id', bookingId)
+        .maybeSingle()
+    if (!data?.check_out) return null
+    // Never shrink below the default dining TTL — a same-day checkout shouldn't
+    // leave the guest with an already-expired session.
+    const checkOut = new Date(data.check_out)
+    const fourHours = new Date(Date.now() + 4 * 60 * 60 * 1000)
+    return (checkOut > fourHours ? checkOut : fourHours).toISOString()
 }

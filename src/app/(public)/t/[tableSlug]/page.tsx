@@ -8,6 +8,8 @@ import { verifyClientIp } from '@/lib/ip-check'
 import { getOrCreateActiveSession } from '@/lib/sessions'
 import { getOptionalUser } from '@/lib/auth'
 import { getHomepageConfig } from '@/lib/homepage'
+import { getRoomContextForTable } from '@/lib/rooms'
+import RoomNotCheckedIn from '@/components/customer/RoomNotCheckedIn'
 
 import type { Metadata } from 'next'
 
@@ -185,6 +187,20 @@ export default async function CustomerMenuPage(props: {
         .single()
 
     if (!tableData) return notFound()
+
+    // A room's QR only opens once a guest is checked in — otherwise the order
+    // would belong to no stay and could never be billed. Ordinary dining tables
+    // (room_id IS NULL) return null here and fall through untouched.
+    const roomContext = await getRoomContextForTable(supabase, tableData.id)
+    if (roomContext && !roomContext.bookingId) {
+        const restaurant = tableData.restaurants as unknown as { name?: string } | null
+        return (
+            <RoomNotCheckedIn
+                roomNumber={roomContext.roomNumber || tableData.label}
+                restaurantName={restaurant?.name}
+            />
+        )
+    }
 
     return (
         <Suspense fallback={<TablePageClientSkeleton tableData={tableData} />}>

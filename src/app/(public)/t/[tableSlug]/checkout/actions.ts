@@ -12,6 +12,7 @@ import { sendOrderConfirmationSms, sendLoyaltyPointsSms } from '@/lib/sms'
 import { checkAndAlertLowStock } from '@/app/(admin)/admin/ingredients/actions'
 import { getRestaurantFeatures } from '@/lib/features'
 import { verifyClientIp } from '@/lib/ip-check'
+import { getRoomContextForTable } from '@/lib/rooms'
 
 type PlaceOrderItemPayload = {
     menu_item_id: string
@@ -127,7 +128,7 @@ export async function placeOrder(
     // The client passes session_token (e.g. 's-abc123'), but the RPC expects the UUID primary key
     const { data: sessionData, error: sessionError } = await supabase
         .from('sessions')
-        .select('id, restaurant_id')
+        .select('id, restaurant_id, table_id')
         .eq('session_token', sessionId)
         .eq('status', 'active')
         .single()
@@ -140,6 +141,18 @@ export async function placeOrder(
     const { allowed: ipAllowed } = await verifyClientIp(sessionData.restaurant_id, 'customer')
     if (!ipAllowed) {
         return { error: 'Your current network IP is not allowed to place orders for this restaurant.' }
+    }
+
+    // 2c. In-room orders must belong to a stay. The QR page already blocks an
+    // un-checked-in room, but this is the authoritative gate — a stale tab or a
+    // direct call must not create an order that can never be billed to a folio.
+    // `roomContext` is null for ordinary dining tables, which skip all of this.
+    const roomContext = sessionData.table_id
+        ? await getRoomContextForTable(supabase, sessionData.table_id)
+        : null
+
+    if (roomContext && !roomContext.bookingId) {
+        return { error: `Room ${roomContext.roomNumber} is not checked in. Please contact reception.` }
     }
 
     const sessionUuid = sessionData.id
@@ -200,6 +213,13 @@ export async function placeOrder(
         )
 
         if (fallback) {
+            // The fallback path bills to the same stay as the RPC path.
+            if (roomContext?.bookingId) {
+                await supabase
+                    .from('orders')
+                    .update({ booking_id: roomContext.bookingId })
+                    .eq('id', fallback.orderId)
+            }
             revalidatePath(`/t/${restaurantSlug}`)
             return fallback
         }
@@ -218,6 +238,19 @@ export async function placeOrder(
     }
 
     if (result.order_id) {
+        // Bind an in-room order to the stay it belongs to. Doing this here rather
+        // than deriving it later means the folio survives the session closing or
+        // expiring — the booking owns its orders for good.
+        if (roomContext?.bookingId) {
+            const { error: bindError } = await supabase
+                .from('orders')
+                .update({ booking_id: roomContext.bookingId })
+                .eq('id', result.order_id)
+            if (bindError) {
+                console.error('[order]', result.order_id, 'failed to bind booking:', bindError)
+            }
+        }
+
         // If there are variations, look up their prices and update order_items
         const variationIds = items.map(i => i.variationId).filter(Boolean) as string[]
         let variations: { id: string; price: number }[] = []

@@ -2,7 +2,19 @@ import 'server-only'
 import { randomBytes } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-type ActiveSession = { id: string; session_token: string }
+type ActiveSession = { id: string; session_token: string; booking_id?: string | null }
+
+/** Extra context when the table is a hotel room's in-room QR. */
+export interface RoomSessionOptions {
+    /** The stay this session bills to. Binds sessions.booking_id. */
+    bookingId?: string | null
+    /**
+     * When the stay ends. A dining session defaults to a 4-hour TTL, which would
+     * strand a multi-night guest ordering breakfast on a session opened at
+     * dinner. For a room we let the session live as long as the booking.
+     */
+    expiresAt?: string | null
+}
 
 /**
  * Returns the table's active (non-expired) dining session, creating one on the
@@ -17,10 +29,23 @@ export async function getOrCreateActiveSession(
     admin: SupabaseClient,
     tableId: string,
     restaurantId: string,
+    room?: RoomSessionOptions,
 ): Promise<ActiveSession | null> {
     // 1. Reuse an existing active, non-expired session if there is one.
     const existing = await findActiveSession(admin, tableId)
-    if (existing) return existing
+    if (existing) {
+        // A session opened before check-in (or before this column existed) has no
+        // stay attached. Bind it now so its orders land on the right folio.
+        if (room?.bookingId && !existing.booking_id) {
+            await admin
+                .from('sessions')
+                .update({ booking_id: room.bookingId, ...(room.expiresAt ? { expires_at: room.expiresAt } : {}) })
+                .eq('id', existing.id)
+                .is('booking_id', null)
+            return { ...existing, booking_id: room.bookingId }
+        }
+        return existing
+    }
 
     // 2. Expire any stale active sessions that passed expires_at but were never
     //    cleaned up — otherwise the unique-active-per-table index blocks the insert.
@@ -41,8 +66,10 @@ export async function getOrCreateActiveSession(
             restaurant_id: restaurantId,
             opened_by: null,
             session_token: sessionToken,
+            ...(room?.bookingId ? { booking_id: room.bookingId } : {}),
+            ...(room?.expiresAt ? { expires_at: room.expiresAt } : {}),
         })
-        .select('id, session_token')
+        .select('id, session_token, booking_id')
         .single()
 
     if (!error && data) return data
@@ -63,7 +90,7 @@ async function findActiveSession(
 ): Promise<ActiveSession | null> {
     const { data } = await admin
         .from('sessions')
-        .select('id, session_token')
+        .select('id, session_token, booking_id')
         .eq('table_id', tableId)
         .eq('status', 'active')
         .gt('expires_at', new Date().toISOString())

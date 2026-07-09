@@ -231,9 +231,9 @@ export default function CashierRoomManager({
     const qrOrdersDetails = useMemo(() => {
         if (!selectedRoom || selectedRoom.status !== 'occupied') return null
 
-        const matchingTable = tables.find(
-            t => t.label === selectedRoom.room_number || t.label === 'Room ' + selectedRoom.room_number
-        )
+        // Keyed on tables.room_id — a relabelled or duplicate table can no longer
+        // detach a guest's orders from their folio.
+        const matchingTable = tables.find(t => t.room_id === selectedRoom.id)
         if (!matchingTable?.activeSession) return null
 
         const sessionId = matchingTable.activeSession.id
