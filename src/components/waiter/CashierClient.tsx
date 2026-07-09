@@ -490,8 +490,27 @@ export default function CashierClient({
         return { all, available, reserve, occupied, dirty, closed }
     }, [rooms])
 
+    const billingStayBookingRef = useRef(billingStayBooking)
+    useEffect(() => {
+        billingStayBookingRef.current = billingStayBooking
+    }, [billingStayBooking])
+
     useRestaurantTable(restaurantId, 'orders', async (payload) => {
         const supabase = supabaseRef.current
+        
+        // Refresh linked orders in real-time if a stay details panel is open
+        const currentBooking = billingStayBookingRef.current
+        if (currentBooking) {
+            fetch(`/api/bookings/linked-orders?bookingId=${currentBooking.id}`)
+                .then(res => res.json())
+                .then(ordersData => {
+                    if (ordersData.success) {
+                        setBillingLinkedOrders(ordersData.items || [])
+                    }
+                })
+                .catch(err => console.error('Error refreshing linked dining orders in real-time:', err))
+        }
+
         if (payload.eventType === 'INSERT') {
             const { data } = await supabase
                 .from('orders')

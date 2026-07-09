@@ -95,6 +95,12 @@ export default function CashierRoomManager({
         setMounted(true)
     }, [])
 
+    // Track activeBooking in a ref to avoid stale closure issues in realtime callback
+    const activeBookingRef = useRef(activeBooking)
+    useEffect(() => {
+        activeBookingRef.current = activeBooking
+    }, [activeBooking])
+
     // Realtime subscriptions for rooms
     useRestaurantTable(restaurantId, 'rooms', (payload) => {
         if (payload.eventType === 'UPDATE') {
@@ -105,6 +111,21 @@ export default function CashierRoomManager({
                 return prev.id === updatedRoom.id ? { ...prev, status: updatedRoom.status } : prev
             })
         }
+    })
+
+    // Realtime subscription for orders to refresh linked table dining orders instantly
+    useRestaurantTable(restaurantId, 'orders', (payload) => {
+        const currentBooking = activeBookingRef.current
+        if (!currentBooking) return
+        
+        fetch(`/api/bookings/linked-orders?bookingId=${currentBooking.id}`)
+            .then(res => res.json())
+            .then(linkedRes => {
+                if (linkedRes.success) {
+                    setLinkedDiningOrders(linkedRes.items || [])
+                }
+            })
+            .catch(err => console.error("Error refreshing linked dining orders in real-time:", err))
     })
 
     // Prepopulate booking form check-in/out default values
