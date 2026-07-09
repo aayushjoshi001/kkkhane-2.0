@@ -7,7 +7,6 @@ import {
 import { createSupplierAction, updateSupplierAction, deleteSupplierAction } from './actions'
 import { toast } from 'react-hot-toast'
 import { formatCurrency } from '@/lib/utils'
-import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 
 interface Supplier {
     id: string
@@ -180,21 +179,30 @@ export default function SuppliersLedgerManager({
 
     return (
         <div className="space-y-6 pb-16 animate-fade-up">
-            {/* Premium Header aligned with dashboard style */}
-            <PremiumPageHeader
-                title="Suppliers Ledger"
-                description="Manage supplier profiles, tax details (PAN/VAT), and track expense purchase ledgers."
-                icon={<Truck size={18} />}
-                color="blue"
-                actions={
+            {/* Clean Light Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center">
+                            <Truck size={20} className="text-brand-500" />
+                        </div>
+                        <div>
+                            <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Suppliers Ledger</h1>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                                Manage supplier profiles, tax details (PAN/VAT), and track expense purchase ledgers.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div className="flex items-center gap-3">
                     <button
                         onClick={openAddModal}
-                        className="px-5 py-2.5 bg-white hover:bg-gray-100 text-gray-900 font-extrabold rounded-xl text-sm transition-all shadow-md flex items-center justify-center gap-1.5"
+                        className="flex items-center gap-2 px-5 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl text-sm transition-all shadow-md shadow-brand-500/20"
                     >
                         <Plus size={16} /> Add Supplier
                     </button>
-                }
-            />
+                </div>
+            </div>
 
             {/* Split View: Left List / Right Ledger details */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
