@@ -159,6 +159,8 @@ export default async function RootLayout({
                   <span style={{ WebkitTextStroke: '8px #181614', color: 'transparent', letterSpacing: '-0.15em' }}>KK</span>
                   <span className="ml-16 font-[family-name:var(--font-devanagari)]">खाने?</span>
               </div>
+              {/* Faint orange vignette gradient */}
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_40%,rgba(251,99,3,0.04)_100%)] mix-blend-multiply" />
           </div>
 
           <div className="relative z-10 flex-1 flex flex-col">

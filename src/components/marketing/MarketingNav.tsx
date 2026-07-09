@@ -48,7 +48,7 @@ export default function MarketingNav() {
     return (
         <>
             {pathname !== '/' && (
-                <Link href="/" className="fixed top-[100px] left-6 z-[100] flex items-center gap-2 bg-gradient-to-r from-[#E76115] to-[#f59e0b] text-white border-transparent px-5 py-2.5 rounded-full shadow-[0_8px_30px_rgba(231,97,21,0.3)] hover:scale-105 hover:shadow-[0_8px_40px_rgba(231,97,21,0.5)] transition-all text-sm font-extrabold tracking-wide">
+                <Link href="/" className="fixed top-[100px] left-6 z-[100] flex items-center gap-2 bg-[var(--color-primary)] text-white border-transparent px-5 py-2.5 rounded-full shadow-[0_8px_30px_rgba(251,99,3,0.3)] hover:scale-105 hover:shadow-[0_8px_40px_rgba(251,99,3,0.5)] transition-all text-sm font-extrabold tracking-wide">
                     <ArrowLeft size={18} strokeWidth={3} /> BACK
                 </Link>
             )}

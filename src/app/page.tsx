@@ -317,7 +317,7 @@ export default async function Home() {
                             { step: '02', title: 'Add Menu & Staff', desc: 'Upload your items, set prices, and invite your team members with custom roles.' },
                             { step: '03', title: 'Start Taking Orders', desc: 'Generate QR codes for tables and let customers order, or use the POS.' },
                         ].map((s, i) => (
-                            <div key={i} className="relative bg-transparent rounded-[2.5rem] p-10 border border-hairline hover:shadow-xl hover:-translate-y-2 transition-all duration-300">
+                            <div key={i} className="relative bg-surface rounded-[2.5rem] p-10 border border-hairline hover:shadow-xl hover:-translate-y-2 transition-all duration-300">
                                 <span className="text-[6rem] font-black text-ink/5 absolute top-4 right-6 pointer-events-none">{s.step}</span>
                                 <div className="w-14 h-14 bg-brand-100 text-brand-600 rounded-2xl flex items-center justify-center font-bold text-xl mb-8 shadow-sm">
                                     {i + 1}
