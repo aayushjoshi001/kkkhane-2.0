@@ -11,6 +11,17 @@
 
 export const DEMO_PASSWORD = 'Password123!'
 
+// The demo login chips and their server-side self-heal are a local/preview
+// convenience only. On the real production deployment they are switched off so
+// the public can't self-serve a known-password login (the chips advertised the
+// password, and provisionDemoAccount would recreate the accounts on demand).
+//
+// VERCEL_ENV is 'production' only on the production deployment — NODE_ENV is
+// 'production' on preview builds too, so it can't tell them apart. This is
+// SERVER-ONLY: in the client bundle VERCEL_ENV is not inlined (it isn't a
+// NEXT_PUBLIC_ var), so read it on the server and pass the boolean to the client.
+export const DEMO_LOGIN_ENABLED = process.env.VERCEL_ENV !== 'production'
+
 /** Which demo restaurant an account belongs to. */
 export type DemoTenant = 'restaurant' | 'hotel'
 
@@ -42,7 +53,7 @@ export interface DemoAccount {
 export const DEMO_ACCOUNTS: DemoAccount[] = [
     // ── Restaurant (counter-service) ─────────────────────────────────────────
     { email: 'newuser@srms.app', label: 'New User',    fullName: 'New Onboarding User', roleId: null,             tenant: 'restaurant', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200' },
-    { email: 'demo@srms.app',    label: 'Super Admin', fullName: 'Demo Super Admin',    roleId: 1, isOwner: true, tenant: 'restaurant', color: 'bg-brand-100 text-orange-700 hover:bg-brand-200' },
+    { email: 'demo@srms.app',    label: 'Owner',       fullName: 'Demo Owner',          roleId: 2, isOwner: true, tenant: 'restaurant', color: 'bg-brand-100 text-orange-700 hover:bg-brand-200' },
     { email: 'manager@srms.app', label: 'Manager',     fullName: 'Demo Manager',        roleId: 2,                tenant: 'restaurant', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200' },
     { email: 'kitchen@srms.app', label: 'Kitchen',     fullName: 'Demo Kitchen',        roleId: 3,                tenant: 'restaurant', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' },
     { email: 'bar@srms.app',     label: 'Bartender',   fullName: 'Demo Bartender',      roleId: 7, roleName: 'bartender', tenant: 'restaurant', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200' },
@@ -50,7 +61,7 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     { email: 'cashier@srms.app', label: 'Cashier',     fullName: 'Demo Cashier',        roleId: 6,                tenant: 'restaurant', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200' },
 
     // ── Hotel (Resort/Hotel) ─────────────────────────────────────────────────
-    { email: 'hotel@srms.app',       label: 'Hotel Admin',  fullName: 'Demo Hotel Admin',   roleId: 1, isOwner: true, tenant: 'hotel', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' },
+    { email: 'hotel@srms.app',       label: 'Hotel Admin',  fullName: 'Demo Hotel Admin',   roleId: 2, isOwner: true, tenant: 'hotel', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' },
     { email: 'frontdesk@srms.app',   label: 'Front Desk',   fullName: 'Demo Front Desk',    roleId: 6,                tenant: 'hotel', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200' },
     { email: 'hotelkitchen@srms.app',label: 'Hotel Kitchen',fullName: 'Demo Hotel Kitchen', roleId: 3,                tenant: 'hotel', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200' },
     { email: 'roomservice@srms.app', label: 'Room Service', fullName: 'Demo Room Service',  roleId: 4,                tenant: 'hotel', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200' },
