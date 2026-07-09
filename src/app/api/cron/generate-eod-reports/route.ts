@@ -1,26 +1,19 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { NextRequest } from 'next/server'
 import { generateEodReport } from '@/lib/reports'
+import { verifyCronRequest, getActiveRestaurants } from '@/lib/cron'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
 export async function POST(request: NextRequest) {
-    const authHeader = request.headers.get('authorization')
-    const cronSecret = process.env.CRON_SECRET
-
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    if (!verifyCronRequest(request)) {
         return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const supabase = await createAdminClient()
 
-    // Fetch all active, non-suspended restaurants
-    const { data: restaurants, error: fetchError } = await supabase
-        .from('restaurants')
-        .select('id, name')
-        .eq('is_active', true)
-        .eq('is_suspended', false)
+    const { data: restaurants, error: fetchError } = await getActiveRestaurants(supabase)
 
     if (fetchError) {
         console.error('[cron/generate-eod-reports] fetch error:', fetchError)

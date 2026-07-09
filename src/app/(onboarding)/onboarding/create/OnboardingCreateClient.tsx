@@ -142,7 +142,7 @@ export default function OnboardingCreateClient() {
         if ('geolocation' in navigator) {
             navigator.geolocation.getCurrentPosition(
                 (pos) => updatePositionAndAddress(pos.coords.latitude, pos.coords.longitude),
-                (err) => console.error(err)
+                (err) => console.error('Failed to get current location:', err.message || err.code)
             )
         }
     }

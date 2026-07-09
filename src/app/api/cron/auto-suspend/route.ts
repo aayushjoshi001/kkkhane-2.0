@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { NextRequest } from 'next/server'
+import { verifyCronRequest } from '@/lib/cron'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -10,10 +11,7 @@ export const maxDuration = 30
  * Auth: Bearer <CRON_SECRET>
  */
 export async function POST(request: NextRequest) {
-    const authHeader = request.headers.get('authorization')
-    const cronSecret = process.env.CRON_SECRET
-
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    if (!verifyCronRequest(request)) {
         return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

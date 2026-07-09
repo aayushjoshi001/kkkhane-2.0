@@ -14,6 +14,39 @@ import { useFeatures } from '@/lib/contexts/FeatureContext'
 import { FINANCE_GATED_ROLES } from '@/types/database'
 import { formatCurrency } from '@/lib/utils'
 
+// Ledger entry types that represent money actually paid out to staff (as opposed
+// to 'accrual', which only increases what's owed, or 'deduction', which reduces it)
+const PAY_ENTRY_TYPES = ['salary_payout', 'advance_payment', 'bonus']
+
+function PasswordToggleInput({ value, onChange, placeholder, disabled, show, onToggleShow }: {
+    value: string
+    onChange: (value: string) => void
+    placeholder: string
+    disabled: boolean
+    show: boolean
+    onToggleShow: () => void
+}) {
+    return (
+        <div className="relative">
+            <input
+                type={show ? 'text' : 'password'}
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder={placeholder}
+                disabled={disabled}
+                className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50 pr-12"
+            />
+            <button
+                type="button"
+                onClick={onToggleShow}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-ink transition-colors p-1"
+            >
+                {show ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+        </div>
+    )
+}
+
 type StaffMember = {
     id: string
     full_name: string
@@ -124,13 +157,15 @@ export default function StaffManager({
         loading: boolean
         openingBalanceEdit: string
         savingOpeningBalance: boolean
+        showOpeningBalanceEditor: boolean
     }>({
         isOpen: false,
         user: null,
         entries: [],
         loading: false,
         openingBalanceEdit: '',
-        savingOpeningBalance: false
+        savingOpeningBalance: false,
+        showOpeningBalanceEditor: false
     })
 
     const prevMonthDate = new Date()
@@ -176,6 +211,9 @@ export default function StaffManager({
         fullName: '',
         email: '',
         password: '',
+        confirmPassword: '',
+        showPassword: false,
+        showConfirmPassword: false,
         phone: '',
         roleId: 4, // Default to waiter
         departmentId: '' as string,
@@ -303,18 +341,16 @@ export default function StaffManager({
                 })
                 mutate()
                 // If ledger modal is open for the same user, refresh its entries
-                setLedgerModal(prev => {
-                    if (prev.isOpen && prev.user?.id === userId) {
-                        fetchStaffLedgerAction(userId).then(data => {
-                            setLedgerModal(p => ({
-                                ...p,
-                                entries: data.entries,
-                                user: p.user ? { ...p.user, opening_balance: data.openingBalance, monthly_salary: data.monthlySalary } : null
-                            }))
-                        }).catch(() => {})
-                    }
-                    return prev
-                })
+                if (ledgerModal.isOpen && ledgerModal.user?.id === userId) {
+                    try {
+                        const data = await fetchStaffLedgerAction(userId)
+                        setLedgerModal(p => ({
+                            ...p,
+                            entries: data.entries,
+                            user: p.user ? { ...p.user, opening_balance: data.openingBalance, monthly_salary: data.monthlySalary } : null
+                        }))
+                    } catch {}
+                }
             }
         } catch (e: any) {
             toast.error(e.message || 'Failed to record transaction')
@@ -324,7 +360,7 @@ export default function StaffManager({
     }
 
     const handleOpenLedger = async (user: StaffMember) => {
-        setLedgerModal({ isOpen: true, user, entries: [], loading: true, openingBalanceEdit: '', savingOpeningBalance: false })
+        setLedgerModal({ isOpen: true, user, entries: [], loading: true, openingBalanceEdit: '', savingOpeningBalance: false, showOpeningBalanceEditor: false })
         try {
             const data = await fetchStaffLedgerAction(user.id)
             // Inject fresh opening_balance + monthly_salary from DB into the user object
@@ -333,7 +369,7 @@ export default function StaffManager({
                 opening_balance: data.openingBalance,
                 monthly_salary: data.monthlySalary,
             }
-            setLedgerModal({ isOpen: true, user: freshUser, entries: data.entries, loading: false, openingBalanceEdit: '', savingOpeningBalance: false })
+            setLedgerModal({ isOpen: true, user: freshUser, entries: data.entries, loading: false, openingBalanceEdit: '', savingOpeningBalance: false, showOpeningBalanceEditor: !data.openingBalance })
         } catch (err: any) {
             toast.error(err.message || 'Failed to fetch ledger')
             setLedgerModal(prev => ({ ...prev, loading: false }))
@@ -422,6 +458,11 @@ export default function StaffManager({
             return
         }
 
+        if (createModal.password !== createModal.confirmPassword) {
+            toast.error('Passwords do not match')
+            return
+        }
+
         setCreateModal(prev => ({ ...prev, isCreating: true }))
 
         try {
@@ -457,6 +498,9 @@ export default function StaffManager({
                 fullName: '',
                 email: '',
                 password: '',
+                confirmPassword: '',
+                showPassword: false,
+                showConfirmPassword: false,
                 phone: '',
                 roleId: 4,
                 departmentId: '',
@@ -471,7 +515,7 @@ export default function StaffManager({
     }
 
     const closeCreateModal = () => {
-        setCreateModal({ isOpen: false, fullName: '', email: '', password: '', phone: '', roleId: 4, departmentId: '', isCreating: false })
+        setCreateModal({ isOpen: false, fullName: '', email: '', password: '', confirmPassword: '', showPassword: false, showConfirmPassword: false, phone: '', roleId: 4, departmentId: '', isCreating: false })
     }
 
     const handleSendInvite = async () => {
@@ -681,6 +725,9 @@ export default function StaffManager({
         if (invitation.status === 'pending' && new Date(invitation.expires_at) < new Date()) return 'expired'
         return invitation.status
     }
+
+    const isTransactionPay = PAY_ENTRY_TYPES.includes(transactionModal.entryType)
+    const transactionTopLevelType = isTransactionPay ? 'pay' : transactionModal.entryType
 
     return (
         <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden">
@@ -1376,14 +1423,29 @@ export default function StaffManager({
 
                             <div>
                                 <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Password *</label>
-                                <input
-                                    type="password"
+                                <PasswordToggleInput
                                     value={createModal.password}
-                                    onChange={(e) => setCreateModal(prev => ({ ...prev, password: e.target.value }))}
+                                    onChange={(value) => setCreateModal(prev => ({ ...prev, password: value }))}
                                     placeholder="At least 8 characters"
                                     disabled={createModal.isCreating}
-                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
+                                    show={createModal.showPassword}
+                                    onToggleShow={() => setCreateModal(prev => ({ ...prev, showPassword: !prev.showPassword }))}
                                 />
+                            </div>
+
+                            <div>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Confirm Password *</label>
+                                <PasswordToggleInput
+                                    value={createModal.confirmPassword}
+                                    onChange={(value) => setCreateModal(prev => ({ ...prev, confirmPassword: value }))}
+                                    placeholder="Re-enter password"
+                                    disabled={createModal.isCreating}
+                                    show={createModal.showConfirmPassword}
+                                    onToggleShow={() => setCreateModal(prev => ({ ...prev, showConfirmPassword: !prev.showConfirmPassword }))}
+                                />
+                                {createModal.confirmPassword && createModal.password !== createModal.confirmPassword && (
+                                    <p className="mt-1.5 text-[11px] font-bold text-danger-fg uppercase tracking-wider">Passwords do not match</p>
+                                )}
                             </div>
 
                             <div>
@@ -1438,7 +1500,7 @@ export default function StaffManager({
                             </button>
                             <button
                                 onClick={handleCreateStaff}
-                                disabled={createModal.isCreating}
+                                disabled={createModal.isCreating || !createModal.password || createModal.password !== createModal.confirmPassword}
                                 className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 flex items-center gap-2 focus-ring"
                             >
                                 {createModal.isCreating ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
@@ -1647,15 +1709,16 @@ export default function StaffManager({
                                 <div>
                                     <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Entry Type</label>
                                     <select
-                                        value={transactionModal.entryType}
-                                        onChange={e => setTransactionModal(prev => ({ ...prev, entryType: e.target.value as any }))}
+                                        value={transactionTopLevelType}
+                                        onChange={e => {
+                                            const val = e.target.value
+                                            setTransactionModal(prev => ({ ...prev, entryType: val === 'pay' ? 'salary_payout' : val as any }))
+                                        }}
                                         className="w-full px-3 py-2 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
                                     >
-                                        <option value="salary_payout">Salary Payout</option>
-                                        <option value="advance_payment">Advance Payment</option>
-                                        <option value="bonus">Bonus / Award</option>
+                                        <option value="pay">Pay</option>
+                                        <option value="accrual">Add to Amount Due (Not Paid Yet)</option>
                                         <option value="deduction">Deduction / Fine</option>
-                                        <option value="accrual">Salary Accrual (No Payout)</option>
                                     </select>
                                 </div>
                                 <div>
@@ -1674,6 +1737,21 @@ export default function StaffManager({
                                     </div>
                                 </div>
                             </div>
+
+                            {isTransactionPay && (
+                                <div>
+                                    <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Pay Category</label>
+                                    <select
+                                        value={transactionModal.entryType}
+                                        onChange={e => setTransactionModal(prev => ({ ...prev, entryType: e.target.value as any }))}
+                                        className="w-full px-3 py-2 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
+                                    >
+                                        <option value="salary_payout">Salary Payout</option>
+                                        <option value="advance_payment">Advance Payment</option>
+                                        <option value="bonus">Bonus / Award</option>
+                                    </select>
+                                </div>
+                            )}
 
                             {transactionModal.entryType !== 'accrual' && (
                                 <div>
@@ -1738,6 +1816,18 @@ export default function StaffManager({
                             </div>
                             <div className="flex items-center gap-2">
                                 <button
+                                    onClick={() => setLedgerModal(prev => ({
+                                        ...prev,
+                                        showOpeningBalanceEditor: !prev.showOpeningBalanceEditor,
+                                        // Clear any unsaved draft when collapsing, so reopening later doesn't resurface a stale value
+                                        openingBalanceEdit: prev.showOpeningBalanceEditor ? '' : prev.openingBalanceEdit
+                                    }))}
+                                    className="px-3 py-1.5 text-[11px] font-black text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-[var(--r-sm)] flex items-center gap-1.5 transition shadow-sm"
+                                >
+                                    <Pencil size={12} />
+                                    Edit Opening Balance
+                                </button>
+                                <button
                                     onClick={() => {
                                         if (!ledgerModal.user) return
                                         setTransactionModal({
@@ -1771,7 +1861,7 @@ export default function StaffManager({
                                     {(() => {
                                         const openingBal = Number(ledgerModal.user.opening_balance ?? 0)
                                         const totalDue = openingBal + ledgerModal.entries.reduce((s, e) => e.entry_type === 'accrual' ? s + Number(e.amount) : s, 0)
-                                        const totalPaid = ledgerModal.entries.reduce((s, e) => ['salary_payout','advance_payment','bonus'].includes(e.entry_type) ? s + Number(e.amount) : s, 0)
+                                        const totalPaid = ledgerModal.entries.reduce((s, e) => PAY_ENTRY_TYPES.includes(e.entry_type) ? s + Number(e.amount) : s, 0)
                                         const netBalance = totalDue - totalPaid
                                         return (
                                             <div className="flex gap-2">
@@ -1804,42 +1894,45 @@ export default function StaffManager({
                                     })()}
 
                                     {/* Opening Balance Editor */}
-                                    <div className="flex items-center gap-3 p-3 bg-blue-50/30 border border-blue-100 rounded-[var(--r-md)]">
-                                        <div className="text-[11px] font-black text-blue-700 uppercase tracking-wider shrink-0">Set Opening Balance</div>
-                                        <div className="text-[11px] text-blue-500 flex-1">Amount owed to this staff before this system was used (e.g. unpaid salary from previous months)</div>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            step="0.01"
-                                            value={ledgerModal.openingBalanceEdit}
-                                            onChange={e => setLedgerModal(prev => ({ ...prev, openingBalanceEdit: e.target.value }))}
-                                            placeholder={String(ledgerModal.user.opening_balance)}
-                                            className="w-32 px-2.5 py-1.5 text-xs font-bold border border-blue-200 rounded-[var(--r-sm)] bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
-                                        />
-                                        <button
-                                            disabled={ledgerModal.savingOpeningBalance || ledgerModal.openingBalanceEdit === ''}
-                                            onClick={async () => {
-                                                if (!ledgerModal.user) return
-                                                setLedgerModal(prev => ({ ...prev, savingOpeningBalance: true }))
-                                                const val = parseFloat(ledgerModal.openingBalanceEdit)
-                                                if (isNaN(val) || val < 0) {
-                                                    setLedgerModal(prev => ({ ...prev, savingOpeningBalance: false }))
-                                                    return
-                                                }
-                                                await updateOpeningBalanceAction(ledgerModal.user.id, val)
-                                                setLedgerModal(prev => ({
-                                                    ...prev,
-                                                    savingOpeningBalance: false,
-                                                    openingBalanceEdit: '',
-                                                    user: prev.user ? { ...prev.user, opening_balance: val } : null
-                                                }))
-                                            }}
-                                            className="px-3 py-1.5 text-[11px] font-black text-white bg-blue-500 hover:bg-blue-600 rounded-[var(--r-sm)] flex items-center gap-1 transition disabled:opacity-50"
-                                        >
-                                            {ledgerModal.savingOpeningBalance ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                                            Save
-                                        </button>
-                                    </div>
+                                    {ledgerModal.showOpeningBalanceEditor && (
+                                        <div className="flex items-center gap-3 p-3 bg-blue-50/30 border border-blue-100 rounded-[var(--r-md)]">
+                                            <div className="text-[11px] font-black text-blue-700 uppercase tracking-wider shrink-0">Set Opening Balance</div>
+                                            <div className="text-[11px] text-blue-500 flex-1">Amount owed to this staff before this system was used (e.g. unpaid salary from previous months)</div>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={ledgerModal.openingBalanceEdit}
+                                                onChange={e => setLedgerModal(prev => ({ ...prev, openingBalanceEdit: e.target.value }))}
+                                                placeholder={String(ledgerModal.user.opening_balance)}
+                                                className="w-32 px-2.5 py-1.5 text-xs font-bold border border-blue-200 rounded-[var(--r-sm)] bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                            />
+                                            <button
+                                                disabled={ledgerModal.savingOpeningBalance || ledgerModal.openingBalanceEdit === ''}
+                                                onClick={async () => {
+                                                    if (!ledgerModal.user) return
+                                                    setLedgerModal(prev => ({ ...prev, savingOpeningBalance: true }))
+                                                    const val = parseFloat(ledgerModal.openingBalanceEdit)
+                                                    if (isNaN(val) || val < 0) {
+                                                        setLedgerModal(prev => ({ ...prev, savingOpeningBalance: false }))
+                                                        return
+                                                    }
+                                                    await updateOpeningBalanceAction(ledgerModal.user.id, val)
+                                                    setLedgerModal(prev => ({
+                                                        ...prev,
+                                                        savingOpeningBalance: false,
+                                                        openingBalanceEdit: '',
+                                                        showOpeningBalanceEditor: false,
+                                                        user: prev.user ? { ...prev.user, opening_balance: val } : null
+                                                    }))
+                                                }}
+                                                className="px-3 py-1.5 text-[11px] font-black text-white bg-blue-500 hover:bg-blue-600 rounded-[var(--r-sm)] flex items-center gap-1 transition disabled:opacity-50"
+                                            >
+                                                {ledgerModal.savingOpeningBalance ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                                                Save
+                                            </button>
+                                        </div>
+                                    )}
 
                                     {/* Transaction Table */}
                                     <div className="space-y-2">
@@ -1886,7 +1979,7 @@ export default function StaffManager({
                                                             <td colSpan={8} className="text-center py-10 text-sm text-ink-muted font-bold">No ledger transactions recorded yet</td>
                                                         </tr>
                                                     ) : ledgerModal.entries.map((entry, idx) => {
-                                                        const isTaken = ['salary_payout', 'advance_payment', 'bonus'].includes(entry.entry_type)
+                                                        const isTaken = PAY_ENTRY_TYPES.includes(entry.entry_type)
                                                         const isAmountToPay = entry.entry_type === 'accrual'
                                                         const typeColors: Record<string, string> = {
                                                             salary_payout: 'bg-emerald-50 text-emerald-700 border-emerald-100',
@@ -1900,7 +1993,7 @@ export default function StaffManager({
 
                                                         // Running balance: starts from opening, accruals add, payments/deductions subtract
                                                         const runningBalance = ledgerModal.entries.slice(0, idx + 1).reduce((bal, e) => {
-                                                            if (['salary_payout', 'advance_payment', 'bonus'].includes(e.entry_type)) return bal - Number(e.amount)
+                                                            if (PAY_ENTRY_TYPES.includes(e.entry_type)) return bal - Number(e.amount)
                                                             if (e.entry_type === 'accrual') return bal + Number(e.amount)
                                                             if (e.entry_type === 'deduction') return bal - Number(e.amount)
                                                             return bal
@@ -1940,7 +2033,7 @@ export default function StaffManager({
                                                     <tr className="bg-surface-muted/70 border-t-2 border-hairline">
                                                         <td colSpan={5} className="px-2 py-2.5 text-[11px] font-black text-ink uppercase tracking-wider">Totals</td>
                                                         <td className="px-2 py-2.5 text-right font-black text-xs text-emerald-600 border-r border-hairline whitespace-nowrap">
-                                                            {formatCurrency(ledgerModal.entries.reduce((sum, e) => ['salary_payout','advance_payment','bonus'].includes(e.entry_type) ? sum + Number(e.amount) : sum, 0))}
+                                                            {formatCurrency(ledgerModal.entries.reduce((sum, e) => PAY_ENTRY_TYPES.includes(e.entry_type) ? sum + Number(e.amount) : sum, 0))}
                                                         </td>
                                                         <td className="px-2 py-2.5 text-right font-black text-xs text-violet-600 border-r border-hairline whitespace-nowrap">
                                                             {formatCurrency(Number(ledgerModal.user.opening_balance ?? 0) + ledgerModal.entries.reduce((sum, e) => e.entry_type === 'accrual' ? sum + Number(e.amount) : e.entry_type === 'deduction' ? sum - Number(e.amount) : sum, 0))}
@@ -1948,7 +2041,7 @@ export default function StaffManager({
                                                         <td className={`px-2 py-2.5 text-right font-black text-xs whitespace-nowrap ${
                                                             (() => {
                                                                 const finalBal = ledgerModal.entries.reduce((bal, e) => {
-                                                                    if (['salary_payout','advance_payment','bonus'].includes(e.entry_type)) return bal - Number(e.amount)
+                                                                    if (PAY_ENTRY_TYPES.includes(e.entry_type)) return bal - Number(e.amount)
                                                                     if (e.entry_type === 'accrual') return bal + Number(e.amount)
                                                                     if (e.entry_type === 'deduction') return bal - Number(e.amount)
                                                                     return bal
@@ -1958,7 +2051,7 @@ export default function StaffManager({
                                                         }`}>
                                                             {(() => {
                                                                 const finalBal = ledgerModal.entries.reduce((bal, e) => {
-                                                                    if (['salary_payout','advance_payment','bonus'].includes(e.entry_type)) return bal - Number(e.amount)
+                                                                    if (PAY_ENTRY_TYPES.includes(e.entry_type)) return bal - Number(e.amount)
                                                                     if (e.entry_type === 'accrual') return bal + Number(e.amount)
                                                                     if (e.entry_type === 'deduction') return bal - Number(e.amount)
                                                                     return bal
