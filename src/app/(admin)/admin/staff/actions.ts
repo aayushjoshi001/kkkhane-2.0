@@ -130,3 +130,97 @@ export async function deleteStaffAction(userId: string) {
     return { success: true }
 }
 
+export async function updateStaffSalaryAction(userId: string, salary: number) {
+    const currentUser = await getCurrentUser()
+    const supabase = await createAdminClient()
+
+    // Verify target user belongs to the same restaurant
+    const { data: targetUser } = await supabase
+        .from('users')
+        .select('restaurant_id')
+        .eq('id', userId)
+        .single()
+
+    if (targetUser?.restaurant_id !== currentUser.restaurantId) {
+        return { error: 'Unauthorized' }
+    }
+
+    if (salary < 0) return { error: 'Salary cannot be negative' }
+
+    const { error } = await supabase
+        .from('users')
+        .update({ monthly_salary: salary })
+        .eq('id', userId)
+
+    if (error) return { error: error.message }
+
+    revalidatePath('/admin/staff')
+    return { success: true }
+}
+
+export async function recordLedgerTransactionAction(
+    userId: string,
+    amount: number,
+    entryType: 'salary_payout' | 'advance_payment' | 'bonus' | 'deduction' | 'accrual',
+    paymentMethod: 'cash' | 'bank_transfer' | 'qr_digital' | null,
+    note: string | null
+) {
+    const currentUser = await getCurrentUser()
+    const supabase = await createAdminClient()
+
+    // Verify target user belongs to the same restaurant
+    const { data: targetUser } = await supabase
+        .from('users')
+        .select('restaurant_id')
+        .eq('id', userId)
+        .single()
+
+    if (targetUser?.restaurant_id !== currentUser.restaurantId) {
+        return { error: 'Unauthorized' }
+    }
+
+    if (amount <= 0) return { error: 'Amount must be greater than zero' }
+
+    const { error } = await supabase
+        .from('staff_ledger')
+        .insert({
+            restaurant_id: currentUser.restaurantId,
+            user_id: userId,
+            amount: amount,
+            entry_type: entryType,
+            payment_method: paymentMethod,
+            note: note || '',
+            created_by: currentUser.id
+        })
+
+    if (error) return { error: error.message }
+
+    revalidatePath('/admin/staff')
+    return { success: true }
+}
+
+export async function fetchStaffLedgerAction(userId: string) {
+    const currentUser = await getCurrentUser()
+    const supabase = await createAdminClient()
+
+    // Verify target user belongs to the same restaurant
+    const { data: targetUser } = await supabase
+        .from('users')
+        .select('restaurant_id')
+        .eq('id', userId)
+        .single()
+
+    if (targetUser?.restaurant_id !== currentUser.restaurantId) {
+        throw new Error('Unauthorized')
+    }
+
+    const { data, error } = await supabase
+        .from('staff_ledger')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+
+    if (error) throw new Error(error.message)
+    return data
+}
+
