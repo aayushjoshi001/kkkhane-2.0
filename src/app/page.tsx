@@ -270,9 +270,8 @@ export default async function Home() {
             <section className="py-24 bg-transparent">
                 <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="grid lg:grid-cols-2 gap-16 items-center">
-                        <div className="order-2 lg:order-1 relative w-full max-w-md mx-auto aspect-[3/4] bg-surface rounded-[3rem] shadow-2xl border-[12px] border-gray-900 overflow-hidden transform -rotate-3 hover:rotate-0 transition-transform duration-500">
-                            <div className="absolute top-0 inset-x-0 h-7 bg-ink rounded-b-2xl z-10 w-40 mx-auto" />
-                            <Image src="/images/mockups/custom_mockup_2_hd.png" alt="Mobile View" fill className="object-cover object-top" sizes="(max-width: 768px) 80vw, 384px" quality={100} />
+                        <div className="order-2 lg:order-1 relative w-full max-w-xl mx-auto aspect-[4/3] bg-surface rounded-[1.5rem] shadow-2xl border-[12px] border-gray-900 overflow-hidden transform -rotate-2 hover:rotate-0 transition-transform duration-500">
+                            <Image src="/images/mockups/custom_mockup_2_hd.png" alt="Tablet View" fill className="object-cover object-top" sizes="(max-width: 768px) 90vw, 500px" quality={100} />
                         </div>
                         
                         <div className="order-1 lg:order-2 text-center lg:text-left">
