@@ -68,6 +68,7 @@ export default function CashierRoomManager({
     
     // Manual charge addition states
     const [manualCharges, setManualCharges] = useState<any[]>([])
+    const [linkedDiningOrders, setLinkedDiningOrders] = useState<any[]>([])
     const [loadingCharges, setLoadingCharges] = useState(false)
     const [showAddChargeForm, setShowAddChargeForm] = useState(false)
     const [newCharge, setNewCharge] = useState({
@@ -134,7 +135,7 @@ export default function CashierRoomManager({
         setAdvancePayMethod('cash')
     }
 
-    // Fetch active booking details and manual charges when selected room is occupied
+    // Fetch active booking details, manual charges, and linked dining orders when selected room is occupied
     useEffect(() => {
         if (selectedRoom && selectedRoom.status === 'occupied') {
             setLoadingBooking(true)
@@ -154,15 +155,27 @@ export default function CashierRoomManager({
                             })
                             .catch(err => console.error("Error fetching room charges:", err))
                             .finally(() => setLoadingCharges(false))
+
+                        // Fetch waiter-linked dining orders
+                        fetch(`/api/bookings/linked-orders?bookingId=${data.data.id}`)
+                            .then(res => res.json())
+                            .then(linkedRes => {
+                                if (linkedRes.success) {
+                                    setLinkedDiningOrders(linkedRes.items || [])
+                                }
+                            })
+                            .catch(err => console.error("Error fetching linked dining orders:", err))
                     } else {
                         setActiveBooking(null)
                         setManualCharges([])
+                        setLinkedDiningOrders([])
                     }
                 })
                 .catch(err => {
                     console.error("Error fetching room booking details:", err)
                     setActiveBooking(null)
                     setManualCharges([])
+                    setLinkedDiningOrders([])
                 })
                 .finally(() => {
                     setLoadingBooking(false)
@@ -170,6 +183,7 @@ export default function CashierRoomManager({
         } else {
             setActiveBooking(null)
             setManualCharges([])
+            setLinkedDiningOrders([])
             setShowAddChargeForm(false)
         }
     }, [selectedRoom, rooms])
@@ -240,8 +254,9 @@ export default function CashierRoomManager({
         const roomStayCost = stayPriceDetails.cost
         const qrOrdersTotal = qrOrdersDetails?.total || 0
         const manualChargesTotal = manualCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
-        return roomStayCost + qrOrdersTotal + manualChargesTotal
-    }, [stayPriceDetails, qrOrdersDetails, manualCharges])
+        const linkedDiningTotal = linkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+        return roomStayCost + qrOrdersTotal + manualChargesTotal + linkedDiningTotal
+    }, [stayPriceDetails, qrOrdersDetails, manualCharges, linkedDiningOrders])
 
     // Change room status helper
     const handleStatusChange = async (roomId: string, newStatus: 'available' | 'dirty' | 'maintenance') => {
@@ -808,6 +823,26 @@ export default function CashierRoomManager({
                                                         <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
                                                             <span>{item.name} <span className="text-[9px] text-brand-500">({item.quantity}×)</span></span>
                                                             <span className="tabular-nums font-semibold">{money(item.unitPrice * item.quantity)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Waiter Linked Restaurant Dining Row */}
+                                        {linkedDiningOrders.length > 0 && (
+                                            <div className="p-4 space-y-3">
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <p className="font-extrabold text-emerald-600">Restaurant Dining (Table Orders)</p>
+                                                    <span className="font-extrabold text-emerald-600 tabular-nums">
+                                                        {money(linkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0))}
+                                                    </span>
+                                                </div>
+                                                <div className="space-y-1.5 pl-3 border-l-2 border-emerald-100 max-h-28 overflow-y-auto">
+                                                    {linkedDiningOrders.map((item, idx) => (
+                                                        <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
+                                                            <span>{item.menu_items?.name || 'Item'} <span className="text-[9px] text-brand-500">({item.quantity}×)</span></span>
+                                                            <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
                                                         </div>
                                                     ))}
                                                 </div>
