@@ -354,11 +354,8 @@ export async function placeStaffOrder(
             .update({ status: 'confirmed', needs_confirmation: false })
             .eq('id', result.order_id)
 
-        // Deduct ingredient stock immediately
-        const deductResult = await adminSupabase.rpc('deduct_ingredients_for_order', { p_order_id: result.order_id })
-        if (deductResult.error) {
-            console.error('[placeStaffOrder] deduct_ingredients RPC error:', deductResult.error)
-        }
+        // place_order() already deducted stock/ingredients inline for every item —
+        // do not call deduct_ingredients_for_order here, it would double-deduct.
 
         revalidatePath('/waiter')
         revalidatePath('/cashier')

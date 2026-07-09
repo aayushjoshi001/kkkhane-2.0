@@ -369,10 +369,9 @@ export async function placeOrder(
                 .update({ needs_confirmation: true })
                 .eq('id', result.order_id)
         } else {
-            const deductResult = await supabase.rpc('deduct_ingredients_for_order', { p_order_id: result.order_id })
-            if (deductResult.error) {
-                console.error('[order]', result.order_id, 'deduct_ingredients RPC error:', deductResult.error)
-            } else if (sessionData.restaurant_id) {
+            // place_order() already deducted stock/ingredients inline for every item —
+            // do not call deduct_ingredients_for_order here, it would double-deduct.
+            if (sessionData.restaurant_id) {
                 void checkAndAlertLowStock(sessionData.restaurant_id)
             }
         }
@@ -525,14 +524,17 @@ async function placeOrderFallback(
 
         // Use variation price if a variation_id is provided, otherwise fall back to base price
         let unitPrice = Number(menuItem.price ?? 0)
+        let variationId: string | null = null
         if (item.variation_id) {
             const { data: variation } = await supabase
                 .from('menu_item_variations')
-                .select('price')
+                .select('id, price')
                 .eq('id', item.variation_id)
+                .eq('menu_item_id', menuItem.id)
                 .single()
             if (variation) {
                 unitPrice = Number(variation.price)
+                variationId = variation.id
             }
         }
 
@@ -541,6 +543,7 @@ async function placeOrderFallback(
             .insert({
                 order_id: orderId,
                 menu_item_id: menuItem.id,
+                menu_item_variation_id: variationId,
                 quantity: item.quantity,
                 unit_price: unitPrice,
                 special_request: item.special_request,

@@ -51,7 +51,7 @@ export async function deleteCategoryAction(id: string) {
 export async function addItemAction(
     item: Record<string, unknown>,
     variations?: { name: string; price: number; is_available?: boolean; image_url?: string | null }[],
-    recipe?: { ingredient_id: string; quantity_needed: number }[]
+    recipe?: { ingredient_id: string; quantity_needed: number; variation_name?: string | null }[]
 ) {
     const supabase = await createAdminClient()
 
@@ -85,23 +85,59 @@ export async function addItemAction(
 
     if (error) return { error: error.message }
 
-    // Best-effort rollback of the just-created item (and any children written so
-    // far) when a child insert fails. Without this the item is left orphaned and
-    // the caller — which only reloads on `data` — silently drops it, so a retry
-    // creates a duplicate.
+    // Best-effort rollback of the just-created item
     const rollbackItem = async () => {
-        await supabase.from('recipes').delete().eq('menu_item_id', data.id)
-        await supabase.from('menu_item_variations').delete().eq('menu_item_id', data.id)
-        await supabase.from('menu_items').delete().eq('id', data.id)
+        if (data.id) {
+            await supabase.from('recipes').delete().eq('menu_item_id', data.id)
+            await supabase.from('menu_item_variations').delete().eq('menu_item_id', data.id)
+            await supabase.from('menu_items').delete().eq('id', data.id)
+        }
     }
 
-    // If recipe is provided, insert it
-    if (recipe && recipe.length > 0) {
-        const recipesToInsert = recipe.map(r => ({
+    // 1. If variations are provided, insert them first so we can map variation names to IDs
+    let variationNameIdMap: Record<string, string> = {}
+    if (variations && variations.length > 0) {
+        const variationsToInsert = variations.map(v => ({
             menu_item_id: data.id,
-            ingredient_id: r.ingredient_id,
-            quantity_needed: Number(r.quantity_needed)
+            name: v.name,
+            price: Number(v.price),
+            is_available: v.is_available ?? true,
+            image_url: v.image_url || null
         }))
+        const { data: insertedVars, error: varError } = await supabase
+            .from('menu_item_variations')
+            .insert(variationsToInsert)
+            .select('id, name')
+
+        if (varError) {
+            console.error('Failed to save variations:', varError)
+            await rollbackItem()
+            return { error: `Failed to save variations: ${varError.message}` }
+        }
+
+        insertedVars?.forEach(v => {
+            variationNameIdMap[v.name.toLowerCase().trim()] = v.id
+        })
+    }
+
+    // 2. If recipe is provided, insert it
+    if (recipe && recipe.length > 0) {
+        const recipesToInsert = recipe
+            .map(r => {
+                const varName = r.variation_name?.toLowerCase().trim()
+                // varName set but unresolvable means the row references a variation that
+                // was never created (client bug) — drop it rather than silently attaching
+                // it to the whole item, which would over-deduct on every order.
+                if (varName && !variationNameIdMap[varName]) return null
+                const varId = varName ? variationNameIdMap[varName] : null
+                return {
+                    menu_item_id: varId ? null : data.id,
+                    menu_item_variation_id: varId || null,
+                    ingredient_id: r.ingredient_id,
+                    quantity_needed: Number(r.quantity_needed)
+                }
+            })
+            .filter((r): r is NonNullable<typeof r> => r !== null)
         const { error: recipeError } = await supabase
             .from('recipes')
             .insert(recipesToInsert)
@@ -113,26 +149,6 @@ export async function addItemAction(
         }
     }
 
-    // If variations are provided, insert them
-    if (variations && variations.length > 0) {
-        const variationsToInsert = variations.map(v => ({
-            menu_item_id: data.id,
-            name: v.name,
-            price: Number(v.price),
-            is_available: v.is_available ?? true,
-            image_url: v.image_url || null
-        }))
-        const { error: varError } = await supabase
-            .from('menu_item_variations')
-            .insert(variationsToInsert)
-
-        if (varError) {
-            console.error('Failed to save variations:', varError)
-            await rollbackItem()
-            return { error: `Failed to save variations: ${varError.message}` }
-        }
-    }
-
     revalidatePath('/admin/menu')
     return { data }
 }
@@ -141,7 +157,7 @@ export async function updateItemAction(
     id: string,
     updates: Record<string, unknown>,
     variations?: { id?: string; name: string; price: number; is_available?: boolean; image_url?: string | null }[],
-    recipe?: { ingredient_id: string; quantity_needed: number }[]
+    recipe?: { ingredient_id: string; quantity_needed: number; variation_id?: string | null; variation_name?: string | null }[]
 ) {
     const supabase = await createAdminClient()
     
@@ -155,58 +171,19 @@ export async function updateItemAction(
 
     if (error) return { error: error.message }
 
-    // If recipe is provided, sync it. The delete-then-insert is not atomic, so
-    // snapshot the existing rows first and restore them if the insert fails —
-    // otherwise a transient error silently wipes the item's saved recipe.
-    if (recipe) {
-        const { data: prevRecipe } = await supabase
-            .from('recipes')
-            .select('ingredient_id, quantity_needed')
-            .eq('menu_item_id', id)
+    let variationNameIdMap: Record<string, string> = {}
 
-        await supabase
-            .from('recipes')
-            .delete()
-            .eq('menu_item_id', id)
-
-        if (recipe.length > 0) {
-            const recipesToInsert = recipe.map(r => ({
-                menu_item_id: id,
-                ingredient_id: r.ingredient_id,
-                quantity_needed: Number(r.quantity_needed)
-            }))
-            const { error: recipeError } = await supabase
-                .from('recipes')
-                .insert(recipesToInsert)
-            if (recipeError) {
-                console.error('Failed to save recipe:', recipeError)
-                // Restore the previous recipe so the edit doesn't lose it.
-                if (prevRecipe && prevRecipe.length > 0) {
-                    await supabase.from('recipes').insert(
-                        prevRecipe.map(r => ({
-                            menu_item_id: id,
-                            ingredient_id: r.ingredient_id,
-                            quantity_needed: r.quantity_needed
-                        }))
-                    )
-                }
-                return { error: `Failed to save recipe: ${recipeError.message}` }
-            }
-        }
-    }
-
-    // If variations are provided, sync them
+    // 1. Sync variations first
     if (variations) {
-        // 1. Get existing variations from DB to determine what to insert, update, or delete
         const { data: existingVars } = await supabase
             .from('menu_item_variations')
-            .select('id')
+            .select('id, name')
             .eq('menu_item_id', id)
 
         const existingIds = (existingVars || []).map(v => v.id)
         const incomingIds = variations.filter(v => v.id).map(v => v.id!)
 
-        // Deletions: existing but not incoming
+        // Deletions
         const toDelete = existingIds.filter(eid => !incomingIds.includes(eid))
         if (toDelete.length > 0) {
             await supabase
@@ -215,7 +192,7 @@ export async function updateItemAction(
                 .in('id', toDelete)
         }
 
-        // Inserts: no id
+        // Inserts
         const toInsert = variations
             .filter(v => !v.id)
             .map(v => ({
@@ -226,12 +203,17 @@ export async function updateItemAction(
                 image_url: v.image_url || null
             }))
         if (toInsert.length > 0) {
-            await supabase
+            const { data: insertedVars } = await supabase
                 .from('menu_item_variations')
                 .insert(toInsert)
+                .select('id, name')
+
+            insertedVars?.forEach(v => {
+                variationNameIdMap[v.name.toLowerCase().trim()] = v.id
+            })
         }
 
-        // Updates: has id and exists in existingIds
+        // Updates
         const toUpdate = variations.filter(v => v.id && existingIds.includes(v.id))
         for (const v of toUpdate) {
             await supabase
@@ -243,6 +225,77 @@ export async function updateItemAction(
                     image_url: v.image_url || null
                 })
                 .eq('id', v.id)
+
+            if (v.id) {
+                variationNameIdMap[v.name.toLowerCase().trim()] = v.id
+                variationNameIdMap[v.id] = v.id
+            }
+        }
+    }
+
+    // 2. Sync recipes
+    if (recipe) {
+        // Fetch all current variations of this item
+        const { data: currentVars } = await supabase
+            .from('menu_item_variations')
+            .select('id')
+            .eq('menu_item_id', id)
+
+        const varIds = (currentVars || []).map(v => v.id)
+
+        // Snapshot existing recipes for potential rollback
+        const selectQuery = supabase.from('recipes').select('ingredient_id, quantity_needed, menu_item_id, menu_item_variation_id')
+        const deleteQuery = supabase.from('recipes').delete()
+
+        if (varIds.length > 0) {
+            selectQuery.or(`menu_item_id.eq.${id},menu_item_variation_id.in.(${varIds.join(',')})`)
+            deleteQuery.or(`menu_item_id.eq.${id},menu_item_variation_id.in.(${varIds.join(',')})`)
+        } else {
+            selectQuery.eq('menu_item_id', id)
+            deleteQuery.eq('menu_item_id', id)
+        }
+
+        const { data: prevRecipe } = await selectQuery
+        await deleteQuery
+
+        if (recipe.length > 0) {
+            const recipesToInsert = recipe
+                .map(r => {
+                    const varRef = (r.variation_id || r.variation_name)?.toLowerCase().trim()
+                    // varRef set but unresolvable means this row references a variation that
+                    // no longer exists (e.g. deleted in this same edit) — drop it rather than
+                    // silently attaching it to the whole item, which would over-deduct on
+                    // every order regardless of which variation was ordered.
+                    if (varRef && !variationNameIdMap[varRef]) return null
+                    const varId = varRef ? variationNameIdMap[varRef] : null
+
+                    return {
+                        menu_item_id: varId ? null : id,
+                        menu_item_variation_id: varId || null,
+                        ingredient_id: r.ingredient_id,
+                        quantity_needed: Number(r.quantity_needed)
+                    }
+                })
+                .filter((r): r is NonNullable<typeof r> => r !== null)
+
+            const { error: recipeError } = await supabase
+                .from('recipes')
+                .insert(recipesToInsert)
+
+            if (recipeError) {
+                console.error('Failed to save recipe:', recipeError)
+                if (prevRecipe && prevRecipe.length > 0) {
+                    await supabase.from('recipes').insert(
+                        prevRecipe.map(r => ({
+                            menu_item_id: r.menu_item_id,
+                            menu_item_variation_id: r.menu_item_variation_id,
+                            ingredient_id: r.ingredient_id,
+                            quantity_needed: r.quantity_needed
+                        }))
+                    )
+                }
+                return { error: `Failed to save recipe: ${recipeError.message}` }
+            }
         }
     }
 
@@ -252,12 +305,27 @@ export async function updateItemAction(
 
 export async function getItemRecipeAction(menuItemId: string) {
     const supabase = await createAdminClient()
-    const { data, error } = await supabase
-        .from('recipes')
-        .select('ingredient_id, quantity_needed, ingredients(name, unit)')
+
+    const { data: variations } = await supabase
+        .from('menu_item_variations')
+        .select('id')
         .eq('menu_item_id', menuItemId)
+
+    const variationIds = (variations || []).map(v => v.id)
+
+    const query = supabase
+        .from('recipes')
+        .select('ingredient_id, quantity_needed, menu_item_variation_id, ingredients(name, unit)')
+
+    if (variationIds.length > 0) {
+        query.or(`menu_item_id.eq.${menuItemId},menu_item_variation_id.in.(${variationIds.join(',')})`)
+    } else {
+        query.eq('menu_item_id', menuItemId)
+    }
+
+    const { data, error } = await query
     if (error) return { error: error.message }
-    return { data }
+    return { data: data || [] }
 }
 
 export async function deleteItemAction(id: string) {
