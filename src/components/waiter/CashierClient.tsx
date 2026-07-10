@@ -553,7 +553,16 @@ export default function CashierClient({
                 setUnpaid(prev => prev.filter(o => o.id !== id))
                 setActive(prev => prev.filter(o => o.id !== id))
             } else {
-                setActive(prev => prev.map(o => o.id === id ? { ...o, status, total_amount: payload.new.total_amount } : o))
+                setActive(prev => prev.map(o => o.id === id ? { 
+                    ...o, 
+                    status, 
+                    total_amount: payload.new.total_amount,
+                    booking_id: payload.new.booking_id,
+                    order_type: payload.new.order_type,
+                    customer_name: payload.new.customer_name,
+                    customer_phone: payload.new.customer_phone,
+                    delivery_address: payload.new.delivery_address
+                } : o))
             }
         }
     })
