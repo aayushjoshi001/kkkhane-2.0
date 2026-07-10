@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { createPortal } from 'react-dom'
 import { X, Search, Plus, Minus, Trash2, Loader2, ShoppingCart, Utensils, MessageSquare } from 'lucide-react'
+import Modal from '@/components/ui/Modal'
 import { getStaffMenu, placeStaffOrder } from '@/app/(staff)/waiter/actions'
 import { toast } from 'react-hot-toast'
 
@@ -312,15 +312,9 @@ export default function QuickOrderModal({
         }
     }
 
-    return createPortal(
-        <div 
-            className="fixed inset-0 z-[10000] flex items-center justify-center p-0 md:p-4 bg-black/60 backdrop-blur-sm"
-            onClick={onClose}
-        >
-            <div 
-                className="bg-surface rounded-none md:rounded-[24px] border border-hairline shadow-2xl w-full max-w-5xl h-full md:h-[85vh] flex flex-col overflow-hidden"
-                onClick={e => e.stopPropagation()}
-            >
+    return (
+        <>
+        <Modal open={isOpen} onClose={onClose} size="full" ariaLabel="Quick POS Order" className="flex flex-col overflow-hidden">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
                     <div className="flex items-center gap-3">
@@ -574,18 +568,18 @@ export default function QuickOrderModal({
                         </div>
                     </div>
                 )}
-            </div>
+        </Modal>
 
             {/* Customization Sub-Modal (Variation & Modifiers Selection) */}
-            {configuringItem && (
-                <div 
-                    className="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-black/40"
-                    onClick={() => setConfiguringItem(null)}
-                >
-                    <div 
-                        className="bg-surface rounded-[20px] border border-hairline shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[80vh]"
-                        onClick={e => e.stopPropagation()}
-                    >
+            <Modal
+                open={!!configuringItem}
+                onClose={() => setConfiguringItem(null)}
+                size="md"
+                ariaLabel={configuringItem?.name ?? 'Customize item'}
+                className="flex flex-col overflow-hidden max-h-[80vh]"
+            >
+                {configuringItem && (
+                    <>
                         <div className="px-5 py-3 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
                             <div>
                                 <h4 className="text-body font-black text-ink">{configuringItem.name}</h4>
@@ -688,11 +682,10 @@ export default function QuickOrderModal({
                                 Add to Cart
                             </button>
                         </div>
-                    </div>
-                </div>
-            )}
-        </div>,
-        document.body
+                    </>
+                )}
+            </Modal>
+        </>
     )
 }
 

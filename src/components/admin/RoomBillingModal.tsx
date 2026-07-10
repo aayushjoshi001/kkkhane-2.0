@@ -4,7 +4,7 @@ import { useState, useEffect, useSyncExternalStore } from 'react'
 import { X, Loader2 } from 'lucide-react'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
-import { createPortal } from 'react-dom'
+import Modal from '@/components/ui/Modal'
 import { formatDateTime, calculateNights } from '@/lib/utils'
 
 /** Table shape the admin room pages pass in (with its active QR session, if any). */
@@ -182,15 +182,14 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
 
     if (!mounted) return null
 
-    return createPortal(
-        <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-300"
-            onClick={onClose}
+    return (
+        <Modal
+            open
+            onClose={onClose}
+            size="xl"
+            ariaLabel={`Room ${room.room_number} billing`}
+            className="bg-white flex flex-col overflow-hidden max-h-[90vh] md:max-h-[85vh]"
         >
-            <div
-                className="bg-white w-full max-w-2xl rounded-[28px] shadow-2xl overflow-hidden border border-gray-150 flex flex-col max-h-[90vh] md:max-h-[85vh] animate-in zoom-in-95 duration-200"
-                onClick={e => e.stopPropagation()}
-            >
                 <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 bg-gray-50/50 flex-shrink-0">
                     <div>
                         <h3 className="text-lg font-black text-gray-900">Room {room.room_number} stays details</h3>
@@ -408,8 +407,6 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                         <p className="text-xs text-gray-400">No active stay found for this room.</p>
                     </div>
                 )}
-            </div>
-        </div>,
-        document.body
+        </Modal>
     )
 }

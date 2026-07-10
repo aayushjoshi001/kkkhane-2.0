@@ -2,15 +2,19 @@
 
 import { useConfirmStore } from '@/lib/stores/confirm'
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
+import Modal from '@/components/ui/Modal'
 
 export function ConfirmModal() {
     const { isOpen, title, message, confirmText, cancelText, isDestructive, handleConfirm, handleCancel } = useConfirmStore()
 
-    if (!isOpen) return null
-
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ink/40 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-surface rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 border border-hairline">
+        <Modal
+            open={isOpen}
+            onClose={handleCancel}
+            size="sm"
+            layer="top"
+            ariaLabel={title}
+        >
                 <div className="p-6">
                     <div className="flex items-start gap-4">
                         <div className={`shrink-0 flex items-center justify-center w-10 h-10 rounded-full ${isDestructive ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
@@ -27,7 +31,7 @@ export function ConfirmModal() {
                     </div>
                 </div>
 
-                <div className="px-6 py-4 bg-surface-muted border-t border-hairline flex justify-end gap-3 rounded-b-2xl">
+                <div className="px-6 py-4 bg-surface-muted border-t border-hairline flex justify-end gap-3 sm:rounded-b-[24px]">
                     <button
                         onClick={handleCancel}
                         className="px-4 py-2 text-sm font-medium text-ink-muted bg-surface border border-hairline-strong rounded-lg shadow-sm hover:bg-surface-muted transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--color-primary)]/50"
@@ -44,7 +48,6 @@ export function ConfirmModal() {
                         {confirmText}
                     </button>
                 </div>
-            </div>
-        </div>
+        </Modal>
     )
 }

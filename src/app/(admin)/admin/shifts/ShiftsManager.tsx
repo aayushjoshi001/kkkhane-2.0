@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { approveShiftAction, forceClockOutAction, correctShiftAction } from './actions'
 import { Clock, CheckCircle, LogOut, User, Pencil, X, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import Modal from '@/components/ui/Modal'
 
 interface ShiftRow {
     id: string
@@ -85,8 +86,7 @@ function CorrectionModal({ shift, onClose, onSaved }: {
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-surface rounded-card shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 text-left">
+        <Modal open onClose={onClose} size="sm" ariaLabel={`Correct shift — ${getStaffName(shift)}`} className="text-left">
                 <div className="px-6 py-5 border-b border-hairline bg-surface-muted/30 flex justify-between items-center">
                     <h2 className="text-h3 font-extrabold text-ink flex items-center gap-2">
                         <div className="w-8 h-8 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 shadow-[inset_0_2px_4px_rgba(251,99,3,0.05)]">
@@ -135,8 +135,7 @@ function CorrectionModal({ shift, onClose, onSaved }: {
                         Save Correction
                     </button>
                 </div>
-            </div>
-        </div>
+        </Modal>
     )
 }
 

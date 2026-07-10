@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, Fragment } from 'react'
+import Modal from '@/components/ui/Modal'
 import { createIngredientAction, addStockMovementAction, deleteIngredientAction, updateIngredientAction, createIngredientCategoryAction, createIngredientSupplierAction } from './actions'
 import { createVoucherAction } from '../vouchers/actions'
 import { Plus, Trash2, Edit2, AlertTriangle, Package, X, Check, Loader2 } from 'lucide-react'
@@ -327,8 +328,17 @@ export default function IngredientsManager({
 
             {/* Add/Edit Stock Modal Popup */}
             {showAdd && (
-                <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className="bg-surface rounded-card shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 text-left">
+                <Modal
+                    open
+                    onClose={() => {
+                        setShowAdd(false)
+                        setEditingItem(null)
+                        setForm({ name: '', unit: 'kg', stock_quantity: '', reorder_level: '10', cost_per_unit: '', supplier: '', category_id: '' })
+                    }}
+                    size="md"
+                    ariaLabel={editingItem ? 'Edit Stock Item' : 'Create New Stock Item'}
+                    className="text-left"
+                >
                         <div className="px-6 py-5 border-b border-hairline bg-surface-muted/30 flex justify-between items-center">
                             <h3 className="text-h3 font-extrabold text-ink">{editingItem ? 'Edit Stock Item' : 'Create New Stock Item'}</h3>
                             <button onClick={() => {
@@ -558,14 +568,12 @@ export default function IngredientsManager({
                                 {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} {editingItem ? 'Save Changes' : 'Create Stock'}
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Stock Movement Modal */}
             {stockModal && (
-                <div className="fixed inset-0 z-50 bg-ink/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className="bg-surface rounded-card w-full max-w-md p-6 space-y-6 shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-hairline animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+                <Modal open onClose={() => setStockModal(null)} size="md" ariaLabel={`Stock movement — ${stockModal.name}`} className="p-6 space-y-6">
                         <div>
                             <h3 className="text-h3 font-extrabold text-ink">Stock Movement — {stockModal.name}</h3>
                             <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-1">Current Stock: <span className="text-brand-500">{stockModal.stock_quantity} {stockModal.unit}</span></p>
@@ -675,8 +683,7 @@ export default function IngredientsManager({
                                 {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} {saving ? 'Saving...' : 'Submit'}
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Stock Table */}

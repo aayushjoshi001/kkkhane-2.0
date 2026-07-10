@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import type { DayBookSession, DayBookEntry, DayBookEntryCategory, ExpenseCategory } from '@/types/database'
 import { toast } from 'react-hot-toast'
+import Modal from '@/components/ui/Modal'
 
 interface CashBookClientProps {
     initialSession: DayBookSession | null
@@ -569,8 +570,7 @@ export default function CashBookClient({
 
             {/* ── Add Entry Modal ── */}
             {entryModal && (
-                <div className="fixed inset-0 z-50 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl max-w-md w-full border border-gray-150 shadow-xl overflow-hidden animate-in zoom-in-95 duration-150">
+                <Modal open onClose={() => setEntryModal(null)} size="md" ariaLabel={`Add cash ${entryModal.type === 'cash_in' ? 'in' : 'out'}`} className="bg-white overflow-hidden">
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                             <h3 className="font-extrabold text-gray-900 flex items-center gap-2">
                                 {entryModal.type === 'cash_in' ? <TrendingUp className="text-emerald-500" size={18} /> : <TrendingDown className="text-rose-500" size={18} />}
@@ -677,8 +677,7 @@ export default function CashBookClient({
                                 Add Entry
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
         </div>

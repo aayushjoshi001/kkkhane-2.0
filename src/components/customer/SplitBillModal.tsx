@@ -6,6 +6,7 @@ import { createBillSplit } from '@/app/api/billing/actions'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import type { SplitType } from '@/types/database'
 import { toast } from 'react-hot-toast'
+import Modal from '@/components/ui/Modal'
 
 export default function SplitBillModal({
     sessionId,
@@ -39,8 +40,7 @@ export default function SplitBillModal({
     }
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-4">
-            <div className="bg-surface rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+        <Modal open onClose={onClose} size="md" ariaLabel="Split the Bill" className="overflow-hidden">
                 {/* Header */}
                 <div className="px-5 py-4 border-b border-hairline flex items-center justify-between">
                     <h2 className="font-semibold text-lg text-ink">Split the Bill</h2>
@@ -139,8 +139,7 @@ export default function SplitBillModal({
                         </div>
                     )}
                 </div>
-            </div>
-        </div>
+        </Modal>
     )
 
     async function handleSplitBySeat() {

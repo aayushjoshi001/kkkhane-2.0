@@ -6,6 +6,7 @@ import { QrCode, Plus, Edit2, Trash2, Check, X, Loader2, Download, Smartphone } 
 import NextImage from 'next/image'
 import type { Table } from '@/types/database'
 import { QRCodeCanvas } from 'qrcode.react'
+import Modal from '@/components/ui/Modal'
 import { updateTableAction, deleteTableAction, addTableAction } from '@/app/(admin)/admin/tables/actions'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
@@ -302,8 +303,7 @@ export default function TableManager({
 
             {/* Table Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setIsModalOpen(false)} size="sm" ariaLabel={editingTable ? 'Edit Table' : 'Add Table'}>
                         <div className="px-6 py-5 border-b border-hairline flex justify-between items-center bg-surface-muted/30">
                             <h3 className="text-h3 font-extrabold text-ink">{editingTable ? 'Edit Table' : 'Add Table'}</h3>
                             <button onClick={() => setIsModalOpen(false)} className="text-ink-subtle hover:text-ink transition-colors p-1 rounded-full hover:bg-surface-muted focus-ring">
@@ -342,8 +342,7 @@ export default function TableManager({
                                 {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} Save
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* URL/Phone Preview Modal - ALWAYS RENDERED but conditionally visible for instant iframe swapping */}

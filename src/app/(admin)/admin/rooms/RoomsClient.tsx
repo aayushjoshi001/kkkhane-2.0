@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Plus, Filter, Bed, Brush, Wrench, CheckCircle2, ChevronRight, Download, Loader2, X, Users, Calendar, Phone } from 'lucide-react'
 import type { Room, RoomType, RoomStatus, Booking } from '@/types/database'
 import EmptyState from '@/components/ui/EmptyState'
+import Modal from '@/components/ui/Modal'
 import { QRCodeCanvas } from 'qrcode.react'
 import { toast } from 'react-hot-toast'
 import RoomBillingModal, { type BillingTable, type BillingOrder } from '@/components/admin/RoomBillingModal'
@@ -716,8 +717,7 @@ export default function RoomsClient({
 
             {/* ── Book Room Modal ── */}
             {isBookModalOpen && selectedRoom && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
+                <Modal open onClose={() => setIsBookModalOpen(false)} size="md" ariaLabel={`Book Room ${selectedRoom.room_number}`} className="bg-white overflow-hidden">
                         <div className="px-6 py-5 bg-[#ff5a00] flex items-center justify-between text-white">
                             <div className="flex items-center gap-3">
                                 <Calendar size={22} />
@@ -844,14 +844,12 @@ export default function RoomsClient({
                                 </button>
                             </div>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* ── Add Room Modal ── */}
             {isAddRoomOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
+                <Modal open onClose={() => setIsAddRoomOpen(false)} size="md" ariaLabel="Add New Room" className="bg-white overflow-hidden">
                         <div className="px-6 py-5 bg-[#ff5a00] flex items-center justify-between text-white">
                             <div className="flex items-center gap-3">
                                 <Bed size={22} />
@@ -924,14 +922,12 @@ export default function RoomsClient({
                                 </button>
                             </div>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* ── Add Room Type (Category) Modal ── */}
             {isAddTypeOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
+                <Modal open onClose={() => setIsAddTypeOpen(false)} size="md" ariaLabel="Add Room Type" className="bg-white overflow-hidden">
                         <div className="px-6 py-5 bg-gray-900 flex items-center justify-between text-white">
                             <div className="flex items-center gap-3">
                                 <Bed size={22} className="text-[#ff5a00]" />
@@ -1005,13 +1001,11 @@ export default function RoomsClient({
                                 </button>
                             </div>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
             {/* ── Confirm Close Modal ── */}
             {isConfirmCloseOpen && selectedRoom && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-gray-100">
+                <Modal open onClose={() => setIsConfirmCloseOpen(false)} size="md" ariaLabel="Confirm checkout" className="bg-white overflow-hidden">
                         <div className="px-6 py-5 bg-rose-600 flex items-center justify-between text-white">
                             <div className="flex items-center gap-3">
                                 <Wrench size={22} />
@@ -1045,8 +1039,7 @@ export default function RoomsClient({
                                 </button>
                             </div>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Billing Stay Details modal */}

@@ -8,6 +8,7 @@ import {
 import { formatCurrency } from '@/lib/utils'
 import { createBankAccountAction } from '../bank-book/actions'
 import { toast } from 'react-hot-toast'
+import Modal from '@/components/ui/Modal'
 
 interface BankAccount {
     id: string
@@ -467,15 +468,7 @@ export default function BankLedgerManager({
 
             {/* Add Bank Modal */}
             {addBankModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                    {/* Backdrop */}
-                    <div 
-                        className="fixed inset-0 bg-[#0a0a0a]/60 backdrop-blur-md transition-opacity duration-300"
-                        onClick={() => setAddBankModalOpen(false)}
-                    />
-                    
-                    {/* Modal Box */}
-                    <div className="bg-white rounded-2xl border border-gray-100 shadow-2xl w-full max-w-md relative z-10 overflow-hidden animate-in fade-in-50 zoom-in-95 duration-200">
+                <Modal open onClose={() => setAddBankModalOpen(false)} size="md" ariaLabel="Add bank account" className="bg-white overflow-hidden">
                         <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
                             <div>
                                 <h3 className="font-extrabold text-gray-900 text-sm">Register New Bank Account</h3>
@@ -549,8 +542,7 @@ export default function BankLedgerManager({
                                 Register Bank Account
                             </button>
                         </form>
-                    </div>
-                </div>
+                </Modal>
             )}
         </div>
     )

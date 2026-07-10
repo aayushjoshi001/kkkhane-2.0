@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import useSWR from 'swr'
 import { NepaliInput } from '@/components/ui/NepaliInput'
+import Modal from '@/components/ui/Modal'
 import Image from 'next/image'
 import { Plus, Edit2, Trash2, GripVertical, Check, X, Tag, Loader2, Image as ImageIcon, Globe, Upload, Link, Search } from 'lucide-react'
 import type { MenuCategory, MenuItem, Ingredient, StationKind } from '@/types/database'
@@ -686,8 +687,7 @@ export default function MenuManager({
 
             {/* Category Modal Overlay */}
             {isCategoryModalOpen && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setIsCategoryModalOpen(false)} size="md" ariaLabel={editingCategory ? 'Edit Category' : 'New Category'}>
                         <div className="px-6 py-5 border-b border-hairline bg-surface-muted/50 flex justify-between items-center">
                             <h3 className="text-h3 text-ink">{editingCategory ? 'Edit Category' : 'New Category'}</h3>
                             <button onClick={() => setIsCategoryModalOpen(false)} className="text-ink-subtle hover:text-ink transition-colors focus-ring rounded-md">
@@ -782,14 +782,12 @@ export default function MenuManager({
                                 {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />} Save Category
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Item Modal Overlay */}
             {isItemModalOpen && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-hairline w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setIsItemModalOpen(false)} size="lg" ariaLabel={editingItem ? 'Edit Item' : 'New Menu Item'} className="flex flex-col overflow-hidden max-h-[90vh]">
                         <div className="px-6 py-5 border-b border-hairline bg-surface-muted/50 flex justify-between items-center shrink-0">
                             <h3 className="text-h3 text-ink">{editingItem ? 'Edit Item' : 'New Menu Item'}</h3>
                             <button onClick={() => setIsItemModalOpen(false)} className="text-ink-subtle hover:text-ink transition-colors focus-ring rounded-md">
@@ -1227,8 +1225,7 @@ export default function MenuManager({
                                 {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />} Save Item
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Translation Modal */}
@@ -1249,8 +1246,7 @@ export default function MenuManager({
 
             {/* Create Stock Modal Overlay */}
             {showAddStockModal && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setShowAddStockModal(false)} size="md" ariaLabel="Create New Stock Item">
                         <div className="px-6 py-5 border-b border-hairline bg-surface-muted/50 flex justify-between items-center">
                             <h3 className="text-h3 text-ink">Create New Stock Item</h3>
                             <button onClick={() => setShowAddStockModal(false)} className="text-ink-subtle hover:text-ink transition-colors focus-ring rounded-md">
@@ -1352,8 +1348,7 @@ export default function MenuManager({
                                 {isCreatingStock ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />} Create Stock
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
         </div>
     )

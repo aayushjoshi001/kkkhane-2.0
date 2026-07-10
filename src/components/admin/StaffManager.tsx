@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import Image from 'next/image'
+import Modal from '@/components/ui/Modal'
 import { Shield, ChefHat, Users, User, Check, AlertTriangle, Loader2, Pencil, Trash2, Eye, EyeOff, Banknote, Search, Mail, X, RotateCw, DollarSign, List, Plus, Calendar, TrendingUp } from 'lucide-react'
 import { updateStaffRoleAction, toggleStaffStatusAction, updateStaffNameAction, resetStaffPasswordAction, deleteStaffAction, updateStaffSalaryAction, updateStaffJoinDateAction, increaseStaffSalaryAction, recordLedgerTransactionAction, fetchStaffLedgerAction, updateOpeningBalanceAction, fetchAutoAccrualPreviewAction, executeAutoAccrualAction } from '@/app/(admin)/admin/staff/actions'
 import { fetchTodayAttendanceAction, markAttendanceAction } from '@/app/(admin)/admin/staff/attendance-actions'
@@ -1522,8 +1523,7 @@ export default function StaffManager({
 
             {/* Edit Staff Modal */}
             {editModal.isOpen && editModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+                <Modal open onClose={() => setEditModal(prev => ({ ...prev, isOpen: false }))} size="md" ariaLabel="Edit Staff" className="flex flex-col overflow-hidden max-h-[90vh]">
                         <div className="px-6 py-5 border-b border-hairline flex items-center justify-between shrink-0 bg-surface-muted/30">
                             <div>
                                 <h3 className="font-extrabold text-ink text-lg">Edit Staff</h3>
@@ -1625,14 +1625,12 @@ export default function StaffManager({
                                 </button>
                             </div>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Role Change Modal */}
             {changeRoleModal.isOpen && changeRoleModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setChangeRoleModal(prev => ({ ...prev, isOpen: false }))} size="md" ariaLabel="Change Role">
                         <div className="p-6">
                             <h3 className="text-h3 font-extrabold text-ink mb-1.5">Change Role</h3>
                             <p className="text-sm text-ink-subtle font-medium mb-6">
@@ -1682,14 +1680,12 @@ export default function StaffManager({
                                 Save Role
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Create Staff Modal */}
             {createModal.isOpen && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setCreateModal(prev => ({ ...prev, isOpen: false }))} size="md" ariaLabel="Create Staff Account">
                         <div className="p-6 pb-0">
                             <h3 className="text-h3 font-extrabold text-ink mb-1.5">Create Staff Account</h3>
                             <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-6">Add a new staff member to your restaurant</p>
@@ -1806,14 +1802,12 @@ export default function StaffManager({
                                 Create Staff
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Invite Staff Modal */}
             {inviteModal.isOpen && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setInviteModal(prev => ({ ...prev, isOpen: false }))} size="md" ariaLabel="Invite via Email">
                         <div className="p-6 pb-0">
                             <h3 className="text-h3 font-extrabold text-ink mb-1.5">Invite via Email</h3>
                             <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-6">They&apos;ll get a link to set their own password</p>
@@ -1879,14 +1873,12 @@ export default function StaffManager({
                                 Send Invite
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Department Modal */}
             {departmentModal.isOpen && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setDepartmentModal(prev => ({ ...prev, isOpen: false }))} size="md" ariaLabel={departmentModal.department ? 'Edit Department' : 'Create Department'}>
                         <div className="px-6 py-5 border-b border-hairline flex items-center justify-between shrink-0 bg-surface-muted/30">
                             <div>
                                 <h3 className="font-extrabold text-ink text-lg">{departmentModal.department ? 'Edit Department' : 'Create Department'}</h3>
@@ -1935,14 +1927,12 @@ export default function StaffManager({
                                 Save Department
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Set/Edit Salary Modal */}
             {salaryModal.isOpen && salaryModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setSalaryModal(prev => ({ ...prev, isOpen: false }))} size="sm" ariaLabel="Set Monthly Salary">
                         <div className="px-6 py-5 border-b border-hairline flex items-center justify-between bg-surface-muted/30">
                             <div>
                                 <h3 className="font-extrabold text-ink text-base">Set Monthly Salary</h3>
@@ -1987,13 +1977,11 @@ export default function StaffManager({
                                 Save Salary
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {joinDateModal.isOpen && joinDateModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setJoinDateModal(prev => ({ ...prev, isOpen: false }))} size="sm" ariaLabel="Set Join Date">
                         <div className="px-6 py-5 border-b border-hairline flex items-center justify-between bg-surface-muted/30">
                             <div>
                                 <h3 className="font-extrabold text-ink text-base">Set Join Date</h3>
@@ -2033,13 +2021,11 @@ export default function StaffManager({
                                 Save Join Date
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {salaryIncreaseModal.isOpen && salaryIncreaseModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setSalaryIncreaseModal(prev => ({ ...prev, isOpen: false }))} size="sm" ariaLabel="Increase Salary">
                         <div className="px-6 py-5 border-b border-hairline flex items-center justify-between bg-surface-muted/30">
                             <div>
                                 <h3 className="font-extrabold text-ink text-base">Increase Salary</h3>
@@ -2108,14 +2094,12 @@ export default function StaffManager({
                                 Save Salary Change
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Record Payment Transaction Modal */}
             {transactionModal.isOpen && transactionModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setTransactionModal(prev => ({ ...prev, isOpen: false }))} size="md" ariaLabel="Record Payment / Ledger Entry">
                         <div className="px-6 py-5 border-b border-hairline flex items-center justify-between bg-surface-muted/30">
                             <div>
                                 <h3 className="font-extrabold text-ink text-base">Record Payment / Ledger Entry</h3>
@@ -2240,14 +2224,12 @@ export default function StaffManager({
                                 Record Entry
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Ledger History Modal */}
             {ledgerModal.isOpen && ledgerModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl rounded-card border border-hairline animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setLedgerModal(prev => ({ ...prev, isOpen: false }))} size="xl" ariaLabel="Staff Ledger Statement" className="max-w-5xl flex flex-col overflow-hidden">
                         {/* Header */}
                         <div className="px-6 py-4 border-b border-hairline flex items-center justify-between shrink-0 bg-surface-muted/30">
                             <div>
@@ -2527,14 +2509,12 @@ export default function StaffManager({
                                 Close Statement
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Bulk Process Monthly Salaries Modal */}
             {autoAccrualModal.isOpen && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl rounded-card border border-hairline animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setAutoAccrualModal(prev => ({ ...prev, isOpen: false }))} size="xl" ariaLabel="Process Monthly Salaries" className="max-w-4xl flex flex-col overflow-hidden max-h-[85vh]">
                         {/* Header */}
                         <div className="px-6 py-4 border-b border-hairline flex items-center justify-between shrink-0 bg-surface-muted/30">
                             <div>
@@ -2665,14 +2645,12 @@ export default function StaffManager({
                                 </button>
                             </div>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Mark Absent Modal — optional reason for today's "Out" */}
             {attendanceOutModal.isOpen && attendanceOutModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setAttendanceOutModal(prev => ({ ...prev, isOpen: false }))} size="sm" ariaLabel="Mark Absent">
                         <div className="p-6 pb-0">
                             <h3 className="text-h3 font-extrabold text-ink mb-1.5">Mark Absent</h3>
                             <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-6">{attendanceOutModal.user.full_name} • Today</p>
@@ -2709,8 +2687,7 @@ export default function StaffManager({
                                 Mark Absent
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
         </div>

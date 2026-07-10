@@ -1,5 +1,7 @@
 export { default as Button } from './Button'
 export type { ButtonProps } from './Button'
+export { default as Modal } from './Modal'
+export type { ModalProps, ModalSize } from './Modal'
 export { default as Card } from './Card'
 export type { CardProps } from './Card'
 export { default as StatCard } from './StatCard'
