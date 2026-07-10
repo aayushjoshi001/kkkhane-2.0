@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { getRestaurantFeatures } from '@/lib/features'
 import { calculateNights } from '@/lib/utils'
 import { logAudit } from '@/lib/audit'
+import { postHotelPaymentIncomeAndLedger } from '@/lib/ledger'
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>
 
@@ -218,7 +219,7 @@ export async function POST(req: Request) {
         // with the advance already collected and to recompute its folio.
         const { data: booking, error: fetchError } = await supabase
             .from('bookings')
-            .select('id, paid_amount, status, check_in, check_out, room_id')
+            .select('id, paid_amount, status, check_in, check_out, room_id, guest_name')
             .eq('id', booking_id)
             .eq('restaurant_id', currentUser.restaurantId)
             .maybeSingle()
@@ -300,6 +301,42 @@ export async function POST(req: Request) {
             .eq('restaurant_id', currentUser.restaurantId)
 
         if (roomError) throw roomError
+ 
+        // Log settlement payments to financial ledger and books automatically
+        const cashPaid = Number(cash_paid) || 0
+        const qrPaid = Number(qr_paid) || 0
+        
+        if (cashPaid > 0 || qrPaid > 0) {
+            const { data: roomContext } = await supabase
+                .from('rooms')
+                .select('room_number')
+                .eq('id', room_id)
+                .single()
+            
+            const roomNumber = roomContext?.room_number || 'Unknown'
+            const guestName = booking.guest_name || 'Guest'
+            
+            if (cashPaid > 0) {
+                await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                    bookingId: booking_id,
+                    roomNumber,
+                    guestName,
+                    amount: cashPaid,
+                    paymentMethod: 'cash',
+                    isAdvance: false
+                })
+            }
+            if (qrPaid > 0) {
+                await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                    bookingId: booking_id,
+                    roomNumber,
+                    guestName,
+                    amount: qrPaid,
+                    paymentMethod: 'qr_digital',
+                    isAdvance: false
+                })
+            }
+        }
 
         void logAudit({
             restaurantId: currentUser.restaurantId,

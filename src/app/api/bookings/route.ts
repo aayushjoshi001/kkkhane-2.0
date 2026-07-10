@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { getOptionalUser } from '@/lib/auth'
+import { postHotelPaymentIncomeAndLedger } from '@/lib/ledger'
 
 export async function POST(req: Request) {
     try {
@@ -82,6 +83,21 @@ export async function POST(req: Request) {
             .eq('restaurant_id', currentUser.restaurantId)
 
         if (updateError) throw updateError
+
+        // Log advance payment to financial ledger and books automatically
+        if (paidAmount > 0) {
+            const roomNumber = room?.room_number || 'Unknown'
+            const paymentMethodMapped = advMethod === 'cash' ? 'cash' : 'qr_digital'
+            
+            await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                bookingId: booking.id,
+                roomNumber,
+                guestName: booking.guest_name,
+                amount: paidAmount,
+                paymentMethod: paymentMethodMapped,
+                isAdvance: true
+            })
+        }
 
         return NextResponse.json({ success: true, data: booking })
     } catch (e: any) {

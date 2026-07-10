@@ -212,5 +212,49 @@ export async function redeemLoyaltyPoints(
         description: `Redeemed ${config.redemption_threshold} points for $${config.redemption_value.toFixed(2)} discount`,
     })
 
+    // Post the discount as a cost so it shows up in Income & Expenses / the
+    // Finance Report — otherwise the real price of running the loyalty
+    // program is invisible outside loyalty_transactions. No cash actually
+    // left the business, so this intentionally never touches the Day Book.
+    if (config.redemption_value > 0) {
+        void postLoyaltyRedemptionExpense(supabase, restaurantId, config.redemption_threshold, config.redemption_value)
+    }
+
     return { discount: config.redemption_value }
+}
+
+async function postLoyaltyRedemptionExpense(
+    supabase: Awaited<ReturnType<typeof createAdminClient>>,
+    restaurantId: string,
+    pointsRedeemed: number,
+    amount: number
+) {
+    let categoryId: string | undefined
+    const { data: existingCategory } = await supabase
+        .from('expense_categories')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .eq('name', 'Loyalty Rewards')
+        .maybeSingle()
+
+    categoryId = existingCategory?.id
+    if (!categoryId) {
+        const { data: newCategory } = await supabase
+            .from('expense_categories')
+            .insert({ restaurant_id: restaurantId, name: 'Loyalty Rewards' })
+            .select('id')
+            .single()
+        categoryId = newCategory?.id
+    }
+    if (!categoryId) return
+
+    const { error } = await supabase.from('expenses').insert({
+        restaurant_id: restaurantId,
+        category_id: categoryId,
+        amount,
+        description: `Loyalty redemption: ${pointsRedeemed} points`,
+        status: 'paid',
+    })
+
+    if (error) console.error('Failed to post loyalty redemption expense:', error)
 }

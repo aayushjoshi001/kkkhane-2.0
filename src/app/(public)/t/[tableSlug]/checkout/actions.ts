@@ -49,7 +49,8 @@ export async function placeOrder(
     customerNote?: string,
     promoCode?: string | null,
     loyaltyMemberId?: string | null,
-    clientRequestId?: string | null
+    clientRequestId?: string | null,
+    loyaltyDiscount?: number | null
 ): Promise<{
     orderId?: string
     subtotal?: number
@@ -66,7 +67,8 @@ export async function placeOrder(
         customerNote: z.string().max(500).nullable().optional(),
         promoCode: z.string().max(50).nullable().optional(),
         loyaltyMemberId: z.string().uuid().nullable().optional(),
-        clientRequestId: z.string().min(1).max(100).nullable().optional()
+        clientRequestId: z.string().min(1).max(100).nullable().optional(),
+        loyaltyDiscount: z.number().nonnegative().nullable().optional()
     })
 
     // Format items payload for the place_order RPC (includes modifiers)
@@ -95,7 +97,8 @@ export async function placeOrder(
         customerNote,
         promoCode,
         loyaltyMemberId,
-        clientRequestId
+        clientRequestId,
+        loyaltyDiscount
     })
 
     if (!validation.success) {
@@ -210,7 +213,8 @@ export async function placeOrder(
             customerNote || null,
             loyaltyMemberId || null,
             promoCode || null,
-            clientRequestId || null
+            clientRequestId || null,
+            loyaltyDiscount
         )
 
         if (fallback) {
@@ -307,6 +311,21 @@ export async function placeOrder(
                             .eq('id', match.id)
                     }
                 }
+            }
+            
+            // If there's a loyalty discount, save it to the order table first so it gets calculated
+            if (loyaltyDiscount && loyaltyDiscount > 0) {
+                const existingPromoDiscount = Number(result.discount || 0)
+                const totalDiscount = existingPromoDiscount + loyaltyDiscount
+                await supabase
+                    .from('orders')
+                    .update({
+                        discount_amount: totalDiscount,
+                        loyalty_member_id: loyaltyMemberId,
+                    })
+                    .eq('id', result.order_id)
+                
+                result.discount = totalDiscount
             }
 
             const { data: settings } = await supabase
@@ -448,7 +467,8 @@ async function placeOrderFallback(
     customerNote: string | null,
     loyaltyMemberId: string | null,
     promoCode: string | null = null,
-    clientRequestId: string | null = null
+    clientRequestId: string | null = null,
+    loyaltyDiscount?: number | null
 ): Promise<{
     orderId: string
     subtotal: number
@@ -631,6 +651,10 @@ async function placeOrderFallback(
                 void supabase.from('promo_codes').update({ current_uses: (promo.current_uses ?? 0) + 1 }).eq('id', promo.id)
             }
         }
+    }
+
+    if (loyaltyDiscount && loyaltyDiscount > 0) {
+        discount += loyaltyDiscount
     }
 
     const { data: settings } = await supabase

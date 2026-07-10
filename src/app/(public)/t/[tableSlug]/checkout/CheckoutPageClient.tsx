@@ -310,7 +310,8 @@ export default function CheckoutPageClient({ isHotelRoom = true }: { isHotelRoom
             note,
             promoCode?.code || null,
             loyaltyMember?.id || null,
-            idempotencyKey
+            idempotencyKey,
+            loyaltyDiscount
         )
 
         if (res.error) {

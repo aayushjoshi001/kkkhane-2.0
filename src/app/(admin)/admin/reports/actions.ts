@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
 import { generateEodReport } from '@/lib/reports'
+import { getFinanceDaySummary } from '@/lib/financeReports'
 
 export type ReconciliationRow = {
     order_id: string
@@ -110,6 +111,20 @@ export async function generateEodReportAction(restaurantId: string, reportDate: 
         return { data }
     } catch (err) {
         return { error: err instanceof Error ? err.message : 'Failed to generate report' }
+    }
+}
+
+export async function getFinanceDaySummaryAction(restaurantId: string, date: string) {
+    try {
+        const currentUser = await requireRole('manager', 'super_admin')
+        if (restaurantId !== currentUser.restaurantId) {
+            return { error: 'Unauthorized' }
+        }
+        const supabase = await createAdminClient()
+        const data = await getFinanceDaySummary(supabase, restaurantId, date)
+        return { data }
+    } catch (err) {
+        return { error: err instanceof Error ? err.message : 'Failed to load finance summary' }
     }
 }
 

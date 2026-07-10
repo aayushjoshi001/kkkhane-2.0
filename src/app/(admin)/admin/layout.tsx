@@ -64,7 +64,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
 
                     {/* Main Content */}
                     <main className="flex-1 flex flex-col overflow-hidden min-w-0">
-                        <header className="bg-surface border-b border-hairline px-5 md:px-8 h-16 flex items-center justify-between shrink-0 z-10">
+                        <header className="print:hidden bg-surface border-b border-hairline px-5 md:px-8 h-16 flex items-center justify-between shrink-0 z-10">
                             <SidebarToggle isSuperAdmin={isSuperAdmin} />
                             <div className="flex items-center gap-3">
                                 <CommandHint />

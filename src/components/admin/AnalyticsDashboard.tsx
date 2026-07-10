@@ -2,13 +2,14 @@
 
 import { useState } from 'react'
 import StatCard from '@/components/ui/StatCard'
-import { TrendingUp, ShoppingBag, BarChart3, Star, XCircle, Trophy, Clock, ArrowUp, ArrowDown, Minus } from 'lucide-react'
+import { TrendingUp, ShoppingBag, BarChart3, Star, XCircle, Trophy, Clock, ArrowUp, ArrowDown, Minus, Truck } from 'lucide-react'
 
 interface DayBucket {
     date: string; label: string; dayNum: number; monthStr: string; revenue: number; orders: number
 }
 interface TopItem { name: string; count: number; revenue: number }
 interface CancelledOrder { id: string; note: string | null; placed_at: string; total: number }
+interface TopSupplier { name: string; amount: number }
 
 interface Props {
     daily: DayBucket[]
@@ -24,6 +25,7 @@ interface Props {
     }
     ratingCounts: { star: number; count: number }[]
     topComments: { comment: string; rating: number; created_at: string }[]
+    topSuppliers: TopSupplier[]
 }
 
 function fmt(n: number) {
@@ -117,7 +119,7 @@ const HOUR_LABELS: Record<number, string> = {
     18: '6pm', 19: '7pm', 20: '8pm', 21: '9pm', 22: '10pm', 23: '11pm',
 }
 
-export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled, kpis, ratingCounts, topComments }: Props) {
+export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled, kpis, ratingCounts, topComments, topSuppliers }: Props) {
     const [period, setPeriod] = useState<'7d' | '30d'>('7d')
     const [chartMetric, setChartMetric] = useState<'revenue' | 'orders'>('revenue')
 
@@ -144,6 +146,7 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
     const peakHours = hourly.filter(h => h.hour >= 6 && h.hour <= 23)
     const maxHourOrders = Math.max(...peakHours.map(h => h.orders), 1)
     const maxItemCount = topItems[0]?.count ?? 1
+    const maxSupplierAmount = topSuppliers[0]?.amount ?? 1
 
     return (
         <div className="space-y-5">
@@ -318,6 +321,40 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
                         </div>
                     )}
                 </div>
+            </div>
+
+            {/* Top suppliers by spend */}
+            <div className="bg-surface rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)] p-6">
+                <div className="flex items-center gap-2 mb-6 border-b border-hairline pb-4">
+                    <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center">
+                        <Truck size={16} className="text-indigo-600" />
+                    </div>
+                    <h2 className="font-extrabold text-ink text-base">Top Suppliers by Spend</h2>
+                    <span className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider ml-auto">last 30 days</span>
+                </div>
+                {topSuppliers.length === 0 ? (
+                    <p className="text-sm text-ink-subtle text-center py-6">No supplier spend recorded yet.</p>
+                ) : (
+                    <div className="space-y-3">
+                        {topSuppliers.map((s, i) => (
+                            <div key={s.name}>
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <span className="text-[10px] font-bold text-ink-subtle w-4 text-center inline-block shrink-0">{i + 1}</span>
+                                        <span className="text-sm text-ink font-medium truncate">{s.name}</span>
+                                    </div>
+                                    <span className="text-xs text-ink-muted shrink-0 ml-2 tabular-nums">{fmt(s.amount)}</span>
+                                </div>
+                                <div className="h-1.5 bg-surface-muted rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full rounded-full bg-indigo-400 transition-all duration-500"
+                                        style={{ width: `${(s.amount / maxSupplierAmount) * 100}%` }}
+                                    />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Cancelled orders */}

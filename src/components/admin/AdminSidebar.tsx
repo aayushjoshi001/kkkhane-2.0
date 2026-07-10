@@ -126,6 +126,9 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
 
                         <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Dining & Tables</SectionLabel>
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"    icon={Grid3X3}         label="Tables & QR"     path={pathname} />
+
+                        <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Intelligence</SectionLabel>
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/reports"     icon={FileText}        label="EOD Reports"     path={pathname} />
                     </>
                 ) : (
                     <>
@@ -264,7 +267,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
 
             {/* Mobile Sidebar */}
             <aside className={cn(
-                "md:hidden fixed top-0 left-0 bottom-0 w-[280px] z-50 transition-transform duration-500 ease-[var(--ease-spring)]",
+                "print:hidden md:hidden fixed top-0 left-0 bottom-0 w-[280px] z-50 transition-transform duration-500 ease-[var(--ease-spring)]",
                 isOpen ? "translate-x-0" : "-translate-x-full",
                 isDark ? "shadow-[20px_0_40px_rgba(0,0,0,0.5)]" : "shadow-[20px_0_40px_rgba(0,0,0,0.1)]"
             )}>
@@ -273,7 +276,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
 
             {/* Desktop Sidebar */}
             <aside className={cn(
-                "hidden md:block shrink-0 z-20 h-screen sticky top-0 overflow-hidden transition-all duration-300 ease-[var(--ease-spring)]",
+                "print:hidden hidden md:block shrink-0 z-20 h-screen sticky top-0 overflow-hidden transition-all duration-300 ease-[var(--ease-spring)]",
                 isCollapsed ? "w-[80px]" : "w-[280px]",
                 isDark ? "shadow-[4px_0_24px_rgba(0,0,0,0.05)] border-r border-white/5" : "border-r border-hairline-strong shadow-sm"
             )}>
