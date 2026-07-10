@@ -105,6 +105,10 @@ export default function QuickOrderModal({
         label: string
     } | null>(null)
 
+    // Shown BEFORE submission — an explicit "are you sure" step so a misclick
+    // on "Place Order" can't send a wrong order straight to the kitchen.
+    const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+
     useEffect(() => {
         setMounted(true)
     }, [])
@@ -289,6 +293,7 @@ export default function QuickOrderModal({
             return
         }
 
+        setShowConfirmDialog(false)
         setSubmitting(true)
         try {
             const res = bookingId && !selectedSession
@@ -623,7 +628,7 @@ export default function QuickOrderModal({
                                         variant="primary"
                                         icon={submitting ? Loader2 : ShoppingCart}
                                         loading={submitting}
-                                        onClick={handlePlaceOrder}
+                                        onClick={() => setShowConfirmDialog(true)}
                                         className="py-3 font-bold"
                                     >
                                         Place Order &amp; Print
@@ -745,6 +750,60 @@ export default function QuickOrderModal({
                                 className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-label font-bold transition shadow-sm"
                             >
                                 Add to Cart
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Pre-submission confirmation — stops a misclick on "Place Order" from
+                sending a wrong order straight to the kitchen. */}
+            {showConfirmDialog && (
+                <div
+                    className="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-black/40"
+                    onClick={() => setShowConfirmDialog(false)}
+                >
+                    <div
+                        className="bg-surface rounded-[20px] border border-hairline shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[80vh]"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="px-5 py-4 border-b border-hairline bg-surface-muted/50">
+                            <h4 className="text-body font-black text-ink">Confirm order</h4>
+                            <p className="text-[10px] text-ink-subtle mt-0.5">
+                                Sends to the kitchen and adds to {bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`}.
+                            </p>
+                        </div>
+
+                        <div className="p-5 overflow-y-auto space-y-1.5 flex-1">
+                            {cart.map(item => (
+                                <div key={item.id} className="flex justify-between text-caption text-ink-muted">
+                                    <span>{item.name} <span className="text-brand-500 font-bold">×{item.quantity}</span></span>
+                                    <span className="font-semibold tabular-nums">
+                                        Rs. {(item.price + item.modifiers.reduce((s, m) => s + m.priceAdjustment, 0)) * item.quantity}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="px-5 py-3 border-t border-hairline flex justify-between items-center bg-surface-muted/20">
+                            <span className="text-caption font-bold text-ink-subtle uppercase">Total</span>
+                            <span className="text-h3 font-black text-ink">Rs. {cartTotal}</span>
+                        </div>
+
+                        <div className="p-4 border-t border-hairline bg-surface-muted/20 flex gap-2">
+                            <button
+                                onClick={() => setShowConfirmDialog(false)}
+                                className="flex-1 py-2.5 rounded-xl border border-hairline bg-surface hover:bg-surface-muted text-ink text-label font-bold transition"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handlePlaceOrder}
+                                disabled={submitting}
+                                className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-label font-bold transition shadow-sm disabled:opacity-50 flex items-center justify-center gap-1.5"
+                            >
+                                {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
+                                Confirm &amp; Place Order
                             </button>
                         </div>
                     </div>
