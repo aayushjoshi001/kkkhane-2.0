@@ -25,7 +25,7 @@ export default async function CashierPage() {
         adminSupabase
             .from('orders')
             .select(`
-                id, total_amount, delivered_at, payment_status, payment_method, session_id,
+                id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id,
                 sessions ( id, booking_id, tables ( id, label ) ),
                 order_items ( quantity, unit_price, menu_items ( name ) )
             `)
@@ -38,7 +38,7 @@ export default async function CashierPage() {
         adminSupabase
             .from('orders')
             .select(`
-                id, status, total_amount, placed_at, session_id, order_type, customer_name, customer_phone, delivery_address, payment_status,
+                id, status, total_amount, placed_at, session_id, order_type, customer_name, customer_phone, delivery_address, payment_status, booking_id,
                 sessions ( id, booking_id, tables ( label ) ),
                 order_items ( id, quantity, status, unit_price, menu_items ( name ) )
             `)

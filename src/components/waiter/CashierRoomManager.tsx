@@ -232,24 +232,34 @@ export default function CashierRoomManager({
         })
     }, [rooms, roomsFilter])
 
-    // Match table QR session orders
+    // Match table QR session orders or room orders linked to the active booking
     const qrOrdersDetails = useMemo(() => {
-        if (!selectedRoom || selectedRoom.status !== 'occupied') return null
+        if (!selectedRoom || selectedRoom.status !== 'occupied' || !activeBooking) return null
 
-        // Keyed on tables.room_id — a relabelled or duplicate table can no longer
-        // detach a guest's orders from their folio.
+        // Fetch all active/unpaid orders that are directly linked to this booking
+        const allActive = activeOrders.filter(o => o.booking_id === activeBooking.id)
+        const allUnpaid = unpaidOrders.filter(o => o.booking_id === activeBooking.id)
+        
+        // Also fallback to match by session in case booking_id is not set but matchingTable activeSession is
         const matchingTable = tables.find(t => t.room_id === selectedRoom.id)
-        if (!matchingTable?.activeSession) return null
+        const sessionId = matchingTable?.activeSession?.id || createdSessionId
+        
+        const additionalActive = sessionId ? activeOrders.filter(o => o.session_id === sessionId && o.booking_id !== activeBooking.id) : []
+        const additionalUnpaid = sessionId ? unpaidOrders.filter(o => o.session_id === sessionId && o.booking_id !== activeBooking.id) : []
 
-        const sessionId = matchingTable.activeSession.id
-        const allActive = activeOrders.filter(o => o.session_id === sessionId)
-        const allUnpaid = unpaidOrders.filter(o => o.session_id === sessionId)
-        const combinedOrders = [...allActive, ...allUnpaid]
+        const combinedOrders = [...allActive, ...allUnpaid, ...additionalActive, ...additionalUnpaid]
+        
+        // De-duplicate orders by ID
+        const uniqueOrdersMap = new Map<string, any>()
+        for (const o of combinedOrders) {
+            uniqueOrdersMap.set(o.id, o)
+        }
+        const uniqueOrders = Array.from(uniqueOrdersMap.values())
 
         const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
         let total = 0
 
-        for (const order of combinedOrders) {
+        for (const order of uniqueOrders) {
             const orderItems = order.order_items || []
             for (const item of orderItems) {
                 const name = item.menu_items?.name || 'Item'
@@ -262,7 +272,7 @@ export default function CashierRoomManager({
         }
 
         return { items, total, sessionId }
-    }, [selectedRoom, activeOrders, unpaidOrders, tables])
+    }, [selectedRoom, activeBooking, activeOrders, unpaidOrders, tables, createdSessionId])
 
     // Stay night and price calculations
     const stayPriceDetails = useMemo(() => {
@@ -315,7 +325,8 @@ export default function CashierRoomManager({
         
         const matchingTable = tables.find(t => t.room_id === selectedRoom.id)
         if (!matchingTable) {
-            toast.error(`Room ${selectedRoom.room_number} is not linked to any table QR code.`)
+            // Open directly using bookingId (no table session needed)
+            setFoodOrderModalOpen(true)
             return
         }
 
@@ -1075,6 +1086,7 @@ export default function CashierRoomManager({
                         sessionId={resolvedSessionId || undefined}
                         tableName={selectedRoom ? `Room ${selectedRoom.room_number}` : undefined}
                         restaurantId={restaurantId}
+                        bookingId={activeBooking?.id}
                     />
                 )
             })()}

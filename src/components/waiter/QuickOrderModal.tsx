@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Search, Plus, Minus, Trash2, Loader2, ShoppingCart, Utensils, MessageSquare } from 'lucide-react'
-import { getStaffMenu, placeStaffOrder } from '@/app/(staff)/waiter/actions'
+import { getStaffMenu, placeStaffOrder, placeRoomOrderDirect } from '@/app/(staff)/waiter/actions'
 import { toast } from 'react-hot-toast'
 
 interface Modifier {
@@ -48,6 +48,7 @@ interface QuickOrderModalProps {
     tableName?: string
     restaurantId: string
     activeTables?: any[]
+    bookingId?: string
 }
 
 interface CartItem {
@@ -72,7 +73,8 @@ export default function QuickOrderModal({
     sessionId,
     tableName,
     restaurantId,
-    activeTables
+    activeTables,
+    bookingId
 }: QuickOrderModalProps) {
     const [mounted, setMounted] = useState(false)
     const [loading, setLoading] = useState(true)
@@ -272,14 +274,18 @@ export default function QuickOrderModal({
             return
         }
 
-        if (!selectedSession) {
-            toast.error('No table session selected')
+        if (!selectedSession && !bookingId) {
+            toast.error('No table session or room stay selected')
             return
         }
 
         setSubmitting(true)
         try {
-            const res = await placeStaffOrder(selectedSession.token, cart, customerNote)
+            const res = bookingId && !selectedSession
+                ? await placeRoomOrderDirect(bookingId, cart, customerNote)
+                : selectedSession
+                    ? await placeStaffOrder(selectedSession.token, cart, customerNote)
+                    : { error: 'No active session found.' }
             if (res && res.success) {
                 toast.success('Order placed successfully & sent to kitchen!')
                 setCart([])
