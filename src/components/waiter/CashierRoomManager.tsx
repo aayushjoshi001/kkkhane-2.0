@@ -939,8 +939,8 @@ export default function CashierRoomManager({
                                     </div>
                                 </div>
 
-                                {/* Add Manual Charge Form / Toggle */}
-                                <div className="border border-dashed border-hairline-strong rounded-2xl p-4 bg-surface-muted/10">
+                                {/* Add Manual Charge Form / Toggle — sticky so it stays reachable without scrolling past a long billing list */}
+                                <div className="sticky bottom-0 z-10 border border-dashed border-hairline-strong rounded-2xl p-4 bg-surface shadow-lg">
                                     {!showAddChargeForm ? (
                                         <div className="flex flex-col sm:flex-row gap-2 md:gap-2.5 items-center justify-center">
                                             <button 

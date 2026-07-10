@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Search, Plus, Minus, Trash2, Loader2, ShoppingCart, Utensils, MessageSquare } from 'lucide-react'
+import { X, Search, Plus, Minus, Trash2, Loader2, ShoppingCart, Utensils, MessageSquare, CheckCircle2 } from 'lucide-react'
 import { getStaffMenu, placeStaffOrder, placeRoomOrderDirect } from '@/app/(staff)/waiter/actions'
 import { toast } from 'react-hot-toast'
 
@@ -96,6 +96,14 @@ export default function QuickOrderModal({
     const [selectedVariation, setSelectedVariation] = useState<Variation | null>(null)
     const [selectedModifiers, setSelectedModifiers] = useState<Record<string, Modifier[]>>({}) // groupId -> selected modifiers
     const [specialRequestInput, setSpecialRequestInput] = useState('')
+
+    // Shown after a successful placement so the cashier gets a clear, explicit
+    // confirmation instead of relying on a toast that disappears with the modal.
+    const [orderConfirmation, setOrderConfirmation] = useState<{
+        itemCount: number
+        total: number
+        label: string
+    } | null>(null)
 
     useEffect(() => {
         setMounted(true)
@@ -289,13 +297,16 @@ export default function QuickOrderModal({
                     ? await placeStaffOrder(selectedSession.token, cart, customerNote)
                     : { error: 'No active session found.' }
             if (res && res.success) {
-                toast.success('Order placed successfully & sent to kitchen!')
-                setCart([])
-                setCustomerNote('')
                 if (res.orderId) {
                     onSuccess?.(res.orderId)
                 }
-                onClose()
+                setOrderConfirmation({
+                    itemCount: cart.reduce((sum, item) => sum + item.quantity, 0),
+                    total: cartTotal,
+                    label: bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`
+                })
+                setCart([])
+                setCustomerNote('')
             } else {
                 const errMsg = res?.error || 'Failed to place order'
                 if (errMsg === 'Unauthorized') {
@@ -321,6 +332,43 @@ export default function QuickOrderModal({
         } finally {
             setSubmitting(false)
         }
+    }
+
+    const handleConfirmationDone = () => {
+        setOrderConfirmation(null)
+        onClose()
+    }
+
+    if (orderConfirmation) {
+        return createPortal(
+            <div
+                className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+                onClick={handleConfirmationDone}
+            >
+                <div
+                    className="bg-surface rounded-[24px] border border-hairline shadow-2xl w-full max-w-sm p-8 flex flex-col items-center text-center gap-4"
+                    onClick={e => e.stopPropagation()}
+                >
+                    <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                        <CheckCircle2 size={36} />
+                    </div>
+                    <div>
+                        <h3 className="text-h3 font-black text-ink">Order Placed!</h3>
+                        <p className="text-body text-ink-subtle mt-1">
+                            {orderConfirmation.itemCount} item{orderConfirmation.itemCount !== 1 ? 's' : ''} sent to the kitchen and added to {orderConfirmation.label}.
+                        </p>
+                    </div>
+                    <div className="w-full py-3 rounded-xl bg-surface-muted text-center">
+                        <span className="text-caption font-bold text-ink-subtle uppercase">Order Total</span>
+                        <p className="text-h2 font-black text-ink">Rs. {orderConfirmation.total}</p>
+                    </div>
+                    <Button block variant="primary" onClick={handleConfirmationDone} className="py-3 font-bold">
+                        Done
+                    </Button>
+                </div>
+            </div>,
+            document.body
+        )
     }
 
     return createPortal(
