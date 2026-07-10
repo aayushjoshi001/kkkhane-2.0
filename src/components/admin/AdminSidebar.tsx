@@ -113,8 +113,6 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                         <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Hospitality</SectionLabel>
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/rooms"     icon={Bed}             label="Rooms & Suites"  path={pathname} />
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/bookings"  icon={CalendarRange}   label="Bookings"        path={pathname} />
-                        
-                        <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Room Service</SectionLabel>
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/orders"    icon={ShoppingBag}     label="Service Orders"  path={pathname} />
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/payments"  icon={CreditCard}      label="Room Billing"    path={pathname} />
 
@@ -123,12 +121,11 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/combos"      icon={Sparkles}        label="Combo Offers"    path={pathname} />
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/pricing"     icon={DollarSign}      label="Dynamic Pricing" path={pathname} />
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/promos"      icon={Tag}             label="Promo Codes"     path={pathname} />
-
-                        <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Dining & Tables</SectionLabel>
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"    icon={Grid3X3}         label="Tables & QR"     path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"      icon={Grid3X3}         label="Tables & QR"     path={pathname} />
 
                         <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Intelligence</SectionLabel>
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/reports"     icon={FileText}        label="EOD Reports"     path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/analytics"   icon={TrendingUp}      label="Analytics"       path={pathname} />
                     </>
                 ) : (
                     <>
