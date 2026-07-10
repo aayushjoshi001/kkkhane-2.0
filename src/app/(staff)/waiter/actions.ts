@@ -417,7 +417,7 @@ export async function placeRoomOrderDirect(
             status: 'confirmed',
             needs_confirmation: false,
             payment_status: 'unpaid',
-            order_type: 'dine_in'
+            order_type: 'takeout'
         })
         .select('id')
         .single()
