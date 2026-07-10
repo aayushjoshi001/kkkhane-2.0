@@ -532,7 +532,7 @@ export default function CashierClient({
         if (payload.eventType === 'INSERT') {
             const { data } = await supabase
                 .from('orders')
-                .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, tables ( label ) ), order_items ( id, quantity, status, menu_items ( name ) )`)
+                .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, tables ( label ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
                 .eq('id', payload.new.id)
                 .single()
             if (data) setActive(prev => [...prev, data as unknown as ActiveOrder])
@@ -542,7 +542,7 @@ export default function CashierClient({
                 // Fetch full record to show in unpaid list
                 const { data } = await supabase
                     .from('orders')
-                    .select(`id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id, sessions ( id, tables ( label ) ), order_items ( quantity, menu_items ( name ) )`)
+                    .select(`id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id, sessions ( id, tables ( label ) ), order_items ( quantity, unit_price, menu_items ( name ) )`)
                     .eq('id', id)
                     .single()
                 if (data) {
@@ -748,7 +748,7 @@ export default function CashierClient({
                                 const supabase = supabaseRef.current
                                 const { data } = await supabase
                                     .from('orders')
-                                    .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, tables ( label ) ), order_items ( id, quantity, status, menu_items ( name ) )`)
+                                    .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, tables ( label ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
                                     .eq('id', orderId)
                                     .single()
                                 if (data) {
