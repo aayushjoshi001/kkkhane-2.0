@@ -36,6 +36,7 @@ export type UnpaidOrder = {
     payment_status: string
     payment_method: string | null
     session_id: string | null
+    booking_id?: string | null
     sessions: { id: string; tables: TableRef } | null
     order_items: OrderItem[]
 }
@@ -46,6 +47,7 @@ export type ActiveOrder = {
     total_amount: number
     placed_at: string
     session_id: string | null
+    booking_id?: string | null
     order_type?: 'dine_in' | 'takeout' | 'delivery'
     payment_status?: string
     customer_name?: string | null
@@ -111,6 +113,16 @@ export default function CashierClient({
     const [selectedBillingTable, setSelectedBillingTable] = useState<any | null>(null)
     const [activeInvoice, setActiveInvoice] = useState<any | null>(null)
     const [isSettlingInvoice, setIsSettlingInvoice] = useState(false)
+    // Synchronous re-entry guard: state updates from setIsSettlingInvoice are
+    // batched/async, so a fast double-click can fire handleMarkPaid twice
+    // before the button actually disables — settling the bill (and printing
+    // the invoice) twice. A ref blocks re-entry the instant the first click lands.
+    const isSettlingRef = useRef(false)
+    // True once the bill is actually settled in the database — printing (which
+    // can be slow or block on a native dialog if no printer is configured)
+    // happens after this, so the cashier sees "Paid" immediately instead of a
+    // spinner that looks stuck for as long as the print step takes.
+    const [invoiceSettled, setInvoiceSettled] = useState(false)
 
     // For stay billing detail states
     const [loadingStayDetails, setLoadingStayDetails] = useState(false)
@@ -229,17 +241,33 @@ export default function CashierClient({
 
     const getRoomQrOrders = (room: any) => {
         if (!room) return []
-        // Keyed on tables.room_id (see migration 20260709140000) — no label matching.
-        const matchingTable = tables.find(t => t.room_id === room.id)
-        if (!matchingTable?.activeSession) return []
+        
+        // Find the active booking for the room
+        const booking = billingStayBooking ?? bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
+        if (!booking) return []
 
-        const sessionId = matchingTable.activeSession.id
-        const allActive = active.filter(o => o.session_id === sessionId)
-        const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
-        const combinedOrders = [...allActive, ...allUnpaid]
+        // Fetch all active/unpaid orders that are directly linked to this booking
+        const allActive = active.filter(o => o.booking_id === booking.id)
+        const allUnpaid = unpaid.filter(o => o.booking_id === booking.id)
+        
+        // Also fallback to match by session in case booking_id is not set but matchingTable activeSession is
+        const matchingTable = tables.find(t => t.room_id === room.id)
+        const sessionId = matchingTable?.activeSession?.id
+        
+        const additionalActive = sessionId ? active.filter(o => o.session_id === sessionId && o.booking_id !== booking.id) : []
+        const additionalUnpaid = sessionId ? unpaid.filter(o => o.session_id === sessionId && o.booking_id !== booking.id) : []
+
+        const combinedOrders = [...allActive, ...allUnpaid, ...additionalActive, ...additionalUnpaid]
+        
+        // De-duplicate orders by ID
+        const uniqueOrdersMap = new Map<string, any>()
+        for (const o of combinedOrders) {
+            uniqueOrdersMap.set(o.id, o)
+        }
+        const uniqueOrders = Array.from(uniqueOrdersMap.values())
 
         const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
-        for (const order of combinedOrders) {
+        for (const order of uniqueOrders) {
             const orderItems = order.order_items || []
             for (const item of orderItems) {
                 items.push({
@@ -295,8 +323,7 @@ export default function CashierClient({
             const nights = calculateNights(booking.check_in, booking.check_out)
             const stayCost = price * nights
 
-            const matchingTable = tables.find(t => t.room_id === room.id)
-            const sessionOrders = matchingTable?.activeSession ? getRoomQrOrders(room) : []
+            const sessionOrders = getRoomQrOrders(room)
             const qrOrdersTotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
 
             const linkedOrdersTotal = billingLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
@@ -374,7 +401,8 @@ export default function CashierClient({
     }
 
     const handleMarkPaid = async () => {
-        if (!activeInvoice) return
+        if (!activeInvoice || isSettlingRef.current) return
+        isSettlingRef.current = true
         setIsSettlingInvoice(true)
         try {
             // Settle all unpaid orders associated with this room or table
@@ -385,16 +413,14 @@ export default function CashierClient({
             if (sessionId) {
                 const sessionOrders = active.filter(o => o.session_id === sessionId)
                 const sessionUnpaid = unpaid.filter(o => o.session_id === sessionId)
-                const allUnpaid = [...sessionOrders, ...sessionUnpaid]
+                const allUnpaid = [...sessionOrders, ...sessionUnpaid].filter(o => o.payment_status === 'unpaid')
 
-                for (const order of allUnpaid) {
-                    if (order.payment_status === 'unpaid') {
-                        const res = await markDeliveredAndCashPaid(order.id)
-                        if (res.error) {
-                            throw new Error(res.error)
-                        }
-                    }
-                }
+                // Independent per-order updates (each keyed by its own id) — settle
+                // them concurrently instead of one network round-trip at a time,
+                // which was the main reason "Mark Paid" felt slow on a big bill.
+                const results = await Promise.all(allUnpaid.map(order => markDeliveredAndCashPaid(order.id)))
+                const failed = results.find(res => res.error)
+                if (failed) throw new Error(failed.error)
             }
 
             if (activeInvoice.type === 'room') {
@@ -422,14 +448,20 @@ export default function CashierClient({
                 ))
 
                 toast.success('Room billing settled and guest checked out successfully!')
-                setTimeout(() => { window.location.reload() }, 1000)
             } else {
                 const res = await closeSession(activeInvoice.sessionId)
                 if (res.error) throw new Error(res.error)
 
                 toast.success('Table session settled and closed successfully!')
-                setTimeout(() => { window.location.reload() }, 1000)
             }
+
+            // The bill is settled in the database at this point — the cashier
+            // sees "Paid" immediately rather than a spinner that looks stuck for
+            // as long as printing takes (which can block on a native browser
+            // print dialog if no printer is configured for this till).
+            isSettlingRef.current = false
+            setIsSettlingInvoice(false)
+            setInvoiceSettled(true)
 
             // Auto-print the invoice. Falls back to the browser print dialog
             // (this modal is already styled for it) if QZ Tray isn't
@@ -447,9 +479,12 @@ export default function CashierClient({
             setActiveInvoice(null)
             setSelectedBillingRoom(null)
             setSelectedBillingTable(null)
+            setInvoiceSettled(false)
+            window.location.reload()
         } catch (e: any) {
             toast.error(e.message || 'Failed to settle invoice')
         } finally {
+            isSettlingRef.current = false
             setIsSettlingInvoice(false)
         }
     }
@@ -515,7 +550,7 @@ export default function CashierClient({
         if (payload.eventType === 'INSERT') {
             const { data } = await supabase
                 .from('orders')
-                .select(`id, status, total_amount, placed_at, session_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, tables ( label ) ), order_items ( id, quantity, status, menu_items ( name ) )`)
+                .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, tables ( label ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
                 .eq('id', payload.new.id)
                 .single()
             if (data) setActive(prev => [...prev, data as unknown as ActiveOrder])
@@ -525,7 +560,7 @@ export default function CashierClient({
                 // Fetch full record to show in unpaid list
                 const { data } = await supabase
                     .from('orders')
-                    .select(`id, total_amount, delivered_at, payment_status, payment_method, session_id, sessions ( id, tables ( label ) ), order_items ( quantity, menu_items ( name ) )`)
+                    .select(`id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id, sessions ( id, tables ( label ) ), order_items ( quantity, unit_price, menu_items ( name ) )`)
                     .eq('id', id)
                     .single()
                 if (data) {
@@ -536,7 +571,16 @@ export default function CashierClient({
                 setUnpaid(prev => prev.filter(o => o.id !== id))
                 setActive(prev => prev.filter(o => o.id !== id))
             } else {
-                setActive(prev => prev.map(o => o.id === id ? { ...o, status, total_amount: payload.new.total_amount } : o))
+                setActive(prev => prev.map(o => o.id === id ? { 
+                    ...o, 
+                    status, 
+                    total_amount: payload.new.total_amount,
+                    booking_id: payload.new.booking_id,
+                    order_type: payload.new.order_type,
+                    customer_name: payload.new.customer_name,
+                    customer_phone: payload.new.customer_phone,
+                    delivery_address: payload.new.delivery_address
+                } : o))
             }
         }
     })
@@ -717,6 +761,22 @@ export default function CashierClient({
                                 setActiveTab('billing')
                                 setBillingSubTab('rooms')
                                 setSelectedBillingRoom(room)
+                            }}
+                            onOrderPlaced={async (orderId) => {
+                                const supabase = supabaseRef.current
+                                const { data } = await supabase
+                                    .from('orders')
+                                    .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, tables ( label ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
+                                    .eq('id', orderId)
+                                    .single()
+                                if (data) {
+                                    setActive(prev => {
+                                        if (prev.some(o => o.id === orderId)) {
+                                            return prev.map(o => o.id === orderId ? (data as unknown as ActiveOrder) : o)
+                                        }
+                                        return [...prev, data as unknown as ActiveOrder]
+                                    })
+                                }
                             }}
                         />
                     </div>
@@ -1488,9 +1548,9 @@ export default function CashierClient({
 
             {/* Invoice Preview Overlay modal */}
             {mounted && activeInvoice && createPortal(
-                <div 
+                <div
                     className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200"
-                    onClick={() => setActiveInvoice(null)}
+                    onClick={() => { if (!invoiceSettled) setActiveInvoice(null) }}
                 >
                     <div 
                         className="bg-white w-full max-w-sm p-5 space-y-4 text-black print-container font-mono text-[11px] shadow-2xl relative border-t-8 border-brand-500"
@@ -1696,27 +1756,36 @@ export default function CashierClient({
 
                         {/* Invoice Footer Actions (Print, Mark Paid, Close) */}
                         <div className="flex gap-2 pt-3 border-t border-gray-100 print-actions flex-wrap">
-                            <Button 
-                                variant="secondary" 
-                                onClick={() => setActiveInvoice(null)}
-                                className="font-bold flex-1 text-[10px] py-1.5 min-w-[70px]"
-                            >
-                                Cancel
-                            </Button>
-                            <button
-                                onClick={() => window.print()}
-                                className="flex-1 py-1.5 px-3 border border-gray-300 rounded-xl text-[10px] font-bold text-gray-700 bg-white hover:bg-gray-50 transition active:scale-95 text-center flex items-center justify-center gap-1.5 shadow-sm min-w-[70px]"
-                            >
-                                Print Bill
-                            </button>
-                            <Button 
-                                variant="primary" 
-                                loading={isSettlingInvoice}
-                                onClick={handleMarkPaid}
-                                className="font-bold flex-1 bg-emerald-600 hover:bg-emerald-700 border-emerald-600 hover:border-emerald-700 text-[10px] text-white py-1.5 min-w-[70px]"
-                            >
-                                Mark Paid
-                            </Button>
+                            {invoiceSettled ? (
+                                <div className="flex-1 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold flex items-center justify-center gap-1.5">
+                                    <CheckCircle size={13} />
+                                    Paid — printing receipt…
+                                </div>
+                            ) : (
+                                <>
+                                    <Button
+                                        variant="secondary"
+                                        onClick={() => setActiveInvoice(null)}
+                                        className="font-bold flex-1 text-[10px] py-1.5 min-w-[70px]"
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <button
+                                        onClick={() => window.print()}
+                                        className="flex-1 py-1.5 px-3 border border-gray-300 rounded-xl text-[10px] font-bold text-gray-700 bg-white hover:bg-gray-50 transition active:scale-95 text-center flex items-center justify-center gap-1.5 shadow-sm min-w-[70px]"
+                                    >
+                                        Print Bill
+                                    </button>
+                                    <Button
+                                        variant="primary"
+                                        loading={isSettlingInvoice}
+                                        onClick={handleMarkPaid}
+                                        className="font-bold flex-1 bg-emerald-600 hover:bg-emerald-700 border-emerald-600 hover:border-emerald-700 text-[10px] text-white py-1.5 min-w-[70px]"
+                                    >
+                                        Mark Paid
+                                    </Button>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>,

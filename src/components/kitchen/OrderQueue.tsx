@@ -8,7 +8,7 @@ import { playNewOrder } from '@/lib/audio'
 import { toast } from 'react-hot-toast'
 import { timeAgo } from '@/lib/utils'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
-import { Bell, Hourglass, Flame, ChefHat, ChevronDown, CheckSquare, Square, Check, Clock } from 'lucide-react'
+import { Bell, Hourglass, Flame, ChefHat, ChevronDown, CheckSquare, Square, Check, Clock, Printer } from 'lucide-react'
 import type { OrderStatus, OrderItemStatus, Order, OrderItem, OrderItemModifier, MenuItem, Session, Table } from '@/types/database'
 import { setOrderItemsStatus, getKitchenOrders } from '@/app/(staff)/kitchen/actions'
 import { rollUpOrderStatus } from '@/lib/orderRollup'
@@ -85,6 +85,12 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     const [now, setNow] = useState(() => Date.now())
     const [activeTab, setActiveTab] = useState<TabKey>('new')
     const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+    const [printOnlyMode, setPrintOnlyMode] = useState<boolean>(() => {
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem(`print_only_${station}`) === 'true'
+        }
+        return false
+    })
     const money = useCurrency()
     const supabaseRef = useRef(createClient())
     const { print: printKot } = usePrinter(stationMeta.printerRole)
@@ -298,69 +304,111 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
         <div className="h-full flex flex-col bg-[#FBF7F3]">
             <KotPrintFallback order={kotFallbackQueue[0] ?? null} station={station} onDone={dequeueKotFallback} />
 
-            {/* Mobile: tab bar */}
-            <div className="lg:hidden shrink-0 bg-surface border-b border-hairline px-2 sm:px-4">
-                <div className="max-w-2xl mx-auto grid grid-cols-3">
-                    {(Object.keys(TAB_META) as TabKey[]).map(key => {
-                        const meta = TAB_META[key]
-                        const Icon = meta.icon
-                        const isActive = activeTab === key
-                        const count = sections[key].length
-                        return (
-                            <button
-                                key={key}
-                                onClick={() => setActiveTab(key)}
-                                className="relative py-3 flex flex-col items-center gap-1 transition-colors"
-                                style={{ color: isActive ? meta.accent : '#9ca3af' }}
-                            >
-                                <span className="flex items-center gap-1.5">
-                                    <Icon size={16} />
-                                    {count > 0 && (
-                                        <span className="text-[11px] font-extrabold min-w-4.5 h-4.5 px-1 rounded-full inline-flex items-center justify-center text-white"
-                                              style={{ background: isActive ? meta.accent : '#cbd5e1' }}>
-                                            {count}
+            {/* Top Bar with Print-Only Mode Switch */}
+            <div className="shrink-0 bg-surface border-b border-hairline px-4 py-3.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <h1 className="font-black text-sm uppercase tracking-wider text-ink">
+                        {stationMeta.ticketAbbr} Control Board
+                    </h1>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                            type="checkbox"
+                            checked={printOnlyMode}
+                            onChange={(e) => {
+                                const val = e.target.checked
+                                setPrintOnlyMode(val)
+                                localStorage.setItem(`print_only_${station}`, String(val))
+                            }}
+                            className="w-4 h-4 rounded text-brand-500 border-hairline focus:ring-brand-500 accent-[#FB6303]"
+                        />
+                        <span className="text-xs font-black uppercase tracking-wider text-ink-muted">
+                            KOT Print-Only Mode
+                        </span>
+                    </label>
+                </div>
+            </div>
+
+            {printOnlyMode ? (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-surface m-6 rounded-3xl border border-hairline shadow-sm max-w-2xl mx-auto my-auto h-[400px]">
+                    <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-500 mb-4 animate-pulse">
+                        <Printer size={32} />
+                    </div>
+                    <h3 className="text-lg font-black text-ink">KOT Auto-Print Service Active</h3>
+                    <p className="text-sm text-ink-subtle mt-2 max-w-sm">
+                        This tab is running in headless printer mode. Incoming orders will print automatically. Order cards are hidden to maximize browser performance.
+                    </p>
+                </div>
+            ) : (
+                <>
+                    {/* Mobile: tab bar */}
+                    <div className="lg:hidden shrink-0 bg-surface border-b border-hairline px-2 sm:px-4">
+                        <div className="max-w-2xl mx-auto grid grid-cols-3">
+                            {(Object.keys(TAB_META) as TabKey[]).map(key => {
+                                const meta = TAB_META[key]
+                                const Icon = meta.icon
+                                const isActive = activeTab === key
+                                const count = sections[key].length
+                                return (
+                                    <button
+                                        key={key}
+                                        onClick={() => setActiveTab(key)}
+                                        className="relative py-3 flex flex-col items-center gap-1 transition-colors"
+                                        style={{ color: isActive ? meta.accent : '#9ca3af' }}
+                                    >
+                                        <span className="flex items-center gap-1.5">
+                                            <Icon size={16} />
+                                            {count > 0 && (
+                                                <span className="text-[11px] font-extrabold min-w-4.5 h-4.5 px-1 rounded-full inline-flex items-center justify-center text-white"
+                                                      style={{ background: isActive ? meta.accent : '#cbd5e1' }}>
+                                                    {count}
+                                                </span>
+                                            )}
                                         </span>
-                                    )}
-                                </span>
-                                <span className="text-xs font-bold">{meta.label}</span>
-                                {isActive && <span className="absolute bottom-0 left-3 right-3 h-0.75 rounded-t-full" style={{ background: meta.accent }} />}
-                            </button>
-                        )
-                    })}
-                </div>
-            </div>
-
-            {/* Mobile: active section list */}
-            <div className="lg:hidden flex-1 overflow-y-auto px-3 sm:px-4 py-4">
-                <div className="max-w-2xl mx-auto space-y-3">
-                    {active.map(section => renderTicket(section, activeTab))}
-                    {active.length === 0 && (
-                        <div className="pt-16">
-                            <EmptyState icon={TAB_META[activeTab].icon} title={emptyTitle(activeTab)} />
+                                        <span className="text-xs font-bold">{meta.label}</span>
+                                        {isActive && <span className="absolute bottom-0 left-3 right-3 h-0.75 rounded-t-full" style={{ background: meta.accent }} />}
+                                    </button>
+                                )
+                            })}
                         </div>
-                    )}
-                </div>
-            </div>
+                    </div>
 
-            {/* Desktop: three columns side by side */}
-            <div className="hidden lg:flex flex-1 overflow-hidden gap-4 p-5">
-                {(Object.keys(TAB_META) as TabKey[]).map(key => {
-                    const meta = TAB_META[key]
-                    const Icon = meta.icon
-                    const list = sections[key]
-                    return (
-                            <VirtualColumn
-                                key={key}
-                                tabKey={key}
-                                meta={meta}
-                                list={list}
-                                renderTicket={(section) => renderTicket(section, key)}
-                                emptyTitle={emptyTitle(key)}
-                            />
-                        )
-                    })}
-                </div>
-            </div>
+                    {/* Mobile: active section list */}
+                    <div className="lg:hidden flex-1 overflow-y-auto px-3 sm:px-4 py-4">
+                        <div className="max-w-2xl mx-auto space-y-3">
+                            {active.map(section => renderTicket(section, activeTab))}
+                            {active.length === 0 && (
+                                <div className="pt-16">
+                                    <EmptyState icon={TAB_META[activeTab].icon} title={emptyTitle(activeTab)} />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Desktop: three columns side by side */}
+                    <div className="hidden lg:flex flex-1 overflow-hidden gap-4 p-5">
+                        {(Object.keys(TAB_META) as TabKey[]).map(key => {
+                            const meta = TAB_META[key]
+                            const Icon = meta.icon
+                            const list = sections[key]
+                            return (
+                                <VirtualColumn
+                                    key={key}
+                                    tabKey={key}
+                                    meta={meta}
+                                    list={list}
+                                    renderTicket={(section) => renderTicket(section, key)}
+                                    emptyTitle={emptyTitle(key)}
+                                />
+                            )
+                        })}
+                    </div>
+                </>
+            )}
+        </div>
         )
     }
     

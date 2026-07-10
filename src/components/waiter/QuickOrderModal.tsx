@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { X, Search, Plus, Minus, Trash2, Loader2, ShoppingCart, Utensils, MessageSquare } from 'lucide-react'
+import { X, Search, Plus, Minus, Trash2, Loader2, ShoppingCart, Utensils, MessageSquare, CheckCircle2 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
-import { getStaffMenu, placeStaffOrder } from '@/app/(staff)/waiter/actions'
+import { getStaffMenu, placeStaffOrder, placeRoomOrderDirect } from '@/app/(staff)/waiter/actions'
 import { toast } from 'react-hot-toast'
 
 interface Modifier {
@@ -48,6 +48,8 @@ interface QuickOrderModalProps {
     tableName?: string
     restaurantId: string
     activeTables?: any[]
+    bookingId?: string
+    onSuccess?: (orderId: string) => void
 }
 
 interface CartItem {
@@ -72,7 +74,9 @@ export default function QuickOrderModal({
     sessionId,
     tableName,
     restaurantId,
-    activeTables
+    activeTables,
+    bookingId,
+    onSuccess
 }: QuickOrderModalProps) {
     const [mounted, setMounted] = useState(false)
     const [loading, setLoading] = useState(true)
@@ -92,6 +96,18 @@ export default function QuickOrderModal({
     const [selectedVariation, setSelectedVariation] = useState<Variation | null>(null)
     const [selectedModifiers, setSelectedModifiers] = useState<Record<string, Modifier[]>>({}) // groupId -> selected modifiers
     const [specialRequestInput, setSpecialRequestInput] = useState('')
+
+    // Shown after a successful placement so the cashier gets a clear, explicit
+    // confirmation instead of relying on a toast that disappears with the modal.
+    const [orderConfirmation, setOrderConfirmation] = useState<{
+        itemCount: number
+        total: number
+        label: string
+    } | null>(null)
+
+    // Shown BEFORE submission — an explicit "are you sure" step so a misclick
+    // on "Place Order" can't send a wrong order straight to the kitchen.
+    const [showConfirmDialog, setShowConfirmDialog] = useState(false)
 
     useEffect(() => {
         setMounted(true)
@@ -272,19 +288,30 @@ export default function QuickOrderModal({
             return
         }
 
-        if (!selectedSession) {
-            toast.error('No table session selected')
+        if (!selectedSession && !bookingId) {
+            toast.error('No table session or room stay selected')
             return
         }
 
+        setShowConfirmDialog(false)
         setSubmitting(true)
         try {
-            const res = await placeStaffOrder(selectedSession.token, cart, customerNote)
+            const res = bookingId && !selectedSession
+                ? await placeRoomOrderDirect(bookingId, cart, customerNote)
+                : selectedSession
+                    ? await placeStaffOrder(selectedSession.token, cart, customerNote)
+                    : { error: 'No active session found.' }
             if (res && res.success) {
-                toast.success('Order placed successfully & sent to kitchen!')
+                if (res.orderId) {
+                    onSuccess?.(res.orderId)
+                }
+                setOrderConfirmation({
+                    itemCount: cart.reduce((sum, item) => sum + item.quantity, 0),
+                    total: cartTotal,
+                    label: bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`
+                })
                 setCart([])
                 setCustomerNote('')
-                onClose()
             } else {
                 const errMsg = res?.error || 'Failed to place order'
                 if (errMsg === 'Unauthorized') {
@@ -312,9 +339,46 @@ export default function QuickOrderModal({
         }
     }
 
+    const handleConfirmationDone = () => {
+        setOrderConfirmation(null)
+        onClose()
+    }
+
     return (
         <>
-        <Modal open={isOpen} onClose={onClose} size="full" ariaLabel="Quick POS Order" className="flex flex-col overflow-hidden">
+        {/* Success confirmation — an explicit post-placement acknowledgement so the
+            cashier gets clear feedback instead of a toast that vanishes with the modal. */}
+        <Modal
+            open={!!orderConfirmation}
+            onClose={handleConfirmationDone}
+            size="sm"
+            layer="top"
+            ariaLabel="Order placed"
+            className="p-8 flex flex-col items-center text-center gap-4"
+        >
+            {orderConfirmation && (
+                <>
+                    <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                        <CheckCircle2 size={36} />
+                    </div>
+                    <div>
+                        <h3 className="text-h3 font-black text-ink">Order Placed!</h3>
+                        <p className="text-body text-ink-subtle mt-1">
+                            {orderConfirmation.itemCount} item{orderConfirmation.itemCount !== 1 ? 's' : ''} sent to the kitchen and added to {orderConfirmation.label}.
+                        </p>
+                    </div>
+                    <div className="w-full py-3 rounded-xl bg-surface-muted text-center">
+                        <span className="text-caption font-bold text-ink-subtle uppercase">Order Total</span>
+                        <p className="text-h2 font-black text-ink">Rs. {orderConfirmation.total}</p>
+                    </div>
+                    <Button block variant="primary" onClick={handleConfirmationDone} className="py-3 font-bold">
+                        Done
+                    </Button>
+                </>
+            )}
+        </Modal>
+        {/* Main POS workspace — hidden while the success card is showing. */}
+        <Modal open={isOpen && !orderConfirmation} onClose={onClose} size="full" ariaLabel="Quick POS Order" className="flex flex-col overflow-hidden">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
                     <div className="flex items-center gap-3">
@@ -558,7 +622,7 @@ export default function QuickOrderModal({
                                         variant="primary"
                                         icon={submitting ? Loader2 : ShoppingCart}
                                         loading={submitting}
-                                        onClick={handlePlaceOrder}
+                                        onClick={() => setShowConfirmDialog(true)}
                                         className="py-3 font-bold"
                                     >
                                         Place Order &amp; Print
@@ -684,6 +748,57 @@ export default function QuickOrderModal({
                         </div>
                     </>
                 )}
+            </Modal>
+
+            {/* Pre-submission confirmation — stops a misclick on "Place Order" from
+                sending a wrong order straight to the kitchen. */}
+            <Modal
+                open={showConfirmDialog}
+                onClose={() => setShowConfirmDialog(false)}
+                size="md"
+                layer="top"
+                ariaLabel="Confirm order"
+                className="flex flex-col overflow-hidden max-h-[80vh]"
+            >
+                <div className="px-5 py-4 border-b border-hairline bg-surface-muted/50">
+                    <h4 className="text-body font-black text-ink">Confirm order</h4>
+                    <p className="text-[10px] text-ink-subtle mt-0.5">
+                        Sends to the kitchen and adds to {bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`}.
+                    </p>
+                </div>
+
+                <div className="p-5 overflow-y-auto space-y-1.5 flex-1">
+                    {cart.map(item => (
+                        <div key={item.id} className="flex justify-between text-caption text-ink-muted">
+                            <span>{item.name} <span className="text-brand-500 font-bold">×{item.quantity}</span></span>
+                            <span className="font-semibold tabular-nums">
+                                Rs. {(item.price + item.modifiers.reduce((s, m) => s + m.priceAdjustment, 0)) * item.quantity}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="px-5 py-3 border-t border-hairline flex justify-between items-center bg-surface-muted/20">
+                    <span className="text-caption font-bold text-ink-subtle uppercase">Total</span>
+                    <span className="text-h3 font-black text-ink">Rs. {cartTotal}</span>
+                </div>
+
+                <div className="p-4 border-t border-hairline bg-surface-muted/20 flex gap-2">
+                    <button
+                        onClick={() => setShowConfirmDialog(false)}
+                        className="flex-1 py-2.5 rounded-xl border border-hairline bg-surface hover:bg-surface-muted text-ink text-label font-bold transition"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={handlePlaceOrder}
+                        disabled={submitting}
+                        className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-label font-bold transition shadow-sm disabled:opacity-50 flex items-center justify-center gap-1.5"
+                    >
+                        {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
+                        Confirm &amp; Place Order
+                    </button>
+                </div>
             </Modal>
         </>
     )

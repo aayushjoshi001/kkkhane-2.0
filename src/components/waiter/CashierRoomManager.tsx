@@ -4,12 +4,14 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { createClient } from '@/lib/supabase/client'
-import { Users, X, Check, Bed, ClipboardList, Loader2, CreditCard, RefreshCw, Calendar, FileText, Plus, Landmark } from 'lucide-react'
+import { Users, X, Check, Bed, ClipboardList, Loader2, CreditCard, RefreshCw, Calendar, FileText, Plus, Landmark, Utensils } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { type TableWithSession } from './CashierTableManager'
 import { formatDateTime, calculateNights } from '@/lib/utils'
+import QuickOrderModal from './QuickOrderModal'
+import { openSession } from '@/app/(staff)/waiter/actions'
 
 export interface RoomWithTypes {
     id: string
@@ -42,6 +44,7 @@ export default function CashierRoomManager({
     activeOrders,
     unpaidOrders,
     onGoToBilling,
+    onOrderPlaced,
 }: {
     rooms: RoomWithTypes[]
     setRooms: React.Dispatch<React.SetStateAction<any[]>>
@@ -53,6 +56,7 @@ export default function CashierRoomManager({
     activeOrders: any[]
     unpaidOrders: any[]
     onGoToBilling?: (room: any) => void
+    onOrderPlaced?: (orderId: string) => void
 }) {
     const [selectedRoom, setSelectedRoom] = useState<RoomWithTypes | null>(null)
     const [activeBooking, setActiveBooking] = useState<any | null>(null)
@@ -77,6 +81,9 @@ export default function CashierRoomManager({
         description: '',
         amount: ''
     })
+    const [foodOrderModalOpen, setFoodOrderModalOpen] = useState(false)
+    const [createdSessionId, setCreatedSessionId] = useState<string | null>(null)
+    const [refreshTrigger, setRefreshTrigger] = useState(0)
 
     // Booking form inputs
     const [bookingForm, setBookingForm] = useState({
@@ -211,8 +218,9 @@ export default function CashierRoomManager({
             setManualCharges([])
             setLinkedDiningOrders([])
             setShowAddChargeForm(false)
+            setCreatedSessionId(null)
         }
-    }, [selectedRoom, rooms])
+    }, [selectedRoom, rooms, refreshTrigger])
 
     // Filter rooms
     const filteredRooms = useMemo(() => {
@@ -227,24 +235,34 @@ export default function CashierRoomManager({
         })
     }, [rooms, roomsFilter])
 
-    // Match table QR session orders
+    // Match table QR session orders or room orders linked to the active booking
     const qrOrdersDetails = useMemo(() => {
-        if (!selectedRoom || selectedRoom.status !== 'occupied') return null
+        if (!selectedRoom || selectedRoom.status !== 'occupied' || !activeBooking) return null
 
-        // Keyed on tables.room_id — a relabelled or duplicate table can no longer
-        // detach a guest's orders from their folio.
+        // Fetch all active/unpaid orders that are directly linked to this booking
+        const allActive = activeOrders.filter(o => o.booking_id === activeBooking.id)
+        const allUnpaid = unpaidOrders.filter(o => o.booking_id === activeBooking.id)
+        
+        // Also fallback to match by session in case booking_id is not set but matchingTable activeSession is
         const matchingTable = tables.find(t => t.room_id === selectedRoom.id)
-        if (!matchingTable?.activeSession) return null
+        const sessionId = matchingTable?.activeSession?.id || createdSessionId
+        
+        const additionalActive = sessionId ? activeOrders.filter(o => o.session_id === sessionId && o.booking_id !== activeBooking.id) : []
+        const additionalUnpaid = sessionId ? unpaidOrders.filter(o => o.session_id === sessionId && o.booking_id !== activeBooking.id) : []
 
-        const sessionId = matchingTable.activeSession.id
-        const allActive = activeOrders.filter(o => o.session_id === sessionId)
-        const allUnpaid = unpaidOrders.filter(o => o.session_id === sessionId)
-        const combinedOrders = [...allActive, ...allUnpaid]
+        const combinedOrders = [...allActive, ...allUnpaid, ...additionalActive, ...additionalUnpaid]
+        
+        // De-duplicate orders by ID
+        const uniqueOrdersMap = new Map<string, any>()
+        for (const o of combinedOrders) {
+            uniqueOrdersMap.set(o.id, o)
+        }
+        const uniqueOrders = Array.from(uniqueOrdersMap.values())
 
         const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
         let total = 0
 
-        for (const order of combinedOrders) {
+        for (const order of uniqueOrders) {
             const orderItems = order.order_items || []
             for (const item of orderItems) {
                 const name = item.menu_items?.name || 'Item'
@@ -257,7 +275,7 @@ export default function CashierRoomManager({
         }
 
         return { items, total, sessionId }
-    }, [selectedRoom, activeOrders, unpaidOrders, tables])
+    }, [selectedRoom, activeBooking, activeOrders, unpaidOrders, tables, createdSessionId])
 
     // Stay night and price calculations
     const stayPriceDetails = useMemo(() => {
@@ -300,6 +318,44 @@ export default function CashierRoomManager({
             setConfirmDirtyOpen(false)
         } catch {
             toast.error('Failed to update room status')
+        } finally {
+            setIsProcessing(false)
+        }
+    }
+
+    const handleOpenFoodOrder = async () => {
+        if (!selectedRoom) return
+        
+        const matchingTable = tables.find(t => t.room_id === selectedRoom.id)
+        if (!matchingTable) {
+            // Open directly using bookingId (no table session needed)
+            setFoodOrderModalOpen(true)
+            return
+        }
+
+        const existingSessionId = matchingTable.activeSession?.id || createdSessionId
+        if (existingSessionId) {
+            setFoodOrderModalOpen(true)
+            return
+        }
+
+        // Create a new session dynamically
+        setIsProcessing(true)
+        try {
+            const res = await openSession(matchingTable.id, restaurantId)
+            if (res.error) {
+                toast.error(`Could not start food order session: ${res.error}`)
+                return
+            }
+            if (res.session?.id) {
+                setCreatedSessionId(res.session.id)
+                setFoodOrderModalOpen(true)
+            } else {
+                toast.error("Could not start food order session.")
+            }
+        } catch (err) {
+            console.error("Error creating session for room order:", err)
+            toast.error("Failed to start session.")
         } finally {
             setIsProcessing(false)
         }
@@ -883,15 +939,23 @@ export default function CashierRoomManager({
                                     </div>
                                 </div>
 
-                                {/* Add Manual Charge Form / Toggle */}
-                                <div className="border border-dashed border-hairline-strong rounded-2xl p-4 bg-surface-muted/10">
+                                {/* Add Manual Charge Form / Toggle — sticky so it stays reachable without scrolling past a long billing list */}
+                                <div className="sticky bottom-0 z-10 border border-dashed border-hairline-strong rounded-2xl p-4 bg-surface shadow-lg">
                                     {!showAddChargeForm ? (
-                                        <button 
-                                            onClick={() => setShowAddChargeForm(true)}
-                                            className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-brand-500 font-extrabold hover:text-brand-600 hover:scale-[1.01] transition-all"
-                                        >
-                                            <Plus size={14} /> Add Manual Purchase (Minibar, Laundry, etc.)
-                                        </button>
+                                        <div className="flex flex-col sm:flex-row gap-2 md:gap-2.5 items-center justify-center">
+                                            <button 
+                                                onClick={() => setShowAddChargeForm(true)}
+                                                className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-brand-500 font-extrabold hover:text-brand-600 hover:scale-[1.01] transition-all border border-brand-500/10 hover:border-brand-500/30 rounded-xl bg-surface"
+                                            >
+                                                <Plus size={14} /> Add Manual Purchase (Minibar, Laundry, etc.)
+                                            </button>
+                                            <button 
+                                                onClick={handleOpenFoodOrder}
+                                                className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-emerald-600 font-extrabold hover:text-emerald-700 hover:scale-[1.01] transition-all border border-emerald-500/10 hover:border-emerald-500/30 rounded-xl bg-surface"
+                                            >
+                                                <Utensils size={14} /> Add Food/Restaurant Order
+                                            </button>
+                                        </div>
                                     ) : (
                                         <div className="space-y-3.5 animate-in slide-in-from-top duration-200">
                                             <div className="flex items-center justify-between border-b border-hairline pb-2">
@@ -1014,6 +1078,25 @@ export default function CashierRoomManager({
                 </div>,
                 document.body
             )}
+
+            {foodOrderModalOpen && (() => {
+                const matchingTable = tables.find(t => t.room_id === selectedRoom?.id)
+                const resolvedSessionId = matchingTable?.activeSession?.id || createdSessionId
+                return (
+                    <QuickOrderModal
+                        isOpen={foodOrderModalOpen}
+                        onClose={() => setFoodOrderModalOpen(false)}
+                        sessionId={resolvedSessionId || undefined}
+                        tableName={selectedRoom ? `Room ${selectedRoom.room_number}` : undefined}
+                        restaurantId={restaurantId}
+                        bookingId={activeBooking?.id}
+                        onSuccess={(orderId: string) => {
+                            setRefreshTrigger(prev => prev + 1)
+                            if (onOrderPlaced) onOrderPlaced(orderId)
+                        }}
+                    />
+                )
+            })()}
         </div>
     )
 }

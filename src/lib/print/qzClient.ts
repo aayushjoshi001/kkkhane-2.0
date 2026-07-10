@@ -41,7 +41,10 @@ function classifyError(err: unknown, fallback: QzStatus): QzStatus {
 // hangs instead of failing outright (rare, but possible on a misconfigured
 // network), this stops a caller (e.g. a cashier settling a bill) from
 // waiting forever on a connection that will never resolve either way.
-const CONNECT_TIMEOUT_MS = 5000
+// A real, running QZ Tray agent answers in well under a second, so this only
+// needs to be long enough to absorb that — not long enough to make settling
+// a bill visibly hang when the till simply doesn't have QZ Tray open.
+const CONNECT_TIMEOUT_MS = 1500
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
     return new Promise((resolve, reject) => {
