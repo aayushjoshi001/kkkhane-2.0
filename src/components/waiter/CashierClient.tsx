@@ -118,6 +118,11 @@ export default function CashierClient({
     // before the button actually disables — settling the bill (and printing
     // the invoice) twice. A ref blocks re-entry the instant the first click lands.
     const isSettlingRef = useRef(false)
+    // True once the bill is actually settled in the database — printing (which
+    // can be slow or block on a native dialog if no printer is configured)
+    // happens after this, so the cashier sees "Paid" immediately instead of a
+    // spinner that looks stuck for as long as the print step takes.
+    const [invoiceSettled, setInvoiceSettled] = useState(false)
 
     // For stay billing detail states
     const [loadingStayDetails, setLoadingStayDetails] = useState(false)
@@ -443,14 +448,20 @@ export default function CashierClient({
                 ))
 
                 toast.success('Room billing settled and guest checked out successfully!')
-                setTimeout(() => { window.location.reload() }, 1000)
             } else {
                 const res = await closeSession(activeInvoice.sessionId)
                 if (res.error) throw new Error(res.error)
 
                 toast.success('Table session settled and closed successfully!')
-                setTimeout(() => { window.location.reload() }, 1000)
             }
+
+            // The bill is settled in the database at this point — the cashier
+            // sees "Paid" immediately rather than a spinner that looks stuck for
+            // as long as printing takes (which can block on a native browser
+            // print dialog if no printer is configured for this till).
+            isSettlingRef.current = false
+            setIsSettlingInvoice(false)
+            setInvoiceSettled(true)
 
             // Auto-print the invoice. Falls back to the browser print dialog
             // (this modal is already styled for it) if QZ Tray isn't
@@ -468,6 +479,8 @@ export default function CashierClient({
             setActiveInvoice(null)
             setSelectedBillingRoom(null)
             setSelectedBillingTable(null)
+            setInvoiceSettled(false)
+            window.location.reload()
         } catch (e: any) {
             toast.error(e.message || 'Failed to settle invoice')
         } finally {
@@ -1535,9 +1548,9 @@ export default function CashierClient({
 
             {/* Invoice Preview Overlay modal */}
             {mounted && activeInvoice && createPortal(
-                <div 
+                <div
                     className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200"
-                    onClick={() => setActiveInvoice(null)}
+                    onClick={() => { if (!invoiceSettled) setActiveInvoice(null) }}
                 >
                     <div 
                         className="bg-white w-full max-w-sm p-5 space-y-4 text-black print-container font-mono text-[11px] shadow-2xl relative border-t-8 border-brand-500"
@@ -1743,27 +1756,36 @@ export default function CashierClient({
 
                         {/* Invoice Footer Actions (Print, Mark Paid, Close) */}
                         <div className="flex gap-2 pt-3 border-t border-gray-100 print-actions flex-wrap">
-                            <Button 
-                                variant="secondary" 
-                                onClick={() => setActiveInvoice(null)}
-                                className="font-bold flex-1 text-[10px] py-1.5 min-w-[70px]"
-                            >
-                                Cancel
-                            </Button>
-                            <button
-                                onClick={() => window.print()}
-                                className="flex-1 py-1.5 px-3 border border-gray-300 rounded-xl text-[10px] font-bold text-gray-700 bg-white hover:bg-gray-50 transition active:scale-95 text-center flex items-center justify-center gap-1.5 shadow-sm min-w-[70px]"
-                            >
-                                Print Bill
-                            </button>
-                            <Button 
-                                variant="primary" 
-                                loading={isSettlingInvoice}
-                                onClick={handleMarkPaid}
-                                className="font-bold flex-1 bg-emerald-600 hover:bg-emerald-700 border-emerald-600 hover:border-emerald-700 text-[10px] text-white py-1.5 min-w-[70px]"
-                            >
-                                Mark Paid
-                            </Button>
+                            {invoiceSettled ? (
+                                <div className="flex-1 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold flex items-center justify-center gap-1.5">
+                                    <CheckCircle size={13} />
+                                    Paid — printing receipt…
+                                </div>
+                            ) : (
+                                <>
+                                    <Button
+                                        variant="secondary"
+                                        onClick={() => setActiveInvoice(null)}
+                                        className="font-bold flex-1 text-[10px] py-1.5 min-w-[70px]"
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <button
+                                        onClick={() => window.print()}
+                                        className="flex-1 py-1.5 px-3 border border-gray-300 rounded-xl text-[10px] font-bold text-gray-700 bg-white hover:bg-gray-50 transition active:scale-95 text-center flex items-center justify-center gap-1.5 shadow-sm min-w-[70px]"
+                                    >
+                                        Print Bill
+                                    </button>
+                                    <Button
+                                        variant="primary"
+                                        loading={isSettlingInvoice}
+                                        onClick={handleMarkPaid}
+                                        className="font-bold flex-1 bg-emerald-600 hover:bg-emerald-700 border-emerald-600 hover:border-emerald-700 text-[10px] text-white py-1.5 min-w-[70px]"
+                                    >
+                                        Mark Paid
+                                    </Button>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>,
