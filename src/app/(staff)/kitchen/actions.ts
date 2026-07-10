@@ -25,12 +25,15 @@ const KITCHEN_ORDER_SELECT = `
 export async function getKitchenOrders(restaurantId: string) {
     await requireRole('kitchen', 'bartender', 'manager', 'super_admin', 'cashier')
     const adminSupabase = await createAdminClient()
+    // Only load orders from the last 24 hours to keep the background print/display queue light
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     const { data, error } = await adminSupabase
         .from('orders')
         .select(KITCHEN_ORDER_SELECT)
         .eq('restaurant_id', restaurantId)
         .in('order_type', ['dine_in', 'takeout', 'delivery'])
         .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
+        .gt('placed_at', yesterday)
         .order('placed_at', { ascending: true })
 
     if (error) {
