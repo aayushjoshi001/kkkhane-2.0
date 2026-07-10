@@ -214,14 +214,14 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
                     </div>
 
                     {/* Bottom part: Price & Add Button */}
-                    <div className="flex items-center justify-between gap-2 mt-1">
+                    <div className={`flex ${hasVariations ? 'flex-col gap-1.5' : 'items-center justify-between gap-2'} mt-1`}>
                         {/* Price */}
-                        <span className="font-black text-[12px] text-brand-500 tabular-nums whitespace-nowrap">
+                        <span className={`font-black text-[12px] text-brand-500 tabular-nums whitespace-nowrap ${hasVariations ? 'text-left w-full' : ''}`}>
                             {priceDisplay}
                         </span>
 
                         {/* Add Button / Quantity Selector */}
-                        <div className="shrink-0">
+                        <div className={`shrink-0 ${hasVariations ? 'self-end' : ''}`}>
                             {(!isTakeout && !sessionId) ? null : (quantity === 0 || hasModifiers || hasVariations) ? (
                                 <button
                                     onClick={handleAdd}
