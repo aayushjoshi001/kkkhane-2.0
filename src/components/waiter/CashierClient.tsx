@@ -113,6 +113,11 @@ export default function CashierClient({
     const [selectedBillingTable, setSelectedBillingTable] = useState<any | null>(null)
     const [activeInvoice, setActiveInvoice] = useState<any | null>(null)
     const [isSettlingInvoice, setIsSettlingInvoice] = useState(false)
+    // Synchronous re-entry guard: state updates from setIsSettlingInvoice are
+    // batched/async, so a fast double-click can fire handleMarkPaid twice
+    // before the button actually disables — settling the bill (and printing
+    // the invoice) twice. A ref blocks re-entry the instant the first click lands.
+    const isSettlingRef = useRef(false)
 
     // For stay billing detail states
     const [loadingStayDetails, setLoadingStayDetails] = useState(false)
@@ -391,7 +396,8 @@ export default function CashierClient({
     }
 
     const handleMarkPaid = async () => {
-        if (!activeInvoice) return
+        if (!activeInvoice || isSettlingRef.current) return
+        isSettlingRef.current = true
         setIsSettlingInvoice(true)
         try {
             // Settle all unpaid orders associated with this room or table
@@ -402,16 +408,14 @@ export default function CashierClient({
             if (sessionId) {
                 const sessionOrders = active.filter(o => o.session_id === sessionId)
                 const sessionUnpaid = unpaid.filter(o => o.session_id === sessionId)
-                const allUnpaid = [...sessionOrders, ...sessionUnpaid]
+                const allUnpaid = [...sessionOrders, ...sessionUnpaid].filter(o => o.payment_status === 'unpaid')
 
-                for (const order of allUnpaid) {
-                    if (order.payment_status === 'unpaid') {
-                        const res = await markDeliveredAndCashPaid(order.id)
-                        if (res.error) {
-                            throw new Error(res.error)
-                        }
-                    }
-                }
+                // Independent per-order updates (each keyed by its own id) — settle
+                // them concurrently instead of one network round-trip at a time,
+                // which was the main reason "Mark Paid" felt slow on a big bill.
+                const results = await Promise.all(allUnpaid.map(order => markDeliveredAndCashPaid(order.id)))
+                const failed = results.find(res => res.error)
+                if (failed) throw new Error(failed.error)
             }
 
             if (activeInvoice.type === 'room') {
@@ -467,6 +471,7 @@ export default function CashierClient({
         } catch (e: any) {
             toast.error(e.message || 'Failed to settle invoice')
         } finally {
+            isSettlingRef.current = false
             setIsSettlingInvoice(false)
         }
     }
