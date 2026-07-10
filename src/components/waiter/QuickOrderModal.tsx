@@ -49,6 +49,7 @@ interface QuickOrderModalProps {
     restaurantId: string
     activeTables?: any[]
     bookingId?: string
+    onSuccess?: () => void
 }
 
 interface CartItem {
@@ -74,7 +75,8 @@ export default function QuickOrderModal({
     tableName,
     restaurantId,
     activeTables,
-    bookingId
+    bookingId,
+    onSuccess
 }: QuickOrderModalProps) {
     const [mounted, setMounted] = useState(false)
     const [loading, setLoading] = useState(true)
@@ -290,6 +292,7 @@ export default function QuickOrderModal({
                 toast.success('Order placed successfully & sent to kitchen!')
                 setCart([])
                 setCustomerNote('')
+                onSuccess?.()
                 onClose()
             } else {
                 const errMsg = res?.error || 'Failed to place order'

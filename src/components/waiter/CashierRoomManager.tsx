@@ -81,6 +81,7 @@ export default function CashierRoomManager({
     })
     const [foodOrderModalOpen, setFoodOrderModalOpen] = useState(false)
     const [createdSessionId, setCreatedSessionId] = useState<string | null>(null)
+    const [refreshTrigger, setRefreshTrigger] = useState(0)
 
     // Booking form inputs
     const [bookingForm, setBookingForm] = useState({
@@ -217,7 +218,7 @@ export default function CashierRoomManager({
             setShowAddChargeForm(false)
             setCreatedSessionId(null)
         }
-    }, [selectedRoom, rooms])
+    }, [selectedRoom, rooms, refreshTrigger])
 
     // Filter rooms
     const filteredRooms = useMemo(() => {
@@ -1087,6 +1088,7 @@ export default function CashierRoomManager({
                         tableName={selectedRoom ? `Room ${selectedRoom.room_number}` : undefined}
                         restaurantId={restaurantId}
                         bookingId={activeBooking?.id}
+                        onSuccess={() => setRefreshTrigger(prev => prev + 1)}
                     />
                 )
             })()}
