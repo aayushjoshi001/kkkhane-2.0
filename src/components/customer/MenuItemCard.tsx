@@ -154,17 +154,17 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
             /* List Layout (Horizontal: Image left, details right) */
             <div 
                 style={{ boxShadow: '0 2px 8px rgba(0, 0, 0, 0.02), 0 1px 1px rgba(0, 0, 0, 0.02)' }}
-                className={`group relative bg-surface border border-hairline rounded-[24px] hover:border-brand-500/20 hover:shadow-[0_8px_30px_rgba(255,122,46,0.08)] hover:scale-[1.01] active:scale-[0.99] transition-all duration-300 ease-out flex flex-row items-stretch p-3 gap-4 w-full ${!item.is_available ? 'opacity-70' : ''}`}
+                className={`group relative bg-surface border border-hairline rounded-[24px] hover:border-brand-500/20 hover:shadow-[0_8px_30px_rgba(255,122,46,0.08)] hover:scale-[1.01] active:scale-[0.99] transition-all duration-300 ease-out flex flex-row items-stretch p-3 gap-2.5 w-full ${!item.is_available ? 'opacity-70' : ''}`}
             >
                 {/* Left: Square Image Container */}
-                <div className="relative w-28 h-28 rounded-2xl bg-surface-muted overflow-hidden shrink-0 border border-hairline z-10">
+                <div className="relative w-20 h-20 rounded-2xl bg-surface-muted overflow-hidden shrink-0 border border-hairline z-10">
                     {item.image_url ? (
                         <Image
                             src={item.image_url}
                             alt={displayName}
                             fill
                             className="object-cover group-hover:scale-[1.04] transition-transform duration-500"
-                            sizes="120px"
+                            sizes="80px"
                         />
                     ) : (
                         <div className="absolute inset-0 flex items-center justify-center bg-surface-muted">
@@ -203,12 +203,7 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
                             </h3>
                         </div>
 
-                        {/* Description */}
-                        {displayDesc && (
-                            <p className="text-[11px] text-ink-subtle leading-normal line-clamp-2 font-medium text-left">
-                                {displayDesc}
-                            </p>
-                        )}
+                        {/* Description removed for spacing */}
 
                         {/* Rating */}
                         <div className="flex items-center gap-1 text-[10px] text-ink-muted font-bold text-left">
@@ -219,36 +214,36 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
                     </div>
 
                     {/* Bottom part: Price & Add Button */}
-                    <div className="flex items-center justify-between gap-2 mt-1">
+                    <div className={`flex ${hasVariations ? 'flex-col gap-1.5' : 'items-center justify-between gap-2'} mt-1`}>
                         {/* Price */}
-                        <span className="font-black text-[14px] text-brand-500 tabular-nums">
+                        <span className={`font-black text-[12px] text-brand-500 tabular-nums whitespace-nowrap ${hasVariations ? 'text-left w-full' : ''}`}>
                             {priceDisplay}
                         </span>
 
                         {/* Add Button / Quantity Selector */}
-                        <div className="shrink-0">
+                        <div className={`shrink-0 ${hasVariations ? 'self-end' : ''}`}>
                             {(!isTakeout && !sessionId) ? null : (quantity === 0 || hasModifiers || hasVariations) ? (
                                 <button
                                     onClick={handleAdd}
                                     disabled={!item.is_available}
-                                    className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white px-4.5 py-1.5 rounded-xl font-extrabold text-[11px] tracking-wider uppercase shadow-[0_4px_10px_rgba(251,99,3,0.15)] active:scale-95 transition-all"
+                                    className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white px-3 py-1 rounded-lg font-extrabold text-[10px] tracking-wider uppercase shadow-[0_4px_10px_rgba(251,99,3,0.15)] active:scale-95 transition-all"
                                 >
                                     Add
                                 </button>
                             ) : (
-                                <div className="bg-brand-50 border border-brand-100/50 rounded-full flex flex-row items-center gap-2 p-0.5 px-1 shadow-xs h-7">
+                                <div className="bg-brand-50 border border-brand-100/50 rounded-full flex flex-row items-center gap-1 p-0.5 px-1 shadow-xs h-6.5">
                                     <button 
                                         onClick={handleRemove}
-                                        className="w-5 h-5 rounded-full bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center active:scale-90 transition"
+                                        className="w-4 h-4 rounded-full bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center active:scale-90 transition"
                                     >
-                                        <Minus size={9} strokeWidth={4.5} />
+                                        <Minus size={8} strokeWidth={5} />
                                     </button>
-                                    <span className="text-[11px] font-black leading-none tabular-nums text-brand-600 min-w-[12px] text-center my-0.5">{quantity}</span>
+                                    <span className="text-[10px] font-black leading-none tabular-nums text-brand-600 min-w-[10px] text-center my-0.5">{quantity}</span>
                                     <button 
                                         onClick={handleAdd}
-                                        className="w-5 h-5 rounded-full bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center active:scale-90 transition"
+                                        className="w-4 h-4 rounded-full bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center active:scale-90 transition"
                                     >
-                                        <Plus size={9} strokeWidth={4.5} />
+                                        <Plus size={8} strokeWidth={5} />
                                     </button>
                                 </div>
                             )}

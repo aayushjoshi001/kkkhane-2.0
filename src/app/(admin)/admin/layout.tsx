@@ -55,7 +55,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         <FeatureProvider features={features}>
         <BusinessModeProvider mode={mode}>
             <SidebarProvider>
-                <div className="min-h-screen bg-canvas flex">
+                <div className="h-screen bg-canvas flex overflow-hidden">
                     <SessionSync userId={currentUser.id} />
                     {isSuperAdmin ? <SuperAdminSidebar userRole={roleNameRaw} userAvatar={userAvatar} /> : <AdminSidebar userRole={roleNameRaw} restaurantName={restaurantName} userAvatar={userAvatar} />}
                     {!isSuperAdmin && currentUser.restaurantId && (

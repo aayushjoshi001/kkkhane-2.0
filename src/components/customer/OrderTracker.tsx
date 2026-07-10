@@ -124,7 +124,7 @@ export default function OrderTracker({
 
     if (activeShowSuccess) {
         return (
-            <div className="flex flex-col min-h-screen bg-surface text-ink font-sans select-none pb-36 animate-in fade-in duration-300">
+            <div className="flex flex-col min-h-screen bg-surface text-ink font-sans select-none pb-48 animate-in fade-in duration-300">
                 {showConfetti && <Confetti />}
 
                 {/* Top Orange Section */}

@@ -589,6 +589,9 @@ export default function TablePageClient({
                 />
             )}
 
+            {/* Floating Cart Summary Pill */}
+            <CartSummary sessionId={liveSessionToken} tableSlug={tableData.qr_token} />
+
             {/* Reusable Bottom Navigation Bar */}
             <BottomNavbar activeTab="home" onHomeClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
         </div>
