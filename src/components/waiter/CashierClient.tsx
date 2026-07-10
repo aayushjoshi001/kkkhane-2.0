@@ -744,6 +744,22 @@ export default function CashierClient({
                                 setBillingSubTab('rooms')
                                 setSelectedBillingRoom(room)
                             }}
+                            onOrderPlaced={async (orderId) => {
+                                const supabase = supabaseRef.current
+                                const { data } = await supabase
+                                    .from('orders')
+                                    .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, tables ( label ) ), order_items ( id, quantity, status, menu_items ( name ) )`)
+                                    .eq('id', orderId)
+                                    .single()
+                                if (data) {
+                                    setActive(prev => {
+                                        if (prev.some(o => o.id === orderId)) {
+                                            return prev.map(o => o.id === orderId ? (data as unknown as ActiveOrder) : o)
+                                        }
+                                        return [...prev, data as unknown as ActiveOrder]
+                                    })
+                                }
+                            }}
                         />
                     </div>
                 )}

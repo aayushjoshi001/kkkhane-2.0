@@ -44,6 +44,7 @@ export default function CashierRoomManager({
     activeOrders,
     unpaidOrders,
     onGoToBilling,
+    onOrderPlaced,
 }: {
     rooms: RoomWithTypes[]
     setRooms: React.Dispatch<React.SetStateAction<any[]>>
@@ -55,6 +56,7 @@ export default function CashierRoomManager({
     activeOrders: any[]
     unpaidOrders: any[]
     onGoToBilling?: (room: any) => void
+    onOrderPlaced?: (orderId: string) => void
 }) {
     const [selectedRoom, setSelectedRoom] = useState<RoomWithTypes | null>(null)
     const [activeBooking, setActiveBooking] = useState<any | null>(null)
@@ -1088,7 +1090,10 @@ export default function CashierRoomManager({
                         tableName={selectedRoom ? `Room ${selectedRoom.room_number}` : undefined}
                         restaurantId={restaurantId}
                         bookingId={activeBooking?.id}
-                        onSuccess={() => setRefreshTrigger(prev => prev + 1)}
+                        onSuccess={(orderId: string) => {
+                            setRefreshTrigger(prev => prev + 1)
+                            if (onOrderPlaced) onOrderPlaced(orderId)
+                        }}
                     />
                 )
             })()}
