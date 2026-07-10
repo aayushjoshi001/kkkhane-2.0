@@ -22,6 +22,12 @@ type PlaceOrderItemPayload = {
     variation_id?: string | null
 }
 
+interface FeaturesV2 {
+    defaultTaxRate?: number | string
+    serviceChargeEnabled?: boolean
+    serviceChargeRate?: number | string
+}
+
 // Serverless-safe rate limiting via Upstash Redis
 // Each IP gets 5 requests per 60-second sliding window
 // Lazily initialized so missing env vars don't crash the entire module
@@ -334,7 +340,7 @@ export async function placeOrder(
                 .eq('restaurant_id', sessionData.restaurant_id)
                 .single()
             
-            const featuresV2 = settings?.features_v2 as any
+            const featuresV2 = settings?.features_v2 as FeaturesV2 | null
             const taxRate = Number(featuresV2?.defaultTaxRate ?? 0)
             const scEnabled = featuresV2?.serviceChargeEnabled === true
             const scRate = Number(featuresV2?.serviceChargeRate ?? 10)
@@ -441,7 +447,7 @@ export async function placeOrder(
                 qstash?.publishJSON({
                     url: `${baseUrl}/api/webhooks/qstash/order-processed`,
                     body: { orderId: result.order_id, restaurantId: sessionData.restaurant_id }
-                }).catch((err: any) => console.error('[QStash] Order webhook publish error:', err))
+                }).catch((err) => console.error('[QStash] Order webhook publish error:', err))
             })
         }
     }
@@ -662,7 +668,7 @@ async function placeOrderFallback(
         .select('features_v2')
         .eq('restaurant_id', restaurantId)
         .single()
-    const featuresV2 = settings?.features_v2 as any
+    const featuresV2 = settings?.features_v2 as FeaturesV2 | null
     const taxRate = Number(featuresV2?.defaultTaxRate ?? 0)
     const scEnabled = featuresV2?.serviceChargeEnabled === true
     const scRate = Number(featuresV2?.serviceChargeRate ?? 10)
