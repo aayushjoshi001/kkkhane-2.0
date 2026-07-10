@@ -85,7 +85,12 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     const [now, setNow] = useState(() => Date.now())
     const [activeTab, setActiveTab] = useState<TabKey>('new')
     const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
-    const [printOnlyMode, setPrintOnlyMode] = useState<boolean>(false)
+    const [printOnlyMode, setPrintOnlyMode] = useState<boolean>(() => {
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem(`print_only_${station}`) === 'true'
+        }
+        return false
+    })
     const money = useCurrency()
     const supabaseRef = useRef(createClient())
     const { print: printKot } = usePrinter(stationMeta.printerRole)
@@ -313,7 +318,11 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
                         <input
                             type="checkbox"
                             checked={printOnlyMode}
-                            onChange={(e) => setPrintOnlyMode(e.target.checked)}
+                            onChange={(e) => {
+                                const val = e.target.checked
+                                setPrintOnlyMode(val)
+                                localStorage.setItem(`print_only_${station}`, String(val))
+                            }}
                             className="w-4 h-4 rounded text-brand-500 border-hairline focus:ring-brand-500 accent-[#FB6303]"
                         />
                         <span className="text-xs font-black uppercase tracking-wider text-ink-muted">
