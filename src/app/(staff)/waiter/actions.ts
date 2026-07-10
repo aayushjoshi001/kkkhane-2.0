@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { logAudit } from '@/lib/audit'
 import { markTableDirtyForSession } from '@/lib/tableLifecycle'
 import { getCachedMenuData } from '@/lib/menu-cache'
+import { getRoomContextForTable } from '@/lib/rooms'
 
 export async function openSession(tableId: string, restaurantId: string, guestCount?: number) {
     const supabase = await createServerClient()
@@ -291,7 +292,7 @@ export async function placeStaffOrder(
     // Resolve session (UUID vs token) safely to avoid UUID casting errors in Postgres
     let query = adminSupabase
         .from('sessions')
-        .select('id, restaurant_id, status')
+        .select('id, restaurant_id, status, table_id')
         .eq('status', 'active')
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)
@@ -348,11 +349,26 @@ export async function placeStaffOrder(
             return { error: 'Failed to place order.' }
         }
 
-        // Update status to confirmed immediately (since it is placed by staff)
-        await adminSupabase
-            .from('orders')
-            .update({ status: 'confirmed', needs_confirmation: false })
-            .eq('id', result.order_id)
+        // If this session is for a hotel room, bind the order to the active booking
+        const roomContext = session.table_id
+            ? await getRoomContextForTable(adminSupabase, session.table_id)
+            : null
+
+        if (roomContext?.bookingId) {
+            await adminSupabase
+                .from('orders')
+                .update({ 
+                    booking_id: roomContext.bookingId, 
+                    status: 'confirmed', 
+                    needs_confirmation: false 
+                })
+                .eq('id', result.order_id)
+        } else {
+            await adminSupabase
+                .from('orders')
+                .update({ status: 'confirmed', needs_confirmation: false })
+                .eq('id', result.order_id)
+        }
 
         // place_order() already deducted stock/ingredients inline for every item —
         // do not call deduct_ingredients_for_order here, it would double-deduct.
