@@ -68,6 +68,7 @@ export interface Restaurant {
     longitude: number | null
     payment_qr_url: string | null
     payment_qr_label: string
+    qr_bank_account_id: string | null
     // SaaS fields
     custom_domain: string | null
     subscription_tier: SubscriptionTier
@@ -910,7 +911,7 @@ export interface Booking {
     total_amount: number
     paid_amount: number
     payment_status: 'unpaid' | 'partial' | 'paid' | 'refunded'
-    advance_payment_method: 'cash' | 'qr_digital' | 'none' | null
+    advance_payment_method: 'cash' | 'qr_digital' | 'split' | 'none' | null
     notes: string | null
     created_at: string
     rooms?: Room | null

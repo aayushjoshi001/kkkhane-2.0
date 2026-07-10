@@ -64,7 +64,9 @@ export default function RoomsClient({
         check_out: '',
         guest_count: '2',
         advance_amount: '0',
-        advance_payment_method: 'cash'
+        advance_payment_method: 'cash',
+        advance_cash_amount: '',
+        advance_qr_amount: ''
     })
     const [isSubmittingRoom, setIsSubmittingRoom] = useState(false)
     const [isSubmittingType, setIsSubmittingType] = useState(false)
@@ -205,7 +207,9 @@ export default function RoomsClient({
             check_out: tomorrowDate.toISOString().slice(0, 16),
             guest_count: roomType ? roomType.capacity.toString() : '2',
             advance_amount: '0',
-            advance_payment_method: 'cash'
+            advance_payment_method: 'cash',
+            advance_cash_amount: '',
+            advance_qr_amount: ''
         })
         setIsBookModalOpen(true)
     }
@@ -232,6 +236,14 @@ export default function RoomsClient({
             return
         }
 
+        const isSplit = bookingForm.advance_payment_method === 'split'
+        const splitCash = parseFloat(bookingForm.advance_cash_amount) || 0
+        const splitQr = parseFloat(bookingForm.advance_qr_amount) || 0
+        if (isSplit && splitCash <= 0 && splitQr <= 0) {
+            toast.error('Enter a cash and/or QR amount for the split advance')
+            return
+        }
+
         setIsSubmittingBooking(true)
         try {
             const res = await fetch('/api/bookings', {
@@ -245,8 +257,10 @@ export default function RoomsClient({
                     check_in: bookingForm.check_in,
                     check_out: bookingForm.check_out,
                     guest_count: count,
-                    advance_amount: parseFloat(bookingForm.advance_amount) || 0,
-                    advance_payment_method: bookingForm.advance_payment_method
+                    advance_amount: isSplit ? splitCash + splitQr : (parseFloat(bookingForm.advance_amount) || 0),
+                    advance_payment_method: bookingForm.advance_payment_method,
+                    advance_cash_amount: isSplit ? splitCash : undefined,
+                    advance_qr_amount: isSplit ? splitQr : undefined
                 })
             })
             const data = await res.json()
@@ -807,9 +821,12 @@ export default function RoomsClient({
                                         type="number"
                                         min="0"
                                         placeholder="0.00"
-                                        value={bookingForm.advance_amount}
+                                        disabled={bookingForm.advance_payment_method === 'split'}
+                                        value={bookingForm.advance_payment_method === 'split'
+                                            ? ((parseFloat(bookingForm.advance_cash_amount) || 0) + (parseFloat(bookingForm.advance_qr_amount) || 0)).toString()
+                                            : bookingForm.advance_amount}
                                         onChange={e => setBookingForm(b => ({ ...b, advance_amount: e.target.value }))}
-                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00] disabled:opacity-60"
                                     />
                                 </div>
                                 <div>
@@ -823,9 +840,41 @@ export default function RoomsClient({
                                     >
                                         <option value="cash">Cash</option>
                                         <option value="qr_digital">QR / Digital</option>
+                                        <option value="split">Split (Cash + QR)</option>
                                     </select>
                                 </div>
                             </div>
+
+                            {bookingForm.advance_payment_method === 'split' && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                                            Cash Amount (Rs.)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            placeholder="0.00"
+                                            value={bookingForm.advance_cash_amount}
+                                            onChange={e => setBookingForm(b => ({ ...b, advance_cash_amount: e.target.value }))}
+                                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                                            QR / Digital Amount (Rs.)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            placeholder="0.00"
+                                            value={bookingForm.advance_qr_amount}
+                                            onChange={e => setBookingForm(b => ({ ...b, advance_qr_amount: e.target.value }))}
+                                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                        />
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="pt-4 flex items-center justify-end gap-2.5">
                                 <button

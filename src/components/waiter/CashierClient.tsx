@@ -1458,7 +1458,7 @@ export default function CashierClient({
                                                     <div className="flex items-center justify-between">
                                                         <span className="text-[10px] font-bold text-emerald-600 uppercase flex items-center gap-1">
                                                             <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                                            Advance Paid ({billingStayBooking?.advance_payment_method === 'qr_digital' ? 'QR/Digital' : 'Cash'})
+                                                            Advance Paid ({billingStayBooking?.advance_payment_method === 'split' ? 'Split Cash+QR' : billingStayBooking?.advance_payment_method === 'qr_digital' ? 'QR/Digital' : 'Cash'})
                                                         </span>
                                                         <span className="text-sm font-black text-emerald-600 tabular-nums">− {money(advancePaid)}</span>
                                                     </div>

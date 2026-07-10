@@ -14,7 +14,8 @@ export async function POST(req: Request) {
         const {
             room_id, guest_name, guest_phone, kyc,
             check_in, check_out, guest_count,
-            advance_amount, advance_payment_method
+            advance_amount, advance_payment_method,
+            advance_cash_amount, advance_qr_amount
         } = body
 
         if (!room_id || !guest_name || !guest_phone || !check_in || !check_out || !guest_count) {
@@ -49,9 +50,16 @@ export async function POST(req: Request) {
             .eq('restaurant_id', currentUser.restaurantId)
             .in('status', ['checked_in', 'pending'])
 
-        // 3. Resolve advance amount
-        const paidAmount = Math.max(0, Number(advance_amount) || 0)
-        const advMethod = paidAmount > 0 ? (advance_payment_method || 'cash') : 'none'
+        // 3. Resolve advance amount — a split advance (part cash, part QR) is
+        // recorded as two separate ledger postings below so both methods show
+        // up in income and cash-in-bank/bank-in, instead of collapsing to one.
+        const isSplitAdvance = advance_payment_method === 'split'
+        const splitCashAmount = isSplitAdvance ? Math.max(0, Number(advance_cash_amount) || 0) : 0
+        const splitQrAmount = isSplitAdvance ? Math.max(0, Number(advance_qr_amount) || 0) : 0
+        const paidAmount = isSplitAdvance
+            ? splitCashAmount + splitQrAmount
+            : Math.max(0, Number(advance_amount) || 0)
+        const advMethod = paidAmount > 0 ? (isSplitAdvance ? 'split' : (advance_payment_method || 'cash')) : 'none'
 
         // 4. Insert booking
         const notes = kyc ? `KYC: ${kyc.trim()}` : null
@@ -84,11 +92,35 @@ export async function POST(req: Request) {
 
         if (updateError) throw updateError
 
-        // Log advance payment to financial ledger and books automatically
-        if (paidAmount > 0) {
+        // Log advance payment to financial ledger and books automatically.
+        // Split advances post once per method so cash and QR each land in the
+        // correct income/cash-in-bank totals instead of one lump sum.
+        if (isSplitAdvance) {
+            const roomNumber = room?.room_number || 'Unknown'
+            if (splitCashAmount > 0) {
+                await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                    bookingId: booking.id,
+                    roomNumber,
+                    guestName: booking.guest_name,
+                    amount: splitCashAmount,
+                    paymentMethod: 'cash',
+                    isAdvance: true
+                })
+            }
+            if (splitQrAmount > 0) {
+                await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                    bookingId: booking.id,
+                    roomNumber,
+                    guestName: booking.guest_name,
+                    amount: splitQrAmount,
+                    paymentMethod: 'qr_digital',
+                    isAdvance: true
+                })
+            }
+        } else if (paidAmount > 0) {
             const roomNumber = room?.room_number || 'Unknown'
             const paymentMethodMapped = advMethod === 'cash' ? 'cash' : 'qr_digital'
-            
+
             await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
                 bookingId: booking.id,
                 roomNumber,

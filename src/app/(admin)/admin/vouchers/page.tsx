@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import VouchersManager from './VouchersManager'
+import { getNstDateString } from '@/lib/timezone'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,9 +47,7 @@ export default async function VouchersPage() {
     ])
 
     // Check if active Day Book session is open for today (in NST timezone)
-    const now = new Date()
-    const NST_OFFSET_MS = (5 * 60 + 45) * 60 * 1000
-    const todayDateNst = new Date(now.getTime() + NST_OFFSET_MS).toISOString().split('T')[0]
+    const todayDateNst = getNstDateString()
 
     const { data: openSession } = await supabase
         .from('day_book_sessions')

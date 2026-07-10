@@ -96,7 +96,9 @@ export default function CashierRoomManager({
     })
     const [advanceType, setAdvanceType] = useState<'none' | 'full' | 'partial'>('none')
     const [advanceAmount, setAdvanceAmount] = useState<string>('')
-    const [advancePayMethod, setAdvancePayMethod] = useState<'cash' | 'qr_digital'>('cash')
+    const [advancePayMethod, setAdvancePayMethod] = useState<'cash' | 'qr_digital' | 'split'>('cash')
+    const [advanceSplitCash, setAdvanceSplitCash] = useState<string>('')
+    const [advanceSplitQr, setAdvanceSplitQr] = useState<string>('')
 
     useEffect(() => {
         setMounted(true)
@@ -391,6 +393,14 @@ export default function CashierRoomManager({
             if (resolvedAdvance >= fullCost) { toast.error('Partial advance must be less than total room cost'); return }
         }
 
+        const isSplit = advanceType !== 'none' && advancePayMethod === 'split'
+        const splitCash = Math.max(0, parseFloat(advanceSplitCash) || 0)
+        const splitQr = Math.max(0, parseFloat(advanceSplitQr) || 0)
+        if (isSplit && Math.round((splitCash + splitQr) * 100) !== Math.round(resolvedAdvance * 100)) {
+            toast.error(`Cash + QR must add up to the advance amount (Rs. ${resolvedAdvance.toLocaleString()})`)
+            return
+        }
+
         setIsProcessing(true)
         try {
             const res = await fetch('/api/bookings', {
@@ -406,6 +416,8 @@ export default function CashierRoomManager({
                     guest_count: bookingForm.guest_count,
                     advance_amount: resolvedAdvance,
                     advance_payment_method: resolvedAdvance > 0 ? advancePayMethod : 'none',
+                    advance_cash_amount: isSplit ? splitCash : undefined,
+                    advance_qr_amount: isSplit ? splitQr : undefined,
                 }),
             })
             const data = await res.json()
@@ -416,6 +428,8 @@ export default function CashierRoomManager({
             setBookings(prev => [...prev, data.data])
             setBookingFormOpen(false)
             setSelectedRoom(null)
+            setAdvanceSplitCash('')
+            setAdvanceSplitQr('')
         } catch (e: any) {
             toast.error(e.message || 'Failed to book room')
         } finally {
@@ -651,8 +665,8 @@ export default function CashierRoomManager({
                                                     {advanceType !== 'none' && (
                                                         <div>
                                                             <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Payment Method</label>
-                                                            <div className="grid grid-cols-2 gap-2">
-                                                                {(['cash', 'qr_digital'] as const).map(m => (
+                                                            <div className="grid grid-cols-3 gap-2">
+                                                                {(['cash', 'qr_digital', 'split'] as const).map(m => (
                                                                     <button
                                                                         key={m}
                                                                         type="button"
@@ -663,9 +677,42 @@ export default function CashierRoomManager({
                                                                                 : 'border-hairline bg-surface text-ink-muted hover:border-brand-300'
                                                                         }`}
                                                                     >
-                                                                        {m === 'cash' ? 'Cash' : 'QR / Digital'}
+                                                                        {m === 'cash' ? 'Cash' : m === 'qr_digital' ? 'QR / Digital' : 'Split'}
                                                                     </button>
                                                                 ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {advanceType !== 'none' && advancePayMethod === 'split' && (
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div>
+                                                                <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash</label>
+                                                                <div className="relative">
+                                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        placeholder="0"
+                                                                        value={advanceSplitCash}
+                                                                        onChange={e => setAdvanceSplitCash(e.target.value)}
+                                                                        className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">QR / Digital</label>
+                                                                <div className="relative">
+                                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        placeholder="0"
+                                                                        value={advanceSplitQr}
+                                                                        onChange={e => setAdvanceSplitQr(e.target.value)}
+                                                                        className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                                    />
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     )}
@@ -1036,7 +1083,7 @@ export default function CashierRoomManager({
                                                 <div className="flex justify-between text-emerald-600 font-bold">
                                                     <span className="flex items-center gap-1">
                                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                                        Advance Paid ({activeBooking?.advance_payment_method === 'qr_digital' ? 'QR/Digital' : 'Cash'}):
+                                                        Advance Paid ({activeBooking?.advance_payment_method === 'split' ? 'Split Cash+QR' : activeBooking?.advance_payment_method === 'qr_digital' ? 'QR/Digital' : 'Cash'}):
                                                     </span>
                                                     <span className="tabular-nums">- {money(advancePaid)}</span>
                                                 </div>
