@@ -126,6 +126,7 @@ export default function StaffManager({
     currentUserRole,
     currentUserId,
     restaurantId,
+    bankAccounts = []
 }: {
     initialStaff: StaffMember[]
     roles: Role[]
@@ -134,6 +135,7 @@ export default function StaffManager({
     currentUserRole: string
     currentUserId: string
     restaurantId: string
+    bankAccounts?: Array<{ id: string; name: string; account_number: string | null }>
 }) {
     const { data: staffData = { staff: initialStaff, departments: initialDepartments, invitations: initialInvitations }, mutate } = useSWR<{
         staff: StaffMember[];
@@ -193,6 +195,7 @@ export default function StaffManager({
         amount: string
         paymentMethod: 'cash' | 'bank_transfer' | 'qr_digital'
         note: string
+        bankName: string
         saving: boolean
     }>({
         isOpen: false,
@@ -201,6 +204,7 @@ export default function StaffManager({
         amount: '',
         paymentMethod: 'cash',
         note: '',
+        bankName: '',
         saving: false
     })
 
@@ -429,6 +433,12 @@ export default function StaffManager({
             toast.error('Amount must be greater than zero')
             return
         }
+
+        const isBank = transactionModal.paymentMethod === 'bank_transfer' || transactionModal.paymentMethod === 'qr_digital'
+        if (isBank && bankAccounts.length > 0 && !transactionModal.bankName) {
+            toast.error('Please select a bank account')
+            return
+        }
         
         setTransactionModal(prev => ({ ...prev, saving: true }))
         try {
@@ -437,13 +447,15 @@ export default function StaffManager({
                 amt,
                 transactionModal.entryType,
                 transactionModal.entryType === 'accrual' ? null : transactionModal.paymentMethod,
-                transactionModal.note
+                transactionModal.note,
+                isBank ? (transactionModal.bankName || 'General Bank') : undefined
             )
             
             if (res.error) {
                 toast.error(res.error)
             } else {
                 toast.success('Transaction recorded successfully')
+                if ('warning' in res && res.warning) toast.error(res.warning)
                 const userId = transactionModal.user.id
                 setTransactionModal({
                     isOpen: false,
@@ -452,6 +464,7 @@ export default function StaffManager({
                     amount: '',
                     paymentMethod: 'cash',
                     note: '',
+                    bankName: '',
                     saving: false
                 })
                 mutate()
@@ -1484,7 +1497,7 @@ export default function StaffManager({
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center justify-center gap-3">
                                                         <button 
-                                                            onClick={() => setTransactionModal({ isOpen: true, user, entryType: 'salary_payout', amount: '', paymentMethod: 'cash', note: '', saving: false })}
+                                                            onClick={() => setTransactionModal({ isOpen: true, user, entryType: 'salary_payout', amount: '', paymentMethod: 'cash', note: '', bankName: '', saving: false })}
                                                             className="inline-flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-3 py-2 rounded-[var(--r-md)] border border-brand-100/50 transition-all focus-ring"
                                                         >
                                                             <DollarSign size={13} /> Pay / Record
@@ -2168,13 +2181,33 @@ export default function StaffManager({
                                             <button
                                                 key={method}
                                                 type="button"
-                                                onClick={() => setTransactionModal(prev => ({ ...prev, paymentMethod: method }))}
+                                                onClick={() => setTransactionModal(prev => ({ ...prev, paymentMethod: method, bankName: method === 'cash' ? '' : prev.bankName }))}
                                                 className={`py-2 rounded-[var(--r-md)] text-xs font-bold border transition ${transactionModal.paymentMethod === method ? 'bg-brand-50 border-brand-500 text-brand-600' : 'bg-surface border-hairline text-ink hover:bg-surface-muted/40'}`}
                                             >
                                                 {method === 'cash' ? 'Cash' : method === 'bank_transfer' ? 'Bank Transfer' : 'Digital QR'}
                                             </button>
                                         ))}
                                     </div>
+                                </div>
+                            )}
+
+                            {(transactionModal.paymentMethod === 'bank_transfer' || transactionModal.paymentMethod === 'qr_digital') && (
+                                <div className="animate-in slide-in-from-top-1 duration-150">
+                                    <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Bank Account</label>
+                                    <select
+                                        value={transactionModal.bankName}
+                                        onChange={e => setTransactionModal(prev => ({ ...prev, bankName: e.target.value }))}
+                                        required
+                                        className="w-full px-3 py-2 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
+                                    >
+                                        <option value="">Select Bank Account</option>
+                                        {bankAccounts.map(b => (
+                                            <option key={b.id} value={b.name}>{b.name} ({b.account_number})</option>
+                                        ))}
+                                        {bankAccounts.length === 0 && (
+                                            <option value="General Bank">General Bank</option>
+                                        )}
+                                    </select>
                                 </div>
                             )}
 
@@ -2254,6 +2287,7 @@ export default function StaffManager({
                                             amount: '',
                                             paymentMethod: 'cash',
                                             note: '',
+                                            bankName: '',
                                             saving: false
                                         })
                                     }}

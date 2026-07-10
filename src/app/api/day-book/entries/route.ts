@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { resolveBankAccountId, isCategoryOwned } from '@/lib/ledger'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/day-book/entries  — Add a cash_in or cash_out entry
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
     const restaurantId = currentUser.restaurantId
 
     const body = await request.json().catch(() => ({}))
-    const { session_id, type, amount, description, category, reference_id, bank_name } = body
+    const { session_id, type, amount, description, category, reference_id, bank_name, expense_category_id } = body
 
     // ── Validate required fields ─────────────────────────────────────────────
     if (!session_id) {
@@ -49,8 +50,28 @@ export async function POST(request: Request) {
     if (category === 'bank_deposit' && (!bank_name || !bank_name.trim())) {
         return NextResponse.json({ error: 'bank_name is required for bank deposits' }, { status: 400 })
     }
+    // An 'expense' only makes sense on money leaving the till/account. Reject
+    // it on incoming entries rather than accepting the request and quietly
+    // skipping the expenses row the caller asked for.
+    const isOutgoing = type === 'cash_out' || type === 'bank_out'
+    if (category === 'expense' && !isOutgoing) {
+        return NextResponse.json(
+            { error: 'expense entries must be "cash_out" or "bank_out"' },
+            { status: 400 }
+        )
+    }
+    if (category === 'expense' && !expense_category_id) {
+        return NextResponse.json({ error: 'expense_category_id is required for expense entries' }, { status: 400 })
+    }
 
     const supabase = await createAdminClient()
+
+    if (category === 'expense') {
+        const owned = await isCategoryOwned(supabase, restaurantId, 'expense_categories', expense_category_id)
+        if (!owned) {
+            return NextResponse.json({ error: 'Expense category not found' }, { status: 404 })
+        }
+    }
 
     // ── Verify session is open and belongs to this restaurant ────────────────
     const { data: session, error: sessionError } = await supabase
@@ -83,7 +104,7 @@ export async function POST(request: Request) {
             amount:        parsedAmount,
             description:   description.trim(),
             category:      category ?? 'other',
-            bank_name:     category === 'bank_deposit' ? bank_name.trim() : null,
+            bank_name:     bank_name ? String(bank_name).trim() || null : null,
             ...(reference_id ? { reference_id } : {}),
             created_by:    currentUser.id,
         })
@@ -92,6 +113,41 @@ export async function POST(request: Request) {
 
     if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    // Manual expense entries also get an expenses row so they show up in
+    // the Expense tracker like every other module's payments do. It carries
+    // day_book_entry_id so deleting this entry cascades the expense away.
+    if (category === 'expense') {
+        const bankAccountId = type === 'bank_out'
+            ? await resolveBankAccountId(supabase, restaurantId, bank_name)
+            : null
+
+        const { error: expenseErr } = await supabase
+            .from('expenses')
+            .insert({
+                restaurant_id: restaurantId,
+                category_id: expense_category_id,
+                day_book_entry_id: entry.id,
+                amount: parsedAmount,
+                description: description.trim(),
+                bank_account_id: bankAccountId,
+                status: 'paid',
+                approved_by: currentUser.id,
+                approved_at: new Date().toISOString(),
+                created_by: currentUser.id,
+            })
+
+        // The entry and its expense record are meant to be one transaction.
+        // Rather than report success on a half-written pair, undo the entry.
+        if (expenseErr) {
+            console.error('Failed to post Cash Book expense record:', expenseErr)
+            await supabase.from('day_book_entries').delete().eq('id', entry.id)
+            return NextResponse.json(
+                { error: `Failed to record the expense: ${expenseErr.message}` },
+                { status: 500 }
+            )
+        }
     }
 
     return NextResponse.json({ success: true, data: entry }, { status: 201 })
@@ -162,6 +218,8 @@ export async function DELETE(request: Request) {
     }
 
     // ── Delete ───────────────────────────────────────────────────────────────
+    // Any expenses / staff_ledger row this entry created is removed with it by
+    // the day_book_entry_id foreign key's ON DELETE CASCADE.
     const { error } = await supabase
         .from('day_book_entries')
         .delete()

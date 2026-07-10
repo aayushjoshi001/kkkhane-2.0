@@ -58,8 +58,8 @@ function getRequestIp(request: NextRequest): string {
 }
 
 // True if this request carries a Supabase auth cookie. An anonymous customer
-// scanning a QR code never has one, so there is no session to refresh and the
-// getUser() round-trip in updateSession() can be skipped entirely for them.
+// scanning a QR code never has one, so there is no session to verify or refresh
+// and updateSession() can be skipped entirely for them.
 function hasAuthCookie(request: NextRequest): boolean {
     return request.cookies.getAll().some(c => c.name.startsWith('sb-') && c.name.includes('-auth-token'))
 }
@@ -91,7 +91,7 @@ export async function proxy(request: NextRequest) {
     }
 
     // A fully public QR page hit by an anonymous customer (no Supabase auth
-    // cookie at all) has no session to refresh — skip the getUser() round-trip
+    // cookie at all) has no session to verify or refresh — skip updateSession()
     // entirely. Staff testing a customer page while logged in still carry the
     // cookie, so they still get the full session-refresh path below.
     if (isPublicQrPath && !hasAuthCookie(request)) {
@@ -100,7 +100,9 @@ export async function proxy(request: NextRequest) {
 
     // Always refresh the Supabase session cookie — this is required by @supabase/ssr
     // to keep the access token valid across server components and API routes.
-    const { user, supabaseResponse, supabase } = await updateSession(request)
+    // updateSession already verified the JWT locally and hands back its claims,
+    // so the role check below reuses them rather than decoding the token again.
+    const { user, claims, supabaseResponse } = await updateSession(request)
 
     // If it is a Next.js Server Action, ALWAYS let it pass through!
     // Next.js actions will run and check auth/permissions internally, returning standard
@@ -132,13 +134,11 @@ export async function proxy(request: NextRequest) {
     // ── Role check ──────────────────────────────────────────────────────────────
     if (rule.allowedRoles) {
 
-        // getClaims() verifies the JWT signature and returns its decoded claims —
-        // including the app_role injected by the custom_access_token_hook
-        // (004_jwt_claims_hook.sql). Unlike decoding the raw cookie, a tampered
-        // token is rejected here instead of being trusted.
-        const { data: claimsData } = await supabase.auth.getClaims()
-
-        const claims = claimsData?.claims as { app_role?: unknown } | undefined
+        // claims came from updateSession's getClaims(), which verified the JWT
+        // signature against the cached JWKS — a tampered token was already
+        // rejected there (claims would be null). app_role is injected by the
+        // custom_access_token_hook (004_jwt_claims_hook.sql).
+        //
         // "unauthenticated" is the literal sentinel custom_access_token_hook embeds
         // for a signed-in user with no restaurant yet (e.g. mid-onboarding). It's a
         // truthy string, so treat it the same as "no role" rather than as a real

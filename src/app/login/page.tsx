@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getOptionalUser } from '@/lib/auth'
 import { ROLE_LANDING } from '@/lib/roleLanding'
+import { DEMO_LOGIN_ENABLED, DEMO_PASSWORD } from '@/lib/demoAccounts'
 import AuthHero from '@/components/shared/AuthHero'
 import { LoginForm } from './LoginForm'
 
@@ -28,7 +29,11 @@ export default async function LoginPage(props: { searchParams: Promise<{ redirec
                 <div className="flex-1 w-full bg-surface md:bg-transparent rounded-t-[2rem] md:rounded-none overflow-y-auto no-scrollbar">
                     <div className="min-h-full w-full flex flex-col px-6 sm:px-10 pt-4 pb-12">
                         <div className="w-full max-w-[420px] mx-auto my-auto flex flex-col">
-                            <LoginForm redirectTo={redirectTo} />
+                            <LoginForm
+                                redirectTo={redirectTo}
+                                showDemo={DEMO_LOGIN_ENABLED}
+                                demoPassword={DEMO_LOGIN_ENABLED ? DEMO_PASSWORD : null}
+                            />
                         </div>
                     </div>
                 </div>

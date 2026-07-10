@@ -7,6 +7,7 @@ import { FINANCE_GATED_ROLES } from '@/types/database'
 import { revalidatePath } from 'next/cache'
 import { computeMonthlyAccrualPreview, insertAccruals } from '@/lib/payroll'
 import { getNstDateString, getEffectiveJoinDate, isValidDateString, addDays } from '@/lib/timezone'
+import { postFinancialTransaction } from '@/lib/ledger'
 
 export async function updateStaffRoleAction(userId: string, targetRoleId: number) {
     const currentUser = await getCurrentUser()
@@ -306,7 +307,8 @@ export async function recordLedgerTransactionAction(
     amount: number,
     entryType: 'salary_payout' | 'advance_payment' | 'bonus' | 'deduction' | 'accrual',
     paymentMethod: 'cash' | 'bank_transfer' | 'qr_digital' | null,
-    note: string | null
+    note: string | null,
+    bankName?: string
 ) {
     const currentUser = await getCurrentUser()
     const supabase = await createAdminClient()
@@ -314,7 +316,7 @@ export async function recordLedgerTransactionAction(
     // Verify target user belongs to the same restaurant
     const { data: targetUser } = await supabase
         .from('users')
-        .select('restaurant_id')
+        .select('restaurant_id, full_name')
         .eq('id', userId)
         .single()
 
@@ -324,6 +326,10 @@ export async function recordLedgerTransactionAction(
 
     if (amount <= 0) return { error: 'Amount must be greater than zero' }
 
+    const finalNote = note?.trim()
+        ? `${note.trim()}` + (bankName ? ` (Paid via: ${bankName})` : '')
+        : (bankName ? `Paid via: ${bankName}` : '')
+
     const { error } = await supabase
         .from('staff_ledger')
         .insert({
@@ -332,14 +338,41 @@ export async function recordLedgerTransactionAction(
             amount: amount,
             entry_type: entryType,
             payment_method: paymentMethod,
-            note: note || '',
+            note: finalNote || '',
             created_by: currentUser.id
         })
 
     if (error) return { error: error.message }
 
+    // ── Auto-post matching entry to Day Book session if open and is a payout.
+    // The staff_ledger row is already written, so a failed posting is a
+    // warning rather than a hard failure — but it must be reported, otherwise
+    // the payout never shows up in the day's cash/bank movements.
+    let warning: string | undefined
+    const isPayout = entryType === 'salary_payout' || entryType === 'advance_payment'
+    if (isPayout && paymentMethod) {
+        const isCash = paymentMethod === 'cash'
+        const staffName = targetUser?.full_name || 'Staff'
+
+        const postResult = await postFinancialTransaction(supabase, currentUser, {
+            type: isCash ? 'cash_out' : 'bank_out',
+            amount: amount,
+            description: `[Staff Payout] Paid ${entryType === 'salary_payout' ? 'Salary' : 'Advance'} to ${staffName}` + (note?.trim() ? ` (${note.trim()})` : ''),
+            category: entryType === 'salary_payout' ? 'salary' : 'advance',
+            bankName: !isCash ? bankName : null
+        })
+
+        if (postResult.error) {
+            console.error('Failed to post staff payout to Day Book:', postResult.error)
+            warning = `Payout recorded, but it could not be posted to the Day Book: ${postResult.error}`
+        }
+    }
+
     revalidatePath('/admin/staff')
-    return { success: true }
+    revalidatePath('/admin/cash-book')
+    revalidatePath('/admin/bank-book')
+    revalidatePath('/admin/bank-ledger')
+    return { success: true, warning }
 }
 
 export async function fetchStaffLedgerAction(userId: string) {

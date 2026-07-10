@@ -482,6 +482,7 @@ export interface Ingredient {
     reorder_level: number | null
     cost_per_unit: number
     supplier: string | null
+    category_id?: string | null
     is_active: boolean
     updated_at: string
     created_at: string
@@ -1100,6 +1101,7 @@ export interface ExpenseCategory {
     name: string
     description: string | null
     is_active: boolean
+    is_stock_category: boolean
     created_by: string | null
     created_at: string
 }
@@ -1116,6 +1118,10 @@ export interface Expense {
     vendor_name: string | null
     bank_account_id: string | null
     cash_drawer_id: string | null
+    // Set when a Day Book entry (Voucher, Cash/Bank Book expense) owns this
+    // row; deleting that entry cascades this away. NULL when the expense was
+    // created first and posted to the Day Book as a side effect.
+    day_book_entry_id: string | null
     is_recurring: boolean
     recurrence_interval: RecurrenceInterval | null
     status: ExpenseStatus
@@ -1172,6 +1178,7 @@ export interface Supplier {
     phone: string | null
     email: string | null
     address: string | null
+    category_id?: string | null
     is_active: boolean
     created_by: string | null
     created_at: string

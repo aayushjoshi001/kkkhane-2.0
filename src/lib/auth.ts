@@ -6,7 +6,6 @@
 import { cache } from 'react'
 import { unstable_cache } from 'next/cache'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getJwtClaims } from '@/lib/supabase/jwt'
 import { redirect } from 'next/navigation'
 import type { RoleName } from '@/types/database'
 
@@ -55,18 +54,42 @@ function isTransientAuthError(error: { code?: string; status?: number; name?: st
     return status === 0 || status >= 500
 }
 
-async function safeGetUser(
+// Identity from the access token instead of a network call to the auth server.
+// getClaims() verifies the JWT signature locally against the process-global,
+// 10-minute-cached JWKS (this project signs with asymmetric ES256 keys), so a
+// valid token costs no round-trip — where getUser() hit /auth/v1/user on every
+// page render. It also carries the custom claims (app_role, restaurant_id) the
+// fast path needs, so one local read replaces getUser() + a second getJwtClaims().
+// The middleware already refreshed the cookie, so here the token is current.
+interface VerifiedClaims {
+    sub: string
+    email: string
+    app_role?: string
+    restaurant_id?: string
+}
+
+async function safeGetClaims(
     supabase: Awaited<ReturnType<typeof createServerClient>>
-) {
+): Promise<VerifiedClaims | null> {
     for (let attempt = 0; attempt < 2; attempt++) {
         try {
-            const { data, error } = await supabase.auth.getUser()
-            if (!error) return data.user
+            const { data, error } = await supabase.auth.getClaims()
+            if (!error) {
+                const c = data?.claims as Record<string, unknown> | undefined
+                if (!c?.sub) return null
+                return {
+                    sub: c.sub as string,
+                    email: typeof c.email === 'string' ? c.email : '',
+                    app_role: typeof c.app_role === 'string' ? c.app_role : undefined,
+                    restaurant_id: typeof c.restaurant_id === 'string' ? c.restaurant_id : undefined,
+                }
+            }
             if (attempt === 0 && isTransientAuthError(error)) continue
             return null
         } catch {
-            // A thrown fetch failure is always transient — the request never
-            // reached the auth server, so it says nothing about the session.
+            // A thrown failure is treated as transient on the first pass — a
+            // refresh under getClaims can lose a rotation race, and the retry
+            // picks up the rotated cookie. A second failure falls through to null.
             if (attempt === 0) continue
             return null
         }
@@ -76,17 +99,17 @@ async function safeGetUser(
 
 async function _getCurrentUser(options?: { allowSuspended?: boolean }): Promise<CurrentUser> {
     const supabase = await createServerClient()
-    const user = await safeGetUser(supabase)
+    const claims = await safeGetClaims(supabase)
 
-    if (!user) {
+    if (!claims) {
         redirect('/login')
     }
 
     const adminSupabase = await createAdminClient()
 
-    // Try JWT claims first (fast path — no DB call for role)
-    const claims = await getJwtClaims()
-    if (claims?.restaurant_id && claims?.app_role) {
+    // Fast path — the token already carries restaurant_id + app_role (production,
+    // where the custom_access_token hook is enabled), so no DB call for the role.
+    if (claims.restaurant_id && claims.app_role) {
         const rest = await getCachedRestaurantStatus(claims.restaurant_id)
 
         // Lazy auto-suspend: if subscription lapsed and not yet suspended, do it now
@@ -113,18 +136,20 @@ async function _getCurrentUser(options?: { allowSuspended?: boolean }): Promise<
         }
 
         return {
-            id: user.id,
-            email: user.email || '',
+            id: claims.sub,
+            email: claims.email,
             restaurantId: claims.restaurant_id,
             role: claims.app_role as RoleName,
         }
     }
 
-    // Fallback: admin DB lookup (needed when JWT hasn't refreshed yet)
+    // Fallback: admin DB lookup for the role/restaurant. Needed when the token
+    // carries no custom claims — a brand-new user mid-onboarding, or any request
+    // in an environment where the custom_access_token hook isn't enabled (local).
     const { data: userData } = await adminSupabase
         .from('users')
         .select('restaurant_id, roles(name), restaurants(is_suspended, subscription_expires_at, subscription_status)')
-        .eq('id', user.id)
+        .eq('id', claims.sub)
         .single()
 
     if (!userData?.restaurant_id) {
@@ -162,8 +187,8 @@ async function _getCurrentUser(options?: { allowSuspended?: boolean }): Promise<
     }
 
     return {
-        id: user.id,
-        email: user.email || '',
+        id: claims.sub,
+        email: claims.email,
         restaurantId: userData.restaurant_id,
         role: roleName as RoleName,
     }
@@ -208,16 +233,15 @@ export async function requireRole(...allowedRoles: RoleName[]): Promise<CurrentU
  */
 export async function getOptionalUser(): Promise<CurrentUser | null> {
     const supabase = await createServerClient()
-    const user = await safeGetUser(supabase)
+    const claims = await safeGetClaims(supabase)
 
-    if (!user) return null
+    if (!claims) return null
 
-    // Try JWT claims first
-    const claims = await getJwtClaims()
-    if (claims?.restaurant_id && claims?.app_role) {
+    // Fast path — token carries the custom claims (production).
+    if (claims.restaurant_id && claims.app_role) {
         return {
-            id: user.id,
-            email: user.email || '',
+            id: claims.sub,
+            email: claims.email,
             restaurantId: claims.restaurant_id,
             role: claims.app_role as RoleName,
         }
@@ -228,13 +252,13 @@ export async function getOptionalUser(): Promise<CurrentUser | null> {
     const { data: userData } = await adminSupabase
         .from('users')
         .select('restaurant_id, roles(name)')
-        .eq('id', user.id)
+        .eq('id', claims.sub)
         .single()
 
     if (!userData?.restaurant_id) {
         return {
-            id: user.id,
-            email: user.email || '',
+            id: claims.sub,
+            email: claims.email,
             restaurantId: '',
             role: 'onboarding'
         }
@@ -243,8 +267,8 @@ export async function getOptionalUser(): Promise<CurrentUser | null> {
     const roleName = (userData.roles as unknown as { name: string } | null)?.name || 'waiter'
 
     return {
-        id: user.id,
-        email: user.email || '',
+        id: claims.sub,
+        email: claims.email,
         restaurantId: userData.restaurant_id,
         role: roleName as RoleName,
     }

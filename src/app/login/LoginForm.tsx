@@ -8,11 +8,22 @@ import { createClient } from '@/lib/supabase/client'
 import { Eye, EyeOff, Lock, Mail, ArrowRight } from 'lucide-react'
 import { Turnstile } from '@marsidev/react-turnstile'
 import { useTurnstile, TURNSTILE_SITE_KEY } from '@/lib/hooks/useTurnstile'
-import { DEMO_ACCOUNTS, DEMO_PASSWORD, DEMO_GROUPS } from '@/lib/demoAccounts'
+import { DEMO_ACCOUNTS, DEMO_GROUPS } from '@/lib/demoAccounts'
 
 const initialState = { error: null as string | null }
 
-export function LoginForm({ redirectTo }: { redirectTo: string }) {
+// showDemo/demoPassword come from the server (page.tsx): the demo chips and the
+// password are only present off production. DEMO_PASSWORD is deliberately NOT
+// imported here so it never lands in the production client bundle.
+export function LoginForm({
+    redirectTo,
+    showDemo = false,
+    demoPassword = null,
+}: {
+    redirectTo: string
+    showDemo?: boolean
+    demoPassword?: string | null
+}) {
     const [state, formAction, isPending] = useActionState(loginAction, initialState)
     const [showPassword, setShowPassword] = useState(false)
     const turnstile = useTurnstile()
@@ -182,7 +193,9 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
                 </Link>
             </p>
 
-            {/* Demo Accounts (Subtle placement beneath the card) */}
+            {/* Demo Accounts (Subtle placement beneath the card).
+                Hidden on production — showDemo is false there (see page.tsx). */}
+            {showDemo && (
             <details className="mt-12 group w-full bg-surface-muted border border-hairline rounded-2xl">
                 <summary className="text-xs font-semibold text-ink-subtle p-4 cursor-pointer flex justify-center hover:text-ink-muted transition-colors list-none text-center outline-none">
                     Development: Show Demo Accounts
@@ -202,7 +215,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
                                                 const f = document.getElementById('email') as HTMLInputElement | null
                                                 const p = document.getElementById('password') as HTMLInputElement | null
                                                 if (f) f.value = email
-                                                if (p) p.value = DEMO_PASSWORD
+                                                if (p && demoPassword) p.value = demoPassword
                                             }, 10)
                                         }}
                                     >
@@ -214,6 +227,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
                     ))}
                 </div>
             </details>
+            )}
         </div>
     )
 }

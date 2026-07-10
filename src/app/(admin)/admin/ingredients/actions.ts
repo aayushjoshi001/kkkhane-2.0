@@ -76,6 +76,7 @@ export async function createIngredientAction(input: {
     reorder_level: number
     cost_per_unit: number
     supplier?: string | null
+    category_id?: string | null
 }) {
     const supabase = await createAdminClient()
     const { data, error } = await supabase
@@ -96,6 +97,51 @@ export async function updateIngredientAction(id: string, updates: Record<string,
     return { success: true }
 }
 
+export async function createIngredientCategoryAction(input: {
+    restaurant_id: string
+    name: string
+    description?: string
+}) {
+    const supabase = await createAdminClient()
+    const { data, error } = await supabase
+        .from('expense_categories')
+        .insert({
+            restaurant_id: input.restaurant_id,
+            name: input.name.trim(),
+            description: input.description?.trim() || null,
+            is_active: true,
+            is_stock_category: true
+        })
+        .select()
+        .single()
+    if (error) return { error: error.message }
+    return { data }
+}
+
+export async function createIngredientSupplierAction(input: {
+    restaurant_id: string
+    name: string
+    phone?: string
+    address?: string
+    category_id?: string | null
+}) {
+    const supabase = await createAdminClient()
+    const { data, error } = await supabase
+        .from('suppliers')
+        .insert({
+            restaurant_id: input.restaurant_id,
+            name: input.name.trim(),
+            phone: input.phone?.trim() || null,
+            address: input.address?.trim() || null,
+            category_id: input.category_id || null,
+            is_active: true
+        })
+        .select()
+        .single()
+    if (error) return { error: error.message }
+    return { data }
+}
+
 export async function addStockMovementAction(input: {
     ingredient_id: string
     movement_type: string
@@ -111,20 +157,16 @@ export async function addStockMovementAction(input: {
         .insert(input)
     if (moveErr) return { error: moveErr.message }
 
-    // Update stock
-    const { data: ingredient } = await supabase
-        .from('ingredients')
-        .select('stock_quantity')
-        .eq('id', input.ingredient_id)
-        .single()
+    // Update stock. Applied as a single atomic UPDATE inside the database —
+    // reading the quantity here and writing back read + delta would lose one
+    // of two movements recorded at the same time.
+    const delta = input.movement_type === 'purchase' ? input.quantity : -input.quantity
+    const { error: stockErr } = await supabase.rpc('adjust_ingredient_stock', {
+        p_ingredient_id: input.ingredient_id,
+        p_delta: delta
+    })
 
-    if (ingredient) {
-        const delta = input.movement_type === 'purchase' ? input.quantity : -input.quantity
-        await supabase
-            .from('ingredients')
-            .update({ stock_quantity: Math.max(0, ingredient.stock_quantity + delta) })
-            .eq('id', input.ingredient_id)
-    }
+    if (stockErr) return { error: stockErr.message }
 
     revalidatePath('/admin/ingredients')
     return { success: true }

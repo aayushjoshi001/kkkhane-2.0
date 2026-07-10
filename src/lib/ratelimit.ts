@@ -4,7 +4,7 @@
  */
 
 import { Ratelimit } from '@upstash/ratelimit'
-import { Redis } from '@upstash/redis'
+import { getRedis } from '@/lib/redis'
 import { headers } from 'next/headers'
 
 // Singleton rate limiters for different endpoints
@@ -12,6 +12,14 @@ const _ratelimiters: Map<string, Ratelimit | null> = new Map()
 
 /**
  * Get or create a rate limiter for a specific endpoint
+ *
+ * Shares the Redis client from lib/redis.ts (retry:false + a per-request
+ * AbortSignal, behind its circuit breaker) rather than a bare Redis.fromEnv().
+ * A bare client retries 5× with backoff, so a slow or dead Upstash blocked the
+ * login/checkout this guards for seconds before failing open. The deadline
+ * belongs inside the request — racing it from the outside is the anti-pattern
+ * documented at the top of lib/redis.ts, and it never lets the breaker trip.
+ *
  * @param key Unique identifier for the rate limit rule
  * @param requests Maximum requests allowed
  * @param windowSeconds Time window in seconds
@@ -21,9 +29,15 @@ export function getRatelimit(key: string, requests: number = 10, windowSeconds: 
     return _ratelimiters.get(key) || null
   }
 
+  const redis = getRedis()
+  if (!redis) {
+    _ratelimiters.set(key, null)
+    return null
+  }
+
   try {
     const ratelimit = new Ratelimit({
-      redis: Redis.fromEnv(),
+      redis,
       limiter: Ratelimit.slidingWindow(requests, `${windowSeconds} s`),
       analytics: true,
       prefix: `srms:ratelimit:${key}`,
@@ -65,6 +79,9 @@ export async function checkRateLimit(key: string, requests: number = 10, windowS
 
   try {
     const ip = await getClientIp()
+    // No external timeout race here: the deadline lives inside the Redis client
+    // (see getRedis()), so a slow Upstash aborts the request itself, surfaces the
+    // real error, and trips the breaker. Failing open below is the backstop.
     const response = await ratelimit.limit(ip)
 
     if (!response.success) {
