@@ -36,6 +36,7 @@ export type UnpaidOrder = {
     payment_status: string
     payment_method: string | null
     session_id: string | null
+    booking_id?: string | null
     sessions: { id: string; tables: TableRef } | null
     order_items: OrderItem[]
 }
@@ -46,6 +47,7 @@ export type ActiveOrder = {
     total_amount: number
     placed_at: string
     session_id: string | null
+    booking_id?: string | null
     order_type?: 'dine_in' | 'takeout' | 'delivery'
     payment_status?: string
     customer_name?: string | null
@@ -229,17 +231,33 @@ export default function CashierClient({
 
     const getRoomQrOrders = (room: any) => {
         if (!room) return []
-        // Keyed on tables.room_id (see migration 20260709140000) — no label matching.
-        const matchingTable = tables.find(t => t.room_id === room.id)
-        if (!matchingTable?.activeSession) return []
+        
+        // Find the active booking for the room
+        const booking = billingStayBooking ?? bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
+        if (!booking) return []
 
-        const sessionId = matchingTable.activeSession.id
-        const allActive = active.filter(o => o.session_id === sessionId)
-        const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
-        const combinedOrders = [...allActive, ...allUnpaid]
+        // Fetch all active/unpaid orders that are directly linked to this booking
+        const allActive = active.filter(o => o.booking_id === booking.id)
+        const allUnpaid = unpaid.filter(o => o.booking_id === booking.id)
+        
+        // Also fallback to match by session in case booking_id is not set but matchingTable activeSession is
+        const matchingTable = tables.find(t => t.room_id === room.id)
+        const sessionId = matchingTable?.activeSession?.id
+        
+        const additionalActive = sessionId ? active.filter(o => o.session_id === sessionId && o.booking_id !== booking.id) : []
+        const additionalUnpaid = sessionId ? unpaid.filter(o => o.session_id === sessionId && o.booking_id !== booking.id) : []
+
+        const combinedOrders = [...allActive, ...allUnpaid, ...additionalActive, ...additionalUnpaid]
+        
+        // De-duplicate orders by ID
+        const uniqueOrdersMap = new Map<string, any>()
+        for (const o of combinedOrders) {
+            uniqueOrdersMap.set(o.id, o)
+        }
+        const uniqueOrders = Array.from(uniqueOrdersMap.values())
 
         const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
-        for (const order of combinedOrders) {
+        for (const order of uniqueOrders) {
             const orderItems = order.order_items || []
             for (const item of orderItems) {
                 items.push({
@@ -295,8 +313,7 @@ export default function CashierClient({
             const nights = calculateNights(booking.check_in, booking.check_out)
             const stayCost = price * nights
 
-            const matchingTable = tables.find(t => t.room_id === room.id)
-            const sessionOrders = matchingTable?.activeSession ? getRoomQrOrders(room) : []
+            const sessionOrders = getRoomQrOrders(room)
             const qrOrdersTotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
 
             const linkedOrdersTotal = billingLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
