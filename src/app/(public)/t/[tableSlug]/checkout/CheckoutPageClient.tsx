@@ -15,6 +15,23 @@ import { useParams } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import { playVoice } from '@/lib/voice'
 
+interface StayBillingData {
+    isHotelRoom: boolean
+    hasActiveBooking?: boolean
+    roomNumber: string
+    guestName: string | null
+    checkIn: string
+    checkOut: string
+    nights: number
+    roomBasePrice: number
+    stayCost: number
+    foodOrders: Array<{ id: string; total: number; placedAt: string }>
+    additionalCharges: Array<{ id: string; description: string; amount: number; chargeType: string }>
+    advancePaid: number
+    grandTotal: number
+    balanceDue: number
+}
+
 export default function CheckoutPageClient({ isHotelRoom = true }: { isHotelRoom?: boolean }) {
     const params = useParams<{ tableSlug: string }>()
     const money = useCurrency()
@@ -46,7 +63,7 @@ export default function CheckoutPageClient({ isHotelRoom = true }: { isHotelRoom
     const [fallbackKey] = useState(() => `fallback-cr-${Date.now()}`)
     const idempotencyKey = storeIdempotencyKey || fallbackKey
 
-    const [stayBilling, setStayBilling] = useState<any | null>(null)
+    const [stayBilling, setStayBilling] = useState<StayBillingData | null>(null)
     // The server already knows whether this table is a hotel room (it queried the
     // same row for the IP check) — only the non-hotel majority case gets to skip
     // this fetch/spinner entirely; a hotel room still needs the full billing detail.
@@ -207,7 +224,7 @@ export default function CheckoutPageClient({ isHotelRoom = true }: { isHotelRoom
                                     <div className="p-4 space-y-2">
                                         <p className="font-bold text-sm text-indigo-600">Restaurant Orders (QR & Dining)</p>
                                         <div className="space-y-2 pl-3 border-l-2 border-indigo-100">
-                                            {stayBilling.foodOrders.map((o: any) => (
+                                            {stayBilling.foodOrders.map((o) => (
                                                 <div key={o.id} className="flex justify-between text-xs text-ink-muted">
                                                     <span className="font-medium">Order #{o.id.substring(0, 6).toUpperCase()}</span>
                                                     <span className="tabular-nums font-bold">{money(o.total)}</span>
@@ -222,7 +239,7 @@ export default function CheckoutPageClient({ isHotelRoom = true }: { isHotelRoom
                                     <div className="p-4 space-y-2">
                                         <p className="font-bold text-sm text-amber-600">Extra Room Charges</p>
                                         <div className="space-y-2 pl-3 border-l-2 border-amber-100">
-                                            {stayBilling.additionalCharges.map((c: any) => (
+                                            {stayBilling.additionalCharges.map((c) => (
                                                 <div key={c.id} className="flex justify-between text-xs text-ink-muted">
                                                     <span className="font-medium capitalize">{c.description} ({c.chargeType})</span>
                                                     <span className="tabular-nums font-bold">{money(c.amount)}</span>
@@ -310,7 +327,8 @@ export default function CheckoutPageClient({ isHotelRoom = true }: { isHotelRoom
             note,
             promoCode?.code || null,
             loyaltyMember?.id || null,
-            idempotencyKey
+            idempotencyKey,
+            loyaltyDiscount
         )
 
         if (res.error) {

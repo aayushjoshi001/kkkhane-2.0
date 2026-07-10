@@ -22,6 +22,12 @@ type PlaceOrderItemPayload = {
     variation_id?: string | null
 }
 
+interface FeaturesV2 {
+    defaultTaxRate?: number | string
+    serviceChargeEnabled?: boolean
+    serviceChargeRate?: number | string
+}
+
 // Serverless-safe rate limiting via Upstash Redis
 // Each IP gets 5 requests per 60-second sliding window
 // Lazily initialized so missing env vars don't crash the entire module
@@ -49,7 +55,8 @@ export async function placeOrder(
     customerNote?: string,
     promoCode?: string | null,
     loyaltyMemberId?: string | null,
-    clientRequestId?: string | null
+    clientRequestId?: string | null,
+    loyaltyDiscount?: number | null
 ): Promise<{
     orderId?: string
     subtotal?: number
@@ -66,7 +73,8 @@ export async function placeOrder(
         customerNote: z.string().max(500).nullable().optional(),
         promoCode: z.string().max(50).nullable().optional(),
         loyaltyMemberId: z.string().uuid().nullable().optional(),
-        clientRequestId: z.string().min(1).max(100).nullable().optional()
+        clientRequestId: z.string().min(1).max(100).nullable().optional(),
+        loyaltyDiscount: z.number().nonnegative().nullable().optional()
     })
 
     // Format items payload for the place_order RPC (includes modifiers)
@@ -95,7 +103,8 @@ export async function placeOrder(
         customerNote,
         promoCode,
         loyaltyMemberId,
-        clientRequestId
+        clientRequestId,
+        loyaltyDiscount
     })
 
     if (!validation.success) {
@@ -210,7 +219,8 @@ export async function placeOrder(
             customerNote || null,
             loyaltyMemberId || null,
             promoCode || null,
-            clientRequestId || null
+            clientRequestId || null,
+            loyaltyDiscount
         )
 
         if (fallback) {
@@ -308,6 +318,21 @@ export async function placeOrder(
                     }
                 }
             }
+            
+            // If there's a loyalty discount, save it to the order table first so it gets calculated
+            if (loyaltyDiscount && loyaltyDiscount > 0) {
+                const existingPromoDiscount = Number(result.discount || 0)
+                const totalDiscount = existingPromoDiscount + loyaltyDiscount
+                await supabase
+                    .from('orders')
+                    .update({
+                        discount_amount: totalDiscount,
+                        loyalty_member_id: loyaltyMemberId,
+                    })
+                    .eq('id', result.order_id)
+                
+                result.discount = totalDiscount
+            }
 
             const { data: settings } = await supabase
                 .from('settings')
@@ -315,7 +340,7 @@ export async function placeOrder(
                 .eq('restaurant_id', sessionData.restaurant_id)
                 .single()
             
-            const featuresV2 = settings?.features_v2 as any
+            const featuresV2 = settings?.features_v2 as FeaturesV2 | null
             const taxRate = Number(featuresV2?.defaultTaxRate ?? 0)
             const scEnabled = featuresV2?.serviceChargeEnabled === true
             const scRate = Number(featuresV2?.serviceChargeRate ?? 10)
@@ -422,7 +447,7 @@ export async function placeOrder(
                 qstash?.publishJSON({
                     url: `${baseUrl}/api/webhooks/qstash/order-processed`,
                     body: { orderId: result.order_id, restaurantId: sessionData.restaurant_id }
-                }).catch((err: any) => console.error('[QStash] Order webhook publish error:', err))
+                }).catch((err) => console.error('[QStash] Order webhook publish error:', err))
             })
         }
     }
@@ -448,7 +473,8 @@ async function placeOrderFallback(
     customerNote: string | null,
     loyaltyMemberId: string | null,
     promoCode: string | null = null,
-    clientRequestId: string | null = null
+    clientRequestId: string | null = null,
+    loyaltyDiscount?: number | null
 ): Promise<{
     orderId: string
     subtotal: number
@@ -633,12 +659,16 @@ async function placeOrderFallback(
         }
     }
 
+    if (loyaltyDiscount && loyaltyDiscount > 0) {
+        discount += loyaltyDiscount
+    }
+
     const { data: settings } = await supabase
         .from('settings')
         .select('features_v2')
         .eq('restaurant_id', restaurantId)
         .single()
-    const featuresV2 = settings?.features_v2 as any
+    const featuresV2 = settings?.features_v2 as FeaturesV2 | null
     const taxRate = Number(featuresV2?.defaultTaxRate ?? 0)
     const scEnabled = featuresV2?.serviceChargeEnabled === true
     const scRate = Number(featuresV2?.serviceChargeRate ?? 10)

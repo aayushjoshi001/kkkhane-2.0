@@ -43,7 +43,7 @@ export default function IngredientsManager({
     const [moveForm, setMoveForm] = useState({
         movement_type: 'purchase', quantity: '', notes: '',
         amount_paid: '', payment_method: 'cash' as 'cash' | 'qr' | 'cheque',
-        bank_account_id: '', cheque_date: '', cheque_number: ''
+        bank_account_id: '', cheque_date: '', cheque_number: '', supplier_id: ''
     })
     const [saving, setSaving] = useState(false)
 
@@ -92,6 +92,7 @@ export default function IngredientsManager({
             // Stock quantity is owned by the movement ledger — editing it here
             // would bypass ingredient_movements and desync the audit trail. Drop it
             // from the update; quantity changes go through the Stock Movement action.
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const { stock_quantity: _sq, ...editable } = payload
             const result = await updateIngredientAction(editingItem.id, editable)
             setSaving(false)
@@ -200,7 +201,7 @@ export default function IngredientsManager({
     const emptyMoveForm = {
         movement_type: 'purchase', quantity: '', notes: '',
         amount_paid: '', payment_method: 'cash' as 'cash' | 'qr' | 'cheque',
-        bank_account_id: '', cheque_date: '', cheque_number: ''
+        bank_account_id: '', cheque_date: '', cheque_number: '', supplier_id: ''
     }
 
     // Bank accounts relevant to the selected payment method — QR pays into a
@@ -212,6 +213,18 @@ export default function IngredientsManager({
         const matching = bankAccounts.filter(b => b.account_type === wantType)
         return matching.length > 0 ? matching : bankAccounts
     }, [bankAccounts, moveForm.payment_method])
+
+    // Suppliers who serve this ingredient's category — closes the gap where
+    // a stock purchase used to just repeat the ingredient's free-text
+    // supplier field instead of linking to the real Suppliers Ledger record.
+    // Falls back to every supplier if none share the category yet.
+    const relevantSuppliers = useMemo(() => {
+        if (!stockModal?.category_id) return suppliers
+        const matching = suppliers.filter(s => s.category_id === stockModal.category_id)
+        return matching.length > 0 ? matching : suppliers
+    }, [suppliers, stockModal])
+
+    const effectiveSupplierId = moveForm.supplier_id || (relevantSuppliers.length === 1 ? relevantSuppliers[0].id : '')
 
     const isPurchase = moveForm.movement_type === 'purchase'
     const amountPaid = parseFloat(moveForm.amount_paid) || 0
@@ -251,17 +264,19 @@ export default function IngredientsManager({
         // actually reduces the selected bank account.
         if (isPurchase && amountPaid > 0) {
             const selectedBank = bankAccounts.find(b => b.id === moveForm.bank_account_id)
+            const selectedSupplier = suppliers.find(s => s.id === effectiveSupplierId)
+            const partyName = selectedSupplier?.name || stockModal.supplier || stockModal.name
             const voucherRes = await createVoucherAction({
                 voucher_type: 'payment',
                 category: 'stock',
-                party_name: stockModal.supplier || stockModal.name,
+                party_name: partyName,
                 amount: amountPaid,
                 payment_mode: moveForm.payment_method,
                 bank_name: selectedBank?.name,
                 particulars: `Stock Purchase: ${stockModal.name} (${moveForm.quantity} ${stockModal.unit})`,
                 expense_category_id: stockModal.category_id || undefined,
                 cheque_details: moveForm.payment_method === 'cheque' ? {
-                    written_name: stockModal.supplier || stockModal.name,
+                    written_name: partyName,
                     bank_cheque: selectedBank?.name || '',
                     cheque_number: moveForm.cheque_number,
                     cheque_date: moveForm.cheque_date,
@@ -599,6 +614,22 @@ export default function IngredientsManager({
 
                             {isPurchase && (
                                 <div className="space-y-4 p-4 bg-surface-muted/30 border border-hairline rounded-[var(--r-md)]">
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Supplier</label>
+                                        {relevantSuppliers.length === 0 ? (
+                                            <p className="text-[11px] font-bold text-ink-muted">No suppliers set up yet — payment will be recorded under &quot;{stockModal.supplier || stockModal.name}&quot;.</p>
+                                        ) : (
+                                            <select value={effectiveSupplierId} onChange={e => setMoveForm({ ...moveForm, supplier_id: e.target.value })}
+                                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3">
+                                                <option value="">Select supplier...</option>
+                                                {relevantSuppliers.map(s => (
+                                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                                ))}
+                                            </select>
+                                        )}
+                                        <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mt-1.5">Matched by this item&apos;s category, so the payment lands under the right supplier in Suppliers Ledger.</p>
+                                    </div>
+
                                     <div>
                                         <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Amount Paid</label>
                                         <div className="relative">

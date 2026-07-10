@@ -42,6 +42,26 @@ export default async function AnalyticsPage() {
             .order('created_at', { ascending: false }).limit(100),
     ])
 
+    // Top suppliers by spend — the Resources ledger (Suppliers/Stock/Vouchers)
+    // records vendor_name on every expense, but nothing in Intelligence
+    // surfaced it until now.
+    const { data: recentExpenses } = await supabase
+        .from('expenses')
+        .select('amount, vendor_name')
+        .eq('restaurant_id', restaurantId)
+        .not('vendor_name', 'is', null)
+        .gte('created_at', d30.toISOString())
+
+    const supplierSpend: Record<string, number> = {}
+    for (const row of recentExpenses ?? []) {
+        if (!row.vendor_name) continue
+        supplierSpend[row.vendor_name] = (supplierSpend[row.vendor_name] ?? 0) + Number(row.amount)
+    }
+    const topSuppliers = Object.entries(supplierSpend)
+        .map(([name, amount]) => ({ name, amount }))
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 8)
+
     // Top ordered items
     let topItems: { name: string; count: number; revenue: number }[] = []
     const orderIds = (delivered30d ?? []).map(o => o.id).slice(0, 500)
@@ -130,6 +150,7 @@ export default async function AnalyticsPage() {
             }}
             ratingCounts={ratingCounts}
             topComments={topComments}
+            topSuppliers={topSuppliers}
         />
         </div>
     )

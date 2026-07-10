@@ -2,11 +2,12 @@
 
 import { useState } from 'react'
 import { generateEodReportAction } from './actions'
-import { FileText, Calendar, TrendingUp, DollarSign } from 'lucide-react'
+import { FileText, Calendar, TrendingUp, DollarSign, Printer } from 'lucide-react'
 import toast from 'react-hot-toast'
 import useSWR from 'swr'
 import { fetchReportsData } from '@/lib/swr-fetchers'
 import type { EodReport } from '@/types/database'
+import FinanceReportPanel from './FinanceReportPanel'
 
 export default function ReportsViewer({ initialReports, restaurantId }: {
     initialReports: EodReport[]
@@ -16,6 +17,7 @@ export default function ReportsViewer({ initialReports, restaurantId }: {
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
     const [generating, setGenerating] = useState(false)
     const [expanded, setExpanded] = useState<string | null>(null)
+    const [viewMode, setViewMode] = useState<'sales' | 'finance'>('sales')
 
     async function handleGenerate() {
         setGenerating(true)
@@ -35,8 +37,30 @@ export default function ReportsViewer({ initialReports, restaurantId }: {
 
     return (
         <div className="space-y-4">
+            {/* Sales / Finance toggle */}
+            <div className="print:hidden flex flex-wrap items-center justify-between gap-3">
+                <div className="grid grid-cols-2 max-w-xs bg-surface-muted p-1 rounded-xl gap-1">
+                    <button type="button" onClick={() => setViewMode('sales')}
+                        className={`py-2.5 text-sm font-black uppercase tracking-wider rounded-lg transition-all focus-ring text-center ${viewMode === 'sales' ? 'bg-brand-500 text-white shadow-md' : 'text-ink-subtle hover:text-ink hover:bg-surface-muted/40'}`}>
+                        Sales
+                    </button>
+                    <button type="button" onClick={() => setViewMode('finance')}
+                        className={`py-2.5 text-sm font-black uppercase tracking-wider rounded-lg transition-all focus-ring text-center ${viewMode === 'finance' ? 'bg-brand-500 text-white shadow-md' : 'text-ink-subtle hover:text-ink hover:bg-surface-muted/40'}`}>
+                        Finance
+                    </button>
+                </div>
+                <button type="button" onClick={() => window.print()}
+                    className="flex items-center gap-2 bg-surface border border-hairline text-ink px-4 py-2.5 rounded-[var(--r-md)] text-sm font-bold shadow-sm hover:bg-surface-muted/40 transition-all focus-ring">
+                    <Printer size={16} /> Print
+                </button>
+            </div>
+
+            {viewMode === 'finance' ? (
+                <FinanceReportPanel restaurantId={restaurantId} />
+            ) : (
+            <>
             {/* Generate */}
-            <div className="bg-surface rounded-card border border-hairline shadow-sm p-6 flex flex-wrap items-end gap-5">
+            <div className="print:hidden bg-surface rounded-card border border-hairline shadow-sm p-6 flex flex-wrap items-end gap-5">
                 <div>
                     <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wide mb-1.5">Report Date</label>
                     <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
@@ -203,6 +227,8 @@ export default function ReportsViewer({ initialReports, restaurantId }: {
                     </div>
                 )}
             </div>
+            </>
+            )}
         </div>
     )
 }
