@@ -13,8 +13,8 @@ export default async function SettingsPage() {
 
     const adminSupabase = await createAdminClient()
 
-    // Fetch restaurant + feature flags + business hours in parallel
-    const [{ data: restaurant }, features, { data: settingsRow }] = await Promise.all([
+    // Fetch restaurant + feature flags + business hours + bank accounts in parallel
+    const [{ data: restaurant }, features, { data: settingsRow }, { data: bankAccounts }] = await Promise.all([
         adminSupabase
             .from('restaurants')
             .select('*')
@@ -26,6 +26,12 @@ export default async function SettingsPage() {
             .select('business_hours')
             .eq('restaurant_id', restaurantId)
             .maybeSingle(),
+        adminSupabase
+            .from('bank_accounts')
+            .select('id, name')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
+            .order('name', { ascending: true }),
     ])
 
     if (!restaurant) redirect('/unauthorized')
@@ -53,6 +59,7 @@ export default async function SettingsPage() {
                     initialRestaurant={initialRestaurant}
                     initialFeatures={features}
                     initialBusinessHours={settingsRow?.business_hours ?? null}
+                    bankAccounts={bankAccounts ?? []}
                     canEdit={role === 'super_admin' || role === 'manager'}
                 />
             </div>

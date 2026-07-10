@@ -89,6 +89,7 @@ export function formatDateTime(dateStr: string | Date | null | undefined): strin
     if (!dateStr) return '-'
     const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr
     return date.toLocaleString('en-US', {
+        timeZone: 'Asia/Kathmandu',
         month: 'short',
         day: 'numeric',
         hour: 'numeric',

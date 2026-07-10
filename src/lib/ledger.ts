@@ -209,20 +209,36 @@ export async function postHotelPaymentIncomeAndLedger(
     }
     if (!categoryId) return { success: false, error: 'Failed to find/create Room Revenue category' }
 
-    // 2. Resolve bank account ID if QR or card
+    // 2. Resolve bank account ID if QR or card. Prefer the bank account the
+    // restaurant explicitly linked to their payment QR (Settings → QR Payment)
+    // so scanned payments land where they actually deposit, instead of an
+    // arbitrary "first active" account — only fall back when nothing is linked
+    // or the linked account has since been deactivated.
     let bankAccountId: string | null = null
     let bankName: string | null = null
     if (input.paymentMethod === 'qr_digital' || input.paymentMethod === 'card') {
-        const { data: defaultBank } = await supabase
-            .from('bank_accounts')
-            .select('id, name')
-            .eq('restaurant_id', restaurantId)
-            .eq('is_active', true)
-            .limit(1)
+        const { data: restaurantRow } = await supabase
+            .from('restaurants')
+            .select('qr_bank_account_id, qr_bank:bank_accounts!qr_bank_account_id(id, name, is_active)')
+            .eq('id', restaurantId)
             .maybeSingle()
-        if (defaultBank) {
-            bankAccountId = defaultBank.id
-            bankName = defaultBank.name
+        const qrBank = restaurantRow?.qr_bank as unknown as { id: string; name: string; is_active: boolean } | null
+
+        if (qrBank && qrBank.is_active) {
+            bankAccountId = qrBank.id
+            bankName = qrBank.name
+        } else {
+            const { data: defaultBank } = await supabase
+                .from('bank_accounts')
+                .select('id, name')
+                .eq('restaurant_id', restaurantId)
+                .eq('is_active', true)
+                .limit(1)
+                .maybeSingle()
+            if (defaultBank) {
+                bankAccountId = defaultBank.id
+                bankName = defaultBank.name
+            }
         }
     }
 
@@ -239,7 +255,7 @@ export async function postHotelPaymentIncomeAndLedger(
             amount: input.amount,
             description: desc,
             bank_account_id: bankAccountId,
-            status: 'paid',
+            status: 'posted',
             created_by: userId || null
         })
 

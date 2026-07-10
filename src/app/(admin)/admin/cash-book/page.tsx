@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import CashBookClient from './CashBookClient'
 import type { DayBookEntry, ExpenseCategory } from '@/types/database'
+import { getNstDateString } from '@/lib/timezone'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,10 +14,7 @@ export default async function CashBookPage() {
     const supabase = await createAdminClient()
     const restaurantId = currentUser.restaurantId
 
-    // Today's date in YYYY-MM-DD (NST timezone)
-    const now = new Date()
-    const NST_OFFSET_MS = (5 * 60 + 45) * 60 * 1000
-    const todayDate = new Date(now.getTime() + NST_OFFSET_MS).toISOString().split('T')[0]
+    const todayDate = getNstDateString()
 
     // Fetch today's session (if exists)
     const { data: session } = await supabase

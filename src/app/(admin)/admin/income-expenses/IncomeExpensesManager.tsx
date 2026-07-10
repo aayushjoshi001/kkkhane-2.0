@@ -8,6 +8,7 @@ import {
 import { createCategoryAction, deleteCategoryAction, createEntryAction, deleteEntryAction } from './actions'
 import { toast } from 'react-hot-toast'
 import { formatCurrency } from '@/lib/utils'
+import { NST_OFFSET_MS } from '@/lib/timezone'
 
 interface Category {
     id: string
@@ -93,7 +94,6 @@ export default function IncomeExpensesManager({
     // Time-range filtered entries (aligned to Nepal Standard Time boundaries)
     const timeFilteredEntries = useMemo(() => {
         const now = new Date()
-        const NST_OFFSET_MS = (5 * 60 + 45) * 60 * 1000
         const nowNst = new Date(now.getTime() + NST_OFFSET_MS)
 
         // Reset hours for comparison boundaries in NST

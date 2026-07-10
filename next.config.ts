@@ -2,6 +2,14 @@ import type { NextConfig } from 'next'
 import { withSerwist } from '@serwist/turbopack'
 import { withSentryConfig } from '@sentry/nextjs'
 
+// The restaurant's business day is Nepal Standard Time (UTC+5:45), but nothing
+// pins the server process to it — left to whatever the deploy host defaults to
+// (typically UTC). That mismatch is what causes "today" to roll over ~5h45m
+// early in day-book sessions, EOD reports, and check-in/check-out parsing.
+// Setting TZ here, before any Date is ever constructed, makes every bare
+// (no-offset) Date string on the server resolve to NST instead.
+process.env.TZ = 'Asia/Kathmandu'
+
 // Replaces next-pwa, which never actually generated a service worker in this
 // project — it only hooks in via Next's `webpack()` config function, which
 // Turbopack (this project's bundler, `turbopack: {}` below) never calls.

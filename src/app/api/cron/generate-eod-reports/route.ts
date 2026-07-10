@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { NextRequest } from 'next/server'
 import { generateEodReport } from '@/lib/reports'
 import { verifyCronRequest, getActiveRestaurants } from '@/lib/cron'
+import { getNstDateString, addDays } from '@/lib/timezone'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -24,10 +25,8 @@ export async function POST(request: NextRequest) {
         return Response.json({ message: 'No active restaurants', generated: 0 })
     }
 
-    // Yesterday in NST (UTC+5:45) — subtract 15min to land safely in "yesterday NST"
-    const yesterday = new Date()
-    yesterday.setDate(yesterday.getDate() - 1)
-    const reportDate = yesterday.toISOString().slice(0, 10) // YYYY-MM-DD
+    // Yesterday in NST (UTC+5:45)
+    const reportDate = addDays(getNstDateString(), -1) // YYYY-MM-DD
     const results = await Promise.allSettled(
         restaurants.map(async (restaurant) => {
             try {

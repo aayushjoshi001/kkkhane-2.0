@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { getNstDateString } from '@/lib/timezone'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/day-book/session  — Open today's day book session
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
     const firstTimeOpeningBankBalance: number = Number(body.opening_bank_balance ?? 0)
     
     // Accept client local date if provided to handle timezones robustly
-    const today = body.date ?? new Date().toISOString().slice(0, 10) // 'YYYY-MM-DD'
+    const today = body.date ?? getNstDateString() // 'YYYY-MM-DD'
 
     const supabase = await createAdminClient()
 
@@ -214,7 +215,7 @@ export async function GET(request: Request) {
     const restaurantId = currentUser.restaurantId
 
     const { searchParams } = new URL(request.url)
-    const date = searchParams.get('date') ?? new Date().toISOString().slice(0, 10)
+    const date = searchParams.get('date') ?? getNstDateString()
 
     const supabase = await createAdminClient()
 

@@ -24,6 +24,7 @@ type RestaurantSettings = {
     vat_registered: boolean
     payment_qr_url: string | null
     payment_qr_label: string | null
+    qr_bank_account_id: string | null
     allowed_ips: string | null
     business_type: string | null
 }
@@ -52,11 +53,13 @@ export default function SettingsManager({
     initialRestaurant,
     initialFeatures,
     initialBusinessHours,
+    bankAccounts,
     canEdit
 }: {
     initialRestaurant: RestaurantSettings
     initialFeatures: Features | null
     initialBusinessHours: BusinessHours | null
+    bankAccounts: { id: string; name: string }[]
     canEdit: boolean
 }) {
     const [formData, setFormData] = useState<RestaurantSettings>(initialRestaurant)
@@ -194,6 +197,7 @@ export default function SettingsManager({
                 vat_registered: formData.vat_registered,
                 payment_qr_url: formData.payment_qr_url,
                 payment_qr_label: formData.payment_qr_label,
+                qr_bank_account_id: formData.qr_bank_account_id,
                 allowed_ips: formData.allowed_ips,
                 business_type: formData.business_type,
             }),
@@ -689,6 +693,25 @@ export default function SettingsManager({
                                 </div>
                             )}
                         </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Deposits Into</label>
+                        <select
+                            name="qr_bank_account_id"
+                            value={formData.qr_bank_account_id || ''}
+                            onChange={handleChange}
+                            disabled={!canEdit || isSubmitting}
+                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
+                        >
+                            <option value="">No bank account linked</option>
+                            {bankAccounts.map(acc => (
+                                <option key={acc.id} value={acc.id}>{acc.name}</option>
+                            ))}
+                        </select>
+                        <p className="text-[11px] font-bold text-ink-subtle mt-2">
+                            QR payments will be recorded as income and cash-in for this bank account. Add a bank account under Bank Book first if none are listed.
+                        </p>
                     </div>
                 </div>
             </div>
