@@ -71,18 +71,18 @@ export default function BottomNavbar({ activeTab, onHomeClick }: BottomNavbarPro
     }
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 p-4 pb-6 z-40 bg-gradient-to-t from-black/80 via-black/50 to-transparent flex justify-center pointer-events-none font-sans">
-            <div className="bg-[#FB6303] rounded-full px-6 py-3 shadow-2xl flex items-center gap-8 pointer-events-auto border border-white/10 animate-fade-in backdrop-blur-md">
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#FB6303] border-t border-white/10 shadow-[0_-8px_30px_rgba(0,0,0,0.1)] rounded-t-[24px] font-sans">
+            <div className="max-w-md mx-auto w-full flex items-center justify-around py-3 px-6 pb-[calc(env(safe-area-inset-bottom,16px)+6px)]">
                 {/* Home */}
                 <Link
                     href={`/t/${tableSlug}${queryStr}`}
                     onClick={handleHomeClick}
                     className={`flex flex-col items-center justify-center transition active:scale-95 w-16 ${
-                        activeTab === 'home' ? 'text-white' : 'text-white/70 hover:text-white'
+                        activeTab === 'home' ? 'text-white' : 'text-white/60 hover:text-white'
                     }`}
                 >
-                    <Home size={18} className="stroke-[2.5px] text-white" />
-                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Home</span>
+                    <Home size={20} className={`stroke-[2.5px] transition-colors ${activeTab === 'home' ? 'text-white' : 'text-white/60'}`} />
+                    <span className="text-[10px] font-black mt-1 uppercase tracking-wider">Home</span>
                 </Link>
 
                 {/* Orders */}
@@ -90,38 +90,38 @@ export default function BottomNavbar({ activeTab, onHomeClick }: BottomNavbarPro
                     href={latestOrder ? `/t/${tableSlug}/order/${latestOrder.id}${queryStr}` : '#'}
                     onClick={handleOrdersClick}
                     className={`flex flex-col items-center justify-center transition active:scale-95 w-16 ${
-                        activeTab === 'orders' ? 'text-white' : 'text-white/70 hover:text-white'
+                        activeTab === 'orders' ? 'text-white' : 'text-white/60 hover:text-white'
                     }`}
                 >
-                    <ChefHat size={18} className="stroke-[2.5px] text-white" />
-                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Orders</span>
+                    <ChefHat size={20} className={`stroke-[2.5px] transition-colors ${activeTab === 'orders' ? 'text-white' : 'text-white/60'}`} />
+                    <span className="text-[10px] font-black mt-1 uppercase tracking-wider">Orders</span>
                 </Link>
 
                 {/* Cart */}
                 <Link
                     href={`/t/${tableSlug}/cart${queryStr}`}
                     className={`flex flex-col items-center justify-center transition active:scale-95 w-16 relative ${
-                        activeTab === 'cart' ? 'text-white' : 'text-white/70 hover:text-white'
+                        activeTab === 'cart' ? 'text-white' : 'text-white/60 hover:text-white'
                     }`}
                 >
                     {cartCount > 0 && (
-                        <span className="absolute -top-1.5 right-3 bg-surface text-brand-500 text-[9px] font-black rounded-full h-[18px] min-w-[18px] px-1 flex items-center justify-center ring-2 ring-[#FB6303]">
+                        <span className="absolute -top-2 right-2 bg-white text-[#FB6303] text-[9px] font-black rounded-full h-[18px] min-w-[18px] px-1 flex items-center justify-center ring-2 ring-[#FB6303]">
                             {cartCount}
                         </span>
                     )}
-                    <ShoppingBag size={18} className="stroke-[2.5px] text-white" />
-                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Cart</span>
+                    <ShoppingBag size={20} className={`stroke-[2.5px] transition-colors ${activeTab === 'cart' ? 'text-white' : 'text-white/60'}`} />
+                    <span className="text-[10px] font-black mt-1 uppercase tracking-wider">Cart</span>
                 </Link>
 
                 {/* Payment */}
                 <Link
                     href={`/t/${tableSlug}/checkout${queryStr}`}
                     className={`flex flex-col items-center justify-center transition active:scale-95 w-16 ${
-                        activeTab === 'pay' ? 'text-white' : 'text-white/70 hover:text-white'
+                        activeTab === 'pay' ? 'text-white' : 'text-white/60 hover:text-white'
                     }`}
                 >
-                    <CreditCard size={18} className="stroke-[2.5px] text-white" />
-                    <span className="text-[10px] font-extrabold mt-1 uppercase tracking-wider">Pay</span>
+                    <CreditCard size={20} className={`stroke-[2.5px] transition-colors ${activeTab === 'pay' ? 'text-white' : 'text-white/60'}`} />
+                    <span className="text-[10px] font-black mt-1 uppercase tracking-wider">Pay</span>
                 </Link>
             </div>
         </div>
