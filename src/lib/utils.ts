@@ -107,3 +107,30 @@ export function calculateNights(checkIn: string | Date, checkOut: string | Date)
     const diffMs = outDate.getTime() - inDate.getTime()
     return Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)))
 }
+
+export interface SupplierBillDetails {
+    text_desc: string
+    quantity: number | null
+    rate: number | null
+    unit: string
+    paid_amount: number | null
+    payment_type: string
+    bank_name: string
+}
+
+/**
+ * Supplier bills (createSupplierBillAction) pack quantity/rate/unit/payment
+ * detail into the expenses.description column as a JSON string, so the same
+ * row can show a plain description everywhere else while the Suppliers
+ * Ledger recovers the structured fields. Any UI rendering expenses.description
+ * needs this to avoid printing the raw JSON blob for those rows.
+ */
+export function parseExpenseDescription(description: string): SupplierBillDetails {
+    const fallback: SupplierBillDetails = { text_desc: description, quantity: null, rate: null, unit: '', paid_amount: null, payment_type: 'cash', bank_name: '' }
+    if (!description?.startsWith('{') || !description.endsWith('}')) return fallback
+    try {
+        return { ...fallback, ...JSON.parse(description) }
+    } catch {
+        return fallback
+    }
+}

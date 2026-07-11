@@ -7,7 +7,7 @@ import {
 import { createSupplierAction, updateSupplierAction, deleteSupplierAction, createSupplierBillAction } from './actions'
 import { createCategoryAction } from '../income-expenses/actions'
 import { toast } from 'react-hot-toast'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, parseExpenseDescription } from '@/lib/utils'
 
 interface Supplier {
     id: string
@@ -297,14 +297,7 @@ export default function SuppliersLedgerManager({
 
         let cumulativeBalance = 0
         const mapped = filtered.map(e => {
-            let parsed = { text_desc: e.description, quantity: null as number | null, rate: null as number | null, unit: '', paid_amount: e.amount, payment_type: 'cash', bank_name: '' }
-            try {
-                if (e.description.startsWith('{') && e.description.endsWith('}')) {
-                    parsed = JSON.parse(e.description)
-                }
-            } catch {
-                // fallback
-            }
+            const parsed = parseExpenseDescription(e.description)
 
             const totalAmt = Number(e.amount)
             const paidAmt = Number(parsed.paid_amount ?? totalAmt)

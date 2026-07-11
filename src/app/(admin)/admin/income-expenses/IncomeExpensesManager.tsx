@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { createCategoryAction, deleteCategoryAction, createEntryAction, deleteEntryAction } from './actions'
 import { toast } from 'react-hot-toast'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, parseExpenseDescription } from '@/lib/utils'
 import { NST_OFFSET_MS } from '@/lib/timezone'
 
 interface Category {
@@ -50,6 +50,7 @@ interface IncomeExpensesManagerProps {
     initialExpenses: ExpenseEntry[]
     suppliers: Array<{ id: string; name: string }>
     bankAccounts: Array<{ id: string; name: string; bank_name: string | null; account_number: string | null }>
+    qrCodes: Array<{ label: string; bank_account_id: string | null }>
 }
 
 export default function IncomeExpensesManager({
@@ -58,8 +59,22 @@ export default function IncomeExpensesManager({
     initialIncomeEntries,
     initialExpenses,
     suppliers,
-    bankAccounts
+    bankAccounts,
+    qrCodes
 }: IncomeExpensesManagerProps) {
+    // Which QR code(s), if any, deposit into each bank account — lets staff
+    // paying another party identify the right account by its QR instead of
+    // just a bank name, when a restaurant runs more than one QR/bank pair.
+    const qrLabelsByBank = useMemo(() => {
+        const map = new Map<string, string[]>()
+        for (const qr of qrCodes) {
+            if (!qr.bank_account_id) continue
+            const labels = map.get(qr.bank_account_id) ?? []
+            labels.push(qr.label)
+            map.set(qr.bank_account_id, labels)
+        }
+        return map
+    }, [qrCodes])
     // Categories & Entries state
     const [incomeCategories, setIncomeCategories] = useState<Category[]>(initialIncomeCategories)
     const [expenseCategories, setExpenseCategories] = useState<Category[]>(initialExpenseCategories)
@@ -530,9 +545,13 @@ export default function IncomeExpensesManager({
                                     className="w-full px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
                                 >
                                     <option value="">Select Bank Account</option>
-                                    {bankAccounts.map(b => (
-                                        <option key={b.id} value={b.name}>{b.name} ({b.account_number})</option>
-                                    ))}
+                                    {bankAccounts.map(b => {
+                                        const qrLabels = qrLabelsByBank.get(b.id)
+                                        const qrSuffix = qrLabels?.length ? ` — via ${qrLabels.join(', ')}` : ''
+                                        return (
+                                            <option key={b.id} value={b.name}>{b.name} ({b.account_number}){qrSuffix}</option>
+                                        )
+                                    })}
                                     {bankAccounts.length === 0 && (
                                         <option value="General Bank">General Bank</option>
                                     )}
@@ -693,7 +712,7 @@ export default function IncomeExpensesManager({
                                                         {item.bank_accounts ? item.bank_accounts.name : 'Cash'}
                                                     </span>
                                                 </td>
-                                                <td className="px-4 py-3 border-r border-hairline font-bold text-ink">{item.description}</td>
+                                                <td className="px-4 py-3 border-r border-hairline font-bold text-ink">{parseExpenseDescription(item.description).text_desc}</td>
                                                 <td className="px-4 py-3 text-right font-black border-r border-hairline text-emerald-600 text-sm whitespace-nowrap">
                                                     {formatCurrency(item.amount)}
                                                 </td>
@@ -753,7 +772,7 @@ export default function IncomeExpensesManager({
                                                         {item.bank_accounts ? item.bank_accounts.name : 'Cash'}
                                                     </span>
                                                 </td>
-                                                <td className="px-4 py-3 border-r border-hairline font-bold text-ink">{item.description}</td>
+                                                <td className="px-4 py-3 border-r border-hairline font-bold text-ink">{parseExpenseDescription(item.description).text_desc}</td>
                                                 <td className="px-4 py-3 text-right font-black border-r border-hairline text-rose-600 text-sm whitespace-nowrap">
                                                     {formatCurrency(item.amount)}
                                                 </td>
