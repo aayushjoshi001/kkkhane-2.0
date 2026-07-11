@@ -555,8 +555,10 @@ export default function RoomsClient({
                         </button>
                     </div>
 
-                    {/* Action Buttons (Book, Closed, Reserve) */}
-                    <div className="grid grid-cols-3 gap-2 mb-4 mt-2">
+                    {/* Action Buttons (Book, Closed) — a room automatically goes to
+                        Cleaning on checkout (see /api/bookings/checkout), so there's no
+                        separate manual "Not Available" step needed here anymore. */}
+                    <div className="grid grid-cols-2 gap-2 mb-4 mt-2">
                         <button
                             onClick={handleOpenBooking}
                             disabled={selectedRoom.status !== 'available'}
@@ -580,16 +582,10 @@ export default function RoomsClient({
                             className={`py-2.5 font-extrabold rounded-xl text-xs border transition-all text-center ${
                                 selectedRoom.status === 'occupied'
                                     ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                                    : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
+                                    : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200/40'
                             }`}
                         >
-                            Not Available
-                        </button>
-                        <button
-                            onClick={() => handleStatusChange(selectedRoom.id, 'maintenance')}
-                            className="py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 font-extrabold rounded-xl text-xs border border-amber-200/40 transition-all text-center"
-                        >
-                            Reserve
+                            Closed
                         </button>
                     </div>
 
@@ -1110,7 +1106,7 @@ export default function RoomsClient({
                                 </button>
                                 <button
                                     onClick={() => {
-                                        handleStatusChange(selectedRoom.id, 'dirty')
+                                        handleStatusChange(selectedRoom.id, 'maintenance')
                                         setIsConfirmCloseOpen(false)
                                     }}
                                     className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-xl text-sm transition-all shadow-md shadow-rose-600/10"
