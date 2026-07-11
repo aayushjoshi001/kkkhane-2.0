@@ -1,11 +1,14 @@
 'use client'
 
 import { useState, useEffect, useSyncExternalStore } from 'react'
-import { X, Loader2 } from 'lucide-react'
+import { X, Loader2, CheckCircle2 } from 'lucide-react'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
 import { formatDateTime, calculateNights } from '@/lib/utils'
+import { usePrinter } from '@/lib/print/usePrinter'
+import { buildInvoiceTicket, type ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
+import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 
 /** Table shape the admin room pages pass in (with its active QR session, if any). */
 export interface BillingTable {
@@ -81,6 +84,11 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const [splitCashAmount, setSplitCashAmount] = useState('')
     const [splitQrAmount, setSplitQrAmount] = useState('')
     const [isSaving, setIsSaving] = useState(false)
+    // True once the checkout API confirms the room is settled — printing
+    // happens after this, so the manager sees "Settled" immediately instead
+    // of waiting on a printer that may be slow or not configured.
+    const [invoiceSettled, setInvoiceSettled] = useState(false)
+    const { print: printInvoice } = usePrinter('invoice')
 
     useEffect(() => {
         if (!booking) return
@@ -137,18 +145,47 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const advancePaid = Number(booking?.paid_amount) || 0
     const balanceDue = Math.max(0, grandTotal - advancePaid)
 
+    const resolvedCash = paymentMethod === 'cash' ? balanceDue
+        : paymentMethod === 'qr_digital' ? 0
+        : parseFloat(splitCashAmount) || 0
+    const resolvedQr = paymentMethod === 'qr_digital' ? balanceDue
+        : paymentMethod === 'cash' ? 0
+        : parseFloat(splitQrAmount) || 0
+
+    // Same shape the Cashier POS invoice preview uses, so the printed receipt
+    // is identical regardless of which screen settled the bill.
+    const invoiceData: ActiveInvoice | null = booking ? {
+        type: 'room',
+        id: booking.id,
+        label: `Room ${room.room_number}`,
+        roomType: room.room_types?.name,
+        guestName: booking.guest_name,
+        guestPhone: booking.guest_phone,
+        nights: calculateNights(booking.check_in, booking.check_out),
+        basePrice: room.room_types?.base_price || 0,
+        stayCost,
+        qrOrders: allServiceOrderItems.map(item => ({
+            name: item.menu_items?.name || 'Item',
+            quantity: item.quantity,
+            unitPrice: Number(item.unit_price),
+        })),
+        qrOrdersTotal,
+        manualCharges: charges.map(c => ({ id: c.id, description: c.description, amount: Number(c.amount) })),
+        manualChargesTotal,
+        total: grandTotal,
+        advancePaid,
+        advanceMethod: booking.advance_payment_method,
+        balanceDue,
+        paymentMethod: paymentMethod === 'split' ? 'both' : paymentMethod,
+        cashPaid: resolvedCash,
+        qrPaid: resolvedQr,
+    } : null
+
     const handleSettle = async () => {
         if (!booking) return
 
         setIsSaving(true)
         try {
-            const resolvedCash = paymentMethod === 'cash' ? balanceDue
-                : paymentMethod === 'qr_digital' ? 0
-                : parseFloat(splitCashAmount) || 0
-            const resolvedQr = paymentMethod === 'qr_digital' ? balanceDue
-                : paymentMethod === 'cash' ? 0
-                : parseFloat(splitQrAmount) || 0
-
             const res = await fetch(`/api/bookings/checkout`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -165,6 +202,23 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             if (!res.ok) throw new Error(data.error || 'Failed to checkout booking')
 
             toast.success('Room billing settled and guest checked out successfully!')
+            setIsSaving(false)
+            setInvoiceSettled(true)
+
+            // Printing runs after the bill is already settled in the database,
+            // so a slow/unconfigured printer never blocks the checkout itself.
+            if (invoiceData) {
+                const printResult = await printInvoice(buildInvoiceTicket(invoiceData, money))
+                if (!printResult.ok) {
+                    toast.error(
+                        printResult.status === 'no-printer-selected'
+                            ? 'No invoice printer set — opening browser print instead.'
+                            : 'Invoice printer not connected — opening browser print instead.'
+                    )
+                    window.print()
+                }
+            }
+
             const paidAmount = advancePaid + resolvedCash + resolvedQr
             onSettled({
                 bookingId: booking.id,
@@ -182,10 +236,15 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
 
     if (!mounted) return null
 
+    // Blocks dismissing the modal mid-print — the off-screen receipt below is
+    // what the print fallback targets, so it must stay mounted until printing
+    // (fired inside handleSettle, right after invoiceSettled flips true) is done.
+    const guardedClose = () => { if (!invoiceSettled) onClose() }
+
     return (
         <Modal
             open
-            onClose={onClose}
+            onClose={guardedClose}
             size="xl"
             ariaLabel={`Room ${room.room_number} billing`}
             className="bg-white flex flex-col overflow-hidden max-h-[90vh] md:max-h-[85vh]"
@@ -195,7 +254,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                         <h3 className="text-lg font-black text-gray-900">Room {room.room_number} stays details</h3>
                         <p className="text-xs text-gray-500 mt-0.5">{room.room_types?.name} • Floor {room.floor || 'N/A'}</p>
                     </div>
-                    <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition text-gray-500 hover:text-gray-900"><X size={16} /></button>
+                    <button onClick={guardedClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition text-gray-500 hover:text-gray-900"><X size={16} /></button>
                 </div>
 
                 {loadingDetails ? (
@@ -384,20 +443,35 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                     <p className="text-2xl font-black text-[#ff5a00] tabular-nums">{money(balanceDue)}</p>
                                 </div>
                                 <div className="flex gap-2">
-                                    <button
-                                        onClick={onClose}
-                                        className="px-4 py-2 border border-gray-200 rounded-xl text-xs font-semibold hover:bg-gray-50 transition"
-                                    >
-                                        Close
-                                    </button>
-                                    <button
-                                        onClick={handleSettle}
-                                        disabled={isSaving}
-                                        className="px-6 py-2 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-[#ff5a00]/10 disabled:opacity-50 flex items-center gap-1.5"
-                                    >
-                                        {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
-                                        Settle & Checkout
-                                    </button>
+                                    {invoiceSettled ? (
+                                        <div className="px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold flex items-center gap-1.5">
+                                            <CheckCircle2 size={14} />
+                                            Settled — printing receipt…
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <button
+                                                onClick={onClose}
+                                                className="px-4 py-2 border border-gray-200 rounded-xl text-xs font-semibold hover:bg-gray-50 transition"
+                                            >
+                                                Close
+                                            </button>
+                                            <button
+                                                onClick={() => window.print()}
+                                                className="px-4 py-2 border border-gray-200 rounded-xl text-xs font-semibold hover:bg-gray-50 transition"
+                                            >
+                                                Print Bill
+                                            </button>
+                                            <button
+                                                onClick={handleSettle}
+                                                disabled={isSaving}
+                                                className="px-6 py-2 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-[#ff5a00]/10 disabled:opacity-50 flex items-center gap-1.5"
+                                            >
+                                                {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
+                                                Settle & Checkout
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -405,6 +479,15 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                 ) : (
                     <div className="p-6 flex-1 flex items-center justify-center">
                         <p className="text-xs text-gray-400">No active stay found for this room.</p>
+                    </div>
+                )}
+
+                {/* Off-screen receipt — not part of the review UI above, only exists
+                    so Print Bill / the post-settle print fallback have a
+                    print-container to target (see InvoiceReceipt's print CSS). */}
+                {invoiceData && (
+                    <div className="fixed -left-[9999px] top-0" aria-hidden>
+                        <InvoiceReceipt invoice={invoiceData} money={money} />
                     </div>
                 )}
         </Modal>
