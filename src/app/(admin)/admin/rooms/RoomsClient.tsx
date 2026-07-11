@@ -353,9 +353,39 @@ export default function RoomsClient({
         switch (status) {
             case 'available': return 'Available'
             case 'occupied': return 'Booked'
-            case 'dirty': return 'Closed'
-            case 'maintenance': return 'Maintenance'
+            case 'dirty': return 'Cleaning'
+            case 'maintenance': return 'Closed'
             default: return status
+        }
+    }
+
+    const getStatusTextColor = (status: RoomStatus) => {
+        switch (status) {
+            case 'available': return 'text-emerald-600'
+            case 'occupied': return 'text-blue-600'
+            case 'dirty': return 'text-amber-600'
+            case 'maintenance': return 'text-rose-600'
+            default: return 'text-gray-500'
+        }
+    }
+
+    const getStatusDotColor = (status: RoomStatus) => {
+        switch (status) {
+            case 'available': return 'bg-emerald-500'
+            case 'occupied': return 'bg-blue-500'
+            case 'dirty': return 'bg-amber-500'
+            case 'maintenance': return 'bg-rose-500'
+            default: return 'bg-gray-400'
+        }
+    }
+
+    const getStatusAccentBorder = (status: RoomStatus) => {
+        switch (status) {
+            case 'available': return 'border-l-emerald-400'
+            case 'occupied': return 'border-l-blue-400'
+            case 'dirty': return 'border-l-amber-400'
+            case 'maintenance': return 'border-l-rose-400'
+            default: return 'border-l-gray-300'
         }
     }
 
@@ -477,11 +507,11 @@ export default function RoomsClient({
                     {filteredRooms.map(room => {
                         const typeName = roomTypesList.find(t => t.id === room.type_id)?.name || 'Standard'
                         return (
-                            <div 
+                            <div
                                 key={room.id}
                                 onClick={() => setSelectedRoom(room)}
-                                className={`bg-white border rounded-2xl p-4 flex flex-col justify-between cursor-pointer transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 select-none ${
-                                    selectedRoom?.id === room.id ? 'border-[#ff5a00] ring-1 ring-[#ff5a00]' : 'border-gray-100'
+                                className={`bg-white border border-l-4 rounded-2xl p-4 flex flex-col justify-between cursor-pointer transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 select-none ${
+                                    selectedRoom?.id === room.id ? 'border-[#ff5a00] ring-1 ring-[#ff5a00]' : `border-gray-100 ${getStatusAccentBorder(room.status)}`
                                 }`}
                             >
                                 <div className="flex items-start justify-between">
@@ -495,7 +525,8 @@ export default function RoomsClient({
                                     <p className="text-xs text-gray-400 mt-1.5 font-bold uppercase truncate">{typeName}</p>
                                 </div>
                                 <div className="border-t border-gray-50 pt-2 flex items-center justify-between">
-                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                                    <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${getStatusTextColor(room.status)}`}>
+                                        <span className={`w-1.5 h-1.5 rounded-full ${getStatusDotColor(room.status)}`} />
                                         {getStatusLabel(room.status)}
                                     </span>
                                     <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-400" />
