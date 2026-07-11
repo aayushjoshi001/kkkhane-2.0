@@ -81,3 +81,54 @@ export async function updateBusinessHoursAction(restaurantId: string, businessHo
     revalidatePath('/', 'layout')
     return { success: true }
 }
+
+// A restaurant may run several payment QR codes (different providers, each
+// depositing into a different bank account) — these actions manage that list.
+// See supabase/migrations/20260710050000_payment_qr_codes.sql.
+
+export async function createQrCodeAction(restaurantId: string, input: { label: string; image_url: string | null; bank_account_id: string | null }) {
+    const supabase = await createAdminClient()
+
+    const { data, error } = await supabase
+        .from('payment_qr_codes')
+        .insert({
+            restaurant_id: restaurantId,
+            label: input.label,
+            image_url: input.image_url,
+            bank_account_id: input.bank_account_id,
+        })
+        .select()
+        .single()
+    if (error) return { error: error.message }
+
+    revalidatePath('/admin/settings')
+    return { success: true, data }
+}
+
+export async function updateQrCodeAction(id: string, restaurantId: string, input: { label?: string; image_url?: string | null; bank_account_id?: string | null; is_active?: boolean }) {
+    const supabase = await createAdminClient()
+
+    const { error } = await supabase
+        .from('payment_qr_codes')
+        .update(input)
+        .eq('id', id)
+        .eq('restaurant_id', restaurantId)
+    if (error) return { error: error.message }
+
+    revalidatePath('/admin/settings')
+    return { success: true }
+}
+
+export async function deleteQrCodeAction(id: string, restaurantId: string) {
+    const supabase = await createAdminClient()
+
+    const { error } = await supabase
+        .from('payment_qr_codes')
+        .delete()
+        .eq('id', id)
+        .eq('restaurant_id', restaurantId)
+    if (error) return { error: error.message }
+
+    revalidatePath('/admin/settings')
+    return { success: true }
+}

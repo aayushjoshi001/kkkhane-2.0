@@ -185,6 +185,11 @@ export async function postHotelPaymentIncomeAndLedger(
         amount: number
         paymentMethod: 'cash' | 'qr_digital' | 'card'
         isAdvance: boolean
+        // Which of the restaurant's (possibly several) registered QR codes the
+        // customer actually scanned — lets the payment land in that QR's own
+        // bank account instead of a single restaurant-wide default. Ignored
+        // for cash.
+        qrCodeId?: string | null
     }
 ): Promise<{ success: boolean; error?: string }> {
     if (input.amount <= 0) return { success: true }
@@ -209,24 +214,39 @@ export async function postHotelPaymentIncomeAndLedger(
     }
     if (!categoryId) return { success: false, error: 'Failed to find/create Room Revenue category' }
 
-    // 2. Resolve bank account ID if QR or card. Prefer the bank account the
-    // restaurant explicitly linked to their payment QR (Settings → QR Payment)
-    // so scanned payments land where they actually deposit, instead of an
-    // arbitrary "first active" account — only fall back when nothing is linked
-    // or the linked account has since been deactivated.
+    // 2. Resolve bank account ID if QR or card. Preference order:
+    //    a) the specific QR code the customer scanned (input.qrCodeId), for
+    //       restaurants running multiple QR codes into different banks
+    //    b) the legacy single restaurant-wide QR bank link (pre-multi-QR)
+    //    c) an arbitrary active bank account, as a last resort
     let bankAccountId: string | null = null
     let bankName: string | null = null
     if (input.paymentMethod === 'qr_digital' || input.paymentMethod === 'card') {
-        const { data: restaurantRow } = await supabase
-            .from('restaurants')
-            .select('qr_bank_account_id, qr_bank:bank_accounts!qr_bank_account_id(id, name, is_active)')
-            .eq('id', restaurantId)
-            .maybeSingle()
-        const qrBank = restaurantRow?.qr_bank as unknown as { id: string; name: string; is_active: boolean } | null
+        let resolvedBank: { id: string; name: string; is_active: boolean } | null = null
 
-        if (qrBank && qrBank.is_active) {
-            bankAccountId = qrBank.id
-            bankName = qrBank.name
+        if (input.qrCodeId) {
+            const { data: qrCodeRow } = await supabase
+                .from('payment_qr_codes')
+                .select('bank:bank_accounts!bank_account_id(id, name, is_active)')
+                .eq('id', input.qrCodeId)
+                .eq('restaurant_id', restaurantId)
+                .eq('is_active', true)
+                .maybeSingle()
+            resolvedBank = (qrCodeRow?.bank as unknown as { id: string; name: string; is_active: boolean } | null) ?? null
+        }
+
+        if (!resolvedBank) {
+            const { data: restaurantRow } = await supabase
+                .from('restaurants')
+                .select('qr_bank_account_id, qr_bank:bank_accounts!qr_bank_account_id(id, name, is_active)')
+                .eq('id', restaurantId)
+                .maybeSingle()
+            resolvedBank = (restaurantRow?.qr_bank as unknown as { id: string; name: string; is_active: boolean } | null) ?? null
+        }
+
+        if (resolvedBank && resolvedBank.is_active) {
+            bankAccountId = resolvedBank.id
+            bankName = resolvedBank.name
         } else {
             const { data: defaultBank } = await supabase
                 .from('bank_accounts')

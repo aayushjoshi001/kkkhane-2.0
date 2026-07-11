@@ -19,7 +19,8 @@ export default async function IncomeExpensesPage() {
         { data: incomeEntries },
         { data: expenses },
         { data: suppliers },
-        { data: bankAccounts }
+        { data: bankAccounts },
+        { data: qrCodes }
     ] = await Promise.all([
         supabase
             .from('income_categories')
@@ -53,7 +54,12 @@ export default async function IncomeExpensesPage() {
             .select('*')
             .eq('restaurant_id', restaurantId)
             .eq('is_active', true)
-            .order('name', { ascending: true })
+            .order('name', { ascending: true }),
+        supabase
+            .from('payment_qr_codes')
+            .select('label, bank_account_id')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
     ])
 
     return (
@@ -64,6 +70,7 @@ export default async function IncomeExpensesPage() {
             initialExpenses={expenses || []}
             suppliers={suppliers || []}
             bankAccounts={bankAccounts || []}
+            qrCodes={qrCodes || []}
         />
     )
 }

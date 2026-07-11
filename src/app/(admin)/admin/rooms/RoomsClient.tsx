@@ -10,6 +10,7 @@ import { toast } from 'react-hot-toast'
 import RoomBillingModal, { type BillingTable, type BillingOrder } from '@/components/admin/RoomBillingModal'
 import NextImage from 'next/image'
 import { renderQrCardPng, downloadDataUrl } from '@/lib/qrCardCanvas'
+import { useQrCodes } from '@/lib/hooks/useQrCodes'
 
 const QR_LOGO_SRC = '/icons/kkkhane.png'
 
@@ -33,7 +34,8 @@ export default function RoomsClient({
 }: RoomsClientProps) {
     const [rooms, setRooms] = useState<Room[]>(initialRooms)
     const [roomTypesList, setRoomTypesList] = useState<RoomType[]>(roomTypes)
-    
+    const qrCodes = useQrCodes()
+
     // Filters state
     const [filterStatus, setFilterStatus] = useState<string>('all')
     const [filterType, setFilterType] = useState<string>('all')
@@ -66,7 +68,8 @@ export default function RoomsClient({
         advance_amount: '0',
         advance_payment_method: 'cash',
         advance_cash_amount: '',
-        advance_qr_amount: ''
+        advance_qr_amount: '',
+        advance_qr_code_id: ''
     })
     const [isSubmittingRoom, setIsSubmittingRoom] = useState(false)
     const [isSubmittingType, setIsSubmittingType] = useState(false)
@@ -209,7 +212,8 @@ export default function RoomsClient({
             advance_amount: '0',
             advance_payment_method: 'cash',
             advance_cash_amount: '',
-            advance_qr_amount: ''
+            advance_qr_amount: '',
+            advance_qr_code_id: ''
         })
         setIsBookModalOpen(true)
     }
@@ -260,7 +264,10 @@ export default function RoomsClient({
                     advance_amount: isSplit ? splitCash + splitQr : (parseFloat(bookingForm.advance_amount) || 0),
                     advance_payment_method: bookingForm.advance_payment_method,
                     advance_cash_amount: isSplit ? splitCash : undefined,
-                    advance_qr_amount: isSplit ? splitQr : undefined
+                    advance_qr_amount: isSplit ? splitQr : undefined,
+                    advance_qr_code_id: (bookingForm.advance_payment_method === 'qr_digital' || isSplit)
+                        ? (bookingForm.advance_qr_code_id || (qrCodes.length === 1 ? qrCodes[0].id : undefined))
+                        : undefined
                 })
             })
             const data = await res.json()
@@ -900,6 +907,24 @@ export default function RoomsClient({
                                             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
                                         />
                                     </div>
+                                </div>
+                            )}
+
+                            {(bookingForm.advance_payment_method === 'qr_digital' || bookingForm.advance_payment_method === 'split') && qrCodes.length > 1 && (
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                                        Which QR did the guest scan?
+                                    </label>
+                                    <select
+                                        value={bookingForm.advance_qr_code_id}
+                                        onChange={e => setBookingForm(b => ({ ...b, advance_qr_code_id: e.target.value }))}
+                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                    >
+                                        <option value="">Select QR code…</option>
+                                        {qrCodes.map(qr => (
+                                            <option key={qr.id} value={qr.id}>{qr.label}</option>
+                                        ))}
+                                    </select>
                                 </div>
                             )}
 

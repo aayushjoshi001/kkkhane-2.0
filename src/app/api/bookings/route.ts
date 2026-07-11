@@ -15,7 +15,8 @@ export async function POST(req: Request) {
             room_id, guest_name, guest_phone, kyc,
             check_in, check_out, guest_count,
             advance_amount, advance_payment_method,
-            advance_cash_amount, advance_qr_amount
+            advance_cash_amount, advance_qr_amount,
+            advance_qr_code_id
         } = body
 
         if (!room_id || !guest_name || !guest_phone || !check_in || !check_out || !guest_count) {
@@ -114,7 +115,8 @@ export async function POST(req: Request) {
                     guestName: booking.guest_name,
                     amount: splitQrAmount,
                     paymentMethod: 'qr_digital',
-                    isAdvance: true
+                    isAdvance: true,
+                    qrCodeId: advance_qr_code_id || null
                 })
             }
         } else if (paidAmount > 0) {
@@ -127,7 +129,8 @@ export async function POST(req: Request) {
                 guestName: booking.guest_name,
                 amount: paidAmount,
                 paymentMethod: paymentMethodMapped,
-                isAdvance: true
+                isAdvance: true,
+                qrCodeId: paymentMethodMapped === 'qr_digital' ? (advance_qr_code_id || null) : null
             })
         }
 
