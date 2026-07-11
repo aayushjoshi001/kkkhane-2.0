@@ -2,13 +2,14 @@
 
 import { useState, useRef } from 'react'
 import Image from 'next/image'
-import { Save, Store, Mail, Phone, MapPin, Building, Percent, Check, Loader2, QrCode, Shield, ToggleLeft, ToggleRight, Upload, X, Bell, Play, Clock } from 'lucide-react'
+import { Save, Store, Mail, Phone, MapPin, Building, Percent, Check, Loader2, Shield, ToggleLeft, ToggleRight, Upload, X, Bell, Play, Clock } from 'lucide-react'
 import { updateRestaurantSettingsAction, updateBusinessHoursAction } from '@/app/(admin)/admin/settings/actions'
 import { updateFeaturesAction } from '@/lib/features'
 import { toast } from 'react-hot-toast'
 import type { Settings, BusinessHours, DayHours } from '@/types/database'
 import { unlockAudio, setCustomNotificationSound, playNewOrder } from '@/lib/audio'
 import { ONBOARDING_BUSINESS_TYPES, getBusinessMode } from '@/lib/businessMode'
+import QrPaymentManager, { type QrCodeEntry } from './QrPaymentManager'
 
 type RestaurantSettings = {
     id: string
@@ -22,9 +23,6 @@ type RestaurantSettings = {
     currency_symbol: string | null
     pan_number: string | null
     vat_registered: boolean
-    payment_qr_url: string | null
-    payment_qr_label: string | null
-    qr_bank_account_id: string | null
     allowed_ips: string | null
     business_type: string | null
 }
@@ -54,12 +52,14 @@ export default function SettingsManager({
     initialFeatures,
     initialBusinessHours,
     bankAccounts,
+    initialQrCodes,
     canEdit
 }: {
     initialRestaurant: RestaurantSettings
     initialFeatures: Features | null
     initialBusinessHours: BusinessHours | null
     bankAccounts: { id: string; name: string }[]
+    initialQrCodes: QrCodeEntry[]
     canEdit: boolean
 }) {
     const [formData, setFormData] = useState<RestaurantSettings>(initialRestaurant)
@@ -89,12 +89,11 @@ export default function SettingsManager({
     const updateDayHours = (day: string, patch: Partial<DayHours>) => {
         setBusinessHours(prev => ({ ...prev, [day]: { ...prev[day], ...patch } }))
     }
-    const [uploadingField, setUploadingField] = useState<'logo_url' | 'payment_qr_url' | 'notification_sound' | null>(null)
+    const [uploadingField, setUploadingField] = useState<'logo_url' | 'notification_sound' | null>(null)
     const logoInputRef = useRef<HTMLInputElement>(null)
-    const qrInputRef = useRef<HTMLInputElement>(null)
     const soundInputRef = useRef<HTMLInputElement>(null)
 
-    const handleFileUpload = async (file: File, field: 'logo_url' | 'payment_qr_url') => {
+    const handleFileUpload = async (file: File, field: 'logo_url') => {
         setUploadingField(field)
         const fd = new FormData()
         fd.append('file', file)
@@ -195,9 +194,6 @@ export default function SettingsManager({
                 logo_url: formData.logo_url,
                 pan_number: formData.pan_number,
                 vat_registered: formData.vat_registered,
-                payment_qr_url: formData.payment_qr_url,
-                payment_qr_label: formData.payment_qr_label,
-                qr_bank_account_id: formData.qr_bank_account_id,
                 allowed_ips: formData.allowed_ips,
                 business_type: formData.business_type,
             }),
@@ -619,102 +615,12 @@ export default function SettingsManager({
                 </div>
             </div>
 
-            {/* QR Payment Setup */}
-            <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden mt-6">
-                <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 shadow-[inset_0_2px_4px_rgba(251,99,3,0.05)]">
-                        <QrCode size={20} />
-                    </div>
-                    <div>
-                        <h3 className="text-h3 font-extrabold text-ink">QR Payment</h3>
-                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Upload your eSewa/Khalti/Fonepay QR for customers</p>
-                    </div>
-                </div>
-
-                <div className="p-6 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">QR Code Image</label>
-                            <div className="space-y-3">
-                                {canEdit && (
-                                    <label className={`flex items-center gap-2 px-4 py-2.5 border border-dashed rounded-[var(--r-md)] cursor-pointer transition-all focus-ring ${uploadingField === 'payment_qr_url' ? 'border-brand-500/40 bg-brand-50' : 'border-hairline bg-surface hover:border-brand-500 hover:bg-surface-muted'}`}>
-                                        {uploadingField === 'payment_qr_url'
-                                            ? <Loader2 size={16} className="animate-spin text-brand-500" />
-                                            : <Upload size={16} className="text-ink-subtle" />
-                                        }
-                                        <span className="text-sm font-bold text-ink">
-                                            {uploadingField === 'payment_qr_url' ? 'Uploading…' : 'Upload QR Image'}
-                                        </span>
-                                        <input
-                                            ref={qrInputRef}
-                                            type="file"
-                                            accept="image/*"
-                                            className="sr-only"
-                                            onChange={(e) => { if (e.target.files?.[0]) handleFileUpload(e.target.files[0], 'payment_qr_url') }}
-                                        />
-                                    </label>
-                                )}
-                                <input
-                                    type="url"
-                                    name="payment_qr_url"
-                                    value={formData.payment_qr_url || ''}
-                                    onChange={handleChange}
-                                    disabled={!canEdit || isSubmitting}
-                                    className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
-                                    placeholder="or paste QR image URL…"
-                                />
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">QR Provider</label>
-                            <select
-                                name="payment_qr_label"
-                                value={formData.payment_qr_label || ''}
-                                onChange={handleChange}
-                                disabled={!canEdit || isSubmitting}
-                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
-                            >
-                                <option value="">Select provider…</option>
-                                <option value="esewa">eSewa</option>
-                                <option value="khalti">Khalti</option>
-                                <option value="fonepay">Fonepay</option>
-                                <option value="nepal_pay">Nepal Pay</option>
-                                <option value="other">Other</option>
-                            </select>
-
-                            {formData.payment_qr_url && (
-                                <div className="mt-4 flex items-start gap-4 p-4 rounded-[var(--r-md)] border border-hairline bg-surface-muted/30 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
-                                    <Image src={formData.payment_qr_url} alt="Payment QR" width={96} height={96} className="h-24 w-24 object-contain bg-surface rounded-[var(--r-md)] p-2 border border-hairline shrink-0 shadow-sm" />
-                                    {canEdit && (
-                                        <button type="button" onClick={() => setFormData(p => ({ ...p, payment_qr_url: null }))} className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-danger-fg hover:text-danger-fg/80 transition-colors mt-1 focus-ring px-1">
-                                            <X size={14} /> Remove QR
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Deposits Into</label>
-                        <select
-                            name="qr_bank_account_id"
-                            value={formData.qr_bank_account_id || ''}
-                            onChange={handleChange}
-                            disabled={!canEdit || isSubmitting}
-                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
-                        >
-                            <option value="">No bank account linked</option>
-                            {bankAccounts.map(acc => (
-                                <option key={acc.id} value={acc.id}>{acc.name}</option>
-                            ))}
-                        </select>
-                        <p className="text-[11px] font-bold text-ink-subtle mt-2">
-                            QR payments will be recorded as income and cash-in for this bank account. Add a bank account under Bank Book first if none are listed.
-                        </p>
-                    </div>
-                </div>
-            </div>
+            <QrPaymentManager
+                restaurantId={formData.id}
+                initialQrCodes={initialQrCodes}
+                bankAccounts={bankAccounts}
+                canEdit={canEdit}
+            />
 
             {/* Action Bar */}
             <div className="flex items-center justify-end gap-4 bg-surface rounded-[var(--r-md)] p-4 border border-hairline mt-6 shadow-[0_4px_12px_rgba(0,0,0,0.02)]">

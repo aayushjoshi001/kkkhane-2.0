@@ -3,6 +3,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import type { Settings } from '@/types/database'
 import { formatCurrency } from '@/lib/utils'
+import { toNepaliDate } from '@/lib/nepaliDate'
 import type { BusinessMode } from '@/lib/businessMode'
 
 type Features = Settings['features_v2']
@@ -66,6 +67,35 @@ export function useCurrency(): (amount: number) => string {
     return useMemo(
         () => (amount: number) => formatCurrency(amount, currency, currencySymbol),
         [currency, currencySymbol],
+    )
+}
+
+/**
+ * Date formatter bound to the restaurant's "Bikram Sambat Date" setting
+ * (Settings → Feature Flags). When off, dates read as plain AD (e.g.
+ * "Jul 10, 2026"); when on, the BS equivalent is appended (e.g. "Jul 10,
+ * 2026 (Asar 26, 2083 BS)"), converted via the nepali-date-converter
+ * library — a real lunisolar calendar conversion, not a fixed year offset,
+ * so it stays accurate rather than drifting.
+ *
+ * Usage:
+ *   const formatDate = useDateFormatter()
+ *   <span>{formatDate(entry.created_at)}</span>
+ */
+export function useDateFormatter(): (date: string | Date) => string {
+    const bsEnabled = useFeatureEnabled('bsDateEnabled')
+    return useMemo(
+        () => (date: string | Date) => {
+            const d = typeof date === 'string' ? new Date(date) : date
+            const ad = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+            if (!bsEnabled) return ad
+            try {
+                return `${ad} (${toNepaliDate(d, 'MMMM DD, YYYY', 'en')} BS)`
+            } catch {
+                return ad
+            }
+        },
+        [bsEnabled],
     )
 }
 

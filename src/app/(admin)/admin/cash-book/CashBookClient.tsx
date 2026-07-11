@@ -1,13 +1,18 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import {
     TrendingUp, TrendingDown, Plus, X, Loader2,
-    Wallet, Lock, Trash2, CalendarDays, CheckCircle2, AlertCircle
+    Wallet, Lock, Trash2, CalendarDays, CheckCircle2, AlertCircle,
+    Download, Printer
 } from 'lucide-react'
 import type { DayBookSession, DayBookEntry, DayBookEntryCategory, ExpenseCategory } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
+import { downloadCsv } from '@/lib/exportCsv'
+import PrintableReport, { type PrintableReportHandle } from '@/components/admin/PrintableReport'
+import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
+import { toNepaliDate } from '@/lib/nepaliDate'
 
 interface CashBookClientProps {
     initialSession: DayBookSession | null
@@ -89,6 +94,23 @@ export default function CashBookClient({
     const [session, setSession]   = useState<DayBookSession | null>(initialSession)
     const [entries, setEntries]   = useState<DayBookEntry[]>(initialEntries)
     const [totals, setTotals]     = useState(initialTotals)
+
+    const printRef = useRef<PrintableReportHandle>(null)
+    const reportColumns = [
+        { key: 'time', label: 'Time' },
+        { key: 'type', label: 'Type' },
+        { key: 'category', label: 'Category' },
+        { key: 'description', label: 'Description' },
+        { key: 'amount', label: 'Amount', align: 'right' as const },
+    ]
+    const reportRows = entries.map(e => ({
+        time: timeStr(e.created_at),
+        type: e.type === 'cash_in' ? 'IN' : 'OUT',
+        category: CATEGORY_LABELS[e.category] || e.category,
+        description: formatDescription(e.description) + (e.bank_name ? ` (Bank: ${e.bank_name})` : ''),
+        amount: (e.type === 'cash_in' ? '+' : '-') + fmt(e.amount),
+    }))
+    const handleExportCsv = () => downloadCsv(`cash-book-${todayDate}`, reportColumns, reportRows)
 
     // Open Day state
     const [isOpeningDay, setIsOpeningDay]       = useState(false)
@@ -300,9 +322,17 @@ export default function CashBookClient({
     }
 
     const isClosed = session?.status === 'closed'
-    const dateLabel = new Date(todayDate + 'T00:00:00').toLocaleDateString('en-IN', {
-        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-    })
+    const bsEnabled = useFeatureEnabled('bsDateEnabled')
+    const dateLabel = (() => {
+        const d = new Date(todayDate + 'T00:00:00')
+        const ad = d.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+        if (!bsEnabled) return ad
+        try {
+            return `${ad} (${toNepaliDate(d, 'MMMM DD, YYYY', 'en')} BS)`
+        } catch {
+            return ad
+        }
+    })()
 
     return (
         <div className="space-y-6 pb-16 animate-fade-up">
@@ -323,6 +353,22 @@ export default function CashBookClient({
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
+                    {entries.length > 0 && (
+                        <>
+                            <button
+                                onClick={handleExportCsv}
+                                className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-gray-700 font-semibold rounded-xl text-sm transition-all border border-gray-200"
+                            >
+                                <Download size={15} /> Export
+                            </button>
+                            <button
+                                onClick={() => printRef.current?.print()}
+                                className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-gray-700 font-semibold rounded-xl text-sm transition-all border border-gray-200"
+                            >
+                                <Printer size={15} /> Print
+                            </button>
+                        </>
+                    )}
                     {session?.status === 'open' && canManage && (
                         <button
                             onClick={handleCloseDay}
@@ -680,6 +726,13 @@ export default function CashBookClient({
                 </Modal>
             )}
 
+            <PrintableReport
+                ref={printRef}
+                title="Cash Book"
+                subtitle={dateLabel}
+                columns={reportColumns}
+                rows={reportRows}
+            />
         </div>
     )
 }

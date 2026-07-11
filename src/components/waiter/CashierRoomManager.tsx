@@ -12,6 +12,7 @@ import { type TableWithSession } from './CashierTableManager'
 import { formatDateTime, calculateNights } from '@/lib/utils'
 import QuickOrderModal from './QuickOrderModal'
 import { openSession } from '@/app/(staff)/waiter/actions'
+import { useQrCodes } from '@/lib/hooks/useQrCodes'
 
 export interface RoomWithTypes {
     id: string
@@ -99,6 +100,8 @@ export default function CashierRoomManager({
     const [advancePayMethod, setAdvancePayMethod] = useState<'cash' | 'qr_digital' | 'split'>('cash')
     const [advanceSplitCash, setAdvanceSplitCash] = useState<string>('')
     const [advanceSplitQr, setAdvanceSplitQr] = useState<string>('')
+    const [advanceQrCodeId, setAdvanceQrCodeId] = useState<string>('')
+    const qrCodes = useQrCodes()
 
     useEffect(() => {
         setMounted(true)
@@ -164,6 +167,9 @@ export default function CashierRoomManager({
         setAdvanceType('none')
         setAdvanceAmount('')
         setAdvancePayMethod('cash')
+        setAdvanceSplitCash('')
+        setAdvanceSplitQr('')
+        setAdvanceQrCodeId('')
     }
 
     // Fetch active booking details, manual charges, and linked dining orders concurrently when selected room is occupied
@@ -418,6 +424,9 @@ export default function CashierRoomManager({
                     advance_payment_method: resolvedAdvance > 0 ? advancePayMethod : 'none',
                     advance_cash_amount: isSplit ? splitCash : undefined,
                     advance_qr_amount: isSplit ? splitQr : undefined,
+                    advance_qr_code_id: (resolvedAdvance > 0 && (advancePayMethod === 'qr_digital' || isSplit))
+                        ? (advanceQrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined))
+                        : undefined,
                 }),
             })
             const data = await res.json()
@@ -430,6 +439,7 @@ export default function CashierRoomManager({
             setSelectedRoom(null)
             setAdvanceSplitCash('')
             setAdvanceSplitQr('')
+            setAdvanceQrCodeId('')
         } catch (e: any) {
             toast.error(e.message || 'Failed to book room')
         } finally {
@@ -714,6 +724,22 @@ export default function CashierRoomManager({
                                                                     />
                                                                 </div>
                                                             </div>
+                                                        </div>
+                                                    )}
+
+                                                    {advanceType !== 'none' && (advancePayMethod === 'qr_digital' || advancePayMethod === 'split') && qrCodes.length > 1 && (
+                                                        <div>
+                                                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
+                                                            <select
+                                                                value={advanceQrCodeId}
+                                                                onChange={e => setAdvanceQrCodeId(e.target.value)}
+                                                                className="w-full px-2 py-1.5 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                            >
+                                                                <option value="">Select QR code…</option>
+                                                                {qrCodes.map(qr => (
+                                                                    <option key={qr.id} value={qr.id}>{qr.label}</option>
+                                                                ))}
+                                                            </select>
                                                         </div>
                                                     )}
                                                 </div>

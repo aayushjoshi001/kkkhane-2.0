@@ -6,6 +6,7 @@ import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
 import { formatDateTime, calculateNights } from '@/lib/utils'
+import { useQrCodes } from '@/lib/hooks/useQrCodes'
 
 /** Table shape the admin room pages pass in (with its active QR session, if any). */
 export interface BillingTable {
@@ -80,6 +81,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qr_digital' | 'split'>('cash')
     const [splitCashAmount, setSplitCashAmount] = useState('')
     const [splitQrAmount, setSplitQrAmount] = useState('')
+    const [qrCodeId, setQrCodeId] = useState('')
+    const qrCodes = useQrCodes()
     const [isSaving, setIsSaving] = useState(false)
 
     useEffect(() => {
@@ -158,6 +161,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                     total_amount: grandTotal,
                     cash_paid: resolvedCash,
                     qr_paid: resolvedQr,
+                    qr_code_id: resolvedQr > 0 ? (qrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined)) : undefined,
                     session_id: sessionId
                 })
             })
@@ -360,6 +364,22 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                                 <p className="col-span-2 text-[9px] text-emerald-600 font-bold text-center">✓ Amounts balanced</p>
                                             )
                                         })()}
+                                    </div>
+                                )}
+
+                                {(paymentMethod === 'qr_digital' || paymentMethod === 'split') && qrCodes.length > 1 && (
+                                    <div className="mt-3">
+                                        <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Which QR did the guest scan?</label>
+                                        <select
+                                            value={qrCodeId}
+                                            onChange={e => setQrCodeId(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
+                                        >
+                                            <option value="">Select QR code…</option>
+                                            {qrCodes.map(qr => (
+                                                <option key={qr.id} value={qr.id}>{qr.label}</option>
+                                            ))}
+                                        </select>
                                     </div>
                                 )}
                             </div>

@@ -18,6 +18,7 @@ import { buildInvoiceTicket } from '@/lib/print/templates/invoiceTicket'
 
 
 import { formatDateTime, calculateNights } from '@/lib/utils'
+import { useQrCodes } from '@/lib/hooks/useQrCodes'
 
 type OrderItem = { 
     id?: string
@@ -132,6 +133,8 @@ export default function CashierClient({
     const [billingPaymentMethod, setBillingPaymentMethod] = useState<'cash' | 'qr_digital' | 'both'>('cash')
     const [splitCashAmount, setSplitCashAmount] = useState<string>('')
     const [splitQrAmount, setSplitQrAmount] = useState<string>('')
+    const [billingQrCodeId, setBillingQrCodeId] = useState<string>('')
+    const qrCodes = useQrCodes()
 
     const [mounted, setMounted] = useState(false)
 
@@ -229,6 +232,7 @@ export default function CashierClient({
             setBillingPaymentMethod('cash')
             setSplitCashAmount('')
             setSplitQrAmount('')
+            setBillingQrCodeId('')
         }
     }, [selectedBillingRoom, bookings])
 
@@ -373,6 +377,7 @@ export default function CashierClient({
                 paymentMethod: billingPaymentMethod,
                 cashPaid: resolvedCash,
                 qrPaid: resolvedQr,
+                qrCodeId: resolvedQr > 0 ? (billingQrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined)) : undefined,
             })
         } else {
             const table = item
@@ -433,6 +438,7 @@ export default function CashierClient({
                         total_amount: activeInvoice.total,
                         cash_paid: activeInvoice.cashPaid,
                         qr_paid: activeInvoice.qrPaid,
+                        qr_code_id: activeInvoice.qrCodeId,
                         session_id: sessionId || null
                     })
                 })
@@ -1440,6 +1446,22 @@ export default function CashierClient({
                                             </div>
                                         )
                                     })()}
+
+                                    {(billingPaymentMethod === 'qr_digital' || billingPaymentMethod === 'both') && qrCodes.length > 1 && (
+                                        <div className="mt-3">
+                                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
+                                            <select
+                                                value={billingQrCodeId}
+                                                onChange={e => setBillingQrCodeId(e.target.value)}
+                                                className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                            >
+                                                <option value="">Select QR code…</option>
+                                                {qrCodes.map(qr => (
+                                                    <option key={qr.id} value={qr.id}>{qr.label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div className="border-t border-hairline px-6 py-4 flex-shrink-0 bg-surface">

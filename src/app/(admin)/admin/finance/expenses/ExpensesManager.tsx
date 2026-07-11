@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 import { DataTable, FormModal, FormInput, FormSelect, FormTextarea, SectionTabs, type SectionTab } from '@/components/finance'
 import Button from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, parseExpenseDescription } from '@/lib/utils'
 import type { Expense, ExpenseCategory, RecurrenceInterval } from '@/types/database'
 import {
     createExpenseCategoryAction, updateExpenseCategoryAction, deleteExpenseCategoryAction,
@@ -160,7 +160,7 @@ function ExpensesTab({
                     { key: 'category', header: 'Category', render: (e) => e.expense_categories?.name || '—' },
                     { key: 'description', header: 'Description', render: (e) => (
                         <div>
-                            <p>{e.description}</p>
+                            <p>{parseExpenseDescription(e.description).text_desc}</p>
                             {e.is_recurring && <span className="text-[10px] font-bold text-brand-600 uppercase">Recurring · {e.recurrence_interval}</span>}
                         </div>
                     ) },

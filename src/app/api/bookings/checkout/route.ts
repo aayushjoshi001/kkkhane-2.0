@@ -199,7 +199,7 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json().catch(() => ({}))
-        const { booking_id, room_id, total_amount, cash_paid, qr_paid, session_id } = body
+        const { booking_id, room_id, total_amount, cash_paid, qr_paid, qr_code_id, session_id } = body
 
         if (!booking_id || !room_id) {
             return NextResponse.json({ error: 'Missing booking_id or room_id' }, { status: 400 })
@@ -333,7 +333,8 @@ export async function POST(req: Request) {
                     guestName,
                     amount: qrPaid,
                     paymentMethod: 'qr_digital',
-                    isAdvance: false
+                    isAdvance: false,
+                    qrCodeId: qr_code_id || null
                 })
             }
         }
