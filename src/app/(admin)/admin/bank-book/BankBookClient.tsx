@@ -1,14 +1,19 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { createBankAccountAction } from './actions'
 import {
     TrendingUp, TrendingDown, Plus, X, Loader2,
-    Lock, Trash2, CalendarDays, CheckCircle2, AlertCircle, Landmark
+    Lock, Trash2, CalendarDays, CheckCircle2, AlertCircle, Landmark,
+    Download, Printer
 } from 'lucide-react'
 import type { DayBookSession, DayBookEntry, DayBookEntryCategory, ExpenseCategory } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
+import { downloadCsv } from '@/lib/exportCsv'
+import PrintableReport, { type PrintableReportHandle } from '@/components/admin/PrintableReport'
+import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
+import { toNepaliDate } from '@/lib/nepaliDate'
 
 interface BankBookClientProps {
     initialSession: DayBookSession | null
@@ -91,6 +96,25 @@ export default function BankBookClient({
     const [entries, setEntries]   = useState<DayBookEntry[]>(initialEntries)
     const [totals, setTotals]     = useState(initialTotals)
     const [bankAccountsList, setBankAccountsList] = useState(bankAccounts)
+
+    const printRef = useRef<PrintableReportHandle>(null)
+    const reportColumns = [
+        { key: 'time', label: 'Time' },
+        { key: 'type', label: 'Type' },
+        { key: 'category', label: 'Category' },
+        { key: 'bank_name', label: 'Bank Name' },
+        { key: 'description', label: 'Description' },
+        { key: 'amount', label: 'Amount', align: 'right' as const },
+    ]
+    const reportRows = entries.map(e => ({
+        time: timeStr(e.created_at),
+        type: e.type === 'bank_in' ? 'IN' : 'OUT',
+        category: CATEGORY_LABELS[e.category] || e.category,
+        bank_name: e.bank_name || '',
+        description: formatDescription(e.description),
+        amount: (e.type === 'bank_in' ? '+' : '-') + fmt(e.amount),
+    }))
+    const handleExportCsv = () => downloadCsv(`bank-book-${todayDate}`, reportColumns, reportRows)
 
     // Add Bank Modal state
     const [addBankModalOpen, setAddBankModalOpen] = useState(false)
@@ -354,9 +378,17 @@ export default function BankBookClient({
     }
 
     const isClosed = session?.status === 'closed'
-    const dateLabel = new Date(todayDate + 'T00:00:00').toLocaleDateString('en-IN', {
-        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-    })
+    const bsEnabled = useFeatureEnabled('bsDateEnabled')
+    const dateLabel = (() => {
+        const d = new Date(todayDate + 'T00:00:00')
+        const ad = d.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+        if (!bsEnabled) return ad
+        try {
+            return `${ad} (${toNepaliDate(d, 'MMMM DD, YYYY', 'en')} BS)`
+        } catch {
+            return ad
+        }
+    })()
 
     return (
         <div className="space-y-6 pb-16 animate-fade-up">
@@ -377,6 +409,22 @@ export default function BankBookClient({
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
+                    {entries.length > 0 && (
+                        <>
+                            <button
+                                onClick={handleExportCsv}
+                                className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-gray-700 font-semibold rounded-xl text-sm transition-all border border-gray-200"
+                            >
+                                <Download size={15} /> Export
+                            </button>
+                            <button
+                                onClick={() => printRef.current?.print()}
+                                className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-gray-700 font-semibold rounded-xl text-sm transition-all border border-gray-200"
+                            >
+                                <Printer size={15} /> Print
+                            </button>
+                        </>
+                    )}
                     {canManage && (
                         <button
                             onClick={() => setAddBankModalOpen(true)}
@@ -837,6 +885,13 @@ export default function BankBookClient({
                 </Modal>
             )}
 
+            <PrintableReport
+                ref={printRef}
+                title="Bank Book"
+                subtitle={dateLabel}
+                columns={reportColumns}
+                rows={reportRows}
+            />
         </div>
     )
 }

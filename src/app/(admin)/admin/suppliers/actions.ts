@@ -208,3 +208,85 @@ export async function createSupplierBillAction(input: {
     return { data: newExpense, warning }
 }
 
+/**
+ * Records a follow-up payment against a bill created earlier (e.g. goods
+ * bought on credit, paid off days later). The expense itself keeps its
+ * original date — it represents when the goods were bought, not when they
+ * were paid for — only the day book/cash-bank ledger entry is dated today,
+ * for the amount actually changing hands right now.
+ */
+export async function paySupplierBillAction(input: {
+    expense_id: string
+    amount: number
+    payment_source: 'cash' | 'bank'
+    bank_name?: string
+}) {
+    let user
+    try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
+
+    if (input.amount <= 0) return { error: 'Payment amount must be positive.' }
+
+    const supabase = await createAdminClient()
+
+    const { data: expense, error: fetchError } = await supabase
+        .from('expenses')
+        .select('*')
+        .eq('id', input.expense_id)
+        .eq('restaurant_id', user.restaurantId)
+        .single()
+
+    if (fetchError || !expense) return { error: 'Bill not found.' }
+
+    let parsed: { text_desc?: string; quantity?: number; rate?: number; unit?: string; paid_amount?: number; payment_type?: string; bank_name?: string } = {}
+    try {
+        if (expense.description?.startsWith('{')) parsed = JSON.parse(expense.description)
+    } catch {
+        // fallback: treat as unstructured description below
+    }
+
+    const totalAmount = Number(expense.amount)
+    const alreadyPaid = Number(parsed.paid_amount ?? totalAmount)
+    const owed = totalAmount - alreadyPaid
+    if (owed <= 0) return { error: 'This bill is already fully paid.' }
+    if (input.amount > owed) return { error: `Payment cannot exceed the outstanding balance (Rs. ${owed.toFixed(2)}).` }
+
+    const newPaidAmount = alreadyPaid + input.amount
+    const updatedDescJson = JSON.stringify({
+        ...parsed,
+        paid_amount: newPaidAmount,
+        // Keep the method that most recently touched the bill, so the
+        // ledger's "Payment Type" column reflects the latest payment.
+        payment_type: input.payment_source,
+        bank_name: input.payment_source === 'bank' ? (input.bank_name?.trim() || '') : ''
+    })
+
+    const { error: updateError } = await supabase
+        .from('expenses')
+        .update({ description: updatedDescJson })
+        .eq('id', input.expense_id)
+        .eq('restaurant_id', user.restaurantId)
+
+    if (updateError) return { error: updateError.message }
+
+    const postResult = await postFinancialTransaction(supabase, user, {
+        type: input.payment_source === 'cash' ? 'cash_out' : 'bank_out',
+        amount: input.amount,
+        description: `[Bill Payment] ${parsed.text_desc || expense.description} (Supplier: ${expense.vendor_name})`,
+        category: input.payment_source === 'cash' ? 'expense' : 'transfer_out',
+        bankName: input.payment_source === 'bank' ? input.bank_name : null
+    })
+
+    let warning: string | undefined
+    if (postResult.error) {
+        console.error('Failed to post supplier bill payment to Day Book:', postResult.error)
+        warning = `Payment saved, but it could not be posted to the Day Book: ${postResult.error}`
+    }
+
+    revalidatePath(PATH)
+    revalidatePath('/admin/cash-book')
+    revalidatePath('/admin/bank-book')
+    revalidatePath('/admin/income-expenses')
+
+    return { success: true, warning }
+}
+

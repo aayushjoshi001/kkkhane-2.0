@@ -1,13 +1,17 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import {
-    Plus, X, Search, Loader2, Trash2, Edit2, FileText, Phone, DollarSign, Truck, Tag
+    Plus, X, Search, Loader2, Trash2, Edit2, FileText, Phone, DollarSign, Truck, Tag,
+    Download, Printer, Banknote
 } from 'lucide-react'
-import { createSupplierAction, updateSupplierAction, deleteSupplierAction, createSupplierBillAction } from './actions'
+import { createSupplierAction, updateSupplierAction, deleteSupplierAction, createSupplierBillAction, paySupplierBillAction } from './actions'
 import { createCategoryAction } from '../income-expenses/actions'
 import { toast } from 'react-hot-toast'
 import { formatCurrency, parseExpenseDescription } from '@/lib/utils'
+import { downloadCsv } from '@/lib/exportCsv'
+import PrintableReport, { type PrintableReportHandle } from '@/components/admin/PrintableReport'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 
 interface Supplier {
     id: string
@@ -44,6 +48,7 @@ export default function SuppliersLedgerManager({
     const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers)
     const [expensesList, setExpensesList] = useState<Expense[]>(expenses)
     const [expenseCategoriesList, setExpenseCategoriesList] = useState(expenseCategories)
+    const formatDate = useDateFormatter()
     const [searchQuery, setSearchQuery] = useState('')
 
     // Form modals
@@ -78,6 +83,14 @@ export default function SuppliersLedgerManager({
     const [newCatName, setNewCatName] = useState('')
     const [newCatDesc, setNewCatDesc] = useState('')
     const [submittingCat, setSubmittingCat] = useState(false)
+
+    // Pay Outstanding Bill state — settles part or all of a bill's owed
+    // balance on a later date without moving the original purchase date.
+    const [payTarget, setPayTarget] = useState<{ id: string; owed: number; text_desc: string } | null>(null)
+    const [payAmount, setPayAmount] = useState('')
+    const [payPaymentSource, setPayPaymentSource] = useState<'cash' | 'bank'>('cash')
+    const [payBankName, setPayBankName] = useState('')
+    const [submittingPay, setSubmittingPay] = useState(false)
 
     // Open add modal
     const openAddModal = () => {
@@ -263,6 +276,49 @@ export default function SuppliersLedgerManager({
         }
     }
 
+    // Handle Pay Outstanding Bill Submit — settles part or all of the owed
+    // balance today, leaving the bill's own date (day of purchase) untouched.
+    const handlePaySubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!payTarget) return
+        const amount = parseFloat(payAmount)
+
+        if (isNaN(amount) || amount <= 0) { toast.error('Enter a valid payment amount'); return }
+        if (amount > payTarget.owed) { toast.error(`Payment cannot exceed the outstanding balance (${formatCurrency(payTarget.owed)})`); return }
+        if (payPaymentSource === 'bank' && !payBankName.trim()) { toast.error('Bank Name is required for Bank payments'); return }
+
+        setSubmittingPay(true)
+        try {
+            const res = await paySupplierBillAction({
+                expense_id: payTarget.id,
+                amount,
+                payment_source: payPaymentSource,
+                bank_name: payPaymentSource === 'bank' ? payBankName.trim() : undefined
+            })
+
+            if (res.error) {
+                toast.error(res.error)
+            } else {
+                setExpensesList(prev => prev.map(e => {
+                    if (e.id !== payTarget.id) return e
+                    const parsed = parseExpenseDescription(e.description)
+                    const updated = { ...parsed, paid_amount: (parsed.paid_amount ?? 0) + amount, payment_type: payPaymentSource, bank_name: payPaymentSource === 'bank' ? payBankName.trim() : '' }
+                    return { ...e, description: JSON.stringify(updated) }
+                }))
+                setPayTarget(null)
+                setPayAmount('')
+                setPayPaymentSource('cash')
+                setPayBankName('')
+                toast.success('Payment recorded successfully!')
+                if ('warning' in res && res.warning) toast.error(res.warning)
+            }
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Failed to record payment')
+        } finally {
+            setSubmittingPay(false)
+        }
+    }
+
     // Search query filtering
     const filteredSuppliers = useMemo(() => {
         const q = searchQuery.toLowerCase().trim()
@@ -330,6 +386,33 @@ export default function SuppliersLedgerManager({
         // Outstanding amount is the final running balance (first item in reversed array)
         return supplierLedgerEntries[0]?.runningBalance ?? 0
     }, [supplierLedgerEntries])
+
+    const printRef = useRef<PrintableReportHandle>(null)
+    const reportColumns = [
+        { key: 'date', label: 'Date' },
+        { key: 'description', label: 'Description' },
+        { key: 'quantity', label: 'Qty', align: 'center' as const },
+        { key: 'rate', label: 'Rate', align: 'right' as const },
+        { key: 'unit', label: 'Unit', align: 'center' as const },
+        { key: 'amount', label: 'Amount', align: 'right' as const },
+        { key: 'paid_amount', label: 'Paid Amount', align: 'right' as const },
+        { key: 'payment_type', label: 'Payment Type' },
+        { key: 'running_balance', label: 'Running Balance', align: 'right' as const },
+    ]
+    const reportRows = supplierLedgerEntries.map(e => ({
+        date: formatDate(e.created_at),
+        description: e.parsed.text_desc || e.description,
+        quantity: e.parsed.quantity !== null ? e.parsed.quantity : '',
+        rate: e.parsed.rate !== null ? formatCurrency(e.parsed.rate) : '',
+        unit: e.parsed.unit || '',
+        amount: formatCurrency(e.totalAmt),
+        paid_amount: formatCurrency(e.paidAmt),
+        payment_type: e.paidAmt === 0
+            ? 'UNPAID'
+            : `${e.owed > 0 ? 'Partial - ' : ''}${e.parsed.payment_type === 'bank' ? `Bank (${e.bank_accounts?.name || e.parsed.bank_name || 'Transfer'})` : 'Cash'}`,
+        running_balance: formatCurrency(e.runningBalance),
+    }))
+    const handleExportCsv = () => downloadCsv(`supplier-statement-${ledgerSupplier?.name || 'supplier'}`, reportColumns, reportRows)
 
     return (
         <>
@@ -492,6 +575,22 @@ export default function SuppliersLedgerManager({
                                 </p>
                             </div>
                             <div className="flex items-center gap-3">
+                                {supplierLedgerEntries.length > 0 && (
+                                    <>
+                                        <button
+                                            onClick={handleExportCsv}
+                                            className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-50 text-gray-700 font-bold rounded-xl text-xs border border-gray-200 transition-all"
+                                        >
+                                            <Download size={14} /> Export
+                                        </button>
+                                        <button
+                                            onClick={() => printRef.current?.print()}
+                                            className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-50 text-gray-700 font-bold rounded-xl text-xs border border-gray-200 transition-all"
+                                        >
+                                            <Printer size={14} /> Print
+                                        </button>
+                                    </>
+                                )}
                                 <button
                                     onClick={() => {
                                         setShowNewCatForm(false)
@@ -550,14 +649,15 @@ export default function SuppliersLedgerManager({
                                                 <th className="px-4 py-3 font-bold text-right w-28">Paid Amount</th>
                                                 <th className="px-4 py-3 font-bold text-center w-28">Payment Type</th>
                                                 <th className="px-4 py-3 font-bold text-right w-32 bg-gray-50/50">Running Balance</th>
+                                                <th className="px-4 py-3 font-bold text-center w-20">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
                                             {supplierLedgerEntries.map(e => (
                                                 <tr key={e.id} className="hover:bg-gray-50/50 transition-colors">
                                                     {/* Date */}
-                                                    <td className="px-4 py-3 text-gray-500 font-semibold whitespace-nowrap">
-                                                        {new Date(e.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                    <td className="px-4 py-3 text-gray-500 font-semibold">
+                                                        {formatDate(e.created_at)}
                                                     </td>
                                                     {/* Description */}
                                                     <td className="px-4 py-3 font-bold text-gray-800">
@@ -588,16 +688,31 @@ export default function SuppliersLedgerManager({
                                                         <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-black uppercase ${
                                                             e.paidAmt === 0
                                                                 ? 'bg-rose-50 text-rose-700'
-                                                                : e.parsed.payment_type === 'bank'
-                                                                    ? 'bg-indigo-50 text-indigo-700'
-                                                                    : 'bg-amber-50 text-amber-700'
+                                                                : e.owed > 0
+                                                                    ? 'bg-orange-50 text-orange-700'
+                                                                    : e.parsed.payment_type === 'bank'
+                                                                        ? 'bg-indigo-50 text-indigo-700'
+                                                                        : 'bg-amber-50 text-amber-700'
                                                         }`}>
-                                                            {e.paidAmt === 0 ? 'UNPAID' : e.parsed.payment_type === 'bank' ? `BANK (${e.bank_accounts?.name || e.parsed.bank_name || 'Transfer'})` : 'CASH'}
+                                                            {e.paidAmt === 0
+                                                                ? 'UNPAID'
+                                                                : `${e.owed > 0 ? 'PARTIAL · ' : ''}${e.parsed.payment_type === 'bank' ? `BANK (${e.bank_accounts?.name || e.parsed.bank_name || 'Transfer'})` : 'CASH'}`}
                                                         </span>
                                                     </td>
                                                     {/* Running Balance */}
                                                     <td className={`px-4 py-3 text-right font-black bg-gray-50/30 ${e.runningBalance > 0 ? 'text-rose-600' : 'text-gray-900'}`}>
                                                         {formatCurrency(e.runningBalance)}
+                                                    </td>
+                                                    {/* Actions */}
+                                                    <td className="px-4 py-3 text-center">
+                                                        {e.owed > 0 && (
+                                                            <button
+                                                                onClick={() => setPayTarget({ id: e.id, owed: e.owed, text_desc: e.parsed.text_desc || e.description })}
+                                                                className="flex items-center gap-1 px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded text-[10px] font-extrabold uppercase border border-emerald-200 transition-all mx-auto"
+                                                            >
+                                                                <Banknote size={11} /> Pay
+                                                            </button>
+                                                        )}
                                                     </td>
                                                 </tr>
                                             ))}
@@ -962,6 +1077,119 @@ export default function SuppliersLedgerManager({
                         </form>
                     </div>
                 </div>
+            )}
+
+            {/* ── PAY OUTSTANDING BILL MODAL ── */}
+            {payTarget && (
+                <div className="fixed inset-0 z-50 bg-gray-900/50 flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
+                        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                            <h3 className="font-extrabold text-gray-900 flex items-center gap-2">
+                                <Banknote size={18} className="text-emerald-600" />
+                                Pay Bill: {payTarget.text_desc}
+                            </h3>
+                            <button onClick={() => setPayTarget(null)} className="text-gray-400 hover:text-gray-600">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handlePaySubmit}>
+                            <div className="p-6 space-y-4">
+                                <div className="flex items-center justify-between px-4 py-3 bg-rose-50 border border-rose-100 rounded-xl">
+                                    <span className="text-xs font-bold text-rose-600 uppercase tracking-wider">Outstanding Balance</span>
+                                    <span className="text-lg font-black text-rose-600">{formatCurrency(payTarget.owed)}</span>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Amount Paying Now (Rs.)</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max={payTarget.owed}
+                                        step="0.01"
+                                        placeholder="0.00"
+                                        value={payAmount}
+                                        onChange={e => setPayAmount(e.target.value)}
+                                        required
+                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Payment Source</label>
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setPayPaymentSource('cash')}
+                                            className={`flex-1 py-2 text-xs font-black uppercase tracking-wider border rounded-lg transition-all focus-ring ${payPaymentSource === 'cash' ? 'bg-amber-50 border-amber-200 text-amber-700 shadow-sm' : 'bg-white border-gray-200 text-gray-400 hover:text-gray-600'}`}
+                                        >
+                                            Cash Book
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPayPaymentSource('bank')}
+                                            className={`flex-1 py-2 text-xs font-black uppercase tracking-wider border rounded-lg transition-all focus-ring ${payPaymentSource === 'bank' ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm' : 'bg-white border-gray-200 text-gray-400 hover:text-gray-600'}`}
+                                        >
+                                            Bank Book
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {payPaymentSource === 'bank' && (
+                                    <div className="animate-in slide-in-from-top-1 duration-150">
+                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Bank Name</label>
+                                        <select
+                                            value={payBankName}
+                                            onChange={e => setPayBankName(e.target.value)}
+                                            required
+                                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                        >
+                                            <option value="">Select Bank Account</option>
+                                            {bankAccounts.map(b => (
+                                                <option key={b.id} value={b.name}>{b.name} ({b.account_number})</option>
+                                            ))}
+                                            {bankAccounts.length === 0 && (
+                                                <option value="General Bank">General Bank</option>
+                                            )}
+                                        </select>
+                                    </div>
+                                )}
+
+                                <p className="text-[11px] text-gray-400 leading-relaxed">
+                                    This records today&apos;s payment in the Cash/Bank Book. The original bill keeps its purchase date — only this settlement is dated today.
+                                </p>
+                            </div>
+
+                            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-end gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setPayTarget(null)}
+                                    className="px-4 py-2 text-gray-400 hover:text-gray-600 font-bold text-sm"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={submittingPay}
+                                    className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-colors"
+                                >
+                                    {submittingPay && <Loader2 size={14} className="animate-spin" />}
+                                    Record Payment
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {ledgerSupplier && (
+                <PrintableReport
+                    ref={printRef}
+                    title={`Supplier Statement — ${ledgerSupplier.name}`}
+                    subtitle={`Total Purchases: ${formatCurrency(totalPurchased)} | Paid: ${formatCurrency(totalPaid)} | Outstanding: ${formatCurrency(totalOwed)}`}
+                    columns={reportColumns}
+                    rows={reportRows}
+                />
             )}
         </>
     )

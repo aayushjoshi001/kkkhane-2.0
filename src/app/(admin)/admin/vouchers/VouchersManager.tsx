@@ -1,12 +1,16 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import {
-    FileText, Plus, Search, Trash2, Printer, X, Loader2, ArrowUpRight, ArrowDownRight, RefreshCw, Check, AlertCircle
+    FileText, Plus, Search, Trash2, Printer, X, Loader2, ArrowUpRight, ArrowDownRight, RefreshCw, Check, AlertCircle, Download
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { createVoucherAction, deleteVoucherAction, approveChequeAction, rejectChequeAction, openTodayDayBookSessionAction } from './actions'
 import { toast } from 'react-hot-toast'
+import { downloadCsv } from '@/lib/exportCsv'
+import PrintableReport, { type PrintableReportHandle } from '@/components/admin/PrintableReport'
+import { useDateFormatter, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
+import { toNepaliDate } from '@/lib/nepaliDate'
 
 interface BankAccount {
     id: string
@@ -95,6 +99,8 @@ export default function VouchersManager({
     hasOpenSession
 }: VouchersManagerProps) {
     const [entriesList, setEntriesList] = useState<RawVoucherEntry[]>(initialEntries)
+    const formatDate = useDateFormatter()
+    const bsEnabled = useFeatureEnabled('bsDateEnabled')
 
     // Session opening states
     const [openingSession, setOpeningSession] = useState(false)
@@ -241,6 +247,27 @@ export default function VouchersManager({
             return matchSearch && matchType && matchMode
         })
     }, [parsedVouchers, searchQuery, filterType, filterMode, activeTab])
+
+    const printRef = useRef<PrintableReportHandle>(null)
+    const reportColumns = [
+        { key: 'date', label: 'Date' },
+        { key: 'voucher_number', label: 'Voucher No' },
+        { key: 'type', label: 'Type' },
+        { key: 'party_name', label: 'Party Name' },
+        { key: 'mode', label: 'Mode' },
+        { key: 'amount', label: 'Amount', align: 'right' as const },
+        { key: 'particulars', label: 'Particulars' },
+    ]
+    const reportRows = filteredVouchers.map(v => ({
+        date: formatDate(v.date),
+        voucher_number: v.voucher_number,
+        type: v.voucher_type === 'receipt' ? 'Receipt' : 'Payment',
+        party_name: v.party_name,
+        mode: v.payment_mode === 'cash' ? 'Cash' : v.payment_mode === 'qr' ? `QR (${v.bank_name})` : v.payment_mode === 'cheque' ? `Cheque (${v.bank_name})` : v.bank_name,
+        amount: (v.voucher_type === 'receipt' ? '+' : '-') + formatCurrency(v.amount),
+        particulars: v.payment_mode === 'cheque' && v.cheque_details ? `No: ${v.cheque_details.cheque_number} (${v.cheque_details.bank_cheque})` : v.particulars,
+    }))
+    const handleExportCsv = () => downloadCsv(`vouchers-ledger-${activeTab}`, reportColumns, reportRows)
 
     // Summary calculations
     const stats = useMemo(() => {
@@ -638,6 +665,23 @@ export default function VouchersManager({
                                 className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
                             />
                         </div>
+
+                        {filteredVouchers.length > 0 && (
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={handleExportCsv}
+                                    className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-50 text-gray-700 font-bold rounded-xl text-[10px] uppercase tracking-wider border border-gray-200 transition-all shrink-0"
+                                >
+                                    <Download size={13} /> Export
+                                </button>
+                                <button
+                                    onClick={() => printRef.current?.print()}
+                                    className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-50 text-gray-700 font-bold rounded-xl text-[10px] uppercase tracking-wider border border-gray-200 transition-all shrink-0"
+                                >
+                                    <Printer size={13} /> Print
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -664,8 +708,8 @@ export default function VouchersManager({
                             <tbody className="divide-y divide-gray-100">
                                 {filteredVouchers.map(v => (
                                     <tr key={v.id} className="hover:bg-gray-50/50 transition-colors">
-                                        <td className="px-5 py-4 text-gray-500 font-semibold whitespace-nowrap">
-                                            {new Date(v.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                        <td className="px-5 py-4 text-gray-500 font-semibold">
+                                            {formatDate(v.date)}
                                         </td>
                                         <td className="px-5 py-4 font-extrabold text-gray-800 whitespace-nowrap">{v.voucher_number}</td>
                                         <td className="px-5 py-4">
@@ -1037,16 +1081,32 @@ export default function VouchersManager({
                 </div>
             )}
 
-            {/* Printable Voucher Slip Modal */}
+            {/* Printable Voucher Slip Modal — thermal receipt width (80mm),
+                same visibility-isolation print technique as the cashier
+                invoice (CashierClient.tsx) and KOT tickets (KotPrintFallback),
+                not the A4 report layout used by PrintableReport below. */}
             {printVoucher && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 print:p-0 print:absolute print:inset-0">
-                    <div 
+                    <style>{`
+                        @page { size: 80mm auto; margin: 0; }
+                        @media print {
+                            html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
+                            body * { visibility: hidden !important; }
+                            .voucher-slip-print, .voucher-slip-print * { visibility: visible !important; }
+                            .voucher-slip-print {
+                                position: absolute !important; left: 0 !important; top: 0 !important;
+                                width: 72mm !important; max-width: 72mm !important;
+                                font-family: monospace !important;
+                            }
+                        }
+                    `}</style>
+                    <div
                         className="fixed inset-0 bg-[#0a0a0a]/60 backdrop-blur-md transition-opacity duration-300 print:hidden"
                         onClick={() => setPrintVoucher(null)}
                     />
 
-                    <div className="bg-white rounded-2xl border border-gray-150 shadow-2xl w-full max-w-2xl relative z-10 overflow-hidden flex flex-col max-h-[90vh] print:max-h-none print:w-full print:border-none print:shadow-none print:static">
-                        
+                    <div className="bg-white rounded-2xl border border-gray-150 shadow-2xl w-full max-w-sm relative z-10 overflow-hidden flex flex-col max-h-[90vh] print:max-h-none print:w-full print:border-none print:shadow-none print:static">
+
                         <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50 print:hidden shrink-0">
                             <span className="text-xs font-black text-gray-800 uppercase tracking-wider">Voucher Print Preview</span>
                             <div className="flex gap-2">
@@ -1065,87 +1125,98 @@ export default function VouchersManager({
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-8 print:p-0 print:overflow-visible">
-                            <div className="border border-gray-300 p-6 rounded-xl font-mono text-xs text-gray-800 space-y-6 print:border-none print:p-0 print:rounded-none">
-                                
-                                <div className="text-center border-b border-dashed border-gray-300 pb-4">
-                                    <h2 className="text-lg font-black tracking-tight text-gray-900">KKKHANE RESTAURANT</h2>
-                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mt-0.5">Workspace Account Voucher</p>
+                        <div className="flex-1 overflow-y-auto p-5 print:p-0 print:overflow-visible">
+                            <div className="voucher-slip-print border border-gray-300 p-4 rounded-xl font-mono text-[11px] text-gray-800 space-y-3 print:border-none print:p-1 print:rounded-none">
+
+                                <div className="text-center border-b border-dashed border-gray-300 pb-2">
+                                    <h2 className="text-sm font-black tracking-tight text-gray-900">KKKHANE RESTAURANT</h2>
+                                    <p className="text-[9px] text-gray-500 uppercase font-bold tracking-widest mt-0.5">Workspace Account Voucher</p>
                                 </div>
 
-                                <div className="text-center py-1.5 bg-gray-100 border border-gray-200 rounded-lg">
-                                    <h3 className="text-sm font-black tracking-widest text-gray-900 uppercase">
+                                <div className="text-center py-1 bg-gray-100 border border-gray-200 rounded">
+                                    <h3 className="text-xs font-black tracking-widest text-gray-900 uppercase">
                                         {printVoucher.voucher_type === 'receipt' ? 'RECEIPT VOUCHER' : 'PAYMENT VOUCHER'}
                                     </h3>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-y-2 border-b border-dashed border-gray-300 pb-4 text-[11px]">
+                                {/* Metadata — stacked single-column, not a grid, so it stays
+                                    readable at 72mm print width */}
+                                <div className="space-y-1 border-b border-dashed border-gray-300 pb-2 text-[10px]">
                                     <div>
-                                        <span className="font-bold text-gray-400 uppercase">Voucher No:</span>{' '}
+                                        <span className="font-bold text-gray-400 uppercase">Voucher No: </span>
                                         <span className="font-black text-gray-900">{printVoucher.voucher_number}</span>
                                     </div>
-                                    <div className="text-right">
-                                        <span className="font-bold text-gray-400 uppercase">Date:</span>{' '}
+                                    <div>
+                                        <span className="font-bold text-gray-400 uppercase">Date: </span>
                                         <span className="font-black text-gray-900">
-                                            {new Date(printVoucher.date).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                            {(() => {
+                                                const d = new Date(printVoucher.date)
+                                                const ad = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+                                                if (!bsEnabled) return ad
+                                                try {
+                                                    return `${ad} (${toNepaliDate(d, 'MMMM DD, YYYY', 'en')} BS)`
+                                                } catch {
+                                                    return ad
+                                                }
+                                            })()}
                                         </span>
                                     </div>
                                     <div>
                                         <span className="font-bold text-gray-400 uppercase">
-                                            {printVoucher.voucher_type === 'receipt' ? 'Received From:' : 'Paid To:'}
-                                        </span>{' '}
+                                            {printVoucher.voucher_type === 'receipt' ? 'Received From: ' : 'Paid To: '}
+                                        </span>
                                         <span className="font-black text-gray-900 uppercase">{printVoucher.party_name}</span>
                                     </div>
-                                    <div className="text-right">
-                                        <span className="font-bold text-gray-400 uppercase">Payment Mode:</span>{' '}
+                                    <div>
+                                        <span className="font-bold text-gray-400 uppercase">Payment Mode: </span>
                                         <span className="font-black text-gray-900 uppercase">
                                             {printVoucher.payment_mode === 'cash' ? 'CASH' : printVoucher.payment_mode === 'qr' ? `QR (${printVoucher.bank_name})` : printVoucher.payment_mode === 'cheque' ? `CHEQUE (${printVoucher.bank_name})` : `BANK (${printVoucher.bank_name})`}
                                         </span>
                                     </div>
                                     {printVoucher.reference_no && (
                                         <div>
-                                            <span className="font-bold text-gray-400 uppercase">Ref Phone:</span>{' '}
+                                            <span className="font-bold text-gray-400 uppercase">Ref Phone: </span>
                                             <span className="font-black text-gray-900">{printVoucher.reference_no}</span>
                                         </div>
                                     )}
                                     {printVoucher.receiver_name && (
-                                        <div className="text-right">
-                                            <span className="font-bold text-gray-400 uppercase">Receiver Staff:</span>{' '}
+                                        <div>
+                                            <span className="font-bold text-gray-400 uppercase">Receiver Staff: </span>
                                             <span className="font-black text-gray-900 uppercase">{printVoucher.receiver_name}</span>
                                         </div>
                                     )}
                                     {printVoucher.voucher_type === 'payment' && printVoucher.category && (
                                         <div>
-                                            <span className="font-bold text-gray-400 uppercase">Ledger Category:</span>{' '}
+                                            <span className="font-bold text-gray-400 uppercase">Ledger Category: </span>
                                             <span className="font-black text-gray-950 uppercase">{printVoucher.category}</span>
                                         </div>
                                     )}
                                     {printVoucher.payment_mode === 'cheque' && printVoucher.cheque_details && (
-                                        <div className="col-span-2 border-t border-gray-200 pt-2 mt-1 grid grid-cols-2 gap-y-1 text-[10px]">
+                                        <div className="border-t border-gray-200 pt-1.5 mt-1 space-y-1">
                                             <div>
-                                                <span className="font-bold text-gray-400 uppercase">Issuer Bank:</span>{' '}
+                                                <span className="font-bold text-gray-400 uppercase">Issuer Bank: </span>
                                                 <span className="font-black text-gray-900 uppercase">{printVoucher.cheque_details.bank_cheque}</span>
                                             </div>
-                                            <div className="text-right">
-                                                <span className="font-bold text-gray-400 uppercase">Cheque Number:</span>{' '}
+                                            <div>
+                                                <span className="font-bold text-gray-400 uppercase">Cheque Number: </span>
                                                 <span className="font-black text-gray-900">{printVoucher.cheque_details.cheque_number}</span>
                                             </div>
                                             <div>
-                                                <span className="font-bold text-gray-400 uppercase">Written Name:</span>{' '}
+                                                <span className="font-bold text-gray-400 uppercase">Written Name: </span>
                                                 <span className="font-black text-gray-900 uppercase">{printVoucher.cheque_details.written_name}</span>
                                             </div>
-                                            <div className="text-right">
-                                                <span className="font-bold text-gray-400 uppercase">Cheque Date:</span>{' '}
+                                            <div>
+                                                <span className="font-bold text-gray-400 uppercase">Cheque Date: </span>
                                                 <span className="font-black text-gray-900">{printVoucher.cheque_details.cheque_date}</span>
                                             </div>
                                             <div>
-                                                <span className="font-bold text-gray-400 uppercase">Cheque Type:</span>{' '}
+                                                <span className="font-bold text-gray-400 uppercase">Cheque Type: </span>
                                                 <span className="font-black text-gray-900 uppercase">
                                                     {printVoucher.cheque_details.cheque_type === 'ac_payee' ? 'A/C Payee' : 'Normal Cheque'}
                                                 </span>
                                             </div>
-                                            <div className="text-right">
-                                                <span className="font-bold text-gray-400 uppercase">Status:</span>{' '}
+                                            <div>
+                                                <span className="font-bold text-gray-400 uppercase">Status: </span>
                                                 <span className={`font-black uppercase ${printVoucher.status === 'approved' ? 'text-emerald-600' : 'text-rose-600'}`}>
                                                     {printVoucher.status}
                                                 </span>
@@ -1154,58 +1225,42 @@ export default function VouchersManager({
                                     )}
                                 </div>
 
-                                <div className="space-y-2">
-                                    <table className="w-full text-left text-[11px] border-collapse">
-                                        <thead>
-                                            <tr className="border-b border-gray-300 text-gray-500 font-bold uppercase">
-                                                <th className="py-2 w-12 text-center">S.N.</th>
-                                                <th className="py-2">Particulars / Description</th>
-                                                <th className="py-2 text-right w-36">Amount</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr className="border-b border-dashed border-gray-200">
-                                                <td className="py-3 text-center font-bold">1.</td>
-                                                <td className="py-3 font-semibold leading-relaxed">
-                                                    {printVoucher.payment_mode === 'cheque' && printVoucher.cheque_details ? (
-                                                        <span>
-                                                            Cheque settlement payout: No. {printVoucher.cheque_details.cheque_number} issued on {printVoucher.cheque_details.bank_cheque}. (Payee: {printVoucher.cheque_details.written_name})
-                                                        </span>
-                                                    ) : (
-                                                        printVoucher.particulars
-                                                    )}
-                                                </td>
-                                                <td className="py-3 text-right font-black text-gray-900">{formatCurrency(printVoucher.amount)}</td>
-                                            </tr>
-                                            <tr className="font-black text-gray-900">
-                                                <td colSpan={2} className="py-3 text-right uppercase text-[10px] text-gray-400">Total Amount:</td>
-                                                <td className="py-3 text-right text-base border-double border-b-4 border-gray-400">
-                                                    {formatCurrency(printVoucher.amount)}
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
+                                {/* Particulars — single line item, stacked description then amount */}
+                                <div className="space-y-1 border-b border-dashed border-gray-300 pb-2">
+                                    <div className="text-[9px] font-bold text-gray-400 uppercase">Particulars / Description</div>
+                                    <div className="font-semibold leading-relaxed text-[10px]">
+                                        {printVoucher.payment_mode === 'cheque' && printVoucher.cheque_details ? (
+                                            <span>
+                                                Cheque settlement payout: No. {printVoucher.cheque_details.cheque_number} issued on {printVoucher.cheque_details.bank_cheque}. (Payee: {printVoucher.cheque_details.written_name})
+                                            </span>
+                                        ) : (
+                                            printVoucher.particulars
+                                        )}
+                                    </div>
+                                    <div className="flex items-center justify-between font-black text-gray-900 pt-1">
+                                        <span className="uppercase text-[9px] text-gray-400">Total Amount</span>
+                                        <span className="text-sm">{formatCurrency(printVoucher.amount)}</span>
+                                    </div>
                                 </div>
 
-                                <div className="p-3 bg-gray-50 border border-gray-150 rounded-lg text-[11px] flex gap-2">
-                                    <span className="font-bold text-gray-400 uppercase shrink-0">Sum In Words:</span>
+                                <div className="p-2 bg-gray-50 border border-gray-150 rounded text-[10px] space-y-0.5">
+                                    <span className="block font-bold text-gray-400 uppercase">Sum In Words:</span>
                                     <span className="font-black text-gray-800 italic capitalize">{amountInWords(printVoucher.amount)}</span>
                                 </div>
 
-                                <div className="grid grid-cols-3 gap-6 pt-16 text-center text-[10px] font-bold text-gray-400 uppercase">
-                                    <div className="space-y-1">
-                                        <div className="border-t border-gray-300 pt-2 text-gray-800 font-black">Prepared By</div>
-                                        <div>Cashier / Accountant</div>
+                                {/* Signatures — stacked vertically, not side-by-side columns,
+                                    so each signature line has room on narrow paper */}
+                                <div className="space-y-4 pt-6 text-[9px] font-bold text-gray-400 uppercase">
+                                    <div className="border-t border-gray-300 pt-1.5">
+                                        <span className="text-gray-800 font-black">Prepared By</span> — Cashier / Accountant
                                     </div>
-                                    <div className="space-y-1">
-                                        <div className="border-t border-gray-300 pt-2 text-gray-800 font-black">Approved By</div>
-                                        <div>Manager / Owner</div>
+                                    <div className="border-t border-gray-300 pt-1.5">
+                                        <span className="text-gray-800 font-black">Approved By</span> — Manager / Owner
                                     </div>
-                                    <div className="space-y-1">
-                                        <div className="border-t border-gray-300 pt-2 text-gray-800 font-black">
+                                    <div className="border-t border-gray-300 pt-1.5">
+                                        <span className="text-gray-800 font-black">
                                             {printVoucher.voucher_type === 'receipt' ? 'Paid By' : 'Received By'}
-                                        </div>
-                                        <div>Receiver Signature</div>
+                                        </span> — Receiver Signature
                                     </div>
                                 </div>
 
@@ -1215,6 +1270,14 @@ export default function VouchersManager({
                     </div>
                 </div>
             )}
+
+            <PrintableReport
+                ref={printRef}
+                title="Vouchers Ledger"
+                subtitle={activeTab === 'vouchers' ? 'Active Voucher Logs' : 'Pending Cheque Approvals Queue'}
+                columns={reportColumns}
+                rows={reportRows}
+            />
         </div>
     )
 }

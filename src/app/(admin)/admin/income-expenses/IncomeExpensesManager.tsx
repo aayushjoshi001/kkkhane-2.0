@@ -1,14 +1,18 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import {
     TrendingUp, TrendingDown, Trash2, Plus, X,
-    Search, Loader2, ArrowRightLeft, FileText, User
+    Search, Loader2, ArrowRightLeft, FileText, User,
+    Download, Printer
 } from 'lucide-react'
 import { createCategoryAction, deleteCategoryAction, createEntryAction, deleteEntryAction } from './actions'
 import { toast } from 'react-hot-toast'
 import { formatCurrency, parseExpenseDescription } from '@/lib/utils'
 import { NST_OFFSET_MS } from '@/lib/timezone'
+import { downloadCsv } from '@/lib/exportCsv'
+import PrintableReport, { type PrintableReportHandle } from '@/components/admin/PrintableReport'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 
 interface Category {
     id: string
@@ -62,6 +66,7 @@ export default function IncomeExpensesManager({
     bankAccounts,
     qrCodes
 }: IncomeExpensesManagerProps) {
+    const formatDate = useDateFormatter()
     // Which QR code(s), if any, deposit into each bank account — lets staff
     // paying another party identify the right account by its QR instead of
     // just a bank name, when a restaurant runs more than one QR/bank pair.
@@ -324,6 +329,41 @@ export default function IncomeExpensesManager({
             String(e.amount).includes(q)
         )
     }, [timeFilteredEntries.expenses, searchQuery, selectedExpenseCat])
+
+    const printRef = useRef<PrintableReportHandle>(null)
+    const incomeReportColumns = [
+        { key: 'date', label: 'Date' },
+        { key: 'category', label: 'Category' },
+        { key: 'payment', label: 'Payment' },
+        { key: 'description', label: 'Description' },
+        { key: 'amount', label: 'Amount', align: 'right' as const },
+    ]
+    const expenseReportColumns = [
+        { key: 'date', label: 'Date' },
+        { key: 'category', label: 'Category' },
+        { key: 'vendor', label: 'Vendor' },
+        { key: 'payment', label: 'Payment' },
+        { key: 'description', label: 'Description' },
+        { key: 'amount', label: 'Amount', align: 'right' as const },
+    ]
+    const reportColumns = listTab === 'income' ? incomeReportColumns : expenseReportColumns
+    const reportRows = listTab === 'income'
+        ? filteredIncomeEntries.map(item => ({
+            date: formatDate(item.created_at),
+            category: item.income_categories?.name || 'Uncategorized',
+            payment: item.bank_accounts ? item.bank_accounts.name : 'Cash',
+            description: parseExpenseDescription(item.description).text_desc,
+            amount: formatCurrency(item.amount),
+        }))
+        : filteredExpenses.map(item => ({
+            date: formatDate(item.created_at),
+            category: item.expense_categories?.name || 'Uncategorized',
+            vendor: item.vendor_name || '',
+            payment: item.bank_accounts ? item.bank_accounts.name : 'Cash',
+            description: parseExpenseDescription(item.description).text_desc,
+            amount: formatCurrency(item.amount),
+        }))
+    const handleExportCsv = () => downloadCsv(`${listTab}-log`, reportColumns, reportRows)
 
     return (
         <div className="space-y-6">
@@ -667,6 +707,23 @@ export default function IncomeExpensesManager({
                                     className="w-full pl-9 pr-4 py-1.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)]"
                                 />
                             </div>
+
+                            {reportRows.length > 0 && (
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={handleExportCsv}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-muted/40 text-ink font-bold rounded-xl text-[10px] uppercase tracking-wider border border-hairline transition-all shrink-0"
+                                    >
+                                        <Download size={13} /> Export
+                                    </button>
+                                    <button
+                                        onClick={() => printRef.current?.print()}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-muted/40 text-ink font-bold rounded-xl text-[10px] uppercase tracking-wider border border-hairline transition-all shrink-0"
+                                    >
+                                        <Printer size={13} /> Print
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -698,7 +755,7 @@ export default function IncomeExpensesManager({
                                             <tr key={item.id} className={`hover:bg-brand-50/5 transition-colors ${idx % 2 === 0 ? 'bg-surface' : 'bg-surface-muted/10'}`}>
                                                 <td className="px-4 py-3 text-center border-r border-hairline font-black text-ink-muted">{idx + 1}</td>
                                                 <td className="px-4 py-3 border-r border-hairline text-ink-subtle font-bold">
-                                                    {new Date(item.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                    {formatDate(item.created_at)}
                                                 </td>
                                                 <td className="px-4 py-3 border-r border-hairline">
                                                     <span className="inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase border border-emerald-100 bg-emerald-50 text-emerald-700">
@@ -755,7 +812,7 @@ export default function IncomeExpensesManager({
                                             <tr key={item.id} className={`hover:bg-brand-50/5 transition-colors ${idx % 2 === 0 ? 'bg-surface' : 'bg-surface-muted/10'}`}>
                                                 <td className="px-4 py-3 text-center border-r border-hairline font-black text-ink-muted">{idx + 1}</td>
                                                 <td className="px-4 py-3 border-r border-hairline whitespace-nowrap text-ink-subtle font-bold">
-                                                    {new Date(item.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                    {formatDate(item.created_at)}
                                                 </td>
                                                 <td className="px-4 py-3 border-r border-hairline">
                                                     <span className="inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase border border-rose-100 bg-rose-50 text-rose-700">
@@ -795,6 +852,13 @@ export default function IncomeExpensesManager({
                 </div>
 
             </div>
+
+            <PrintableReport
+                ref={printRef}
+                title={listTab === 'income' ? 'Income Log' : 'Expense Log'}
+                columns={reportColumns}
+                rows={reportRows}
+            />
         </div>
     )
 }
