@@ -110,22 +110,23 @@ export default function RoomsClient({
         return matchesStatus && matchesType
     })
 
-    const handleStatusChange = async (roomId: string, newStatus: RoomStatus) => {
+    const handleStatusChange = async (roomId: string, newStatus: RoomStatus, force = false) => {
         // Optimistic UI update
         setRooms(prev => prev.map(r => r.id === roomId ? { ...r, status: newStatus } : r))
         if (selectedRoom?.id === roomId) {
             setSelectedRoom(prev => prev ? { ...prev, status: newStatus } : null)
         }
-        
+
         try {
             const res = await fetch(`/api/rooms/status`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ roomId, status: newStatus })
+                body: JSON.stringify({ roomId, status: newStatus, force })
             })
             if (!res.ok) {
                 setRooms(initialRooms)
-                toast.error('Failed to update room status')
+                const body = await res.json().catch(() => null)
+                toast.error(body?.error || 'Failed to update room status')
             } else {
                 toast.success('Room status updated')
             }
@@ -676,7 +677,22 @@ export default function RoomsClient({
                                         </div>
                                     </div>
                                 ) : (
-                                    <p className="text-xs text-rose-500 font-semibold">No booking details found for this session.</p>
+                                    <div className="space-y-2.5">
+                                        <p className="text-xs text-rose-500 font-semibold">No booking details found for this session.</p>
+                                        <p className="text-[11px] text-gray-400">
+                                            This room is marked occupied but has no matching active stay — likely a stuck status from a data glitch. If you've confirmed no guest is actually here, you can force it back to available.
+                                        </p>
+                                        <button
+                                            onClick={() => {
+                                                if (!confirm('Force this room back to Available? Only do this if you have confirmed no guest is actually staying here.')) return
+                                                handleStatusChange(selectedRoom.id, 'available', true)
+                                            }}
+                                            className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-xl text-xs transition-colors shadow-sm shadow-amber-500/10"
+                                        >
+                                            <Wrench size={13} />
+                                            Force Unstick (Set Available)
+                                        </button>
+                                    </div>
                                 )}
                             </div>
                         )}

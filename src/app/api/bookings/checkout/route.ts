@@ -122,7 +122,25 @@ export async function POST(req: Request) {
         if (!booking) {
             return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
         }
-        if (booking.status === 'checked_out') {
+
+        // 0a. Atomically claim this checkout: a plain read-then-write check here
+        // ("is status already checked_out?") leaves a window where two requests
+        // (a double-click, a retry) can both pass the check before either writes,
+        // both settle orders, and both post a duplicate ledger income entry for
+        // the same payment. Flipping status in the same statement as the
+        // condition makes Postgres do the check-and-claim as one atomic step —
+        // only one concurrent request can ever move a row from non-checked_out
+        // to checked_out, so only one proceeds past this point.
+        const { data: claimed, error: claimError } = await supabase
+            .from('bookings')
+            .update({ status: 'checked_out' })
+            .eq('id', booking_id)
+            .eq('restaurant_id', currentUser.restaurantId)
+            .neq('status', 'checked_out')
+            .select('id')
+
+        if (claimError) throw claimError
+        if (!claimed || claimed.length === 0) {
             return NextResponse.json({ error: 'Booking is already checked out' }, { status: 409 })
         }
 
@@ -173,11 +191,11 @@ export async function POST(req: Request) {
             await settleAndCloseSession(supabase, currentUser.restaurantId, sid)
         }
 
-        // 2. Persist the settlement and update booking status
+        // 2. Persist the settlement's financial fields (status is already
+        // 'checked_out' - claimed atomically above)
         const { error: bookingError } = await supabase
             .from('bookings')
             .update({
-                status: 'checked_out',
                 total_amount: authoritativeTotal,
                 paid_amount: newPaidAmount,
                 payment_status: paymentStatus,
