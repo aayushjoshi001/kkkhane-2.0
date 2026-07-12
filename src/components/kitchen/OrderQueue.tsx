@@ -213,10 +213,10 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
                 const sourceLabel = isTakeout ? 'Takeaway' : isDelivery ? 'Delivery' : (tbl ? `Table ${tbl}` : 'Order')
                 toast.custom((t) => (
                     <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-surface shadow-xl rounded-2xl px-4 py-3 flex items-start gap-3 border-2 border-amber-300`}>
-                        <span className="text-xl mt-0.5">ðŸ””</span>
+                        <span className="text-xl mt-0.5">🔔</span>
                         <div>
                             <p className="font-bold text-sm text-amber-700">New Order!</p>
-                            <p className="text-xs text-ink-subtle mt-0.5">{sourceLabel} Â· {money(fresh.total_amount)}</p>
+                            <p className="text-xs text-ink-subtle mt-0.5">{sourceLabel} · {money(fresh.total_amount)}</p>
                         </div>
                     </div>
                 ), { duration: 6000, position: 'top-right' })
@@ -251,7 +251,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     }
 
     // Bucket each order's dishes by their own state. Ready dishes leave the kitchen
-    // (they go to the waiter) â€” there is no Pass column here.
+    // (they go to the waiter) — there is no Pass column here.
     const { newO, queueO, cookO } = useMemo(() => {
         const sorted = [...orders].sort((a, b) => new Date(a.placed_at).getTime() - new Date(b.placed_at).getTime())
         const newO: Section[] = [], queueO: Section[] = [], cookO: Section[] = []
@@ -464,7 +464,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
         )
     }
 function itemStatusPill(status: string) {
-    if (status === 'preparing') return { label: 'Cookingâ€¦', cls: 'text-brand-500' }
+    if (status === 'preparing') return { label: 'Cooking…', cls: 'text-brand-500' }
     if (status === 'ready')     return { label: 'Ready', cls: 'text-emerald-600' }
     return { label: 'Pending', cls: 'text-ink-subtle' }
 }
@@ -491,7 +491,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
     const isDelivery = order.order_type === 'delivery'
     const space = isTakeout ? 'Takeaway' : isDelivery ? 'Delivery' : (tbl ? `Table ${tbl}` : 'Order')
 
-    // Selection: New/Queue â†’ all dishes; Cooking â†’ only dishes this chef owns.
+    // Selection: New/Queue → all dishes; Cooking → only dishes this chef owns.
     const ownItem = (it: KitchenOrderItem) => !it.claimed_by || it.claimed_by === userId
     const selectable = useMemo(
         () => isCooking ? items.filter(it => !it.claimed_by || it.claimed_by === userId) : items,
@@ -551,7 +551,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
                 <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-ink-subtle font-medium">
                     <Clock size={11} />
                     {tab === 'queue' ? `waiting ${waitedMin}m` : timeAgo(order.placed_at)}
-                    {!isCooking && selIds.length > 0 && <span className="ml-1" style={{ color: meta.accent }}>Â· {selIds.length} selected</span>}
+                    {!isCooking && selIds.length > 0 && <span className="ml-1" style={{ color: meta.accent }}>· {selIds.length} selected</span>}
                 </div>
             </button>
 
@@ -593,11 +593,11 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
                                     )}
                                     <div className="flex-1 min-w-0">
                                         <p className="font-semibold text-ink text-sm leading-tight truncate">{item.menu_items?.name}</p>
-                                        <p className="text-[11px] text-ink-subtle">Ã—{item.quantity}{lineTotal > 0 ? ` Â· ${money(lineTotal)}` : ''}{item.special_request ? ` Â· ${item.special_request}` : ''}</p>
+                                        <p className="text-[11px] text-ink-subtle">×{item.quantity}{lineTotal > 0 ? ` · ${money(lineTotal)}` : ''}{item.special_request ? ` · ${item.special_request}` : ''}</p>
                                         {item.menu_items?.is_combo && (
                                             <div className="mt-0.5 pl-2 border-l-2 border-hairline text-[10px] text-ink-subtle space-y-0.5">
                                                 {comboItems.filter(c => c.combo_id === item.menu_item_id).map(c => (
-                                                    <div key={c.id}>â€¢ {c.quantity * item.quantity}Ã— {c.menu_items?.name || 'Item'}</div>
+                                                    <div key={c.id}>• {c.quantity * item.quantity}× {c.menu_items?.name || 'Item'}</div>
                                                 ))}
                                             </div>
                                         )}
