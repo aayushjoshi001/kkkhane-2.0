@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/server'
 import { getRoomContextForTable } from '@/lib/rooms'
 import { roomVerifyCookieName, normalizeRoomPhone, ROOM_VERIFY_TTL_SECONDS } from '@/lib/roomGuest'
+import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/ratelimit'
 
 /**
  * Confirm the scanning guest is the person checked into this room by matching
@@ -16,6 +17,15 @@ export async function verifyRoomGuest(
     tableId: string,
     phone: string,
 ): Promise<{ success: true } | { error: string }> {
+    // Cap attempts per IP so the booking phone can't be brute-forced through
+    // repeated guesses. Fails open if Upstash isn't configured.
+    const limited = await checkRateLimit(
+        'ROOM_VERIFY',
+        RATE_LIMIT_RULES.ROOM_VERIFY.requests,
+        RATE_LIMIT_RULES.ROOM_VERIFY.windowSeconds,
+    )
+    if (limited) return { error: limited }
+
     const digits = normalizeRoomPhone(phone)
     if (digits.length < 10) {
         return { error: 'Enter the 10-digit mobile number on your booking.' }
