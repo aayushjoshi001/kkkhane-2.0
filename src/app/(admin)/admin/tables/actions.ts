@@ -69,43 +69,20 @@ export async function deleteTableAction(id: string) {
     await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
 
-    // 1. Get all sessions for this table
-    const { data: sessions } = await supabase
+    // Close (never delete) any still-active session on this table, so it
+    // doesn't linger as "active" on a table that's no longer there. All
+    // historical sessions/orders/order_items/payment_verifications/service_requests
+    // are financial and tax records - they must survive the table being
+    // removed, so nothing below ever deletes them. The table itself is only
+    // ever soft-deleted (is_active: false), which is enough for it to
+    // disappear from the active floor plan while every past order and
+    // payment tied to it remains intact.
+    await supabase
         .from('sessions')
-        .select('id')
+        .update({ status: 'closed', closed_at: new Date().toISOString() })
         .eq('table_id', id)
+        .eq('status', 'active')
 
-    const sessionIds = sessions?.map(s => s.id) || []
-
-    if (sessionIds.length > 0) {
-        // 2. Get all orders for these sessions
-        const { data: orders } = await supabase
-            .from('orders')
-            .select('id')
-            .in('session_id', sessionIds)
-
-        const orderIds = orders?.map(o => o.id) || []
-
-        if (orderIds.length > 0) {
-            // Delete order items
-            await supabase.from('order_items').delete().in('order_id', orderIds)
-            // Delete payment verifications
-            await supabase.from('payment_verifications').delete().in('order_id', orderIds)
-            // Delete orders
-            await supabase.from('orders').delete().in('id', orderIds)
-        }
-
-        // 3. Delete service requests for these sessions
-        await supabase.from('service_requests').delete().in('session_id', sessionIds)
-
-        // 4. Delete sessions
-        await supabase.from('sessions').delete().in('id', sessionIds)
-    }
-
-    // 5. Delete any service requests associated directly with the table_id
-    await supabase.from('service_requests').delete().eq('table_id', id)
-
-    // 6. Soft delete the table
     const { error } = await supabase
         .from('tables')
         .update({ is_active: false })
