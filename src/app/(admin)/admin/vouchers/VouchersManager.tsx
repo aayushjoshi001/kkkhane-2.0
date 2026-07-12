@@ -162,6 +162,11 @@ export default function VouchersManager({
     // Pending approvals action state
     const [actioningId, setActioningId] = useState<string | null>(null)
 
+    // Delete-voucher reason prompt
+    const [deleteTarget, setDeleteTarget] = useState<{ id: string; number: string } | null>(null)
+    const [deleteReason, setDeleteReason] = useState('')
+    const [deleting, setDeleting] = useState(false)
+
     // Parse bank account ownership labels reactively
     const parsedBankAccounts = useMemo(() => {
         return bankAccounts.map(b => {
@@ -457,20 +462,30 @@ export default function VouchersManager({
         }
     }
 
-    // Delete handler
-    const handleDeleteVoucher = async (id: string, number: string) => {
-        if (!confirm(`Are you sure you want to delete/void voucher ${number}? This will reverse its Cash/Bank book entry.`)) return
+    // Delete handler — opens the reason-prompt modal instead of deleting directly
+    const handleDeleteVoucher = (id: string, number: string) => {
+        setDeleteTarget({ id, number })
+        setDeleteReason('')
+    }
 
+    const confirmDeleteVoucher = async () => {
+        if (!deleteTarget) return
+        if (!deleteReason.trim()) { toast.error('Please enter a reason.'); return }
+        setDeleting(true)
         try {
-            const res = await deleteVoucherAction(id)
+            const res = await deleteVoucherAction(deleteTarget.id, deleteReason)
             if (res.error) {
                 toast.error(res.error)
             } else {
-                setEntriesList(prev => prev.filter(e => e.id !== id))
-                toast.success(`Voucher ${number} deleted successfully!`)
+                setEntriesList(prev => prev.filter(e => e.id !== deleteTarget.id))
+                toast.success(`Voucher ${deleteTarget.number} deleted successfully!`)
+                setDeleteTarget(null)
+                setDeleteReason('')
             }
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'Failed to delete voucher')
+        } finally {
+            setDeleting(false)
         }
     }
 
@@ -1267,6 +1282,52 @@ export default function VouchersManager({
                             </div>
                         </div>
 
+                    </div>
+                </div>
+            )}
+
+            {/* Delete voucher — requires a reason, same pattern as refunds
+                (RefundOrderButton.tsx), and gets logged via logAudit in
+                deleteVoucherAction so there's a record of who deleted it and why. */}
+            {deleteTarget && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-surface rounded-card shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-hairline w-full max-w-sm p-6 space-y-5">
+                        <div className="flex items-center gap-2">
+                            <Trash2 size={18} className="text-danger-fg" />
+                            <h2 className="text-h3 text-ink">Delete Voucher {deleteTarget.number}</h2>
+                        </div>
+                        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-[var(--r-md)] px-3 py-2 font-medium">
+                            This will reverse its Cash/Bank book entry. This cannot be undone.
+                        </p>
+                        <div>
+                            <label className="block text-small font-bold text-ink mb-1.5">Reason</label>
+                            <textarea
+                                value={deleteReason}
+                                onChange={(e) => setDeleteReason(e.target.value)}
+                                placeholder="e.g. entered by mistake, duplicate voucher…"
+                                className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all resize-none"
+                                rows={3}
+                                maxLength={200}
+                                autoFocus
+                            />
+                        </div>
+                        <div className="flex gap-3 justify-end pt-2 border-t border-hairline mt-2">
+                            <button
+                                onClick={() => { setDeleteTarget(null); setDeleteReason('') }}
+                                className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:shadow-md transition-all focus-ring"
+                                disabled={deleting}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmDeleteVoucher}
+                                disabled={deleting || !deleteReason.trim()}
+                                className="px-5 py-2.5 text-sm font-bold text-white bg-danger-fg rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(239,68,68,0.25)] hover:shadow-[0_6px_16px_rgba(239,68,68,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2 focus-ring"
+                            >
+                                {deleting && <Loader2 size={16} className="animate-spin" />}
+                                Confirm Delete
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
