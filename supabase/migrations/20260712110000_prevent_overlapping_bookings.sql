@@ -14,6 +14,6 @@ ALTER TABLE "public"."bookings"
     ADD CONSTRAINT "bookings_no_overlapping_active_stays"
     EXCLUDE USING gist (
         "room_id" WITH =,
-        "tsrange"("check_in", "check_out") WITH &&
+        "tstzrange"("check_in", "check_out") WITH &&
     )
     WHERE ("status" = ANY (ARRAY['pending'::"text", 'checked_in'::"text"]));
