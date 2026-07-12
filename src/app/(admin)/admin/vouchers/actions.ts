@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { postFinancialTransaction, findOpenDayBookSessionId, resolveBankAccountId } from '@/lib/ledger'
 import { getNstDateString } from '@/lib/timezone'
+import { logAudit } from '@/lib/audit'
 
 const PATH = '/admin/vouchers'
 
@@ -461,11 +462,25 @@ export async function rejectChequeAction(id: string) {
     }
 }
 
-export async function deleteVoucherAction(id: string) {
+export async function deleteVoucherAction(id: string, reason: string) {
     let user
     try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
 
+    if (!reason.trim()) return { error: 'A reason is required to delete a voucher.' }
+
     const supabase = await createAdminClient()
+
+    // Snapshot what's about to be destroyed before it's gone, so the audit
+    // trail actually shows what this voucher was, not just that "something"
+    // was deleted.
+    const { data: existing } = await supabase
+        .from('day_book_entries')
+        .select('type, amount, description, category, bank_name')
+        .eq('id', id)
+        .eq('restaurant_id', user.restaurantId)
+        .maybeSingle()
+
+    if (!existing) return { error: 'Voucher not found.' }
 
     // The expenses / staff_ledger row this voucher created (if it was
     // approved) goes with it via day_book_entry_id's ON DELETE CASCADE.
@@ -477,6 +492,15 @@ export async function deleteVoucherAction(id: string) {
 
     if (error) return { error: error.message }
     if (!count) return { error: 'Voucher not found.' }
+
+    void logAudit({
+        restaurantId: user.restaurantId,
+        userId: user.id,
+        action: 'voucher_deleted',
+        entityType: 'day_book_entry',
+        entityId: id,
+        oldValue: { ...existing, reason },
+    })
 
     revalidatePath(PATH)
     revalidatePath('/admin/cash-book')

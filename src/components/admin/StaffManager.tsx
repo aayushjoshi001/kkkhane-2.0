@@ -796,9 +796,9 @@ export default function StaffManager({
 
     const handleDeleteStaff = async (user: StaffMember) => {
         const ok = await confirm({
-            title: 'Permanently Delete Account?',
-            message: `This will permanently delete ${user.full_name}'s account and remove all their access. This cannot be undone.`,
-            confirmText: 'Delete Permanently',
+            title: 'Delete Account?',
+            message: `This will remove ${user.full_name}'s account and all their access. Their payroll, salary and attendance records are kept for your books. This cannot be undone.`,
+            confirmText: 'Delete Account',
             isDestructive: true,
         })
         if (!ok) return
@@ -1614,7 +1614,7 @@ export default function StaffManager({
                             {/* Danger zone */}
                             <div className="border border-danger-bg rounded-[var(--r-md)] p-5 bg-danger-bg/10">
                                 <p className="text-[11px] font-bold uppercase tracking-wider text-danger-fg mb-1.5">Danger Zone</p>
-                                <p className="text-sm font-medium text-danger-fg/80 mb-4">Permanently deletes the account and revokes all access. This cannot be undone.</p>
+                                <p className="text-sm font-medium text-danger-fg/80 mb-4">Deletes the account and revokes all access. Payroll and attendance records are kept. This cannot be undone.</p>
                                 <button
                                     onClick={() => handleDeleteStaff(editModal.user!)}
                                     disabled={!!editModal.deletingId}

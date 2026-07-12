@@ -405,7 +405,7 @@ async function OnboardingChecklistSection({
         adminSupabase.from('menu_categories').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId),
         adminSupabase.from('menu_items').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId),
         adminSupabase.from('tables').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).eq('is_active', true),
-        adminSupabase.from('users').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId),
+        adminSupabase.from('users').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).is('deleted_at', null),
     ])
 
     const onboardingSteps = [

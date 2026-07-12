@@ -110,22 +110,23 @@ export default function RoomsClient({
         return matchesStatus && matchesType
     })
 
-    const handleStatusChange = async (roomId: string, newStatus: RoomStatus) => {
+    const handleStatusChange = async (roomId: string, newStatus: RoomStatus, force = false) => {
         // Optimistic UI update
         setRooms(prev => prev.map(r => r.id === roomId ? { ...r, status: newStatus } : r))
         if (selectedRoom?.id === roomId) {
             setSelectedRoom(prev => prev ? { ...prev, status: newStatus } : null)
         }
-        
+
         try {
             const res = await fetch(`/api/rooms/status`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ roomId, status: newStatus })
+                body: JSON.stringify({ roomId, status: newStatus, force })
             })
             if (!res.ok) {
                 setRooms(initialRooms)
-                toast.error('Failed to update room status')
+                const body = await res.json().catch(() => null)
+                toast.error(body?.error || 'Failed to update room status')
             } else {
                 toast.success('Room status updated')
             }
@@ -360,9 +361,39 @@ export default function RoomsClient({
         switch (status) {
             case 'available': return 'Available'
             case 'occupied': return 'Booked'
-            case 'dirty': return 'Closed'
-            case 'maintenance': return 'Maintenance'
+            case 'dirty': return 'Cleaning'
+            case 'maintenance': return 'Closed'
             default: return status
+        }
+    }
+
+    const getStatusTextColor = (status: RoomStatus) => {
+        switch (status) {
+            case 'available': return 'text-emerald-600'
+            case 'occupied': return 'text-blue-600'
+            case 'dirty': return 'text-amber-600'
+            case 'maintenance': return 'text-rose-600'
+            default: return 'text-gray-500'
+        }
+    }
+
+    const getStatusDotColor = (status: RoomStatus) => {
+        switch (status) {
+            case 'available': return 'bg-emerald-500'
+            case 'occupied': return 'bg-blue-500'
+            case 'dirty': return 'bg-amber-500'
+            case 'maintenance': return 'bg-rose-500'
+            default: return 'bg-gray-400'
+        }
+    }
+
+    const getStatusAccentBorder = (status: RoomStatus) => {
+        switch (status) {
+            case 'available': return 'border-l-emerald-400'
+            case 'occupied': return 'border-l-blue-400'
+            case 'dirty': return 'border-l-amber-400'
+            case 'maintenance': return 'border-l-rose-400'
+            default: return 'border-l-gray-300'
         }
     }
 
@@ -484,11 +515,11 @@ export default function RoomsClient({
                     {filteredRooms.map(room => {
                         const typeName = roomTypesList.find(t => t.id === room.type_id)?.name || 'Standard'
                         return (
-                            <div 
+                            <div
                                 key={room.id}
                                 onClick={() => setSelectedRoom(room)}
-                                className={`bg-white border rounded-2xl p-4 flex flex-col justify-between cursor-pointer transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 select-none ${
-                                    selectedRoom?.id === room.id ? 'border-[#ff5a00] ring-1 ring-[#ff5a00]' : 'border-gray-100'
+                                className={`bg-white border border-l-4 rounded-2xl p-4 flex flex-col justify-between cursor-pointer transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 select-none ${
+                                    selectedRoom?.id === room.id ? 'border-[#ff5a00] ring-1 ring-[#ff5a00]' : `border-gray-100 ${getStatusAccentBorder(room.status)}`
                                 }`}
                             >
                                 <div className="flex items-start justify-between">
@@ -502,7 +533,8 @@ export default function RoomsClient({
                                     <p className="text-xs text-gray-400 mt-1.5 font-bold uppercase truncate">{typeName}</p>
                                 </div>
                                 <div className="border-t border-gray-50 pt-2 flex items-center justify-between">
-                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                                    <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${getStatusTextColor(room.status)}`}>
+                                        <span className={`w-1.5 h-1.5 rounded-full ${getStatusDotColor(room.status)}`} />
                                         {getStatusLabel(room.status)}
                                     </span>
                                     <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-400" />
@@ -531,8 +563,10 @@ export default function RoomsClient({
                         </button>
                     </div>
 
-                    {/* Action Buttons (Book, Closed, Reserve) */}
-                    <div className="grid grid-cols-3 gap-2 mb-4 mt-2">
+                    {/* Action Buttons (Book, Closed) — a room automatically goes to
+                        Cleaning on checkout (see /api/bookings/checkout), so there's no
+                        separate manual "Not Available" step needed here anymore. */}
+                    <div className="grid grid-cols-2 gap-2 mb-4 mt-2">
                         <button
                             onClick={handleOpenBooking}
                             disabled={selectedRoom.status !== 'available'}
@@ -556,16 +590,10 @@ export default function RoomsClient({
                             className={`py-2.5 font-extrabold rounded-xl text-xs border transition-all text-center ${
                                 selectedRoom.status === 'occupied'
                                     ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                                    : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
+                                    : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200/40'
                             }`}
                         >
-                            Not Available
-                        </button>
-                        <button
-                            onClick={() => handleStatusChange(selectedRoom.id, 'maintenance')}
-                            className="py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 font-extrabold rounded-xl text-xs border border-amber-200/40 transition-all text-center"
-                        >
-                            Reserve
+                            Closed
                         </button>
                     </div>
 
@@ -649,7 +677,22 @@ export default function RoomsClient({
                                         </div>
                                     </div>
                                 ) : (
-                                    <p className="text-xs text-rose-500 font-semibold">No booking details found for this session.</p>
+                                    <div className="space-y-2.5">
+                                        <p className="text-xs text-rose-500 font-semibold">No booking details found for this session.</p>
+                                        <p className="text-[11px] text-gray-400">
+                                            This room is marked occupied but has no matching active stay — likely a stuck status from a data glitch. If you've confirmed no guest is actually here, you can force it back to available.
+                                        </p>
+                                        <button
+                                            onClick={() => {
+                                                if (!confirm('Force this room back to Available? Only do this if you have confirmed no guest is actually staying here.')) return
+                                                handleStatusChange(selectedRoom.id, 'available', true)
+                                            }}
+                                            className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-xl text-xs transition-colors shadow-sm shadow-amber-500/10"
+                                        >
+                                            <Wrench size={13} />
+                                            Force Unstick (Set Available)
+                                        </button>
+                                    </div>
                                 )}
                             </div>
                         )}
@@ -1104,7 +1147,7 @@ export default function RoomsClient({
                                 </button>
                                 <button
                                     onClick={() => {
-                                        handleStatusChange(selectedRoom.id, 'dirty')
+                                        handleStatusChange(selectedRoom.id, 'maintenance')
                                         setIsConfirmCloseOpen(false)
                                     }}
                                     className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-xl text-sm transition-all shadow-md shadow-rose-600/10"

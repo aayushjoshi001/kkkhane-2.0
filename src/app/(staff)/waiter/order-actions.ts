@@ -234,7 +234,14 @@ export async function markCashPaid(
  * Combines markOrderDelivered + markCashPaid so the waiter doesn't need two taps.
  */
 export async function markDeliveredAndCashPaid(
-    orderId: string
+    orderId: string,
+    // Defaults to 'cash' for the dedicated per-order "collect cash" buttons
+    // (handleCashPay / handleCashAndDeliver) that never offered a choice.
+    // The bulk "Mark Paid" flow passes through whatever the cashier actually
+    // selected — this used to be hardcoded here regardless of caller,
+    // corrupting the cash-vs-digital breakdown in the EOD report, which
+    // reads this exact column (see generateEodReport in lib/reports.ts).
+    paymentMethod: 'cash' | 'qr_scan' = 'cash'
 ): Promise<{ error?: string; success?: boolean; tableClosed?: boolean }> {
     const currentUser = await requireRole('cashier', 'waiter', 'manager', 'super_admin')
     const supabase = await createAdminClient()
@@ -276,7 +283,7 @@ export async function markDeliveredAndCashPaid(
         restaurant_id: order.restaurant_id,
         order_id: orderId,
         amount: order.total_amount,
-        payment_method: 'cash',
+        payment_method: paymentMethod,
         staff_verified: true,
         staff_rejected: false,
         staff_verified_by: currentUser.id,
@@ -289,7 +296,7 @@ export async function markDeliveredAndCashPaid(
         action: 'payment_verified',
         entityType: 'payment',
         entityId: orderId,
-        newValue: { payment_method: 'cash', amount: order.total_amount, combined_deliver: true },
+        newValue: { payment_method: paymentMethod, amount: order.total_amount, combined_deliver: true },
     })
 
     let tableClosed = false

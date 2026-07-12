@@ -51,6 +51,90 @@ export async function findOpenDayBookSessionId(
     return data?.id
 }
 
+// What a new day's opening cash/bank balance should be, carried over from the
+// most recently closed session (0/0 if there has never been a prior one) —
+// the same calculation /api/day-book/session's manual "open day" route uses,
+// shared here so auto-opening a session below can never drift from it.
+async function computeCarriedOverOpeningBalances(
+    supabase: SupabaseClient,
+    restaurantId: string,
+    beforeDate: string
+): Promise<{ openingBalance: number; openingBankBalance: number }> {
+    const { data: lastSession } = await supabase
+        .from('day_book_sessions')
+        .select('id, opening_balance, opening_bank_balance')
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'closed')
+        .lt('date', beforeDate)
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+    if (!lastSession) return { openingBalance: 0, openingBankBalance: 0 }
+
+    const { data: totals } = await supabase
+        .from('day_book_entries')
+        .select('type, amount')
+        .eq('session_id', lastSession.id)
+
+    const sumType = (t: string) =>
+        (totals ?? []).filter((e) => e.type === t).reduce((sum, e) => sum + Number(e.amount), 0)
+
+    let openingBalance = Number(lastSession.opening_balance) + sumType('cash_in') - sumType('cash_out')
+    if (openingBalance < 0) openingBalance = 0
+
+    let openingBankBalance = Number(lastSession.opening_bank_balance ?? 0) + sumType('bank_in') - sumType('bank_out')
+    if (openingBankBalance < 0) openingBankBalance = 0
+
+    return { openingBalance, openingBankBalance }
+}
+
+// Returns the restaurant's currently-open Day Book session, auto-opening
+// today's (with the balance carried over above) if none is open at all -
+// so a real payment never silently fails to post into the Day Book just
+// because nobody clicked "open session" yet this morning. Never opens a
+// second session while an earlier, still-unclosed day's session exists -
+// posts into that one instead, since it represents the same still-ongoing
+// drawer period.
+export async function getOrCreateOpenDayBookSessionId(
+    supabase: SupabaseClient,
+    restaurantId: string,
+    createdBy: string
+): Promise<string | undefined> {
+    const { data: anyOpen } = await supabase
+        .from('day_book_sessions')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'open')
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+    if (anyOpen) return anyOpen.id
+
+    const today = getNstDateString()
+    const { openingBalance, openingBankBalance } = await computeCarriedOverOpeningBalances(supabase, restaurantId, today)
+
+    const { data: session, error } = await supabase
+        .from('day_book_sessions')
+        .insert({
+            restaurant_id: restaurantId,
+            date: today,
+            opening_balance: openingBalance,
+            opening_bank_balance: openingBankBalance,
+            status: 'open',
+            created_by: createdBy,
+        })
+        .select('id')
+        .single()
+
+    if (error) {
+        console.error('[ledger] Failed to auto-open Day Book session:', error)
+        return undefined
+    }
+    return session?.id
+}
+
 // `%` and `_` are wildcards to ilike, so a bank literally named "50_50" would
 // otherwise match more rows than it should.
 function escapeLikePattern(value: string): string {
@@ -143,13 +227,20 @@ export async function postFinancialTransaction(
     user: LedgerUser,
     input: PostFinancialTransactionInput
 ): Promise<PostFinancialTransactionResult> {
-    const sessionId = await findOpenDayBookSessionId(supabase, user.restaurantId)
+    let sessionId = await findOpenDayBookSessionId(supabase, user.restaurantId)
 
     if (!sessionId) {
         if (input.requireOpenSession) {
             return { posted: false, error: 'No active Day Book session is open. Please open Cash Book or Bank Book to start a session first.' }
         }
-        return { posted: false }
+        // Previously silently gave up here, leaving this entry recorded in
+        // Income & Expenses / Suppliers / Staff but missing from the Day
+        // Book with no warning. Auto-open (or reuse an already-open, older)
+        // session instead so it always ends up on the books.
+        sessionId = await getOrCreateOpenDayBookSessionId(supabase, user.restaurantId, user.id)
+        if (!sessionId) {
+            return { posted: false }
+        }
     }
 
     const bankAccountId = await resolveBankAccountId(supabase, user.restaurantId, input.bankName)

@@ -24,6 +24,7 @@ export type AuditAction =
     | 'financial_event_created'
     | 'financial_event_status_changed'
     | 'financial_event_retried'
+    | 'voucher_deleted'
 
 async function getIp(): Promise<string | null> {
     try {

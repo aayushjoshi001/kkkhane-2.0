@@ -103,6 +103,7 @@ export interface User {
     address: string | null
     role_id: number
     is_active: boolean
+    deleted_at: string | null
     created_at: string
     updated_at: string
     // Joined fields
