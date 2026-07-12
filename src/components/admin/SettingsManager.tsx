@@ -257,6 +257,26 @@ export default function SettingsManager({
         setNewQuickItem('')
     }
 
+    // Reception phone the in-room "Call for Service" button dials. Saved on blur.
+    const [receptionPhoneStr, setReceptionPhoneStr] = useState(
+        (features as { receptionPhone?: string | null }).receptionPhone ?? ''
+    )
+    const saveReceptionPhone = async () => {
+        if (!canEdit) return
+        const val = receptionPhoneStr.trim() || null
+        const current = (features as { receptionPhone?: string | null }).receptionPhone ?? null
+        if (val === current) return
+        const prev = features
+        setFeatures({ ...features, receptionPhone: val })
+        setIsSavingFeatures(true)
+        const res = await updateFeaturesAction(formData.id, { receptionPhone: val } as Partial<Features>)
+        if (res.error) {
+            toast.error('Failed to save reception phone')
+            setFeatures(prev)
+        }
+        setIsSavingFeatures(false)
+    }
+
     return (
         <>
         <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
@@ -666,6 +686,7 @@ export default function SettingsManager({
                         { key: 'waiterSessionEnabled' as const, label: 'Waiter-Managed Sessions', desc: 'Require a waiter to open a table before guests can order. Off = guests scan & order instantly' },
                         { key: 'waiterOrderConfirmation' as const, label: 'Waiter Order Confirmation', desc: 'Orders wait for a waiter to confirm before the kitchen sees them. Off = orders go straight to the kitchen' },
                         { key: 'selfOrderRequestEnabled' as const, label: 'Ring for Service', desc: 'When waiter-managed sessions are on, let customers ring to request the table be opened' },
+                        { key: 'roomServiceCallEnabled' as const, label: 'In-Room Service Call', desc: 'Hotel room QR asks the guest to confirm their booking phone, then shows a Call-for-Service button to reception' },
                         { key: 'splitBillingEnabled' as const, label: 'Split Billing', desc: 'Allow customers to split bills at checkout' },
                         { key: 'promosEnabled' as const, label: 'Promo Codes', desc: 'Allow promo/discount codes at checkout' },
                         { key: 'loyaltyEnabled' as const, label: 'Loyalty Program', desc: 'Points-based loyalty rewards for repeat customers' },
@@ -701,6 +722,32 @@ export default function SettingsManager({
                         </button>
                     ))}
                 </div>
+            </div>
+        </div>
+
+        {/* In-Room Service — reception phone the Call-for-Service button dials */}
+        <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden mt-6 max-w-4xl">
+            <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 shadow-[inset_0_2px_4px_rgba(251,99,3,0.05)]">
+                    <Phone size={20} />
+                </div>
+                <div>
+                    <h3 className="text-h3 font-extrabold text-ink">In-Room Service</h3>
+                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Reception number the room QR&apos;s &ldquo;Call for Service&rdquo; button dials. Requires &ldquo;In-Room Service Call&rdquo; above.</p>
+                </div>
+            </div>
+            <div className="p-6">
+                <label htmlFor="receptionPhone" className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Reception Phone</label>
+                <input
+                    id="receptionPhone"
+                    type="tel"
+                    value={receptionPhoneStr}
+                    onChange={(e) => setReceptionPhoneStr(e.target.value)}
+                    onBlur={saveReceptionPhone}
+                    disabled={!canEdit || isSavingFeatures}
+                    placeholder="e.g. +977 9800000000"
+                    className="w-full max-w-sm bg-surface border border-hairline rounded-[var(--r-md)] px-4 py-2.5 text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50 tabular-nums"
+                />
             </div>
         </div>
 

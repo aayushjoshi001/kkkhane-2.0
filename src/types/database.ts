@@ -355,6 +355,12 @@ export interface Settings {
         // Notification
         notificationSoundUrl?: string | null
         financeEnabled?: boolean
+        // In-room service: when true, a hotel room's QR requires the guest to
+        // confirm the phone on their booking, then surfaces a "Call for Service"
+        // tel: button to the reception number below. Off = today's self-service.
+        roomServiceCallEnabled?: boolean
+        // Reception / room-service phone the "Call for Service" button dials.
+        receptionPhone?: string | null
     }
     business_hours: BusinessHours | null
     updated_at: string

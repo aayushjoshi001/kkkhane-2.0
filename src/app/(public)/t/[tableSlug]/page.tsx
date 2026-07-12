@@ -7,6 +7,10 @@ import TablePageClient from './TablePageClient'
 import { getHomepageConfig } from '@/lib/homepage'
 import { getRoomContextForTable } from '@/lib/rooms'
 import RoomNotCheckedIn from '@/components/customer/RoomNotCheckedIn'
+import RoomGuestVerify from './RoomGuestVerify'
+import RoomServiceCallButton from './RoomServiceCallButton'
+import { roomVerifyCookieName } from '@/lib/roomGuest'
+import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/server'
 
 import type { Metadata } from 'next'
@@ -126,6 +130,12 @@ async function MenuDataLoader({
 
     const waiterSessionEnabled = features?.waiterSessionEnabled === true
 
+    // Room-service call button: only on a room's QR, only when the manager has
+    // enabled it and set a reception number.
+    const roomCallPhone = tableData.room_id && features?.roomServiceCallEnabled && features?.receptionPhone
+        ? features.receptionPhone
+        : null
+
     const { categories, menuItems, translations, supportedLanguages, comboItems, pairings } = menuData
 
     const langs = supportedLanguages.length > 0
@@ -133,6 +143,7 @@ async function MenuDataLoader({
         : []
 
     return (
+        <>
         <TablePageClient
             tableData={{
                 id: tableData.id,
@@ -162,6 +173,8 @@ async function MenuDataLoader({
             isIpRestricted={false}
             initialHomepageConfig={homepageConfig}
         />
+        {roomCallPhone && <RoomServiceCallButton phone={roomCallPhone} />}
+        </>
     )
 }
 
@@ -190,6 +203,28 @@ export default async function CustomerMenuPage(props: {
                 restaurantName={restaurant?.name}
             />
         )
+    }
+
+    // In-room service: when the manager has enabled it, a checked-in room's QR
+    // must confirm the guest's booking phone before ordering opens. Verification
+    // is remembered per-stay via an httpOnly cookie keyed to the booking. Only a
+    // room with an active stay needs this check, so ordinary tables skip it.
+    if (roomContext?.bookingId) {
+        const features = await getRestaurantFeatures(tableData.restaurant_id)
+        if (features?.roomServiceCallEnabled) {
+            const verified = (await cookies()).get(roomVerifyCookieName(roomContext.bookingId))?.value === '1'
+            if (!verified) {
+                const restaurant = tableData.restaurants as unknown as { name?: string } | null
+                return (
+                    <RoomGuestVerify
+                        tableId={tableData.id}
+                        roomNumber={roomContext.roomNumber || tableData.label}
+                        restaurantName={restaurant?.name}
+                        receptionPhone={features?.receptionPhone ?? null}
+                    />
+                )
+            }
+        }
     }
 
     return (
