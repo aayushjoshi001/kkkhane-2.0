@@ -275,7 +275,7 @@ export async function placeOrder(
 
         const { data: dbOrderItems } = await supabase
             .from('order_items')
-            .select('id, menu_item_id, quantity, special_request')
+            .select('id, menu_item_id, quantity, special_request, unit_price')
             .eq('order_id', result.order_id)
 
         let calculatedSubtotal = 0
@@ -283,14 +283,6 @@ export async function placeOrder(
             const matchedDbItemIds = new Set<string>()
 
             for (const item of items) {
-                let basePrice = item.price
-                if (item.variationId) {
-                    const v = variations.find(x => x.id === item.variationId)
-                    if (v) basePrice = Number(v.price)
-                }
-                const modifierTotal = (item.modifiers || []).reduce((sum, mod) => sum + mod.priceAdjustment, 0)
-                calculatedSubtotal += (basePrice + modifierTotal) * item.quantity
-
                 // Build the special request we sent to the DB
                 let expectedSpecialRequest = item.specialRequest || ''
                 if (item.variationName) {
@@ -298,7 +290,7 @@ export async function placeOrder(
                         ? `[${item.variationName}] ${expectedSpecialRequest}`
                         : `[${item.variationName}]`
                 }
-                
+
                 // Find matching row in the database, excluding already matched ones
                 const match = dbOrderItems.find(
                     x => !matchedDbItemIds.has(x.id) &&
@@ -306,6 +298,19 @@ export async function placeOrder(
                          x.quantity === item.quantity &&
                          (x.special_request || '') === expectedSpecialRequest
                 )
+
+                // place_order already set unit_price server-side (get_effective_price /
+                // menu_item_variations, never the client) — trust that row, not the
+                // client-supplied item.price, when rebuilding the order's totals below.
+                // A missing match fails closed (contributes 0) rather than falling back
+                // to whatever price the client claims.
+                let basePrice = match ? Number(match.unit_price) : 0
+                if (item.variationId) {
+                    const v = variations.find(x => x.id === item.variationId)
+                    if (v) basePrice = Number(v.price)
+                }
+                const modifierTotal = (item.modifiers || []).reduce((sum, mod) => sum + mod.priceAdjustment, 0)
+                calculatedSubtotal += (basePrice + modifierTotal) * item.quantity
 
                 if (match) {
                     matchedDbItemIds.add(match.id)
