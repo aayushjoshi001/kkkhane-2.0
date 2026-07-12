@@ -29,7 +29,18 @@ export async function POST(req: Request) {
             .select('*, room_types:type_id(*)')
             .single()
 
-        if (error) throw error
+        if (error) {
+            // Unique violation on (restaurant_id, room_number) — a duplicate
+            // room number is a user mistake, not a server fault. Surface it as
+            // a 409 with a message the toast can show verbatim.
+            if (error.code === '23505') {
+                return NextResponse.json(
+                    { error: `Room ${room_number.trim()} already exists` },
+                    { status: 409 }
+                )
+            }
+            throw error
+        }
         return NextResponse.json({ success: true, data })
     } catch (e: any) {
         return NextResponse.json({ error: e.message || 'Server error' }, { status: 500 })
