@@ -49,7 +49,12 @@ export default async function BookingsPage() {
                     order_items ( id, quantity, status, unit_price, menu_items ( name ) )
                 `)
                 .eq('restaurant_id', restaurantId)
-                .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
+                // Every unpaid, non-cancelled order still owed on this room's bill -
+                // not just ones still in the kitchen workflow. A 'delivered' order
+                // that hasn't been paid yet used to be silently excluded here, making
+                // the Room Billing total lower than what was actually owed.
+                .neq('status', 'cancelled')
+                .neq('payment_status', 'paid')
         ])
 
         bookings = (bookingsRes.data as unknown as Booking[]) || []
