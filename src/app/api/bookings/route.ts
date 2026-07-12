@@ -42,14 +42,23 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: `Guest count (${guest_count}) exceeds room capacity (${maxCapacity})` }, { status: 400 })
         }
 
-        // 2. Auto-cancel any existing orphaned checked_in bookings for this room
-        // This prevents old/unchecked-out bookings from poisoning the billing data
-        await supabase
+        // 2. Reject if this room already has an active stay - silently cancelling
+        // it here used to be able to evict a real, currently-staying guest with
+        // zero warning. Front desk needs to check that guest out first.
+        const { data: existingActiveBooking } = await supabase
             .from('bookings')
-            .update({ status: 'cancelled', notes: 'Auto-cancelled: new booking created without checkout' })
+            .select('id, guest_name')
             .eq('room_id', room_id)
             .eq('restaurant_id', currentUser.restaurantId)
             .in('status', ['checked_in', 'pending'])
+            .limit(1)
+            .maybeSingle()
+
+        if (existingActiveBooking) {
+            return NextResponse.json({
+                error: `Room already has an active booking for ${existingActiveBooking.guest_name}. Check that guest out before creating a new booking.`
+            }, { status: 409 })
+        }
 
         // 3. Resolve advance amount — a split advance (part cash, part QR) is
         // recorded as two separate ledger postings below so both methods show
