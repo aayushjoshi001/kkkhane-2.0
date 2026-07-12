@@ -389,7 +389,7 @@ export default function SuppliersLedgerManager({
 
     const printRef = useRef<PrintableReportHandle>(null)
     const reportColumns = [
-        { key: 'date', label: 'Date' },
+        { key: 'date', label: 'Date', dateStacked: true },
         { key: 'description', label: 'Description' },
         { key: 'quantity', label: 'Qty', align: 'center' as const },
         { key: 'rate', label: 'Rate', align: 'right' as const },

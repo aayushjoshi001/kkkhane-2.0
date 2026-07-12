@@ -243,7 +243,7 @@ export default function BankLedgerManager({
 
     const printRef = useRef<PrintableReportHandle>(null)
     const reportColumns = [
-        { key: 'date', label: 'Date' },
+        { key: 'date', label: 'Date', dateStacked: true },
         { key: 'description', label: 'Description' },
         { key: 'bank_in', label: 'Bank In', align: 'right' as const },
         { key: 'bank_out', label: 'Bank Out', align: 'right' as const },

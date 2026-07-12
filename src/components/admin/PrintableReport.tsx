@@ -6,6 +6,29 @@ export interface PrintColumn {
     key: string
     label: string
     align?: 'left' | 'right' | 'center'
+    /**
+     * For date cells formatted as "English (Nepali BS)" — splits them into
+     * two stacked lines (AD on top, BS below) instead of letting the long
+     * combined string force the row to wrap or the column to balloon.
+     */
+    dateStacked?: boolean
+}
+
+const DATE_STACK_PATTERN = /^(.+?)\s*\((.+)\)$/
+
+function renderCell(value: unknown, dateStacked?: boolean): React.ReactNode {
+    if (dateStacked && typeof value === 'string') {
+        const match = value.match(DATE_STACK_PATTERN)
+        if (match) {
+            return (
+                <>
+                    <div>{match[1]}</div>
+                    <div style={{ fontSize: '0.85em', color: '#555' }}>{match[2]}</div>
+                </>
+            )
+        }
+    }
+    return (value as React.ReactNode) ?? ''
 }
 
 export interface PrintableReportHandle {
@@ -53,11 +76,11 @@ const PrintableReport = forwardRef<PrintableReportHandle, PrintableReportProps>(
             <div style={{ fontFamily: 'Arial, sans-serif', color: '#111', width: '190mm' }}>
                 <h1 style={{ fontSize: 16, fontWeight: 800, margin: 0 }}>{title}</h1>
                 {subtitle && <p style={{ fontSize: 10, color: '#555', margin: '2px 0 0' }}>{subtitle}</p>}
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 10, fontSize: 10 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 10, fontSize: 8.5, tableLayout: 'auto' }}>
                     <thead>
                         <tr>
                             {columns.map(c => (
-                                <th key={c.key} style={{ textAlign: c.align || 'left', borderBottom: '2px solid #000', padding: '3px 6px', whiteSpace: 'nowrap' }}>
+                                <th key={c.key} style={{ textAlign: c.align || 'left', borderBottom: '2px solid #000', padding: '3px 5px', whiteSpace: 'nowrap' }}>
                                     {c.label}
                                 </th>
                             ))}
@@ -67,8 +90,16 @@ const PrintableReport = forwardRef<PrintableReportHandle, PrintableReportProps>(
                         {rows.map((row, i) => (
                             <tr key={i}>
                                 {columns.map(c => (
-                                    <td key={c.key} style={{ textAlign: c.align || 'left', borderBottom: '1px solid #ddd', padding: '3px 6px' }}>
-                                        {row[c.key] as React.ReactNode ?? ''}
+                                    <td
+                                        key={c.key}
+                                        style={{
+                                            textAlign: c.align || 'left',
+                                            borderBottom: '1px solid #ddd',
+                                            padding: '3px 5px',
+                                            whiteSpace: c.dateStacked ? 'normal' : 'nowrap',
+                                        }}
+                                    >
+                                        {renderCell(row[c.key], c.dateStacked)}
                                     </td>
                                 ))}
                             </tr>
@@ -78,8 +109,8 @@ const PrintableReport = forwardRef<PrintableReportHandle, PrintableReportProps>(
                         <tfoot>
                             <tr>
                                 {columns.map(c => (
-                                    <td key={c.key} style={{ textAlign: c.align || 'left', borderTop: '2px solid #000', padding: '4px 6px', fontWeight: 700 }}>
-                                        {totalsRow[c.key] as React.ReactNode ?? ''}
+                                    <td key={c.key} style={{ textAlign: c.align || 'left', borderTop: '2px solid #000', padding: '4px 5px', fontWeight: 700, whiteSpace: c.dateStacked ? 'normal' : 'nowrap' }}>
+                                        {renderCell(totalsRow[c.key], c.dateStacked)}
                                     </td>
                                 ))}
                             </tr>

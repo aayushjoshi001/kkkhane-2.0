@@ -250,7 +250,7 @@ export default function VouchersManager({
 
     const printRef = useRef<PrintableReportHandle>(null)
     const reportColumns = [
-        { key: 'date', label: 'Date' },
+        { key: 'date', label: 'Date', dateStacked: true },
         { key: 'voucher_number', label: 'Voucher No' },
         { key: 'type', label: 'Type' },
         { key: 'party_name', label: 'Party Name' },
