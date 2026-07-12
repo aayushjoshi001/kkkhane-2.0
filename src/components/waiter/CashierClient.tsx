@@ -421,10 +421,30 @@ export default function CashierClient({
                 const sessionUnpaid = unpaid.filter(o => o.session_id === sessionId)
                 const allUnpaid = [...sessionOrders, ...sessionUnpaid].filter(o => o.payment_status === 'unpaid')
 
+                // Record what the cashier actually selected (Cash / QR / Both)
+                // instead of hardcoding "cash" for every order — the EOD report's
+                // cash-vs-digital breakdown reads this exact field. For a split
+                // settlement there's no single right answer per order, so draw
+                // sequentially from the cash pool first, then the QR pool, so the
+                // two totals still add up to what was actually collected.
+                let remainingCash = billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0) : Infinity
+                const methodForOrder = (amount: number): 'cash' | 'qr_scan' => {
+                    if (billingPaymentMethod === 'qr_digital') return 'qr_scan'
+                    if (billingPaymentMethod === 'cash') return 'cash'
+                    // both: allocate from the cash pool until it runs out
+                    if (remainingCash >= amount) {
+                        remainingCash -= amount
+                        return 'cash'
+                    }
+                    return 'qr_scan'
+                }
+
                 // Independent per-order updates (each keyed by its own id) — settle
                 // them concurrently instead of one network round-trip at a time,
                 // which was the main reason "Mark Paid" felt slow on a big bill.
-                const results = await Promise.all(allUnpaid.map(order => markDeliveredAndCashPaid(order.id)))
+                const results = await Promise.all(
+                    allUnpaid.map(order => markDeliveredAndCashPaid(order.id, methodForOrder(order.total_amount)))
+                )
                 const failed = results.find(res => res.error)
                 if (failed) throw new Error(failed.error)
             }
