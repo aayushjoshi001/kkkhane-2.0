@@ -3,8 +3,10 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import type { BusinessHours } from '@/types/database'
+import { requireRole } from '@/lib/auth'
 
 export async function updateRestaurantSettingsAction(restaurantId: string, updates: Record<string, unknown>) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
 
     // Columns that actually exist on the restaurants table.
@@ -70,6 +72,7 @@ export async function updateRestaurantSettingsAction(restaurantId: string, updat
 }
 
 export async function updateBusinessHoursAction(restaurantId: string, businessHours: BusinessHours) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
 
     const { error } = await supabase
@@ -87,6 +90,7 @@ export async function updateBusinessHoursAction(restaurantId: string, businessHo
 // See supabase/migrations/20260710050000_payment_qr_codes.sql.
 
 export async function createQrCodeAction(restaurantId: string, input: { label: string; image_url: string | null; bank_account_id: string | null }) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
 
     const { data, error } = await supabase
@@ -106,6 +110,7 @@ export async function createQrCodeAction(restaurantId: string, input: { label: s
 }
 
 export async function updateQrCodeAction(id: string, restaurantId: string, input: { label?: string; image_url?: string | null; bank_account_id?: string | null; is_active?: boolean }) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
 
     const { error } = await supabase
@@ -120,6 +125,7 @@ export async function updateQrCodeAction(id: string, restaurantId: string, input
 }
 
 export async function deleteQrCodeAction(id: string, restaurantId: string) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
 
     const { error } = await supabase

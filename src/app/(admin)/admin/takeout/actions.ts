@@ -9,8 +9,13 @@ import {
     type TakeoutOrderRow,
     type OrderStatus,
 } from '@/lib/takeout'
+import { requireRole } from '@/lib/auth'
 
+// Used by both the admin Takeout dashboard (manager/super_admin) and the
+// Cashier/Waiter panel's takeaway tab (cashier/waiter) - matches the role set
+// already required to load /cashier (see (staff)/cashier/page.tsx).
 export async function updateTakeoutStatusAction(orderId: string, newStatus: string) {
+    await requireRole('cashier', 'waiter', 'manager', 'super_admin')
     const supabase = await createAdminClient()
 
     const orderStatus: OrderStatus =
@@ -36,6 +41,7 @@ export async function updateTakeoutStatusAction(orderId: string, newStatus: stri
 }
 
 export async function getTakeoutOrdersAction(restaurantId: string) {
+    await requireRole('cashier', 'waiter', 'manager', 'super_admin')
     const supabase = await createAdminClient()
     const { data } = await supabase
         .from('orders')

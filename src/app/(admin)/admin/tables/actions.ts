@@ -2,8 +2,10 @@
 
 import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { requireRole } from '@/lib/auth'
 
 export async function addTableAction(restaurantId: string, label: string, capacity?: number) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
 
     // Enforce plan table limit
@@ -49,6 +51,7 @@ export async function addTableAction(restaurantId: string, label: string, capaci
 }
 
 export async function updateTableAction(id: string, updates: Record<string, unknown>) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
     const { error } = await supabase
         .from('tables')
@@ -63,6 +66,7 @@ export async function updateTableAction(id: string, updates: Record<string, unkn
 }
 
 export async function deleteTableAction(id: string) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
 
     // 1. Get all sessions for this table
