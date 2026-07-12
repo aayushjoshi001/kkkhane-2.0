@@ -110,12 +110,13 @@ export async function POST(req: NextRequest) {
         const tier = (restaurant.subscription_tier || 'free') as Tier
         const maxStaff = TIER_LIMITS[tier]?.max_staff ?? TIER_LIMITS.free.max_staff
 
-        // Count existing staff (excluding customers)
+        // Count existing staff (excluding customers and soft-deleted accounts)
         const { count: staffCount } = await supabase
             .from('users')
             .select('id', { count: 'exact', head: true })
             .eq('restaurant_id', restaurant_id)
             .neq('role_id', 5) // Exclude customers
+            .is('deleted_at', null)
 
         if ((staffCount || 0) >= maxStaff) {
             return NextResponse.json(

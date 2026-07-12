@@ -54,6 +54,7 @@ export async function acceptInvitationAction(
         .select('id', { count: 'exact', head: true })
         .eq('restaurant_id', invitation.restaurant_id)
         .neq('role_id', 5)
+        .is('deleted_at', null)
 
     if ((staffCount || 0) >= maxStaff) {
         return { error: 'This restaurant has reached its staff limit. Please contact your manager.' }
@@ -65,6 +66,7 @@ export async function acceptInvitationAction(
         .select('id')
         .eq('restaurant_id', invitation.restaurant_id)
         .eq('email', invitation.email)
+        .is('deleted_at', null)
         .maybeSingle()
 
     if (existingUser) return { error: GENERIC_ERROR }

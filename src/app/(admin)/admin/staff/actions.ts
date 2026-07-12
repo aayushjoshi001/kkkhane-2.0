@@ -124,9 +124,20 @@ export async function deleteStaffAction(userId: string) {
         return { error: 'Insufficient permissions to delete this account' }
     }
 
-    // Delete from public.users first, then auth
-    await supabase.from('users').delete().eq('id', userId)
-    const { error } = await supabase.auth.admin.deleteUser(userId)
+    // Soft delete only. A hard delete cascades from auth.users through
+    // public.users into staff_ledger, staff_attendance and
+    // staff_salary_history, wiping the person's entire payroll and
+    // attendance history. Soft-deleting the auth account (second arg) blocks
+    // login and frees the email for reuse while keeping the auth row, so the
+    // cascade never fires; stamping deleted_at hides the account from staff
+    // lists and plan-seat counts while every historical record stays intact.
+    const { error: authError } = await supabase.auth.admin.deleteUser(userId, true)
+    if (authError) return { error: authError.message }
+
+    const { error } = await supabase
+        .from('users')
+        .update({ is_active: false, deleted_at: new Date().toISOString() })
+        .eq('id', userId)
     if (error) return { error: error.message }
 
     revalidatePath('/admin/staff')
