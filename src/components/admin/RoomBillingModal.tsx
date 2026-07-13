@@ -6,8 +6,7 @@ import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
 import { formatDateTime, calculateNights } from '@/lib/utils'
-import { usePrinter } from '@/lib/print/usePrinter'
-import { buildInvoiceTicket, type ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
+import type { ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 
@@ -91,7 +90,6 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // happens after this, so the manager sees "Settled" immediately instead
     // of waiting on a printer that may be slow or not configured.
     const [invoiceSettled, setInvoiceSettled] = useState(false)
-    const { print: printInvoice } = usePrinter('invoice')
 
     useEffect(() => {
         if (!booking) return
@@ -210,18 +208,11 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             setInvoiceSettled(true)
 
             // Printing runs after the bill is already settled in the database,
-            // so a slow/unconfigured printer never blocks the checkout itself.
-            if (invoiceData) {
-                const printResult = await printInvoice(buildInvoiceTicket(invoiceData, money))
-                if (!printResult.ok) {
-                    toast.error(
-                        printResult.status === 'no-printer-selected'
-                            ? 'No invoice printer set — opening browser print instead.'
-                            : 'Invoice printer not connected — opening browser print instead.'
-                    )
-                    window.print()
-                }
-            }
+            // so a slow print dialog never blocks the checkout itself. The
+            // receipt is printed through the browser via the 80mm-styled
+            // InvoiceReceipt below (see its @page rules) rather than raw
+            // ESC/POS, which some thermal printers render as garbage.
+            if (invoiceData) window.print()
 
             const paidAmount = advancePaid + resolvedCash + resolvedQr
             onSettled({
