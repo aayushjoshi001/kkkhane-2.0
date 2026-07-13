@@ -107,6 +107,20 @@ async function _getCurrentUser(options?: { allowSuspended?: boolean }): Promise<
 
     const adminSupabase = await createAdminClient()
 
+    // Platform super admin has no tenant of its own — it operates across every
+    // restaurant from the /admin/super-admin console. Short-circuit before any
+    // restaurant lookup / suspension logic (which all assume a restaurant_id) and
+    // crucially before the onboarding redirect below, so a restaurant-less
+    // super_admin lands on its dashboard instead of being bounced to /onboarding.
+    if (claims.app_role === 'super_admin') {
+        return {
+            id: claims.sub,
+            email: claims.email,
+            restaurantId: claims.restaurant_id ?? '',
+            role: 'super_admin',
+        }
+    }
+
     // Fast path — the token already carries restaurant_id + app_role (production,
     // where the custom_access_token hook is enabled), so no DB call for the role.
     if (claims.restaurant_id && claims.app_role) {
@@ -151,6 +165,19 @@ async function _getCurrentUser(options?: { allowSuspended?: boolean }): Promise<
         .select('restaurant_id, roles(name), restaurants(is_suspended, subscription_expires_at, subscription_status)')
         .eq('id', claims.sub)
         .single()
+
+    const fallbackRole = (userData?.roles as unknown as { name: string } | null)?.name
+
+    // Platform super admin: valid with no restaurant. Mirror the fast-path branch
+    // so the onboarding redirect below never fires for it.
+    if (fallbackRole === 'super_admin') {
+        return {
+            id: claims.sub,
+            email: claims.email,
+            restaurantId: userData?.restaurant_id ?? '',
+            role: 'super_admin',
+        }
+    }
 
     if (!userData?.restaurant_id) {
         redirect('/onboarding')
@@ -237,6 +264,17 @@ export async function getOptionalUser(): Promise<CurrentUser | null> {
 
     if (!claims) return null
 
+    // Platform super admin has no tenant — surface it as a real role, not as an
+    // onboarding user, so callers don't treat it as needing a restaurant.
+    if (claims.app_role === 'super_admin') {
+        return {
+            id: claims.sub,
+            email: claims.email,
+            restaurantId: claims.restaurant_id ?? '',
+            role: 'super_admin',
+        }
+    }
+
     // Fast path — token carries the custom claims (production).
     if (claims.restaurant_id && claims.app_role) {
         return {
@@ -254,6 +292,17 @@ export async function getOptionalUser(): Promise<CurrentUser | null> {
         .select('restaurant_id, roles(name)')
         .eq('id', claims.sub)
         .single()
+
+    const fallbackRole = (userData?.roles as unknown as { name: string } | null)?.name
+
+    if (fallbackRole === 'super_admin') {
+        return {
+            id: claims.sub,
+            email: claims.email,
+            restaurantId: userData?.restaurant_id ?? '',
+            role: 'super_admin',
+        }
+    }
 
     if (!userData?.restaurant_id) {
         return {
