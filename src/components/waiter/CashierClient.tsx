@@ -13,6 +13,8 @@ import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, Sh
 import PaymentVerificationFeed, { type PaymentClaim } from './PaymentVerificationFeed'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import Button from '@/components/ui/Button'
+import { usePrinter } from '@/lib/print/usePrinter'
+import { buildInvoiceTicket } from '@/lib/print/templates/invoiceTicket'
 
 
 import { formatDateTime, calculateNights } from '@/lib/utils'
@@ -91,6 +93,7 @@ export default function CashierClient({
 }: Props) {
     const [unpaid, setUnpaid] = useState<UnpaidOrder[]>(initialUnpaid)
     const money = useCurrency()
+    const { print: printInvoice } = usePrinter('invoice')
     const [active, setActive] = useState<ActiveOrder[]>(initialActive)
     const [processingId, setProcessingId] = useState<string | null>(null)
     const [pendingClaims, setPendingClaims] = useState(
@@ -487,14 +490,18 @@ export default function CashierClient({
             setIsSettlingInvoice(false)
             setInvoiceSettled(true)
 
-            // Auto-print the invoice through the browser print dialog. The
-            // invoice modal is styled for an 80mm thermal roll (see the @page
-            // rules in InvoiceReceipt.tsx), so this prints the on-screen
-            // receipt directly. We deliberately do NOT send raw ESC/POS here:
-            // thermal printers whose CUPS queue isn't a raw pass-through render
-            // the command bytes as literal garbage characters instead of a
-            // receipt.
-            window.print()
+            // Auto-print the invoice. Falls back to the browser print dialog
+            // (this modal is already styled for it) if QZ Tray isn't
+            // connected/trusted on this till yet.
+            const printResult = await printInvoice(buildInvoiceTicket(activeInvoice, money))
+            if (!printResult.ok) {
+                toast.error(
+                    printResult.status === 'no-printer-selected'
+                        ? 'No invoice printer set — opening browser print instead.'
+                        : 'Invoice printer not connected — opening browser print instead.'
+                )
+                window.print()
+            }
 
             setActiveInvoice(null)
             setSelectedBillingRoom(null)
