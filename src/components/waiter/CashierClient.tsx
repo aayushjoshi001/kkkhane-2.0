@@ -490,17 +490,20 @@ export default function CashierClient({
             setIsSettlingInvoice(false)
             setInvoiceSettled(true)
 
-            // Auto-print the invoice. Falls back to the browser print dialog
-            // (this modal is already styled for it) if QZ Tray isn't
-            // connected/trusted on this till yet.
+            // Auto-print the invoice via QZ Tray as raw ESC/POS (same path as
+            // the kitchen KOT printer). Only fall back to the browser dialog
+            // when QZ is actually unreachable — not when no printer is picked,
+            // since a thermal roll on a driverless raw queue can't be rasterized
+            // by the browser anyway, and that just surfaced a confusing
+            // "printer not available" dialog after a bill was already settled.
             const printResult = await printInvoice(buildInvoiceTicket(activeInvoice, money))
             if (!printResult.ok) {
                 toast.error(
                     printResult.status === 'no-printer-selected'
-                        ? 'No invoice printer set — opening browser print instead.'
-                        : 'Invoice printer not connected — opening browser print instead.'
+                        ? 'Bill settled, but no printer is set for this till — pick one in Printer Settings.'
+                        : 'Bill settled, but the printer isn’t connected — opening browser print instead.'
                 )
-                window.print()
+                if (printResult.status !== 'no-printer-selected') window.print()
             }
 
             setActiveInvoice(null)
@@ -515,7 +518,25 @@ export default function CashierClient({
             setIsSettlingInvoice(false)
         }
     }
-    
+
+    // Manual re-print of the current invoice. Goes through QZ Tray as raw
+    // ESC/POS (the same path the kitchen KOT printer uses), so it prints a
+    // clean receipt on a thermal roll instead of the browser rasterizing an
+    // A4 page to a driverless raw queue. Only if QZ can't be reached at all do
+    // we fall back to the browser print dialog for driver-based printers.
+    const handlePrintBill = async () => {
+        if (!activeInvoice) return
+        const result = await printInvoice(buildInvoiceTicket(activeInvoice, money))
+        if (!result.ok) {
+            toast.error(
+                result.status === 'no-printer-selected'
+                    ? 'No printer set for this till — pick one in Printer Settings.'
+                    : 'Printer not connected — opening browser print instead.'
+            )
+            if (result.status !== 'no-printer-selected') window.print()
+        }
+    }
+
     // Set default active tab correctly
     useEffect(() => {
         setMounted(true)
@@ -1618,7 +1639,7 @@ export default function CashierClient({
                                         Cancel
                                     </Button>
                                     <button
-                                        onClick={() => window.print()}
+                                        onClick={handlePrintBill}
                                         className="flex-1 py-1.5 px-3 border border-gray-300 rounded-xl text-[10px] font-bold text-gray-700 bg-white hover:bg-gray-50 transition active:scale-95 text-center flex items-center justify-center gap-1.5 shadow-sm min-w-[70px]"
                                     >
                                         Print Bill
