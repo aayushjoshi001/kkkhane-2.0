@@ -9,12 +9,13 @@
 // so deployments without QZ signing keep working exactly as before.
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
+import { loadPemEnv } from '@/lib/print/qzKeys'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request) {
-    const key = process.env.QZ_PRIVATE_KEY?.replace(/\\n/g, '\n')
+    const key = loadPemEnv(process.env.QZ_PRIVATE_KEY)
     if (!key) return new NextResponse('', { status: 200 })
 
     const body = await req.json().catch(() => null)
