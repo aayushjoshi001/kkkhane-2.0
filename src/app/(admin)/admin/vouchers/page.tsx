@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import VouchersManager from './VouchersManager'
-import { getNstDateString } from '@/lib/timezone'
+import { resolveActiveDayBookSession } from '@/lib/ledger'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,16 +46,11 @@ export default async function VouchersPage() {
             .order('full_name', { ascending: true })
     ])
 
-    // Check if active Day Book session is open for today (in NST timezone)
-    const todayDateNst = getNstDateString()
-
-    const { data: openSession } = await supabase
-        .from('day_book_sessions')
-        .select('id')
-        .eq('restaurant_id', restaurantId)
-        .eq('date', todayDateNst)
-        .eq('status', 'open')
-        .maybeSingle()
+    // The active Day Book session — open (even across midnight if not yet
+    // closed), or auto-opened here carrying forward the last closed
+    // session's balances. Only null the very first time this restaurant
+    // ever uses the Day Book.
+    const openSession = await resolveActiveDayBookSession(supabase, restaurantId, currentUser.id)
 
     return (
         <VouchersManager

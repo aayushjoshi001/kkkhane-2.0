@@ -6,8 +6,8 @@
 // row shape) instead of drifting apart.
 
 import { SupabaseClient } from '@supabase/supabase-js'
-import { getNstDateString } from './timezone'
-import { DayBookEntry, DayBookEntryCategory, DayBookEntryType } from '@/types/database'
+import { addDays } from './timezone'
+import { DayBookEntry, DayBookEntryCategory, DayBookEntryType, DayBookSession } from '@/types/database'
 
 export interface LedgerUser {
     id: string
@@ -36,19 +36,112 @@ export interface PostFinancialTransactionResult {
     error?: string
 }
 
+// Finds the restaurant's currently open session, regardless of its `date`.
+// A session stays the "active" one across midnight until a manager
+// explicitly closes it — e.g. a restaurant open until 2am still posts
+// against the session opened the previous calendar day, not a new one keyed
+// off today's date. (There should only ever be one open session at a time;
+// the `order`+`limit(1)` is just defensive against stray duplicates.)
 export async function findOpenDayBookSessionId(
     supabase: SupabaseClient,
     restaurantId: string
 ): Promise<string | undefined> {
-    const todayDateNst = getNstDateString()
     const { data } = await supabase
         .from('day_book_sessions')
         .select('id')
         .eq('restaurant_id', restaurantId)
-        .eq('date', todayDateNst)
         .eq('status', 'open')
+        .order('date', { ascending: false })
+        .limit(1)
         .maybeSingle()
     return data?.id
+}
+
+// Opens the next day's session immediately after `closedSession` is closed,
+// carrying its closing cash/bank balances forward as the new opening
+// balances. Dated `closedSession.date + 1` (not "today"), so a manager who
+// closes late still gets a session sequenced right after the one they just
+// closed. Race-safe: if two requests both try to open the same next date
+// (e.g. Cash Book and Bank Book pages loading concurrently), the unique
+// (restaurant_id, date) constraint rejects the loser, which then just reads
+// back the row the winner created.
+export async function autoOpenNextDayBookSession(
+    supabase: SupabaseClient,
+    restaurantId: string,
+    closedSession: Pick<DayBookSession, 'id' | 'date' | 'opening_balance' | 'opening_bank_balance'>,
+    createdBy: string | null
+): Promise<DayBookSession | null> {
+    const { data: entries } = await supabase
+        .from('day_book_entries')
+        .select('type, amount')
+        .eq('session_id', closedSession.id)
+
+    const sum = (t: DayBookEntryType) =>
+        (entries ?? []).filter((e: { type: string }) => e.type === t).reduce((s: number, e: { amount: number }) => s + Number(e.amount), 0)
+
+    const openingBalance = Math.max(0, Number(closedSession.opening_balance) + sum('cash_in') - sum('cash_out'))
+    const openingBankBalance = Math.max(0, Number(closedSession.opening_bank_balance ?? 0) + sum('bank_in') - sum('bank_out'))
+    const nextDate = addDays(closedSession.date, 1)
+
+    const { data: newSession, error } = await supabase
+        .from('day_book_sessions')
+        .insert({
+            restaurant_id: restaurantId,
+            date: nextDate,
+            opening_balance: openingBalance,
+            opening_bank_balance: openingBankBalance,
+            status: 'open',
+            created_by: createdBy,
+        })
+        .select('*')
+        .single()
+
+    if (!error) return newSession as DayBookSession
+
+    const { data: existing } = await supabase
+        .from('day_book_sessions')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('date', nextDate)
+        .maybeSingle()
+    return (existing as DayBookSession) ?? null
+}
+
+// Resolves "the day book session active right now" for a restaurant: the
+// open one if any (even if it's still dated yesterday and hasn't been
+// closed), otherwise auto-opens the next one carrying forward the last
+// closed session's balances — so a manager only ever enters an opening
+// balance manually once, the very first time the restaurant uses the Day
+// Book. Returns null only in that true first-time case, when there is no
+// prior balance to carry forward and the caller must collect one.
+export async function resolveActiveDayBookSession(
+    supabase: SupabaseClient,
+    restaurantId: string,
+    createdBy: string | null
+): Promise<DayBookSession | null> {
+    const { data: openSession } = await supabase
+        .from('day_book_sessions')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'open')
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+    if (openSession) return openSession as DayBookSession
+
+    const { data: lastClosed } = await supabase
+        .from('day_book_sessions')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'closed')
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+    if (!lastClosed) return null
+
+    return autoOpenNextDayBookSession(supabase, restaurantId, lastClosed as DayBookSession, createdBy)
 }
 
 // `%` and `_` are wildcards to ilike, so a bank literally named "50_50" would

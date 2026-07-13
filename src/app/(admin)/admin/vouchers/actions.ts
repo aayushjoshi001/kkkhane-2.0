@@ -4,8 +4,13 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { SupabaseClient } from '@supabase/supabase-js'
-import { postFinancialTransaction, findOpenDayBookSessionId, resolveBankAccountId } from '@/lib/ledger'
+import { postFinancialTransaction, findOpenDayBookSessionId, resolveBankAccountId, resolveActiveDayBookSession } from '@/lib/ledger'
 import { getNstDateString } from '@/lib/timezone'
+import {
+    fetchOutstandingSupplierBills, sumOwed, computeFifoAllocations,
+    applySupplierFifoAllocations, reverseSupplierFifoAllocations,
+} from '@/lib/supplierSettlement'
+import { fetchStaffCurrentDue, STAFF_PAY_ENTRY_TYPES, type StaffLedgerEntryType } from '@/lib/staffLedger'
 
 const PATH = '/admin/vouchers'
 
@@ -23,16 +28,24 @@ async function requireManager(): Promise<CurrentUserType> {
     }
 }
 
+interface PostLedgerEntryResult {
+    settledBills?: Array<{ id: string; paid_amount: number }>
+}
+
 // Helper to post supplier ledger, staff payroll, or stock-purchase expense
 // entries upon approval
 // `dayBookEntryId` is stamped onto every record this creates so that deleting
 // the voucher's Day Book entry cascades the downstream expense / staff_ledger
-// row away with it instead of orphaning it.
+// row away with it instead of orphaning it. Suppliers are the one exception —
+// see the FIFO settlement branch below, which mutates *existing* bill rows
+// instead of creating a new cascade-linked one, and relies on
+// voucher_supplier_settlements for reversibility instead.
 async function postLedgerEntry(supabase: SupabaseClient, user: CurrentUserType, dayBookEntryId: string, voucher: {
     voucher_type: 'receipt' | 'payment'
     category?: 'suppliers' | 'staff' | 'expenses' | 'stock' | 'other'
     supplier_id?: string
     staff_user_id?: string
+    staff_entry_type?: StaffLedgerEntryType
     expense_category_id?: string
     purchase_date?: string
     party_name: string
@@ -40,8 +53,8 @@ async function postLedgerEntry(supabase: SupabaseClient, user: CurrentUserType, 
     particulars: string
     payment_mode: string
     bank_name?: string
-}) {
-    if (voucher.voucher_type !== 'payment') return // Only payments reduce outstanding balances
+}): Promise<PostLedgerEntryResult> {
+    if (voucher.voucher_type !== 'payment') return {} // Only payments reduce outstanding balances
 
     if (voucher.category === 'stock') {
         let categoryId = voucher.expense_category_id
@@ -93,69 +106,68 @@ async function postLedgerEntry(supabase: SupabaseClient, user: CurrentUserType, 
             console.error('Failed to post stock purchase expense:', expenseErr)
             throw new Error(`Failed to post expense: ${expenseErr.message}`)
         }
-        return
+        return {}
     }
 
     if (voucher.category === 'suppliers' && voucher.supplier_id) {
-        // Query the first available expense category
-        const { data: cat } = await supabase
-            .from('expense_categories')
-            .select('id')
+        // Never trust the client-supplied party_name for bill-matching —
+        // resolve the real supplier name server-side from the id. Bills
+        // aren't linked to suppliers by FK (expenses has no supplier_id
+        // column), only by vendor_name string equality.
+        const { data: supplier } = await supabase
+            .from('suppliers')
+            .select('name')
+            .eq('id', voucher.supplier_id)
             .eq('restaurant_id', user.restaurantId)
-            .limit(1)
             .maybeSingle()
 
-        let categoryId = cat?.id
-        if (!categoryId) {
-            const { data: newCat } = await supabase
-                .from('expense_categories')
-                .insert({
-                    restaurant_id: user.restaurantId,
-                    name: 'Supplier Settlements',
-                    created_by: user.id
-                })
-                .select('id')
-                .single()
-            categoryId = newCat?.id
-        }
+        if (!supplier) throw new Error('Supplier not found.')
 
-        const descJson = JSON.stringify({
-            text_desc: `Payment Voucher: ${voucher.particulars}`,
-            quantity: 1,
-            rate: 0,
-            unit: 'payment',
-            paid_amount: voucher.amount,
-            payment_type: voucher.payment_mode === 'cash' ? 'cash' : 'bank',
-            bank_name: voucher.payment_mode !== 'cash' ? (voucher.bank_name || '') : ''
-        })
+        const outstandingBills = await fetchOutstandingSupplierBills(supabase, user.restaurantId, supplier.name)
+        const totalOwed = sumOwed(outstandingBills)
 
-        // Recorded like the stock branch does, so a spend-by-bank-account
-        // report sees supplier settlements paid from a bank too.
-        const bankAccountId = voucher.payment_mode !== 'cash'
-            ? await resolveBankAccountId(supabase, user.restaurantId, voucher.bank_name)
-            : null
+        // A supplier with nothing outstanding can still be paid in advance —
+        // the day_book_entries row this voucher already posted fully
+        // documents the cash movement; there's simply no bill to settle.
+        if (totalOwed > 0.01) {
+            if (voucher.amount > totalOwed + 0.01) {
+                throw new Error(`Amount exceeds this supplier's total outstanding balance (Rs. ${totalOwed.toFixed(2)}).`)
+            }
 
-        // Insert into expenses table with amount=0 and paid_amount=voucher.amount to offset balance
-        const { error: expenseErr } = await supabase
-            .from('expenses')
-            .insert({
-                restaurant_id: user.restaurantId,
-                category_id: categoryId,
-                day_book_entry_id: dayBookEntryId,
-                amount: 0,
-                description: descJson,
-                vendor_name: voucher.party_name,
-                bank_account_id: bankAccountId,
-                status: 'paid',
-                created_by: user.id
+            const allocations = computeFifoAllocations(outstandingBills, voucher.amount)
+            const applyResult = await applySupplierFifoAllocations(supabase, {
+                restaurantId: user.restaurantId,
+                dayBookEntryId,
+                paymentMode: voucher.payment_mode,
+                bankName: voucher.bank_name,
+                allocations,
             })
 
-        if (expenseErr) {
-            console.error('Failed to post supplier settlement expense:', expenseErr)
-            throw new Error(`Failed to post expense: ${expenseErr.message}`)
+            if (applyResult.error) {
+                console.error('Failed to settle supplier bills:', applyResult.error)
+                throw new Error(`Failed to settle outstanding bills: ${applyResult.error}`)
+            }
+
+            return { settledBills: allocations.map(a => ({ id: a.bill.id, paid_amount: a.newPaidAmount })) }
         }
+
+        return {}
     } else if (voucher.category === 'staff' && voucher.staff_user_id) {
-        // Post payment to staff_ledger to reduce owed balance
+        const entryType: StaffLedgerEntryType = voucher.staff_entry_type || 'salary_payout'
+
+        // Only a straightforward salary payout is capped at what's actually
+        // owed — an advance is by definition paid before it's due, and a
+        // bonus is discretionary, so neither should be blocked by "due".
+        if (entryType === 'salary_payout') {
+            const currentDue = await fetchStaffCurrentDue(supabase, user.restaurantId, voucher.staff_user_id)
+            if (currentDue <= 0.01) {
+                throw new Error('This staff member has no outstanding due — use Advance Payment or Bonus instead.')
+            }
+            if (voucher.amount > currentDue + 0.01) {
+                throw new Error(`Amount exceeds this staff member's current due (Rs. ${currentDue.toFixed(2)}).`)
+            }
+        }
+
         const paymentMethodVal = voucher.payment_mode === 'cash'
             ? 'cash'
             : (voucher.payment_mode === 'qr' ? 'qr_digital' : 'bank_transfer')
@@ -167,7 +179,7 @@ async function postLedgerEntry(supabase: SupabaseClient, user: CurrentUserType, 
                 user_id: voucher.staff_user_id,
                 day_book_entry_id: dayBookEntryId,
                 amount: voucher.amount,
-                entry_type: 'salary_payout',
+                entry_type: entryType,
                 payment_method: paymentMethodVal,
                 note: `Payment Voucher: ${voucher.particulars}`,
                 created_by: user.id
@@ -178,6 +190,8 @@ async function postLedgerEntry(supabase: SupabaseClient, user: CurrentUserType, 
             throw new Error(`Failed to post staff ledger: ${insertErr.message}`)
         }
     }
+
+    return {}
 }
 
 export async function createVoucherAction(input: {
@@ -192,6 +206,7 @@ export async function createVoucherAction(input: {
     category?: 'suppliers' | 'staff' | 'expenses' | 'stock' | 'other'
     supplier_id?: string
     staff_user_id?: string
+    staff_entry_type?: StaffLedgerEntryType
     expense_category_id?: string
     cheque_details?: {
         written_name: string
@@ -207,6 +222,9 @@ export async function createVoucherAction(input: {
     if (!input.party_name?.trim()) return { error: 'Party name is required.' }
     if (!Number.isFinite(input.amount) || input.amount <= 0) return { error: 'Amount must be a positive number.' }
     if (!input.particulars?.trim()) return { error: 'Particulars description is required.' }
+    if (input.staff_entry_type && !STAFF_PAY_ENTRY_TYPES.includes(input.staff_entry_type)) {
+        return { error: 'Invalid staff pay category.' }
+    }
     if ((input.payment_mode === 'qr' || input.payment_mode === 'cheque' || input.payment_mode === 'bank') && !input.bank_name?.trim()) {
         return { error: 'Bank account is required.' }
     }
@@ -288,6 +306,7 @@ export async function createVoucherAction(input: {
         category: input.category || 'other',
         supplier_id: input.supplier_id || '',
         staff_user_id: input.staff_user_id || '',
+        staff_entry_type: input.category === 'staff' ? (input.staff_entry_type || 'salary_payout') : undefined,
         expense_category_id: input.expense_category_id || '',
         purchase_date: todayDateNst,
         cheque_details: input.payment_mode === 'cheque' ? input.cheque_details : undefined
@@ -318,13 +337,15 @@ export async function createVoucherAction(input: {
     // If approved immediately, post ledger impacts. A voucher whose ledger
     // impact failed to post is worse than no voucher at all — it shows as paid
     // while the supplier/staff balance is untouched — so undo the entry.
+    let ledgerResult: PostLedgerEntryResult = {}
     if (status === 'approved') {
         try {
-            await postLedgerEntry(supabase, user, newEntry.id, {
+            ledgerResult = await postLedgerEntry(supabase, user, newEntry.id, {
                 voucher_type: input.voucher_type,
                 category: input.category,
                 supplier_id: input.supplier_id,
                 staff_user_id: input.staff_user_id,
+                staff_entry_type: input.staff_entry_type,
                 expense_category_id: input.expense_category_id,
                 purchase_date: todayDateNst,
                 party_name: input.party_name,
@@ -343,8 +364,10 @@ export async function createVoucherAction(input: {
     revalidatePath('/admin/cash-book')
     revalidatePath('/admin/bank-book')
     revalidatePath('/admin/bank-ledger')
+    revalidatePath('/admin/suppliers')
+    revalidatePath('/admin/staff')
 
-    return { data: newEntry }
+    return { data: newEntry, settledBills: ledgerResult.settledBills }
 }
 
 export async function approveChequeAction(id: string) {
@@ -393,6 +416,7 @@ export async function approveChequeAction(id: string) {
                 category: parsed.category,
                 supplier_id: parsed.supplier_id,
                 staff_user_id: parsed.staff_user_id,
+                staff_entry_type: parsed.staff_entry_type,
                 expense_category_id: parsed.expense_category_id,
                 purchase_date: parsed.purchase_date,
                 party_name: parsed.party_name,
@@ -413,6 +437,8 @@ export async function approveChequeAction(id: string) {
         revalidatePath('/admin/cash-book')
         revalidatePath('/admin/bank-book')
         revalidatePath('/admin/bank-ledger')
+        revalidatePath('/admin/suppliers')
+        revalidatePath('/admin/staff')
 
         return { success: true }
     } catch {
@@ -467,6 +493,12 @@ export async function deleteVoucherAction(id: string) {
 
     const supabase = await createAdminClient()
 
+    // A supplier settlement mutates existing bill rows in place rather than
+    // creating a new cascade-linked one (those bills' day_book_entry_id stays
+    // NULL by design), so it has to be unwound explicitly before the delete —
+    // otherwise the cascade below leaves those bills over-reported as paid.
+    await reverseSupplierFifoAllocations(supabase, id)
+
     // The expenses / staff_ledger row this voucher created (if it was
     // approved) goes with it via day_book_entry_id's ON DELETE CASCADE.
     const { error, count } = await supabase
@@ -482,6 +514,8 @@ export async function deleteVoucherAction(id: string) {
     revalidatePath('/admin/cash-book')
     revalidatePath('/admin/bank-book')
     revalidatePath('/admin/bank-ledger')
+    revalidatePath('/admin/suppliers')
+    revalidatePath('/admin/staff')
 
     return { success: true }
 }
@@ -492,65 +526,29 @@ export async function openTodayDayBookSessionAction() {
 
     const supabase = await createAdminClient()
 
-    const todayDateNst = getNstDateString()
+    // Reuses the same resolver Cash Book/Bank Book use: returns the already-
+    // open session if one exists, or auto-opens the next one carrying
+    // forward the last closed session's balances.
+    let session = await resolveActiveDayBookSession(supabase, user.restaurantId, user.id)
 
-    // Calculate opening balances from last closed session
-    const { data: lastSession } = await supabase
-        .from('day_book_sessions')
-        .select('id, opening_balance, opening_bank_balance')
-        .eq('restaurant_id', user.restaurantId)
-        .eq('status', 'closed')
-        .lt('date', todayDateNst)
-        .order('date', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+    if (!session) {
+        // True first-ever use — nothing to carry forward, start at zero.
+        const { data: newSession, error } = await supabase
+            .from('day_book_sessions')
+            .insert({
+                restaurant_id: user.restaurantId,
+                date: getNstDateString(),
+                opening_balance: 0,
+                opening_bank_balance: 0,
+                status: 'open',
+                created_by: user.id,
+            })
+            .select()
+            .single()
 
-    let openingBalance = 0
-    let openingBankBalance = 0
-
-    if (lastSession) {
-        const { data: totals } = await supabase
-            .from('day_book_entries')
-            .select('type, amount')
-            .eq('session_id', lastSession.id)
-
-        const cashIn = (totals ?? [])
-            .filter((e) => e.type === 'cash_in')
-            .reduce((sum, e) => sum + Number(e.amount), 0)
-
-        const cashOut = (totals ?? [])
-            .filter((e) => e.type === 'cash_out')
-            .reduce((sum, e) => sum + Number(e.amount), 0)
-
-        openingBalance = Number(lastSession.opening_balance) + cashIn - cashOut
-        if (openingBalance < 0) openingBalance = 0
-
-        const bankIn = (totals ?? [])
-            .filter((e) => e.type === 'bank_in')
-            .reduce((sum, e) => sum + Number(e.amount), 0)
-
-        const bankOut = (totals ?? [])
-            .filter((e) => e.type === 'bank_out')
-            .reduce((sum, e) => sum + Number(e.amount), 0)
-
-        openingBankBalance = Number(lastSession.opening_bank_balance ?? 0) + bankIn - bankOut
-        if (openingBankBalance < 0) openingBankBalance = 0
+        if (error) return { error: error.message }
+        session = newSession
     }
-
-    const { data: session, error } = await supabase
-        .from('day_book_sessions')
-        .insert({
-            restaurant_id: user.restaurantId,
-            date: todayDateNst,
-            opening_balance: openingBalance,
-            opening_bank_balance: openingBankBalance,
-            status: 'open',
-            created_by: user.id
-        })
-        .select()
-        .single()
-
-    if (error) return { error: error.message }
 
     revalidatePath(PATH)
     revalidatePath('/admin/cash-book')

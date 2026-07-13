@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import CashBookClient from './CashBookClient'
 import type { DayBookEntry, ExpenseCategory } from '@/types/database'
 import { getNstDateString } from '@/lib/timezone'
+import { resolveActiveDayBookSession } from '@/lib/ledger'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,13 +17,11 @@ export default async function CashBookPage() {
 
     const todayDate = getNstDateString()
 
-    // Fetch today's session (if exists)
-    const { data: session } = await supabase
-        .from('day_book_sessions')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .eq('date', todayDate)
-        .maybeSingle()
+    // The currently active session — open (even if still dated a prior
+    // calendar day because it hasn't been closed yet), or auto-opened just
+    // now carrying forward the last closed session's balances. Only null the
+    // very first time this restaurant ever uses the Day Book.
+    const session = await resolveActiveDayBookSession(supabase, restaurantId, currentUser.id)
 
     const { data: expenseCategories } = await supabase
         .from('expense_categories')
@@ -54,63 +53,12 @@ export default async function CashBookPage() {
         closing_balance:  openingBal + totalCashIn - totalCashOut,
     }
 
-    // Get yesterday's closing cash balance (for auto carry-over on first open)
-    let previousClosingBalance: number | null = null
-    if (!session) {
-        // Find the most recent closed session
-        const { data: prevSession } = await supabase
-            .from('day_book_sessions')
-            .select('id, opening_balance')
-            .eq('restaurant_id', restaurantId)
-            .eq('status', 'closed')
-            .lt('date', todayDate)
-            .order('date', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-
-        if (prevSession) {
-            // Calculate its closing balance
-            const { data: prevEntries } = await supabase
-                .from('day_book_entries')
-                .select('type, amount')
-                .eq('session_id', prevSession.id)
-                .in('type', ['cash_in', 'cash_out'])
-
-            if (prevEntries) {
-                const prevIn  = prevEntries.filter(e => e.type === 'cash_in').reduce((s, e) => s + Number(e.amount), 0)
-                const prevOut = prevEntries.filter(e => e.type === 'cash_out').reduce((s, e) => s + Number(e.amount), 0)
-                previousClosingBalance = Number(prevSession.opening_balance) + prevIn - prevOut
-            }
-        }
-    }
-
-    // Fetch opening bank balance to handle session creation properly (so we don't zero-out the bank when opening cash)
-    let previousClosingBankBalance: number = 0
-    if (!session) {
-        const { data: prevSession } = await supabase
-            .from('day_book_sessions')
-            .select('id, opening_bank_balance')
-            .eq('restaurant_id', restaurantId)
-            .eq('status', 'closed')
-            .lt('date', todayDate)
-            .order('date', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-
-        if (prevSession) {
-            const { data: prevEntries } = await supabase
-                .from('day_book_entries')
-                .select('type, amount')
-                .eq('session_id', prevSession.id)
-                .in('type', ['bank_in', 'bank_out'])
-
-            if (prevEntries) {
-                const prevBankIn  = prevEntries.filter(e => e.type === 'bank_in').reduce((s, e) => s + Number(e.amount), 0)
-                const prevBankOut = prevEntries.filter(e => e.type === 'bank_out').reduce((s, e) => s + Number(e.amount), 0)
-                previousClosingBankBalance = Number(prevSession.opening_bank_balance ?? 0) + prevBankIn - prevBankOut
-            }
-        }
-    }
+    // `session` is only ever null on the true first-ever use (no session
+    // history at all to carry a balance forward from) — resolveActiveDayBookSession
+    // already auto-opens from the last closed session's balances otherwise, so
+    // there's nothing to prefill here beyond zero.
+    const previousClosingBalance: number | null = null
+    const previousClosingBankBalance: number = 0
 
     return (
         <CashBookClient

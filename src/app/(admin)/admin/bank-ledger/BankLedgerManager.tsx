@@ -3,14 +3,15 @@
 import { useState, useMemo, useRef } from 'react'
 import {
     Landmark, ArrowRightLeft, TrendingUp, TrendingDown, FileText, LandmarkIcon,
-    Plus, X, Loader2, Download, Printer
+    Plus, X, Loader2, Printer
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { createBankAccountAction } from '../bank-book/actions'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
-import { downloadCsv } from '@/lib/exportCsv'
+import { downloadCsv, downloadExcel } from '@/lib/exportCsv'
 import PrintableReport, { type PrintableReportHandle } from '@/components/admin/PrintableReport'
+import ExportMenu from '@/components/admin/ExportMenu'
 import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 
 interface BankAccount {
@@ -260,7 +261,10 @@ export default function BankLedgerManager({
         category: CATEGORY_LABELS[e.category] || e.category,
         running_balance: formatCurrency(e.runningBalance),
     }))
-    const handleExportCsv = () => downloadCsv(`bank-ledger-${activeBankAccount?.name || 'account'}`, reportColumns, reportRows)
+    const exportFilename = `bank-ledger-${activeBankAccount?.name || 'account'}`
+    const handleExportCsv = () => downloadCsv(exportFilename, reportColumns, reportRows)
+    const handleExportExcel = () => downloadExcel(exportFilename, reportColumns, reportRows)
+    const handleExportPdf = () => printRef.current?.print()
 
     return (
         <div className="space-y-6 pb-16 animate-fade-up">
@@ -368,22 +372,6 @@ export default function BankLedgerManager({
                                             )
                                         })}
                                     </div>
-                                    {activeBankEntries.length > 0 && (
-                                        <>
-                                            <button
-                                                onClick={handleExportCsv}
-                                                className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-50 text-gray-700 font-bold rounded-xl text-[10px] uppercase tracking-wider border border-gray-200 transition-all shrink-0"
-                                            >
-                                                <Download size={13} /> Export
-                                            </button>
-                                            <button
-                                                onClick={() => printRef.current?.print()}
-                                                className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-50 text-gray-700 font-bold rounded-xl text-[10px] uppercase tracking-wider border border-gray-200 transition-all shrink-0"
-                                            >
-                                                <Printer size={13} /> Print
-                                            </button>
-                                        </>
-                                    )}
                                 </div>
                             </div>
 
@@ -420,82 +408,6 @@ export default function BankLedgerManager({
                                 </div>
                             </div>
 
-                            {/* Detailed Statement Table */}
-                            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-                                <div className="p-4 border-b border-gray-100 bg-gray-50/50">
-                                    <p className="text-xs font-black text-gray-800 uppercase tracking-wider">Account Statement Transactions ({activeBankEntries.length})</p>
-                                </div>
-
-                                <div className="overflow-x-auto">
-                                    {activeBankEntries.length === 0 ? (
-                                        <div className="text-center py-20 px-4 text-gray-400">
-                                            <FileText size={36} className="mx-auto mb-2 opacity-30" />
-                                            <p className="text-xs font-bold">No transactions found for this period</p>
-                                        </div>
-                                    ) : (
-                                        <table className="w-full text-left text-xs border-collapse">
-                                            <thead>
-                                                <tr className="bg-gray-55 border-b border-gray-100 text-gray-500">
-                                                    <th className="px-4 py-3 font-bold w-24">Date</th>
-                                                    <th className="px-4 py-3 font-bold">Description</th>
-                                                    <th className="px-4 py-3 font-bold text-right w-28">Bank In</th>
-                                                    <th className="px-4 py-3 font-bold text-right w-28">Bank Out</th>
-                                                    <th className="px-4 py-3 font-bold text-center w-20">Type</th>
-                                                    <th className="px-4 py-3 font-bold text-center w-28">Category</th>
-                                                    <th className="px-4 py-3 font-bold text-right w-28 bg-gray-50/50">Running Balance</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-100">
-                                                {activeBankEntries.map(e => (
-                                                    <tr key={e.id} className="hover:bg-gray-50/50 transition-colors">
-                                                        {/* Date */}
-                                                        <td className="px-4 py-3 text-gray-500 font-semibold">
-                                                            {formatDate(e.day_book_sessions?.date || e.created_at)}
-                                                        </td>
-                                                        {/* Description */}
-                                                        <td className="px-4 py-3 font-bold text-gray-800">{formatDescription(e.description)}</td>
-                                                        {/* Bank In */}
-                                                        <td className="px-4 py-3 text-right font-black text-xs text-emerald-600">
-                                                            {e.type === 'bank_in' ? `+${formatCurrency(e.amount)}` : '-'}
-                                                        </td>
-                                                        {/* Bank Out */}
-                                                        <td className="px-4 py-3 text-right font-black text-xs text-rose-600">
-                                                            {e.type === 'bank_out' ? `-${formatCurrency(e.amount)}` : '-'}
-                                                        </td>
-                                                        {/* Type */}
-                                                        <td className="px-4 py-3 text-center">
-                                                            <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-black uppercase ${
-                                                                e.type === 'bank_in' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
-                                                            }`}>
-                                                                {e.type === 'bank_in' ? 'IN' : 'OUT'}
-                                                            </span>
-                                                        </td>
-                                                        {/* Category */}
-                                                        <td className="px-4 py-3 text-center">
-                                                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold border uppercase ${
-                                                                CATEGORY_COLORS[e.category] || 'bg-gray-50 text-gray-600 border-gray-150'
-                                                            }`}>
-                                                                {CATEGORY_LABELS[e.category] || e.category}
-                                                            </span>
-                                                        </td>
-                                                        {/* Running Balance */}
-                                                        <td className="px-4 py-3 text-right font-black bg-gray-50/30 text-gray-900">
-                                                            {formatCurrency(e.runningBalance)}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    )}
-                                </div>
-                                
-                                {activeBankAccountWithBalance && (
-                                    <div className="bg-brand-50/5 border-t border-gray-100 p-4 flex items-center justify-between">
-                                        <span className="text-xs font-black text-gray-800 uppercase tracking-wider">Total Amount Left in {activeBankAccountWithBalance.name}:</span>
-                                        <span className="text-base font-black text-[#ff5a00]">{formatCurrency(activeBankAccountWithBalance.currentBalance)}</span>
-                                    </div>
-                                )}
-                            </div>
                         </>
                     ) : (
                         <div className="bg-white border border-gray-100 rounded-2xl py-20 text-center text-gray-400">
@@ -506,6 +418,101 @@ export default function BankLedgerManager({
                 </div>
 
             </div>
+
+            {/* Detailed Statement Table — full width, breaking out of the
+                sidebar+statement grid above so it spans edge to edge */}
+            {activeBankAccount && (
+                <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+                    <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <p className="text-xs font-black text-gray-800 uppercase tracking-wider">Account Statement Transactions ({activeBankEntries.length})</p>
+                        {activeBankEntries.length > 0 && (
+                            <div className="flex items-center gap-2">
+                                <ExportMenu
+                                    onExportCsv={handleExportCsv}
+                                    onExportExcel={handleExportExcel}
+                                    onExportPdf={handleExportPdf}
+                                />
+                                <button
+                                    onClick={() => printRef.current?.print()}
+                                    className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-50 text-gray-700 font-bold rounded-xl text-[10px] uppercase tracking-wider border border-gray-200 transition-all shrink-0"
+                                >
+                                    <Printer size={13} /> Print
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        {activeBankEntries.length === 0 ? (
+                            <div className="text-center py-20 px-4 text-gray-400">
+                                <FileText size={36} className="mx-auto mb-2 opacity-30" />
+                                <p className="text-xs font-bold">No transactions found for this period</p>
+                            </div>
+                        ) : (
+                            <table className="w-full text-left text-xs border-collapse">
+                                <thead>
+                                    <tr className="bg-gray-55 border-b border-gray-100 text-gray-500">
+                                        <th className="px-4 py-3 font-bold w-24">Date</th>
+                                        <th className="px-4 py-3 font-bold">Description</th>
+                                        <th className="px-4 py-3 font-bold text-right w-28">Bank In</th>
+                                        <th className="px-4 py-3 font-bold text-right w-28">Bank Out</th>
+                                        <th className="px-4 py-3 font-bold text-center w-20">Type</th>
+                                        <th className="px-4 py-3 font-bold text-center w-28">Category</th>
+                                        <th className="px-4 py-3 font-bold text-right w-28 bg-gray-50/50">Running Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {activeBankEntries.map(e => (
+                                        <tr key={e.id} className="hover:bg-gray-50/50 transition-colors">
+                                            {/* Date */}
+                                            <td className="px-4 py-3 text-gray-500 font-semibold">
+                                                {formatDate(e.day_book_sessions?.date || e.created_at)}
+                                            </td>
+                                            {/* Description */}
+                                            <td className="px-4 py-3 font-bold text-gray-800">{formatDescription(e.description)}</td>
+                                            {/* Bank In */}
+                                            <td className="px-4 py-3 text-right font-black text-xs text-emerald-600">
+                                                {e.type === 'bank_in' ? `+${formatCurrency(e.amount)}` : '-'}
+                                            </td>
+                                            {/* Bank Out */}
+                                            <td className="px-4 py-3 text-right font-black text-xs text-rose-600">
+                                                {e.type === 'bank_out' ? `-${formatCurrency(e.amount)}` : '-'}
+                                            </td>
+                                            {/* Type */}
+                                            <td className="px-4 py-3 text-center">
+                                                <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-black uppercase ${
+                                                    e.type === 'bank_in' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                                                }`}>
+                                                    {e.type === 'bank_in' ? 'IN' : 'OUT'}
+                                                </span>
+                                            </td>
+                                            {/* Category */}
+                                            <td className="px-4 py-3 text-center">
+                                                <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold border uppercase ${
+                                                    CATEGORY_COLORS[e.category] || 'bg-gray-50 text-gray-600 border-gray-150'
+                                                }`}>
+                                                    {CATEGORY_LABELS[e.category] || e.category}
+                                                </span>
+                                            </td>
+                                            {/* Running Balance */}
+                                            <td className="px-4 py-3 text-right font-black bg-gray-50/30 text-gray-900">
+                                                {formatCurrency(e.runningBalance)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+
+                    {activeBankAccountWithBalance && (
+                        <div className="bg-brand-50/5 border-t border-gray-100 p-4 flex items-center justify-between">
+                            <span className="text-xs font-black text-gray-800 uppercase tracking-wider">Total Amount Left in {activeBankAccountWithBalance.name}:</span>
+                            <span className="text-base font-black text-[#ff5a00]">{formatCurrency(activeBankAccountWithBalance.currentBalance)}</span>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Add Bank Modal */}
             {addBankModalOpen && (

@@ -44,7 +44,7 @@ export async function validatePromoCode(
     if (subtotal < promo.min_order_amount) {
         return {
             valid: false,
-            error: `Minimum order of $${promo.min_order_amount.toFixed(2)} required.`,
+            error: `Minimum order of Rs. ${promo.min_order_amount.toFixed(2)} required.`,
         }
     }
 
@@ -209,7 +209,7 @@ export async function redeemLoyaltyPoints(
         member_id: memberId,
         type: 'redeem',
         points: -config.redemption_threshold,
-        description: `Redeemed ${config.redemption_threshold} points for $${config.redemption_value.toFixed(2)} discount`,
+        description: `Redeemed ${config.redemption_threshold} points for Rs. ${config.redemption_value.toFixed(2)} discount`,
     })
 
     // Post the discount as a cost so it shows up in Income & Expenses / the
