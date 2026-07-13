@@ -39,6 +39,10 @@ BEGIN
     IF v_restaurant_id IS NOT NULL THEN
         claims := jsonb_set(claims, '{app_role}',      to_jsonb(v_role_name));
         claims := jsonb_set(claims, '{restaurant_id}', to_jsonb(v_restaurant_id::TEXT));
+    ELSIF v_role_name = 'super_admin' THEN
+        -- Platform super admin has no tenant, but is a real elevated role.
+        claims := jsonb_set(claims, '{app_role}',      '"super_admin"');
+        claims := jsonb_set(claims, '{restaurant_id}', 'null');
     ELSE
         claims := jsonb_set(claims, '{app_role}',      '"unauthenticated"');
         claims := jsonb_set(claims, '{restaurant_id}', 'null');
