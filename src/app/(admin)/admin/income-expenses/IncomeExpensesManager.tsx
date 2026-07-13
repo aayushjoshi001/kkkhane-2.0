@@ -332,14 +332,14 @@ export default function IncomeExpensesManager({
 
     const printRef = useRef<PrintableReportHandle>(null)
     const incomeReportColumns = [
-        { key: 'date', label: 'Date' },
+        { key: 'date', label: 'Date', dateStacked: true },
         { key: 'category', label: 'Category' },
         { key: 'payment', label: 'Payment' },
         { key: 'description', label: 'Description' },
         { key: 'amount', label: 'Amount', align: 'right' as const },
     ]
     const expenseReportColumns = [
-        { key: 'date', label: 'Date' },
+        { key: 'date', label: 'Date', dateStacked: true },
         { key: 'category', label: 'Category' },
         { key: 'vendor', label: 'Vendor' },
         { key: 'payment', label: 'Payment' },

@@ -3,12 +3,17 @@
 import { useState, useMemo, Fragment } from 'react'
 import Modal from '@/components/ui/Modal'
 import { createIngredientAction, addStockMovementAction, deleteIngredientAction, updateIngredientAction, createIngredientCategoryAction, createIngredientSupplierAction } from './actions'
-import { createVoucherAction } from '../vouchers/actions'
+import { createSupplierBillAction } from '../suppliers/actions'
 import { Plus, Trash2, Edit2, AlertTriangle, Package, X, Check, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import useSWR from 'swr'
 import type { Ingredient, ExpenseCategory, Supplier, BankAccount } from '@/types/database'
 import { fetchIngredientsData } from '@/lib/swr-fetchers'
+import { formatCurrency } from '@/lib/utils'
+import SupplierPaymentFields, {
+    EMPTY_SUPPLIER_PAYMENT, validateSupplierPayment, isUnderpaidSplit, underpaidSplitConfirmMessage,
+    UNSPECIFIED_SUPPLIER_NAME, type SupplierPaymentValue
+} from '@/components/admin/SupplierPaymentFields'
 
 export default function IngredientsManager({
     initialIngredients,
@@ -40,11 +45,16 @@ export default function IngredientsManager({
     const [form, setForm] = useState({
         name: '', unit: 'kg', stock_quantity: '', reorder_level: '10', cost_per_unit: '', supplier: '', category_id: '',
     })
+    // Paid amount + method for the initial purchase when creating a brand-new
+    // stock item with a supplier attached — mirrors the Suppliers Ledger bill
+    // pattern (quantity/rate compute the total, paying less than the total
+    // leaves the rest as a due balance on that supplier).
+    const [createPaidAmount, setCreatePaidAmount] = useState('')
+    const [createPayment, setCreatePayment] = useState<SupplierPaymentValue>(EMPTY_SUPPLIER_PAYMENT)
     const [moveForm, setMoveForm] = useState({
-        movement_type: 'purchase', quantity: '', notes: '',
-        amount_paid: '', payment_method: 'cash' as 'cash' | 'qr' | 'cheque',
-        bank_account_id: '', cheque_date: '', cheque_number: '', supplier_id: ''
+        movement_type: 'purchase', quantity: '', rate: '', paid_amount: '', notes: '', supplier_id: ''
     })
+    const [movePayment, setMovePayment] = useState<SupplierPaymentValue>(EMPTY_SUPPLIER_PAYMENT)
     const [saving, setSaving] = useState(false)
 
     // Inline Category form state
@@ -74,16 +84,44 @@ export default function IngredientsManager({
         setShowAdd(true)
     }
 
+    function resetCreateForm() {
+        setForm({ name: '', unit: 'kg', stock_quantity: '', reorder_level: '10', cost_per_unit: '', supplier: '', category_id: '' })
+        setCreatePaidAmount('')
+        setCreatePayment(EMPTY_SUPPLIER_PAYMENT)
+    }
+
     async function handleCreateOrUpdate() {
         if (!form.name.trim()) { toast.error('Name required'); return }
+
+        const quantity = parseFloat(form.stock_quantity) || 0
+        const rate = parseFloat(form.cost_per_unit) || 0
+        // Only a brand-new item with a real quantity/rate is an actual
+        // purchase worth billing — editing an existing item changes nothing
+        // financially. A supplier is not required — naming one is optional,
+        // so a manager can still log the purchase purely for their own
+        // records without registering a formal supplier.
+        const willBill = !editingItem && quantity > 0 && rate > 0
+        const paidAmount = parseFloat(createPaidAmount) || 0
+        const createTotal = quantity * rate
+
+        if (willBill) {
+            if (!form.category_id) { toast.error('Select a Category to record this purchase'); return }
+            if (paidAmount > createTotal) { toast.error('Paid amount cannot exceed the total amount'); return }
+            const paymentError = validateSupplierPayment(createPayment, paidAmount)
+            if (paymentError) { toast.error(paymentError); return }
+            if (isUnderpaidSplit(createPayment, paidAmount, createTotal) && !confirm(underpaidSplitConfirmMessage(paidAmount, createTotal))) {
+                return
+            }
+        }
+
         setSaving(true)
-        
+
         const payload = {
             name: form.name,
             unit: form.unit,
-            stock_quantity: parseFloat(form.stock_quantity) || 0,
+            stock_quantity: quantity,
             reorder_level: parseFloat(form.reorder_level) || 0,
-            cost_per_unit: parseFloat(form.cost_per_unit) || 0,
+            cost_per_unit: rate,
             supplier: form.supplier || null,
             category_id: form.category_id || null,
         }
@@ -104,14 +142,39 @@ export default function IngredientsManager({
                 restaurant_id: restaurantId,
                 ...payload
             })
-            setSaving(false)
-            if (result.error) { toast.error(result.error); return }
+            if (result.error) { setSaving(false); toast.error(result.error); return }
             if (result.data) mutate()
-            toast.success('Stock item added!')
+
+            if (willBill) {
+                const billRes = await createSupplierBillAction({
+                    supplier_name: form.supplier || undefined,
+                    category_id: form.category_id,
+                    text_desc: `Initial stock: ${form.name}`,
+                    quantity,
+                    rate,
+                    unit: form.unit,
+                    amount: createTotal,
+                    paid_amount: paidAmount,
+                    payment_source: createPayment.payment_source,
+                    bank_name: createPayment.payment_source !== 'cash' ? createPayment.bank_name.trim() : undefined,
+                    cash_portion: createPayment.payment_source === 'cash_qr' ? (parseFloat(createPayment.cash_portion) || 0) : undefined,
+                    qr_portion: createPayment.payment_source === 'cash_qr' ? (parseFloat(createPayment.qr_portion) || 0) : undefined,
+                })
+                setSaving(false)
+                if (billRes.error) {
+                    toast.error(`Stock item added, but the supplier bill wasn't recorded: ${billRes.error}`)
+                } else {
+                    toast.success('Stock item added and supplier bill recorded!')
+                    if (billRes.warning) toast.error(billRes.warning)
+                }
+            } else {
+                setSaving(false)
+                toast.success('Stock item added!')
+            }
         }
         setShowAdd(false)
         setEditingItem(null)
-        setForm({ name: '', unit: 'kg', stock_quantity: '', reorder_level: '10', cost_per_unit: '', supplier: '', category_id: '' })
+        resetCreateForm()
     }
 
     async function handleInlineAddCategory(e: React.FormEvent) {
@@ -199,20 +262,8 @@ export default function IngredientsManager({
     }, [categories, form.category_id])
 
     const emptyMoveForm = {
-        movement_type: 'purchase', quantity: '', notes: '',
-        amount_paid: '', payment_method: 'cash' as 'cash' | 'qr' | 'cheque',
-        bank_account_id: '', cheque_date: '', cheque_number: '', supplier_id: ''
+        movement_type: 'purchase', quantity: '', rate: '', paid_amount: '', notes: '', supplier_id: ''
     }
-
-    // Bank accounts relevant to the selected payment method — QR pays into a
-    // wallet-type account, cheque deposits into a bank-type account. Falls
-    // back to showing everything if the restaurant hasn't set up that type
-    // yet, so the picker is never a dead end.
-    const paymentBankAccounts = useMemo(() => {
-        const wantType = moveForm.payment_method === 'qr' ? 'wallet' : 'bank'
-        const matching = bankAccounts.filter(b => b.account_type === wantType)
-        return matching.length > 0 ? matching : bankAccounts
-    }, [bankAccounts, moveForm.payment_method])
 
     // Suppliers who serve this ingredient's category — closes the gap where
     // a stock purchase used to just repeat the ingredient's free-text
@@ -227,18 +278,31 @@ export default function IngredientsManager({
     const effectiveSupplierId = moveForm.supplier_id || (relevantSuppliers.length === 1 ? relevantSuppliers[0].id : '')
 
     const isPurchase = moveForm.movement_type === 'purchase'
-    const amountPaid = parseFloat(moveForm.amount_paid) || 0
+    const moveQuantity = parseFloat(moveForm.quantity) || 0
+    const moveRate = parseFloat(moveForm.rate) || 0
+    const moveTotal = moveQuantity * moveRate
+    const movePaidAmount = parseFloat(moveForm.paid_amount) || 0
+
+    function openStockModal(ing: Ingredient) {
+        setStockModal(ing)
+        setMoveForm({ ...emptyMoveForm, rate: ing.cost_per_unit ? ing.cost_per_unit.toString() : '' })
+        setMovePayment(EMPTY_SUPPLIER_PAYMENT)
+    }
 
     async function handleStockMove() {
-        if (!stockModal || !parseFloat(moveForm.quantity)) { toast.error('Enter a valid quantity'); return }
+        if (!stockModal || moveQuantity <= 0) { toast.error('Enter a valid quantity'); return }
 
-        if (isPurchase && amountPaid > 0) {
-            if ((moveForm.payment_method === 'qr' || moveForm.payment_method === 'cheque') && !moveForm.bank_account_id) {
-                toast.error('Select which bank account this payment affects')
+        const willBill = isPurchase && moveRate > 0
+        const categoryId = stockModal.category_id
+        if (willBill) {
+            if (!categoryId) {
+                toast.error('This item has no category set — edit it first so purchases can be recorded.')
                 return
             }
-            if (moveForm.payment_method === 'cheque' && !moveForm.cheque_date) {
-                toast.error('Cheque date is required')
+            if (movePaidAmount > moveTotal) { toast.error('Paid amount cannot exceed the total amount'); return }
+            const paymentError = validateSupplierPayment(movePayment, movePaidAmount)
+            if (paymentError) { toast.error(paymentError); return }
+            if (isUnderpaidSplit(movePayment, movePaidAmount, moveTotal) && !confirm(underpaidSplitConfirmMessage(movePaidAmount, moveTotal))) {
                 return
             }
         }
@@ -247,7 +311,7 @@ export default function IngredientsManager({
         const result = await addStockMovementAction({
             ingredient_id: stockModal.id,
             movement_type: moveForm.movement_type,
-            quantity: parseFloat(moveForm.quantity) || 0,
+            quantity: moveQuantity,
             notes: moveForm.notes || undefined,
         })
 
@@ -257,45 +321,47 @@ export default function IngredientsManager({
             return
         }
 
-        // Record the payment as an expense, dated to today, and move it out
-        // of cash/bank via the same voucher + day-book pipeline the rest of
-        // the app uses — so it shows up in Cash Book / Bank Book / Bank
-        // Ledger and (for cheques) waits for manager approval before it
-        // actually reduces the selected bank account.
-        if (isPurchase && amountPaid > 0) {
-            const selectedBank = bankAccounts.find(b => b.id === moveForm.bank_account_id)
+        // A purchase records a supplier bill — same pattern as the Suppliers
+        // Ledger's own "Record Bill" — so paying less than the total leaves
+        // the rest as a due balance on that supplier, and paying 0 records
+        // it as full credit rather than skipping the financial record.
+        if (willBill) {
             const selectedSupplier = suppliers.find(s => s.id === effectiveSupplierId)
-            const partyName = selectedSupplier?.name || stockModal.supplier || stockModal.name
-            const voucherRes = await createVoucherAction({
-                voucher_type: 'payment',
-                category: 'stock',
-                party_name: partyName,
-                amount: amountPaid,
-                payment_mode: moveForm.payment_method,
-                bank_name: selectedBank?.name,
-                particulars: `Stock Purchase: ${stockModal.name} (${moveForm.quantity} ${stockModal.unit})`,
-                expense_category_id: stockModal.category_id || undefined,
-                cheque_details: moveForm.payment_method === 'cheque' ? {
-                    written_name: partyName,
-                    bank_cheque: selectedBank?.name || '',
-                    cheque_number: moveForm.cheque_number,
-                    cheque_date: moveForm.cheque_date,
-                    cheque_type: 'normal'
-                } : undefined
+            const supplierName = selectedSupplier?.name || stockModal.supplier || UNSPECIFIED_SUPPLIER_NAME
+
+            const billRes = await createSupplierBillAction({
+                supplier_name: supplierName,
+                category_id: categoryId as string,
+                text_desc: `Restock: ${stockModal.name}`,
+                quantity: moveQuantity,
+                rate: moveRate,
+                unit: stockModal.unit,
+                amount: moveTotal,
+                paid_amount: movePaidAmount,
+                payment_source: movePayment.payment_source,
+                bank_name: movePayment.payment_source !== 'cash' ? movePayment.bank_name.trim() : undefined,
+                cash_portion: movePayment.payment_source === 'cash_qr' ? (parseFloat(movePayment.cash_portion) || 0) : undefined,
+                qr_portion: movePayment.payment_source === 'cash_qr' ? (parseFloat(movePayment.qr_portion) || 0) : undefined,
             })
+
+            // Keep cost_per_unit in sync with the latest purchase price so
+            // the next restock's rate field is prefilled correctly. Awaited
+            // so the mutate() below picks up the new value instead of racing it.
+            if (!billRes.error && moveRate !== stockModal.cost_per_unit) {
+                await updateIngredientAction(stockModal.id, { cost_per_unit: moveRate })
+            }
+
             setSaving(false)
-            if (voucherRes.error) {
-                toast.error(`Stock updated, but payment wasn't recorded: ${voucherRes.error}`)
+            if (billRes.error) {
+                toast.error(`Stock updated, but the supplier bill wasn't recorded: ${billRes.error}`)
                 mutate()
                 setStockModal(null)
                 setMoveForm(emptyMoveForm)
+                setMovePayment(EMPTY_SUPPLIER_PAYMENT)
                 return
             }
-            toast.success(
-                moveForm.payment_method === 'cheque'
-                    ? 'Stock updated — cheque payment recorded, pending manager approval'
-                    : 'Stock and payment updated!'
-            )
+            toast.success('Stock and supplier bill updated!')
+            if (billRes.warning) toast.error(billRes.warning)
         } else {
             setSaving(false)
             toast.success('Stock updated!')
@@ -304,6 +370,7 @@ export default function IngredientsManager({
         mutate()
         setStockModal(null)
         setMoveForm(emptyMoveForm)
+        setMovePayment(EMPTY_SUPPLIER_PAYMENT)
     }
 
     async function handleDelete(id: string) {
@@ -348,7 +415,7 @@ export default function IngredientsManager({
                     onClose={() => {
                         setShowAdd(false)
                         setEditingItem(null)
-                        setForm({ name: '', unit: 'kg', stock_quantity: '', reorder_level: '10', cost_per_unit: '', supplier: '', category_id: '' })
+                        resetCreateForm()
                     }}
                     size="md"
                     ariaLabel={editingItem ? 'Edit Stock Item' : 'Create New Stock Item'}
@@ -359,7 +426,7 @@ export default function IngredientsManager({
                             <button onClick={() => {
                                 setShowAdd(false)
                                 setEditingItem(null)
-                                setForm({ name: '', unit: 'kg', stock_quantity: '', reorder_level: '10', cost_per_unit: '', supplier: '', category_id: '' })
+                                resetCreateForm()
                             }} className="w-8 h-8 rounded-full bg-surface border border-hairline flex items-center justify-center text-ink-subtle hover:text-ink hover:bg-surface-muted transition-colors shadow-sm focus-ring">
                                 <X size={16} />
                             </button>
@@ -563,13 +630,47 @@ export default function IngredientsManager({
                                     </select>
                                 )}
                             </div>
+
+                            {/* Total amount + payment — only meaningful for a brand-new item
+                                actually being bought right now. A supplier is optional: leave
+                                it as "No Supplier" to just log the purchase for your own records. */}
+                            {!editingItem && (parseFloat(form.stock_quantity) || 0) > 0 && (parseFloat(form.cost_per_unit) || 0) > 0 && (
+                                <div className="space-y-4 p-4 bg-surface-muted/30 border border-hairline rounded-[var(--r-md)] animate-in slide-in-from-top-1 duration-150">
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="font-bold text-ink-subtle uppercase tracking-wider">Total Amount</span>
+                                        <span className="font-extrabold text-sm text-ink">
+                                            {formatCurrency((parseFloat(form.stock_quantity) || 0) * (parseFloat(form.cost_per_unit) || 0))}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Paid Amount (Rs.)</label>
+                                        <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={createPaidAmount}
+                                            onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setCreatePaidAmount(v) }}
+                                            placeholder="0.00 (Enter 0 if unpaid / full credit)"
+                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink tabular-nums placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3"
+                                        />
+                                        <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mt-1.5">
+                                            Owed to {form.supplier || UNSPECIFIED_SUPPLIER_NAME}: {formatCurrency(Math.max(0, (parseFloat(form.stock_quantity) || 0) * (parseFloat(form.cost_per_unit) || 0) - (parseFloat(createPaidAmount) || 0)))}
+                                        </p>
+                                    </div>
+                                    <SupplierPaymentFields
+                                        value={createPayment}
+                                        onChange={setCreatePayment}
+                                        bankAccounts={bankAccounts}
+                                        paidAmount={parseFloat(createPaidAmount) || 0}
+                                    />
+                                </div>
+                            )}
                         </div>
                         <div className="px-6 py-5 bg-surface-muted/30 border-t border-hairline flex justify-end gap-3">
                             <button
                                 onClick={() => {
                                     setShowAdd(false)
                                     setEditingItem(null)
-                                    setForm({ name: '', unit: 'kg', stock_quantity: '', reorder_level: '10', cost_per_unit: '', supplier: '', category_id: '' })
+                                    resetCreateForm()
                                 }}
                                 className="px-5 py-2.5 text-sm font-bold text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors focus-ring"
                             >
@@ -588,7 +689,7 @@ export default function IngredientsManager({
 
             {/* Stock Movement Modal */}
             {stockModal && (
-                <Modal open onClose={() => setStockModal(null)} size="md" ariaLabel={`Stock movement — ${stockModal.name}`} className="p-6 space-y-6">
+                <Modal open onClose={() => { setStockModal(null); setMovePayment(EMPTY_SUPPLIER_PAYMENT) }} size="md" ariaLabel={`Stock movement — ${stockModal.name}`} className="p-6 space-y-6">
                         <div>
                             <h3 className="text-h3 font-extrabold text-ink">Stock Movement — {stockModal.name}</h3>
                             <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-1">Current Stock: <span className="text-brand-500">{stockModal.stock_quantity} {stockModal.unit}</span></p>
@@ -617,7 +718,7 @@ export default function IngredientsManager({
                                     <div>
                                         <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Supplier</label>
                                         {relevantSuppliers.length === 0 ? (
-                                            <p className="text-[11px] font-bold text-ink-muted">No suppliers set up yet — payment will be recorded under &quot;{stockModal.supplier || stockModal.name}&quot;.</p>
+                                            <p className="text-[11px] font-bold text-ink-muted">No suppliers set up yet — the bill will be recorded under &quot;{stockModal.supplier || UNSPECIFIED_SUPPLIER_NAME}&quot;.</p>
                                         ) : (
                                             <select value={effectiveSupplierId} onChange={e => setMoveForm({ ...moveForm, supplier_id: e.target.value })}
                                                 className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3">
@@ -627,74 +728,41 @@ export default function IngredientsManager({
                                                 ))}
                                             </select>
                                         )}
-                                        <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mt-1.5">Matched by this item&apos;s category, so the payment lands under the right supplier in Suppliers Ledger.</p>
+                                        <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mt-1.5">Matched by this item&apos;s category, so the bill lands under the right supplier in Suppliers Ledger.</p>
                                     </div>
 
                                     <div>
-                                        <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Amount Paid</label>
-                                        <div className="relative">
-                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-ink-subtle">Rs.</span>
-                                            <input type="text" inputMode="decimal" value={moveForm.amount_paid}
-                                                onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setMoveForm({ ...moveForm, amount_paid: v }) }}
-                                                placeholder="0 if not paid yet"
-                                                className="w-full pl-9 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink tabular-nums placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3" />
-                                        </div>
-                                        <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mt-1.5">Enter 0 if this stock hasn&apos;t been paid for yet — no payment will be recorded.</p>
+                                        <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Rate (Rs. / {stockModal.unit})</label>
+                                        <input type="text" inputMode="decimal" value={moveForm.rate}
+                                            onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setMoveForm({ ...moveForm, rate: v }) }}
+                                            placeholder="e.g. 2.50"
+                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink tabular-nums placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3" />
                                     </div>
 
-                                    {amountPaid > 0 && (
+                                    {moveRate > 0 && (
                                         <>
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="font-bold text-ink-subtle uppercase tracking-wider">Total Amount</span>
+                                                <span className="font-extrabold text-sm text-ink">{formatCurrency(moveTotal)}</span>
+                                            </div>
+
                                             <div>
-                                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Payment Method</label>
-                                                <div className="grid grid-cols-3 gap-2">
-                                                    {(['cash', 'qr', 'cheque'] as const).map(m => (
-                                                        <button key={m} type="button"
-                                                            onClick={() => setMoveForm({ ...moveForm, payment_method: m, bank_account_id: '' })}
-                                                            className={`py-2 rounded-[var(--r-md)] text-xs font-bold border transition ${moveForm.payment_method === m ? 'bg-brand-50 border-brand-500 text-brand-600' : 'bg-surface border-hairline text-ink hover:bg-surface-muted/40'}`}>
-                                                            {m === 'cash' ? 'Cash' : m === 'qr' ? 'QR' : 'Cheque'}
-                                                        </button>
-                                                    ))}
-                                                </div>
+                                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Paid Amount (Rs.)</label>
+                                                <input type="text" inputMode="decimal" value={moveForm.paid_amount}
+                                                    onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setMoveForm({ ...moveForm, paid_amount: v }) }}
+                                                    placeholder="0.00 (Enter 0 if unpaid / full credit)"
+                                                    className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink tabular-nums placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3" />
                                                 <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mt-1.5">
-                                                    {moveForm.payment_method === 'cash' && 'Reduces the cash drawer immediately.'}
-                                                    {moveForm.payment_method === 'qr' && 'Reduces the selected wallet/bank account immediately.'}
-                                                    {moveForm.payment_method === 'cheque' && 'Only reduces the selected bank account once a manager approves it.'}
+                                                    Owed: {formatCurrency(Math.max(0, moveTotal - movePaidAmount))}
                                                 </p>
                                             </div>
 
-                                            {(moveForm.payment_method === 'qr' || moveForm.payment_method === 'cheque') && (
-                                                <div>
-                                                    <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">
-                                                        {moveForm.payment_method === 'qr' ? 'QR / Wallet Account' : 'Bank Account'}
-                                                    </label>
-                                                    {paymentBankAccounts.length === 0 ? (
-                                                        <p className="text-[11px] font-bold text-danger-fg">No bank accounts set up yet — add one in Bank Book first.</p>
-                                                    ) : (
-                                                        <select value={moveForm.bank_account_id} onChange={e => setMoveForm({ ...moveForm, bank_account_id: e.target.value })}
-                                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207l5%205%205-5%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%221.5%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_12px_center]">
-                                                            <option value="">Select account...</option>
-                                                            {paymentBankAccounts.map(b => (
-                                                                <option key={b.id} value={b.id}>{b.name}</option>
-                                                            ))}
-                                                        </select>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            {moveForm.payment_method === 'cheque' && (
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div>
-                                                        <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Cheque Date *</label>
-                                                        <input type="date" value={moveForm.cheque_date} onChange={e => setMoveForm({ ...moveForm, cheque_date: e.target.value })}
-                                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3" />
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Cheque # <span className="text-ink-subtle font-normal normal-case">(optional)</span></label>
-                                                        <input type="text" value={moveForm.cheque_number} onChange={e => setMoveForm({ ...moveForm, cheque_number: e.target.value })}
-                                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3" />
-                                                    </div>
-                                                </div>
-                                            )}
+                                            <SupplierPaymentFields
+                                                value={movePayment}
+                                                onChange={setMovePayment}
+                                                bankAccounts={bankAccounts}
+                                                paidAmount={movePaidAmount}
+                                            />
                                         </>
                                     )}
                                 </div>
@@ -708,7 +776,7 @@ export default function IngredientsManager({
                             </div>
                         </div>
                         <div className="flex gap-3 justify-end pt-2 border-t border-hairline">
-                            <button onClick={() => setStockModal(null)} className="px-5 py-2.5 text-sm font-bold text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors focus-ring">Cancel</button>
+                            <button onClick={() => { setStockModal(null); setMovePayment(EMPTY_SUPPLIER_PAYMENT) }} className="px-5 py-2.5 text-sm font-bold text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors focus-ring">Cancel</button>
                             <button onClick={handleStockMove} disabled={saving}
                                 className="bg-brand-500 text-white px-6 py-2.5 rounded-[var(--r-md)] text-sm font-bold disabled:opacity-50 shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all focus-ring flex items-center gap-2">
                                 {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} {saving ? 'Saving...' : 'Submit'}
@@ -756,7 +824,7 @@ export default function IngredientsManager({
                                             <td className="px-5 py-4 text-right text-ink-muted font-bold tabular-nums hidden md:table-cell">
                                                 {ing.reorder_level ?? '—'} <span className="text-[11px] font-bold uppercase tracking-wider">{ing.unit}</span>
                                             </td>
-                                            <td className="px-5 py-4 text-right text-ink-subtle font-bold tabular-nums hidden md:table-cell">${ing.cost_per_unit.toFixed(2)}</td>
+                                            <td className="px-5 py-4 text-right text-ink-subtle font-bold tabular-nums hidden md:table-cell">{formatCurrency(ing.cost_per_unit)}</td>
                                             <td className="px-5 py-4 text-ink-subtle font-medium hidden lg:table-cell">{ing.supplier || '—'}</td>
                                             <td className="px-5 py-4">
                                                 <div className="flex items-center gap-2 justify-end">
@@ -764,7 +832,7 @@ export default function IngredientsManager({
                                                         className="w-8 h-8 rounded-full border border-hairline flex items-center justify-center text-ink-subtle hover:text-brand-500 hover:bg-brand-50 hover:border-brand-200 transition-all focus-ring shadow-sm bg-surface" title="Edit">
                                                         <Edit2 size={14} />
                                                     </button>
-                                                    <button onClick={() => { setStockModal(ing); setMoveForm(emptyMoveForm) }}
+                                                    <button onClick={() => openStockModal(ing)}
                                                         className="w-8 h-8 rounded-full border border-hairline flex items-center justify-center text-ink-subtle hover:text-indigo-500 hover:bg-indigo-50 hover:border-indigo-200 transition-all focus-ring shadow-sm bg-surface" title="Stock Movement">
                                                         <Package size={14} />
                                                     </button>
@@ -802,7 +870,7 @@ export default function IngredientsManager({
                                         <td className="px-5 py-4 text-right text-ink-muted font-bold tabular-nums hidden md:table-cell">
                                             {ing.reorder_level ?? '—'} <span className="text-[11px] font-bold uppercase tracking-wider">{ing.unit}</span>
                                         </td>
-                                        <td className="px-5 py-4 text-right text-ink-subtle font-bold tabular-nums hidden md:table-cell">${ing.cost_per_unit.toFixed(2)}</td>
+                                        <td className="px-5 py-4 text-right text-ink-subtle font-bold tabular-nums hidden md:table-cell">{formatCurrency(ing.cost_per_unit)}</td>
                                         <td className="px-5 py-4 text-ink-subtle font-medium hidden lg:table-cell">{ing.supplier || '—'}</td>
                                         <td className="px-5 py-4">
                                             <div className="flex items-center gap-2 justify-end">
@@ -810,7 +878,7 @@ export default function IngredientsManager({
                                                     className="w-8 h-8 rounded-full border border-hairline flex items-center justify-center text-ink-subtle hover:text-brand-500 hover:bg-brand-50 hover:border-brand-200 transition-all focus-ring shadow-sm bg-surface" title="Edit">
                                                     <Edit2 size={14} />
                                                 </button>
-                                                <button onClick={() => { setStockModal(ing); setMoveForm(emptyMoveForm) }}
+                                                <button onClick={() => openStockModal(ing)}
                                                     className="w-8 h-8 rounded-full border border-hairline flex items-center justify-center text-ink-subtle hover:text-indigo-500 hover:bg-indigo-50 hover:border-indigo-200 transition-all focus-ring shadow-sm bg-surface" title="Stock Movement">
                                                     <Package size={14} />
                                                 </button>

@@ -2,6 +2,8 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { getNstDateString } from '@/lib/timezone'
+import { autoOpenNextDayBookSession } from '@/lib/ledger'
+import type { DayBookSession } from '@/types/database'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/day-book/session  — Open today's day book session
@@ -140,7 +142,7 @@ export async function PATCH(request: Request) {
     // Verify session belongs to this restaurant
     const { data: existing, error: fetchError } = await supabase
         .from('day_book_sessions')
-        .select('id, status')
+        .select('id, status, date')
         .eq('id', session_id)
         .eq('restaurant_id', restaurantId)
         .maybeSingle()
@@ -159,6 +161,25 @@ export async function PATCH(request: Request) {
             return NextResponse.json(
                 { error: 'Only managers and super admins can re-open the day book' },
                 { status: 403 }
+            )
+        }
+
+        // Only one session may be open at a time — if closing this one already
+        // auto-opened a newer session, that one has to be closed first, or
+        // re-opening this older one would leave two sessions open together and
+        // split where new transactions land.
+        const { data: newerOpen } = await supabase
+            .from('day_book_sessions')
+            .select('date')
+            .eq('restaurant_id', restaurantId)
+            .eq('status', 'open')
+            .gt('date', existing.date)
+            .maybeSingle()
+
+        if (newerOpen) {
+            return NextResponse.json(
+                { error: `Cannot re-open — the day book for ${newerOpen.date} is already open. Close it first.` },
+                { status: 409 }
             )
         }
 
@@ -202,6 +223,11 @@ export async function PATCH(request: Request) {
     if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    // Immediately ready the next business day so the manager never has to
+    // manually open it — its opening balances carry forward from this
+    // session's closing balances.
+    await autoOpenNextDayBookSession(supabase, restaurantId, session as DayBookSession, currentUser.id)
 
     return NextResponse.json({ success: true, data: session })
 }

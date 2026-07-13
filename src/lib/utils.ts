@@ -116,6 +116,10 @@ export interface SupplierBillDetails {
     paid_amount: number | null
     payment_type: string
     bank_name: string
+    // Only present when payment_type === 'cash_qr' — how much of paid_amount
+    // was cash vs QR, since that one payment splits across two Day Book entries.
+    cash_portion?: number
+    qr_portion?: number
 }
 
 /**
