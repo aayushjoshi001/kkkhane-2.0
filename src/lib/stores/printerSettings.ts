@@ -8,13 +8,14 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+// Only the kitchen/bar station tickets (KOT/BOT) use QZ Tray raw ESC/POS. The
+// customer invoice is printed through the browser print dialog (the on-screen
+// receipt is styled for an 80mm roll), so there is no invoice printer slot here.
 interface PrinterSettingsState {
-    invoicePrinterName: string | null
     kotPrinterName: string | null
     // Bar Order Ticket printer — the bar's counterpart to the KOT printer, so a
     // venue with a separate bar station can send drink tickets to its own roll.
     botPrinterName: string | null
-    setInvoicePrinter: (name: string | null) => void
     setKotPrinter: (name: string | null) => void
     setBotPrinter: (name: string | null) => void
 }
@@ -22,10 +23,8 @@ interface PrinterSettingsState {
 export const usePrinterSettingsStore = create<PrinterSettingsState>()(
     persist(
         (set) => ({
-            invoicePrinterName: null,
             kotPrinterName: null,
             botPrinterName: null,
-            setInvoicePrinter: (name) => set({ invoicePrinterName: name }),
             setKotPrinter: (name) => set({ kotPrinterName: name }),
             setBotPrinter: (name) => set({ botPrinterName: name }),
         }),
