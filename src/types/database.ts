@@ -899,6 +899,8 @@ export interface Room {
     floor: string | null
     status: RoomStatus
     type_id: string | null
+    notes: string | null
+    is_active: boolean
     created_at: string
     room_types?: RoomType | null
 }

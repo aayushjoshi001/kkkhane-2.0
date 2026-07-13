@@ -26,11 +26,13 @@ export default async function RoomsPage() {
                 .from('rooms')
                 .select('*, room_types:type_id(*)')
                 .eq('restaurant_id', restaurantId)
+                .eq('is_active', true)
                 .order('room_number', { ascending: true }),
             adminSupabase
                 .from('room_types')
                 .select('*')
                 .eq('restaurant_id', restaurantId)
+                .eq('is_active', true)
                 .order('name', { ascending: true }),
             adminSupabase
                 .from('restaurants')

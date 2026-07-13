@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Filter, Bed, Brush, Wrench, CheckCircle2, ChevronRight, Download, Loader2, X, Users, Calendar, Phone } from 'lucide-react'
+import { Plus, Filter, Bed, Brush, Wrench, CheckCircle2, ChevronRight, Download, Loader2, X, Users, Calendar, Phone, Pencil, Trash2, Tag } from 'lucide-react'
 import type { Room, RoomType, RoomStatus, Booking } from '@/types/database'
 import EmptyState from '@/components/ui/EmptyState'
 import Modal from '@/components/ui/Modal'
@@ -50,6 +50,10 @@ export default function RoomsClient({
     const [isAddTypeOpen, setIsAddTypeOpen] = useState(false)
     const [isBookModalOpen, setIsBookModalOpen] = useState(false)
     const [isConfirmCloseOpen, setIsConfirmCloseOpen] = useState(false)
+    // When set, the Add Room / Add Category modals act as Edit instead of Create.
+    const [editingRoom, setEditingRoom] = useState<Room | null>(null)
+    const [editingType, setEditingType] = useState<RoomType | null>(null)
+    const [isDeletingRoom, setIsDeletingRoom] = useState(false)
     
     // Active Booking (occupied room check-in details)
     const [activeBooking, setActiveBooking] = useState<Booking | null>(null)
@@ -136,58 +140,142 @@ export default function RoomsClient({
         }
     }
 
-    // Add Room Type (Category) handler
-    const handleAddType = async () => {
+    // Reset + close the Room Category modal, clearing any edit target.
+    const closeTypeModal = () => {
+        setIsAddTypeOpen(false)
+        setEditingType(null)
+        setTypeForm({ name: '', base_price: '', capacity: '2', description: '' })
+    }
+
+    // Open the Category modal in edit mode, prefilled from an existing category.
+    const openEditType = (type: RoomType) => {
+        setEditingType(type)
+        setTypeForm({
+            name: type.name,
+            base_price: String(type.base_price ?? ''),
+            capacity: String(type.capacity ?? '2'),
+            description: type.description || ''
+        })
+        setIsAddTypeOpen(true)
+    }
+
+    // Create or update a Room Type (Category) depending on editingType.
+    const handleSaveType = async () => {
         if (!typeForm.name.trim()) { toast.error('Category name is required'); return }
         const price = parseFloat(typeForm.base_price)
         if (isNaN(price) || price < 0) { toast.error('Enter a valid base price'); return }
         setIsSubmittingType(true)
         try {
+            const payload = {
+                name: typeForm.name,
+                base_price: price,
+                capacity: parseInt(typeForm.capacity) || 2,
+                description: typeForm.description
+            }
             const res = await fetch('/api/rooms/types', {
-                method: 'POST',
+                method: editingType ? 'PATCH' : 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: typeForm.name,
-                    base_price: price,
-                    capacity: parseInt(typeForm.capacity) || 2,
-                    description: typeForm.description
-                }),
+                body: JSON.stringify(editingType ? { id: editingType.id, ...payload } : payload),
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error)
-            setRoomTypesList(prev => [...prev, data.data])
-            setRoomForm(prev => ({ ...prev, type_id: data.data.id })) // Pre-select in room form
-            setIsAddTypeOpen(false)
-            setTypeForm({ name: '', base_price: '', capacity: '2', description: '' })
-            toast.success('Room Category added!')
+            if (editingType) {
+                setRoomTypesList(prev => prev.map(t => t.id === data.data.id ? data.data : t))
+                toast.success('Room Category updated!')
+            } else {
+                setRoomTypesList(prev => [...prev, data.data])
+                setRoomForm(prev => ({ ...prev, type_id: data.data.id })) // Pre-select in room form
+                toast.success('Room Category added!')
+            }
+            closeTypeModal()
         } catch (e) {
-            toast.error(e instanceof Error ? e.message : 'Failed to add Room Category')
+            toast.error(e instanceof Error ? e.message : 'Failed to save Room Category')
         } finally {
             setIsSubmittingType(false)
         }
     }
 
-    // Add Room handler
-    const handleAddRoom = async () => {
+    // Delete (soft) a Room Category. The API blocks deletion while rooms use it.
+    const handleDeleteType = async (type: RoomType) => {
+        if (!confirm(`Delete category "${type.name}"? Rooms using it must be reassigned first.`)) return
+        try {
+            const res = await fetch('/api/rooms/types', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: type.id }),
+            })
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) throw new Error(data.error)
+            setRoomTypesList(prev => prev.filter(t => t.id !== type.id))
+            toast.success('Category deleted')
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Failed to delete category')
+        }
+    }
+
+    // Reset + close the Room modal, clearing any edit target.
+    const closeRoomModal = () => {
+        setIsAddRoomOpen(false)
+        setEditingRoom(null)
+        setRoomForm({ room_number: '', floor: '', type_id: '' })
+    }
+
+    // Open the Room modal in edit mode, prefilled from an existing room.
+    const openEditRoom = (room: Room) => {
+        setEditingRoom(room)
+        setRoomForm({ room_number: room.room_number, floor: room.floor || '', type_id: room.type_id || '' })
+        setIsAddRoomOpen(true)
+    }
+
+    // Create or update a Room depending on editingRoom.
+    const handleSaveRoom = async () => {
         if (!roomForm.room_number.trim()) { toast.error('Room number is required'); return }
         if (!roomForm.type_id) { toast.error('Select a Room Category'); return }
         setIsSubmittingRoom(true)
         try {
             const res = await fetch('/api/rooms', {
-                method: 'POST',
+                method: editingRoom ? 'PATCH' : 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(roomForm),
+                body: JSON.stringify(editingRoom ? { id: editingRoom.id, ...roomForm } : roomForm),
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error)
-            setRooms(prev => [...prev, data.data])
-            setIsAddRoomOpen(false)
-            setRoomForm({ room_number: '', floor: '', type_id: '' })
-            toast.success('Room created successfully!')
+            if (editingRoom) {
+                setRooms(prev => prev.map(r => r.id === data.data.id ? data.data : r))
+                // Keep the open detail drawer in sync with the edited room.
+                setSelectedRoom(prev => prev && prev.id === data.data.id ? data.data : prev)
+                toast.success('Room updated!')
+            } else {
+                setRooms(prev => [...prev, data.data])
+                toast.success('Room created successfully!')
+            }
+            closeRoomModal()
         } catch (e) {
-            toast.error(e instanceof Error ? e.message : 'Failed to add room')
+            toast.error(e instanceof Error ? e.message : 'Failed to save room')
         } finally {
             setIsSubmittingRoom(false)
+        }
+    }
+
+    // Delete (soft) a room. Occupied rooms are blocked by the API.
+    const handleDeleteRoom = async (room: Room) => {
+        if (!confirm(`Delete Room ${room.room_number}? This cannot be undone from here.`)) return
+        setIsDeletingRoom(true)
+        try {
+            const res = await fetch('/api/rooms', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: room.id }),
+            })
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) throw new Error(data.error)
+            setRooms(prev => prev.filter(r => r.id !== room.id))
+            setSelectedRoom(null)
+            toast.success(`Room ${room.room_number} deleted`)
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Failed to delete room')
+        } finally {
+            setIsDeletingRoom(false)
         }
     }
 
@@ -424,14 +512,14 @@ export default function RoomsClient({
                     <p className="text-sm text-gray-500 mt-1">Manage hotel rooms, occupancy status, and housekeeping.</p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                    <button 
-                        onClick={() => setIsAddTypeOpen(true)}
+                    <button
+                        onClick={() => { setEditingType(null); setTypeForm({ name: '', base_price: '', capacity: '2', description: '' }); setIsAddTypeOpen(true) }}
                         className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 hover:bg-gray-100 text-gray-700 font-semibold rounded-xl border border-gray-200 text-sm transition-colors"
                     >
                         <Plus size={16} /> Add Room Type
                     </button>
-                    <button 
-                        onClick={() => setIsAddRoomOpen(true)}
+                    <button
+                        onClick={() => { setEditingRoom(null); setRoomForm({ room_number: '', floor: '', type_id: '' }); setIsAddRoomOpen(true) }}
                         className="flex items-center gap-2 px-5 py-2.5 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-semibold rounded-xl text-sm transition-all shadow-md shadow-[#ff5a00]/10 hover:scale-[1.01]"
                     >
                         <Plus size={16} /> Add Room
@@ -555,13 +643,68 @@ export default function RoomsClient({
                             <h4 className="text-lg font-black text-gray-900">Room {selectedRoom.room_number}</h4>
                             <p className="text-xs text-gray-500 font-semibold uppercase">{roomTypesList.find(t => t.id === selectedRoom.type_id)?.name || 'Standard'}</p>
                         </div>
-                        <button 
-                            onClick={() => setSelectedRoom(null)}
-                            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-900"
-                        >
-                            ✕
-                        </button>
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => openEditRoom(selectedRoom)}
+                                title="Edit room"
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-900"
+                            >
+                                <Pencil size={15} />
+                            </button>
+                            <button
+                                onClick={() => handleDeleteRoom(selectedRoom)}
+                                disabled={isDeletingRoom || selectedRoom.status === 'occupied'}
+                                title={selectedRoom.status === 'occupied' ? 'Check out the guest before deleting' : 'Delete room'}
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-rose-500 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                {isDeletingRoom ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                            </button>
+                            <button
+                                onClick={() => setSelectedRoom(null)}
+                                title="Close"
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-900"
+                            >
+                                ✕
+                            </button>
+                        </div>
                     </div>
+
+                    {/* Room Details — the static facts a manager needs at a glance. */}
+                    {(() => {
+                        const t = roomTypesList.find(rt => rt.id === selectedRoom.type_id)
+                        return (
+                            <div className="mb-4 bg-gray-50/70 border border-gray-100 rounded-2xl p-4 grid grid-cols-2 gap-x-3 gap-y-3 text-xs">
+                                <div>
+                                    <p className="text-gray-400 font-bold uppercase tracking-wide">Floor</p>
+                                    <p className="font-extrabold text-gray-900 mt-0.5">{selectedRoom.floor || '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 font-bold uppercase tracking-wide">Category</p>
+                                    <p className="font-extrabold text-gray-900 mt-0.5 truncate">{t?.name || 'Standard'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 font-bold uppercase tracking-wide">Base Price</p>
+                                    <p className="font-extrabold text-gray-900 mt-0.5">{t ? `Rs. ${t.base_price}` : '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 font-bold uppercase tracking-wide">Capacity</p>
+                                    <p className="font-extrabold text-gray-900 mt-0.5">{t ? `${t.capacity} guest${t.capacity === 1 ? '' : 's'}` : '—'}</p>
+                                </div>
+                                {t?.description && (
+                                    <div className="col-span-2">
+                                        <p className="text-gray-400 font-bold uppercase tracking-wide">Description</p>
+                                        <p className="font-semibold text-gray-700 mt-0.5 leading-snug">{t.description}</p>
+                                    </div>
+                                )}
+                                {selectedRoom.notes && (
+                                    <div className="col-span-2">
+                                        <p className="text-gray-400 font-bold uppercase tracking-wide">Notes</p>
+                                        <p className="font-semibold text-gray-700 mt-0.5 leading-snug">{selectedRoom.notes}</p>
+                                    </div>
+                                )}
+                            </div>
+                        )
+                    })()}
 
                     {/* Action Buttons (Book, Closed) — a room automatically goes to
                         Cleaning on checkout (see /api/bookings/checkout), so there's no
@@ -966,13 +1109,13 @@ export default function RoomsClient({
 
             {/* ── Add Room Modal ── */}
             {isAddRoomOpen && (
-                <Modal open onClose={() => setIsAddRoomOpen(false)} size="md" ariaLabel="Add New Room" className="bg-white overflow-hidden">
+                <Modal open onClose={closeRoomModal} size="md" ariaLabel={editingRoom ? 'Edit Room' : 'Add New Room'} className="bg-white overflow-hidden">
                         <div className="px-6 py-5 bg-[#ff5a00] flex items-center justify-between text-white">
                             <div className="flex items-center gap-3">
                                 <Bed size={22} />
-                                <h3 className="font-extrabold text-lg">Add New Room</h3>
+                                <h3 className="font-extrabold text-lg">{editingRoom ? `Edit Room ${editingRoom.room_number}` : 'Add New Room'}</h3>
                             </div>
-                            <button onClick={() => setIsAddRoomOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
+                            <button onClick={closeRoomModal} className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
                                 <X size={16} />
                             </button>
                         </div>
@@ -1003,8 +1146,8 @@ export default function RoomsClient({
                             <div>
                                 <div className="flex justify-between items-center mb-2">
                                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Room Type (Category) *</label>
-                                    <button 
-                                        onClick={() => { setIsAddRoomOpen(false); setIsAddTypeOpen(true) }}
+                                    <button
+                                        onClick={() => { setIsAddRoomOpen(false); setEditingType(null); setTypeForm({ name: '', base_price: '', capacity: '2', description: '' }); setIsAddTypeOpen(true) }}
                                         className="text-xs font-bold text-[#ff5a00] hover:underline"
                                     >
                                         + Create Category
@@ -1024,18 +1167,18 @@ export default function RoomsClient({
 
                             <div className="pt-4 flex items-center justify-end gap-2.5">
                                 <button
-                                    onClick={() => setIsAddRoomOpen(false)}
+                                    onClick={closeRoomModal}
                                     className="px-4 py-2.5 text-gray-500 hover:text-gray-700 font-semibold rounded-xl text-sm"
                                 >
                                     Cancel
                                 </button>
                                 <button
-                                    onClick={handleAddRoom}
+                                    onClick={handleSaveRoom}
                                     disabled={isSubmittingRoom}
                                     className="flex items-center gap-2 px-5 py-2.5 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-semibold rounded-xl text-sm transition-all disabled:opacity-50"
                                 >
                                     {isSubmittingRoom ? <Loader2 size={15} className="animate-spin" /> : null}
-                                    Create Room
+                                    {editingRoom ? 'Save Changes' : 'Create Room'}
                                 </button>
                             </div>
                         </div>
@@ -1044,13 +1187,13 @@ export default function RoomsClient({
 
             {/* ── Add Room Type (Category) Modal ── */}
             {isAddTypeOpen && (
-                <Modal open onClose={() => setIsAddTypeOpen(false)} size="md" ariaLabel="Add Room Type" className="bg-white overflow-hidden">
+                <Modal open onClose={closeTypeModal} size="md" ariaLabel={editingType ? 'Edit Room Category' : 'Add Room Type'} className="bg-white overflow-hidden">
                         <div className="px-6 py-5 bg-gray-900 flex items-center justify-between text-white">
                             <div className="flex items-center gap-3">
                                 <Bed size={22} className="text-[#ff5a00]" />
-                                <h3 className="font-extrabold text-lg">Add Room Category</h3>
+                                <h3 className="font-extrabold text-lg">{editingType ? 'Edit Room Category' : 'Add Room Category'}</h3>
                             </div>
-                            <button onClick={() => setIsAddTypeOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
+                            <button onClick={closeTypeModal} className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
                                 <X size={16} />
                             </button>
                         </div>
@@ -1101,20 +1244,48 @@ export default function RoomsClient({
                                 />
                             </div>
 
+                            {/* Existing categories — edit or delete inline. Hidden while
+                                editing one to keep the form the single focus. */}
+                            {!editingType && roomTypesList.length > 0 && (
+                                <div className="pt-2 border-t border-gray-100">
+                                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                        <Tag size={12} /> Existing Categories
+                                    </p>
+                                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                                        {roomTypesList.map(t => (
+                                            <div key={t.id} className="flex items-center justify-between gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-bold text-gray-900 truncate">{t.name}</p>
+                                                    <p className="text-[11px] text-gray-400 font-semibold">Rs. {t.base_price} · {t.capacity} guest{t.capacity === 1 ? '' : 's'}</p>
+                                                </div>
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    <button onClick={() => openEditType(t)} title="Edit category" className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-200 hover:text-gray-900 transition-colors">
+                                                        <Pencil size={14} />
+                                                    </button>
+                                                    <button onClick={() => handleDeleteType(t)} title="Delete category" className="w-8 h-8 flex items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition-colors">
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="pt-4 flex items-center justify-end gap-2.5">
                                 <button
-                                    onClick={() => setIsAddTypeOpen(false)}
+                                    onClick={closeTypeModal}
                                     className="px-4 py-2.5 text-gray-500 hover:text-gray-700 font-semibold rounded-xl text-sm"
                                 >
                                     Cancel
                                 </button>
                                 <button
-                                    onClick={handleAddType}
+                                    onClick={handleSaveType}
                                     disabled={isSubmittingType}
                                     className="flex items-center gap-2 px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-semibold rounded-xl text-sm transition-all disabled:opacity-50"
                                 >
                                     {isSubmittingType ? <Loader2 size={15} className="animate-spin" /> : null}
-                                    Add Category
+                                    {editingType ? 'Save Changes' : 'Add Category'}
                                 </button>
                             </div>
                         </div>
