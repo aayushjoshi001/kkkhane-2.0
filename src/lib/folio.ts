@@ -28,6 +28,7 @@ export interface FolioCharge {
 export interface FolioBreakdown {
     nights: number
     stayCost: number
+    discountAmount: number
     chargesTotal: number
     ordersTotal: number
     vat: number
@@ -57,9 +58,13 @@ export async function computeFolioTotal(
         checkIn: string
         checkOut: string
         sessionId: string | null
+        // A staff-applied bargain rate, reducing the room stay cost
+        // specifically (so VAT below is computed on the net rate, not the
+        // standard one) — see bookings.discount_amount.
+        discountAmount?: number
     }
 ): Promise<FolioBreakdown> {
-    const { restaurantId, bookingId, roomId, checkIn, checkOut, sessionId } = opts
+    const { restaurantId, bookingId, roomId, checkIn, checkOut, sessionId, discountAmount: rawDiscount } = opts
 
     // Room stay cost = nightly rate × nights.
     const { data: room } = await supabase
@@ -71,6 +76,11 @@ export async function computeFolioTotal(
     const basePrice = Number((room?.room_types as { base_price?: number } | null)?.base_price) || 0
     const nights = calculateNights(checkIn, checkOut)
     const stayCost = basePrice * nights
+    // Clamped so a stale/oversized discount can never push the room cost
+    // negative — the checkout route also rejects discount > stayCost
+    // up front, this is just the calculation's own floor.
+    const discountAmount = Math.min(Math.max(Number(rawDiscount) || 0, 0), stayCost)
+    const netStayCost = stayCost - discountAmount
 
     // Manual charges added during the stay (minibar, laundry, …).
     const { data: chargeRows } = await supabase
@@ -138,12 +148,13 @@ export async function computeFolioTotal(
     const features = await getRestaurantFeatures(restaurantId)
     const vatEnabled = !!features?.vatEnabled
     const taxRate = Number(features?.defaultTaxRate) || 0
-    const vat = vatEnabled ? round2((stayCost + chargesTotal) * (taxRate / 100)) : 0
+    const vat = vatEnabled ? round2((netStayCost + chargesTotal) * (taxRate / 100)) : 0
 
-    const total = round2(stayCost + chargesTotal + ordersTotal + vat)
+    const total = round2(netStayCost + chargesTotal + ordersTotal + vat)
     return {
         nights,
         stayCost: round2(stayCost),
+        discountAmount: round2(discountAmount),
         chargesTotal: round2(chargesTotal),
         ordersTotal: round2(ordersTotal),
         vat,

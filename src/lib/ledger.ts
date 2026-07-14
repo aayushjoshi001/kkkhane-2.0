@@ -363,8 +363,12 @@ export async function postHotelPaymentIncomeAndLedger(
     restaurantId: string,
     userId: string | null,
     input: {
-        bookingId: string
-        roomNumber: string
+        // Unused inside this function (kept for hotel callers' convenience/
+        // audit clarity) — optional so dine-in callers (no booking) can omit it.
+        bookingId?: string
+        // Only read for the default description fallback below — dine-in
+        // callers that pass their own `description` can omit it too.
+        roomNumber?: string
         guestName: string
         amount: number
         paymentMethod: 'cash' | 'qr_digital' | 'card'
@@ -374,29 +378,38 @@ export async function postHotelPaymentIncomeAndLedger(
         // bank account instead of a single restaurant-wide default. Ignored
         // for cash.
         qrCodeId?: string | null
+        // Overrides so dine-in table settlement (src/app/api/tables/checkout)
+        // can reuse this instead of forking a near-identical function — only
+        // the income category, Day Book category, and description text
+        // differ between "a hotel stay was paid" and "a table's bill was
+        // paid". Hotel callers omit these and get the original behavior.
+        incomeCategoryName?: string
+        dayBookCategory?: DayBookEntryCategory
+        description?: string
     }
 ): Promise<{ success: boolean; error?: string }> {
     if (input.amount <= 0) return { success: true }
 
-    // 1. Find or create the 'Room Revenue' category
+    // 1. Find or create the income category (defaults to 'Room Revenue')
+    const categoryName = input.incomeCategoryName || 'Room Revenue'
     let categoryId: string | undefined
     const { data: existingCategory } = await supabase
         .from('income_categories')
         .select('id')
         .eq('restaurant_id', restaurantId)
-        .eq('name', 'Room Revenue')
+        .eq('name', categoryName)
         .maybeSingle()
 
     categoryId = existingCategory?.id
     if (!categoryId) {
         const { data: newCategory } = await supabase
             .from('income_categories')
-            .insert({ restaurant_id: restaurantId, name: 'Room Revenue' })
+            .insert({ restaurant_id: restaurantId, name: categoryName })
             .select('id')
             .single()
         categoryId = newCategory?.id
     }
-    if (!categoryId) return { success: false, error: 'Failed to find/create Room Revenue category' }
+    if (!categoryId) return { success: false, error: `Failed to find/create ${categoryName} category` }
 
     // 2. Resolve bank account ID if QR or card. Preference order:
     //    a) the specific QR code the customer scanned (input.qrCodeId), for
@@ -448,7 +461,7 @@ export async function postHotelPaymentIncomeAndLedger(
 
     const typeLabel = input.isAdvance ? 'Advance' : 'Settlement'
     const methodLabel = input.paymentMethod === 'cash' ? 'Cash' : 'QR/Digital'
-    const desc = `Room ${typeLabel} (${methodLabel}): ${input.guestName} (Room ${input.roomNumber})`
+    const desc = input.description || `Room ${typeLabel} (${methodLabel}): ${input.guestName} (Room ${input.roomNumber})`
 
     // 3. Create the Income Entry first
     const { error: incomeError } = await supabase
@@ -471,7 +484,7 @@ export async function postHotelPaymentIncomeAndLedger(
     // 4. Try to write to the Day Book (only if an active session is open)
     const ledgerUser = { id: userId || '', restaurantId }
     const dayBookType = input.paymentMethod === 'cash' ? 'cash_in' : 'bank_in'
-    const dayBookCategory = (input.isAdvance ? 'room_deposit' : 'booking_payment') as DayBookEntryCategory
+    const dayBookCategory = input.dayBookCategory ?? ((input.isAdvance ? 'room_deposit' : 'booking_payment') as DayBookEntryCategory)
  
     try {
         await postFinancialTransaction(supabase, ledgerUser, {
@@ -486,5 +499,55 @@ export async function postHotelPaymentIncomeAndLedger(
         console.error('Failed to post room payment to day book:', dbErr)
     }
 
+    return { success: true }
+}
+
+// Posts a staff-applied bargain rate (room or table bill) as a visible
+// cost — mirrors postLoyaltyRedemptionExpense (api/loyalty/actions.ts). No
+// cash actually left the business, so this intentionally never touches the
+// Day Book; it exists purely so the discount shows up in Income & Expenses
+// / the Finance Report instead of only living on the booking/session row.
+// Shared by both hotel checkout and dine-in table checkout — one category
+// for "money we chose not to collect" regardless of which side it's from.
+export async function postBargainDiscountExpense(
+    supabase: SupabaseClient,
+    restaurantId: string,
+    userId: string | null,
+    input: { guestName: string; locationLabel: string; amount: number; reason: string }
+): Promise<{ success: boolean; error?: string }> {
+    if (input.amount <= 0) return { success: true }
+
+    let categoryId: string | undefined
+    const { data: existingCategory } = await supabase
+        .from('expense_categories')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .eq('name', 'Bargain Discounts')
+        .maybeSingle()
+
+    categoryId = existingCategory?.id
+    if (!categoryId) {
+        const { data: newCategory } = await supabase
+            .from('expense_categories')
+            .insert({ restaurant_id: restaurantId, name: 'Bargain Discounts' })
+            .select('id')
+            .single()
+        categoryId = newCategory?.id
+    }
+    if (!categoryId) return { success: false, error: 'Failed to find/create Bargain Discounts category' }
+
+    const { error } = await supabase.from('expenses').insert({
+        restaurant_id: restaurantId,
+        category_id: categoryId,
+        amount: input.amount,
+        description: `Bargain discount: ${input.reason} (${input.guestName}, ${input.locationLabel})`,
+        status: 'paid',
+        created_by: userId || null
+    })
+
+    if (error) {
+        console.error('Failed to post bargain discount expense:', error)
+        return { success: false, error: error.message }
+    }
     return { success: true }
 }

@@ -40,7 +40,7 @@ export async function GET(req: Request) {
         // 2. Fetch active booking details
         const { data: booking } = await supabase
             .from('bookings')
-            .select('id, check_in, check_out, paid_amount, room_id')
+            .select('id, check_in, check_out, paid_amount, room_id, discount_amount')
             .eq('id', roomContext.bookingId)
             .single()
 
@@ -67,6 +67,7 @@ export async function GET(req: Request) {
             checkIn: booking.check_in,
             checkOut: booking.check_out,
             sessionId: activeSession?.id ?? null,
+            discountAmount: Number(booking.discount_amount) || 0,
         })
 
         const advancePaid = Number(booking.paid_amount || 0)
@@ -81,6 +82,7 @@ export async function GET(req: Request) {
             nights: folio.nights,
             roomBasePrice: folio.nights > 0 ? round2(folio.stayCost / folio.nights) : 0,
             stayCost: folio.stayCost,
+            discountAmount: folio.discountAmount,
             foodOrders: folio.orders,
             additionalCharges: folio.charges,
             advancePaid,
