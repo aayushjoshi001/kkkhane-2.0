@@ -43,9 +43,18 @@ function buildChannel(restaurantId: string, entry: RestaurantEntry): RealtimeCha
             'postgres_changes',
             { event: '*', schema: 'public', table, filter: `restaurant_id=eq.${restaurantId}` },
             (payload) => {
-                // Snapshot to tolerate (un)subscribe during dispatch.
+                // Snapshot to tolerate (un)subscribe during dispatch. Each callback
+                // belongs to a different subscribing component, so this loop can
+                // easily call setState on component B while component A happens to
+                // be mid-render — React flags that as "Cannot update a component
+                // while rendering a different component." Deferring each callback
+                // to its own microtask guarantees it always runs after whatever
+                // synchronous render triggered this event has finished, so no
+                // subscriber's update can land inside another's render.
                 for (const cb of Array.from(callbacks)) {
-                    try { cb(payload) } catch { /* one bad listener must not break the rest */ }
+                    queueMicrotask(() => {
+                        try { cb(payload) } catch { /* one bad listener must not break the rest */ }
+                    })
                 }
             }
         )
@@ -55,10 +64,16 @@ function buildChannel(restaurantId: string, entry: RestaurantEntry): RealtimeCha
         if (status === 'SUBSCRIBED') {
             // Channel connected or reconnected — fire all catch-up callbacks so
             // components can refetch from the DB and recover any missed events.
+            // Several waiter-panel components can mount around the same time and
+            // each rebuild/resubscribe triggers this once for everyone, so — same
+            // reasoning as the postgres_changes dispatch above — each callback is
+            // deferred to its own microtask to avoid setState-during-render.
             const e = registry.get(restaurantId)
             if (!e) return
             for (const cb of Array.from(e.reconnectCallbacks)) {
-                try { cb() } catch { /* one bad callback must not block the rest */ }
+                queueMicrotask(() => {
+                    try { cb() } catch { /* one bad callback must not block the rest */ }
+                })
             }
         }
     })

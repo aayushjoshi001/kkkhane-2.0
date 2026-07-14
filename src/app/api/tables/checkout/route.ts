@@ -108,7 +108,7 @@ export async function POST(req: Request) {
         // this restaurant before touching anything.
         const { data: session, error: fetchError } = await supabase
             .from('sessions')
-            .select('id, table_id, tables:table_id(label)')
+            .select('id, table_id, seat_number, tables:table_id(label)')
             .eq('id', session_id)
             .eq('restaurant_id', currentUser.restaurantId)
             .maybeSingle()
@@ -117,7 +117,11 @@ export async function POST(req: Request) {
         if (!session) {
             return NextResponse.json({ error: 'Table session not found' }, { status: 404 })
         }
-        const tableLabel = (session.tables as unknown as { label: string } | null)?.label || 'Unknown'
+        const baseLabel = (session.tables as unknown as { label: string } | null)?.label || 'Unknown'
+        // Seat 2+ of a split table gets its seat in the ledger/audit descriptions
+        // ("Table 4-2 bill settled") so per-seat settlements stay distinguishable.
+        const seatNumber = (session as unknown as { seat_number?: number }).seat_number ?? 1
+        const tableLabel = seatNumber >= 2 ? `${baseLabel}-${seatNumber}` : baseLabel
 
         // 0a. Authoritative bill: every non-cancelled, unpaid order on this
         // session. Each order's own total_amount is reused as-is (already

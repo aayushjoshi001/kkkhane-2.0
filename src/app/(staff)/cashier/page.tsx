@@ -26,7 +26,7 @@ export default async function CashierPage() {
             .from('orders')
             .select(`
                 id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id,
-                sessions ( id, booking_id, tables ( id, label ) ),
+                sessions ( id, booking_id, seat_number, tables ( id, label ) ),
                 order_items ( quantity, unit_price, menu_items ( name ) )
             `)
             .eq('restaurant_id', restaurantId)
@@ -39,7 +39,7 @@ export default async function CashierPage() {
             .from('orders')
             .select(`
                 id, status, total_amount, placed_at, session_id, order_type, customer_name, customer_phone, delivery_address, payment_status, booking_id,
-                sessions ( id, booking_id, tables ( label ) ),
+                sessions ( id, booking_id, seat_number, tables ( label ) ),
                 order_items ( id, quantity, status, unit_price, menu_items ( name ) )
             `)
             .eq('restaurant_id', restaurantId)
@@ -57,9 +57,10 @@ export default async function CashierPage() {
         // All active sessions
         adminSupabase
             .from('sessions')
-            .select('id, table_id, restaurant_id, status, opened_at, session_token, booking_id')
+            .select('id, table_id, restaurant_id, status, opened_at, session_token, booking_id, seat_number')
             .eq('restaurant_id', restaurantId)
-            .eq('status', 'active'),
+            .eq('status', 'active')
+            .order('seat_number', { ascending: true }),
 
         // Online payment claims (UPI/card) awaiting staff verification
         adminSupabase
@@ -95,13 +96,23 @@ export default async function CashierPage() {
             .eq('status', 'checked_in')
     ])
 
-    const activeSessionsByTable = Object.fromEntries(
-        (activeSessions || []).map(s => [s.table_id, s])
-    )
-    const mappedTables = tables?.map(t => ({
-        ...t,
-        activeSession: activeSessionsByTable[t.id] || null
-    })) || []
+    // A split table carries one active session per seat — keep them all, not just
+    // one, so the cashier can bill each seat (Table 4-1, 4-2, ...) independently.
+    // Seat 1 stays `activeSession` (what all single-session code paths expect);
+    // seats 2+ surface as `otherActiveSessions`, mirroring the waiter page.
+    const sessionsByTable: Record<string, NonNullable<typeof activeSessions>> = {}
+    for (const s of activeSessions || []) {
+        (sessionsByTable[s.table_id] ??= []).push(s)
+    }
+    const mappedTables = tables?.map(t => {
+        const tableSessions = sessionsByTable[t.id] || []
+        const primary = tableSessions.find(s => s.seat_number === 1) || tableSessions[0] || null
+        return {
+            ...t,
+            activeSession: primary,
+            otherActiveSessions: tableSessions.filter(s => s.id !== primary?.id),
+        }
+    }) || []
 
     const restaurantSlug = restaurantData?.data?.slug || ''
     const isHotel = mode === 'hotel'

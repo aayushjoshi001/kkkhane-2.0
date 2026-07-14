@@ -215,6 +215,11 @@ export interface Session {
     expires_at: string
     guest_count: number | null
     max_seats: number
+    /** Which "cover" at the table this session belongs to (1-based). A table's
+     *  original single-session behavior is seat 1; a waiter can open additional
+     *  seats (2..capacity) so unrelated parties sharing one table each get their
+     *  own independent order and bill. */
+    seat_number: number
     notes: string | null
     discount_amount: number
     discount_reason: string | null

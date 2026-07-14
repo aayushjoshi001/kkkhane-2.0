@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { openSession, closeSession, setTableStatus, claimTableCleaning, releaseTableCleaning, markTableClean, openSessionFromRequest, findBookingByPhone, getActiveBookings, linkSessionToBooking } from '@/app/(staff)/waiter/actions'
@@ -16,7 +16,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import { useRouter } from 'next/navigation'
 import QuickOrderModal from './QuickOrderModal'
 
-export type TableWithSession = Table & { activeSession?: Session | null }
+export type TableWithSession = Table & { activeSession?: Session | null; otherActiveSessions?: Session[] }
 
 // Status → semantic tokens (active=success, dirty=warning, reserved=info).
 const STATUS_CONFIG = {
@@ -49,10 +49,27 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
     isHotel?: boolean
 }) {
     const [tables, setTables] = useState<TableWithSession[]>(initialTables)
+    // Mirror of `tables` for realtime handlers that need the previous state
+    // without reading it inside a setState updater (updaters must stay pure).
+    const tablesRef = useRef(tables)
+    useEffect(() => { tablesRef.current = tables }, [tables])
     const [selectedTable, setSelectedTable] = useState<TableWithSession | null>(null)
     const [isProcessing, setIsProcessing] = useState(false)
     const { confirm } = useConfirmStore()
     const router = useRouter()
+
+    // Split-table (per-seat billing) state — lets a waiter turn a shared table
+    // into independent covers (Table 5-1, Table 5-2, ...) that each order and
+    // pay separately. `splitView` is a manual toggle; it also turns on
+    // automatically once a table already has more than one active seat (e.g.
+    // after a page refresh). `activeSeat` drills into one seat's own
+    // order/checkout actions; null shows the seat grid.
+    const [splitView, setSplitView] = useState(false)
+    const [activeSeat, setActiveSeat] = useState<number | null>(null)
+    useEffect(() => {
+        setSplitView(false)
+        setActiveSeat(null)
+    }, [selectedTable?.id])
 
     // Hotel guest selection state
     const [showGuestPicker, setShowGuestPicker] = useState(false)
@@ -200,13 +217,14 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
             cleaning_claimed_at: u.cleaning_claimed_at ?? null,
         }
         // Alert the floor when a table newly needs cleaning (e.g. payment closed it).
-        setTables(prev => {
-            const before = prev.find(t => t.id === u.id)
-            if (u.table_status === 'dirty' && before && before.table_status !== 'dirty') {
-                toast(`Table ${u.label ?? before.label} needs cleaning`, { icon: '🧹', duration: 6000 })
-            }
-            return prev.map(t => t.id === u.id ? { ...t, ...patch } : t)
-        })
+        // Read the previous status from the ref, not inside the setTables updater —
+        // updaters must stay pure (React replays them during render, and a toast()
+        // there sets state on the Toaster mid-render).
+        const before = tablesRef.current.find(t => t.id === u.id)
+        if (u.table_status === 'dirty' && before && before.table_status !== 'dirty') {
+            toast(`Table ${u.label ?? before.label} needs cleaning`, { icon: '🧹', duration: 6000 })
+        }
+        setTables(prev => prev.map(t => t.id === u.id ? { ...t, ...patch } : t))
         setSelectedTable(prev => prev?.id === u.id ? { ...prev, ...patch } : prev)
     })
 
@@ -239,7 +257,41 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
         setIsProcessing(false)
     }
 
-    const handleCloseSession = async (sessionId: string) => {
+    // Returns the active session for a given seat (1 = the table's primary
+    // session), or null if that seat is currently empty.
+    const getSeatSession = (table: TableWithSession, seatNumber: number): Session | null => {
+        if (seatNumber === 1) return table.activeSession ?? null
+        return table.otherActiveSessions?.find(s => s.seat_number === seatNumber) ?? null
+    }
+
+    const handleOpenSeatSession = async (tableId: string, seatNumber: number) => {
+        setIsProcessing(true)
+        const res = await openSession(tableId, restaurantId, undefined, seatNumber)
+        if (res.error || !res.session) {
+            toast.error(res.error || 'Failed to open seat')
+            setIsProcessing(false)
+            return
+        }
+        const session = res.session as unknown as Session
+        await setTableStatus(tableId, 'available')
+        const patch = seatNumber === 1
+            ? { activeSession: session }
+            : (t: TableWithSession) => ({ otherActiveSessions: [...(t.otherActiveSessions || []), session] })
+        setTables(prev => prev.map(t => t.id === tableId
+            ? { ...t, ...(typeof patch === 'function' ? patch(t) : patch) }
+            : t))
+        setSelectedTable(prev => prev && prev.id === tableId
+            ? { ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) }
+            : prev)
+        toast.success(`Seat ${seatNumber} opened`)
+        setActiveSeat(seatNumber)
+        setIsProcessing(false)
+    }
+
+    // `seatContext` is passed when closing one seat of a split table — instead of
+    // closing the whole modal, it clears just that seat and drops back to the
+    // seat grid so the waiter can keep managing the table's other covers.
+    const handleCloseSession = async (sessionId: string, seatContext?: { tableId: string; seatNumber: number }) => {
         const ok = await confirm({
             title: 'Close Session?',
             message: 'Customers will no longer be able to order and the table will be cleared.',
@@ -251,7 +303,17 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
         await closeSession(sessionId)
         toast.success('Session closed')
         setIsProcessing(false)
-        setSelectedTable(null)
+        if (seatContext) {
+            const { tableId, seatNumber } = seatContext
+            const clear = (t: TableWithSession): TableWithSession => seatNumber === 1
+                ? { ...t, activeSession: null }
+                : { ...t, otherActiveSessions: (t.otherActiveSessions || []).filter(s => s.seat_number !== seatNumber) }
+            setTables(prev => prev.map(t => t.id === tableId ? clear(t) : t))
+            setSelectedTable(prev => prev && prev.id === tableId ? clear(prev) : prev)
+            setActiveSeat(null)
+        } else {
+            setSelectedTable(null)
+        }
     }
 
     const handleSetStatus = async (tableId: string, status: 'available' | 'dirty' | 'reserved') => {
@@ -437,30 +499,126 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
-                        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
-                            <div>
-                                <h3 className="text-h3 font-black text-ink">Table {selectedTable.label}</h3>
-                                <p className="text-caption text-ink-subtle mt-0.5">
-                                    {selectedTable.activeSession
-                                        ? 'Occupied'
-                                        : selectedTable.table_status === 'dirty'
-                                            ? 'Needs cleaning'
-                                            : selectedTable.table_status === 'reserved'
-                                                ? 'Reserved'
-                                                : 'Available'}
-                                </p>
-                            </div>
-                            <button 
-                                onClick={() => setSelectedTable(null)}
-                                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink-muted"
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
+                        {(() => {
+                            const seatCount = selectedTable.capacity || 4
+                            const forcedSplit = (selectedTable.otherActiveSessions?.length ?? 0) > 0
+                            const isSplit = forcedSplit || splitView
+                            const occupiedSeats = isSplit
+                                ? Array.from({ length: seatCount }, (_, i) => i + 1).filter(n => getSeatSession(selectedTable, n)).length
+                                : 0
+                            return (
+                                <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
+                                    <div>
+                                        <h3 className="text-h3 font-black text-ink">Table {selectedTable.label}</h3>
+                                        <p className="text-caption text-ink-subtle mt-0.5">
+                                            {isSplit
+                                                ? `Split · ${occupiedSeats} of ${seatCount} seats occupied`
+                                                : selectedTable.activeSession
+                                                    ? 'Occupied'
+                                                    : selectedTable.table_status === 'dirty'
+                                                        ? 'Needs cleaning'
+                                                        : selectedTable.table_status === 'reserved'
+                                                            ? 'Reserved'
+                                                            : 'Available'}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        {!forcedSplit && seatCount > 1 && (
+                                            <button
+                                                onClick={() => { setSplitView(v => !v); setActiveSeat(null) }}
+                                                title={splitView ? 'Back to single order' : 'Split table into separately-paying seats'}
+                                                className="px-2.5 py-1.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wide border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors"
+                                            >
+                                                {splitView ? 'Combined' : 'Split'}
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => setSelectedTable(null)}
+                                            className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink-muted"
+                                        >
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+                                </div>
+                            )
+                        })()}
 
                         {/* Content */}
                         <div className="p-6">
-                            {selectedTable.activeSession ? (
+                            {(selectedTable.otherActiveSessions?.length ?? 0) > 0 || splitView ? (
+                                activeSeat === null ? (
+                                    <div className="space-y-4">
+                                        <p className="text-caption text-ink-subtle text-center">Tap a seat to open or manage its order. Each seat orders and pays separately.</p>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {Array.from({ length: selectedTable.capacity || 4 }, (_, i) => i + 1).map(seatNumber => {
+                                                const session = getSeatSession(selectedTable, seatNumber)
+                                                return (
+                                                    <button
+                                                        key={seatNumber}
+                                                        disabled={isProcessing}
+                                                        onClick={() => session ? setActiveSeat(seatNumber) : handleOpenSeatSession(selectedTable.id, seatNumber)}
+                                                        className={`rounded-2xl border p-4 flex flex-col items-center gap-1 transition-all disabled:opacity-50 ${
+                                                            session ? 'border-success/30 bg-success/5 hover:bg-success/10' : 'border-hairline bg-surface hover:bg-surface-muted'
+                                                        }`}
+                                                    >
+                                                        <span className="font-extrabold text-ink text-sm">{selectedTable.label}-{seatNumber}</span>
+                                                        <span className={`text-[10px] font-bold uppercase tracking-wide ${session ? 'text-success-fg' : 'text-ink-subtle'}`}>
+                                                            {session ? 'Occupied' : 'Tap to open'}
+                                                        </span>
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
+                                    </div>
+                                ) : (() => {
+                                    const session = getSeatSession(selectedTable, activeSeat)
+                                    return (
+                                        <div className="space-y-4">
+                                            <button onClick={() => setActiveSeat(null)} className="text-caption font-bold text-ink-subtle hover:text-ink transition-colors">
+                                                ← Back to seats
+                                            </button>
+                                            {!session ? (
+                                                <p className="text-center text-caption text-ink-subtle py-6">This seat was closed.</p>
+                                            ) : (
+                                                <>
+                                                    <div className="flex justify-center p-4 bg-surface-muted rounded-[var(--r-md)] border border-hairline">
+                                                        <QRCodeSVG
+                                                            value={`${baseUrl}/t/${selectedTable.qr_token}?s=${session.session_token}`}
+                                                            size={180}
+                                                            level="Q"
+                                                            marginSize={4}
+                                                        />
+                                                    </div>
+                                                    <p className="text-caption text-center text-ink-subtle">Scan to order · {selectedTable.label}-{activeSeat}</p>
+                                                    <div className="flex flex-col gap-3">
+                                                        <Button
+                                                            variant="primary"
+                                                            block
+                                                            icon={ShoppingCart}
+                                                            onClick={() => {
+                                                                setQuickOrderSession({ sessionId: session.session_token, tableName: `${selectedTable.label}-${activeSeat}` })
+                                                                setSelectedTable(null)
+                                                            }}
+                                                        >
+                                                            Order for {selectedTable.label}-{activeSeat}
+                                                        </Button>
+                                                        <Button
+                                                            variant="secondary"
+                                                            block
+                                                            icon={PowerOff}
+                                                            loading={isProcessing}
+                                                            onClick={() => handleCloseSession(session.id, { tableId: selectedTable.id, seatNumber: activeSeat })}
+                                                            className="text-danger-fg border-danger/30 hover:bg-danger-bg"
+                                                        >
+                                                            Close Seat &amp; Checkout
+                                                        </Button>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    )
+                                })()
+                            ) : selectedTable.activeSession ? (
                                 <div className="space-y-4">
                                     <div className="flex justify-center p-4 bg-surface-muted rounded-[var(--r-md)] border border-hairline">
                                         <QRCodeSVG

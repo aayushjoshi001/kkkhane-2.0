@@ -8,7 +8,7 @@ import { getCachedMenuData } from '@/lib/menu-cache'
 import { getRoomContextForTable } from '@/lib/rooms'
 import { getCurrentUser } from '@/lib/auth'
 
-export async function openSession(tableId: string, restaurantId: string, guestCount?: number) {
+export async function openSession(tableId: string, restaurantId: string, guestCount?: number, seatNumber: number = 1) {
     const supabase = await createServerClient()
     const adminSupabase = await createAdminClient()
 
@@ -18,12 +18,14 @@ export async function openSession(tableId: string, restaurantId: string, guestCo
         return { error: 'Unauthorized' }
     }
 
-    // Expire any stale sessions for this table that passed their expires_at but
-    // were never cleaned up — otherwise the unique-active-per-table index blocks the insert.
+    // Expire any stale sessions for this table+seat that passed their expires_at
+    // but were never cleaned up — otherwise the unique-active-per-table-per-seat
+    // index blocks the insert.
     await adminSupabase
         .from('sessions')
         .update({ status: 'expired', closed_at: new Date().toISOString() })
         .eq('table_id', tableId)
+        .eq('seat_number', seatNumber)
         .eq('status', 'active')
         .lt('expires_at', new Date().toISOString())
 
@@ -39,13 +41,14 @@ export async function openSession(tableId: string, restaurantId: string, guestCo
             opened_by: user.id,
             guest_count: guestCount || null,
             session_token: sessionToken,
+            seat_number: seatNumber,
         })
         .select('*')
         .single()
 
     if (error) {
         console.error('[openSession] Insert failed:', error)
-        if (error.code === '23505') return { error: 'Table already has an active session' }
+        if (error.code === '23505') return { error: seatNumber > 1 ? `Seat ${seatNumber} already has an active session` : 'Table already has an active session' }
         return { error: error.message }
     }
 
@@ -55,7 +58,7 @@ export async function openSession(tableId: string, restaurantId: string, guestCo
         action: 'session_opened',
         entityType: 'session',
         entityId: data?.id,
-        newValue: { table_id: tableId, guest_count: guestCount ?? null },
+        newValue: { table_id: tableId, guest_count: guestCount ?? null, seat_number: seatNumber },
     })
 
     revalidatePath('/waiter')
@@ -193,13 +196,29 @@ export async function markTableClean(
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'Unauthorized' }
 
+    // PostgREST throws a spurious "column does not exist" error when an .or()
+    // filter is combined with .update() on this table, so the owner-or-unclaimed
+    // check is done as a separate read instead of folding it into the update's
+    // WHERE clause.
+    const { data: current, error: readError } = await admin
+        .from('tables')
+        .select('table_status, cleaning_claimed_by')
+        .eq('id', tableId)
+        .maybeSingle()
+
+    if (readError) return { error: readError.message }
+    if (!current || current.table_status !== 'dirty') {
+        return { conflict: true, error: 'Table is not marked dirty' }
+    }
+    if (current.cleaning_claimed_by && current.cleaning_claimed_by !== user.id) {
+        return { conflict: true, error: 'Only the waiter who took this table can mark it clean' }
+    }
+
     const { data, error } = await admin
         .from('tables')
         .update({ table_status: 'available', cleaning_claimed_by: null, cleaning_claimed_at: null })
         .eq('id', tableId)
         .eq('table_status', 'dirty')
-        // Owner-only, or anyone if it was never claimed.
-        .or(`cleaning_claimed_by.eq.${user.id},cleaning_claimed_by.is.null`)
         .select('id')
 
     if (error) return { error: error.message }
