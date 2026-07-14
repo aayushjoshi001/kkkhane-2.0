@@ -10,7 +10,7 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json().catch(() => ({}))
-        const { room_number, floor, type_id } = body
+        const { room_number, floor, type_id, beds } = body
 
         if (!room_number || !type_id) {
             return NextResponse.json({ error: 'Room number and Room Type are required' }, { status: 400 })
@@ -23,6 +23,7 @@ export async function POST(req: Request) {
                 restaurant_id: currentUser.restaurantId,
                 room_number: room_number.trim(),
                 floor: floor?.trim() || '1',
+                beds: Number(beds) || 1,
                 type_id,
                 status: 'available'
             })
@@ -57,7 +58,7 @@ export async function PATCH(req: Request) {
         }
 
         const body = await req.json().catch(() => ({}))
-        const { id, room_number, floor, type_id, notes } = body
+        const { id, room_number, floor, type_id, notes, beds } = body
         if (!id) {
             return NextResponse.json({ error: 'Room id is required' }, { status: 400 })
         }
@@ -68,6 +69,7 @@ export async function PATCH(req: Request) {
             updates.room_number = String(room_number).trim()
         }
         if (floor !== undefined) updates.floor = floor?.trim() || null
+        if (beds !== undefined) updates.beds = Number(beds) || 1
         if (type_id !== undefined) updates.type_id = type_id || null
         if (notes !== undefined) updates.notes = notes?.trim() || null
         if (Object.keys(updates).length === 0) {
