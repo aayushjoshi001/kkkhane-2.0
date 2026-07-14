@@ -81,6 +81,7 @@ export default async function CashierPage() {
             .from('rooms')
             .select('*, room_types:type_id(*)')
             .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
             .order('room_number', { ascending: true }),
 
         // Get restaurant mode

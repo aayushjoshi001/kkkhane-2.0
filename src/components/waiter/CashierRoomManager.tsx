@@ -9,10 +9,11 @@ import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { type TableWithSession } from './CashierTableManager'
-import { formatDateTime, calculateNights } from '@/lib/utils'
+import { formatDateTime, calculateNights, advanceMethodLabel } from '@/lib/utils'
 import QuickOrderModal from './QuickOrderModal'
 import { openSession } from '@/app/(staff)/waiter/actions'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
+import { getRoomStatusConfig } from '@/lib/roomStatus'
 
 export interface RoomWithTypes {
     id: string
@@ -25,13 +26,6 @@ export interface RoomWithTypes {
         base_price: number
         capacity: number
     } | null
-}
-
-const STATUS_CONFIG = {
-    available: { dot: 'bg-emerald-500', card: 'border-emerald-100 bg-emerald-50/10', text: 'text-emerald-700 bg-emerald-50 border-emerald-100', label: 'Available' },
-    occupied:  { dot: 'bg-blue-500 animate-pulse', card: 'border-blue-200 bg-blue-50/10', text: 'text-blue-700 bg-blue-50 border-blue-100', label: 'Booked' },
-    dirty:     { dot: 'bg-amber-500', card: 'border-amber-200 bg-amber-50/10', text: 'text-amber-700 bg-amber-50 border-amber-100', label: 'Cleaning' },
-    maintenance: { dot: 'bg-rose-500', card: 'border-rose-200 bg-rose-50/10', text: 'text-rose-700 bg-rose-50 border-rose-100', label: 'Closed' },
 }
 
 export default function CashierRoomManager({
@@ -376,12 +370,6 @@ export default function CashierRoomManager({
         if (!bookingForm.guest_phone.trim()) { toast.error('Phone number is required'); return }
         if (!bookingForm.check_in || !bookingForm.check_out) { toast.error('Check-in and Check-out dates are required'); return }
 
-        const maxCapacity = selectedRoom.room_types?.capacity || 2
-        if (Number(bookingForm.guest_count) > maxCapacity) {
-            toast.error(`Guests exceed room capacity of ${maxCapacity}`);
-            return
-        }
-
         // Calculate advance amount to send
         const basePrice = selectedRoom.room_types?.base_price || 0
         const inDate = new Date(bookingForm.check_in)
@@ -491,9 +479,8 @@ export default function CashierRoomManager({
                     </div>
                 ) : (
                     filteredRooms.map(room => {
-                        const status = room.status
-                        const cfg = STATUS_CONFIG[status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.available
-                        
+                        const cfg = getRoomStatusConfig(room.status)
+
                         return (
                             <button
                                 key={room.id}
@@ -510,10 +497,10 @@ export default function CashierRoomManager({
                                         {room.room_types.name}
                                     </span>
                                 )}
-                                <span className={`uppercase tracking-wide mt-1.5 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border ${cfg.text}`}>
+                                <span className={`uppercase tracking-wide mt-1.5 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border ${cfg.badge} ${cfg.badgeBorder}`}>
                                     {cfg.label}
                                 </span>
-                                <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${cfg.dot}`} />
+                                <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${cfg.dot} ${cfg.pulse ? 'animate-pulse' : ''}`} />
                             </button>
                         )
                     })
@@ -607,11 +594,10 @@ export default function CashierRoomManager({
                                             />
                                         </div>
                                         <div className="col-span-2">
-                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Number of Guests * (Max {selectedRoom.room_types?.capacity || 2})</label>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Number of Guests *</label>
                                             <input
                                                 type="number"
                                                 min="1"
-                                                max={selectedRoom.room_types?.capacity || 2}
                                                 value={bookingForm.guest_count}
                                                 onChange={e => setBookingForm(b => ({ ...b, guest_count: e.target.value }))}
                                                 className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
@@ -1109,7 +1095,7 @@ export default function CashierRoomManager({
                                                 <div className="flex justify-between text-emerald-600 font-bold">
                                                     <span className="flex items-center gap-1">
                                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                                        Advance Paid ({activeBooking?.advance_payment_method === 'split' ? 'Split Cash+QR' : activeBooking?.advance_payment_method === 'qr_digital' ? 'QR/Digital' : 'Cash'}):
+                                                        Advance Paid ({advanceMethodLabel(activeBooking?.advance_payment_method)}):
                                                     </span>
                                                     <span className="tabular-nums">- {money(advancePaid)}</span>
                                                 </div>
