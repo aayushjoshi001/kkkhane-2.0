@@ -126,6 +126,21 @@ export default function CashierClient({
     // happens after this, so the cashier sees "Paid" immediately instead of a
     // spinner that looks stuck for as long as the print step takes.
     const [invoiceSettled, setInvoiceSettled] = useState(false)
+    const [partnerRestaurantId, setPartnerRestaurantId] = useState<string | null>(null)
+
+    useEffect(() => {
+        const fetchPartner = async () => {
+            const { data } = await supabaseRef.current
+                .from('restaurants')
+                .select('linked_restaurant_id')
+                .eq('id', restaurantId)
+                .maybeSingle()
+            if (data?.linked_restaurant_id) {
+                setPartnerRestaurantId(data.linked_restaurant_id)
+            }
+        }
+        fetchPartner()
+    }, [restaurantId])
 
     // For stay billing detail states
     const [loadingStayDetails, setLoadingStayDetails] = useState(false)
@@ -987,6 +1002,7 @@ export default function CashierClient({
                             bookings={bookings}
                             setBookings={setBookings}
                             restaurantId={restaurantId}
+                            partnerRestaurantId={partnerRestaurantId}
                             roomsFilter={roomsFilter}
                             tables={tables}
                             activeOrders={active}

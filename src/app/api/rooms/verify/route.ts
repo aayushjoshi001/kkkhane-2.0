@@ -13,10 +13,10 @@ export async function POST(req: Request) {
 
         const supabase = await createAdminClient()
 
-        // 1. Resolve restaurant ID from slug
+        // 1. Resolve restaurant ID and linked_hotel_id from slug
         const { data: restaurant, error: restError } = await supabase
             .from('restaurants')
-            .select('id, name')
+            .select('id, name, linked_hotel_id')
             .eq('slug', restaurantSlug)
             .single()
 
@@ -24,15 +24,30 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Restaurant not found' }, { status: 404 })
         }
 
-        // 2. Find the room by number
-        const { data: room, error: roomError } = await supabase
+        // 2. Find the room by number.
+        // Look under the restaurant tenant first, then fall back to the linked hotel tenant if configured.
+        let targetRestaurantIdForRoom = restaurant.id
+        let { data: room } = await supabase
             .from('rooms')
             .select('id, room_number')
-            .eq('restaurant_id', restaurant.id)
+            .eq('restaurant_id', targetRestaurantIdForRoom)
             .eq('room_number', roomNumber.trim())
-            .single()
+            .maybeSingle()
 
-        if (roomError || !room) {
+        if (!room && restaurant.linked_hotel_id) {
+            targetRestaurantIdForRoom = restaurant.linked_hotel_id
+            const { data: linkedRoom } = await supabase
+                .from('rooms')
+                .select('id, room_number')
+                .eq('restaurant_id', targetRestaurantIdForRoom)
+                .eq('room_number', roomNumber.trim())
+                .maybeSingle()
+            if (linkedRoom) {
+                room = linkedRoom
+            }
+        }
+
+        if (!room) {
             return NextResponse.json({ error: `Room ${roomNumber} not found in this hotel` }, { status: 404 })
         }
 

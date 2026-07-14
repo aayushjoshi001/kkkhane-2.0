@@ -66,6 +66,19 @@ export async function computeFolioTotal(
 ): Promise<FolioBreakdown> {
     const { restaurantId, bookingId, roomId, checkIn, checkOut, sessionId, discountAmount: rawDiscount } = opts
 
+    // Fetch partner restaurant if linked
+    const { data: hotelData } = await supabase
+        .from('restaurants')
+        .select('linked_restaurant_id')
+        .eq('id', restaurantId)
+        .maybeSingle()
+    
+    const partnerRestaurantId = hotelData?.linked_restaurant_id
+    const targetRestaurantIds = [restaurantId]
+    if (partnerRestaurantId) {
+        targetRestaurantIds.push(partnerRestaurantId)
+    }
+
     // Room stay cost = nightly rate × nights.
     const { data: room } = await supabase
         .from('rooms')
@@ -123,7 +136,7 @@ export async function computeFolioTotal(
     const { data: byBooking } = await supabase
         .from('orders')
         .select('id, placed_at, order_items(quantity, unit_price)')
-        .eq('restaurant_id', restaurantId)
+        .in('restaurant_id', targetRestaurantIds)
         .eq('booking_id', bookingId)
         .neq('status', 'cancelled')
         .neq('payment_status', 'paid')
@@ -133,7 +146,7 @@ export async function computeFolioTotal(
         const { data: bySession } = await supabase
             .from('orders')
             .select('id, placed_at, order_items(quantity, unit_price)')
-            .eq('restaurant_id', restaurantId)
+            .in('restaurant_id', targetRestaurantIds)
             .in('session_id', Array.from(sessionIds))
             .neq('status', 'cancelled')
             .neq('payment_status', 'paid')

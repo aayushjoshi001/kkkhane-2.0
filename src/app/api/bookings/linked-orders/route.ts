@@ -60,12 +60,25 @@ export async function GET(req: NextRequest) {
 
         const sessionIds = diningSessions.map((s: { id: string }) => s.id)
 
+        // Resolve target restaurant IDs (current hotel + linked partner restaurant if any)
+        const { data: hotelData } = await supabase
+            .from('restaurants')
+            .select('linked_restaurant_id')
+            .eq('id', currentUser.restaurantId)
+            .maybeSingle()
+
+        const partnerRestaurantId = hotelData?.linked_restaurant_id
+        const targetRestaurantIds = [currentUser.restaurantId]
+        if (partnerRestaurantId) {
+            targetRestaurantIds.push(partnerRestaurantId)
+        }
+
         // Fetch all order items from these sessions
         const { data: orders, error: ordErr } = await supabase
             .from('orders')
             .select('id, session_id, status, payment_status, order_items(id, quantity, unit_price, menu_items(name))')
             .in('session_id', sessionIds)
-            .eq('restaurant_id', currentUser.restaurantId)
+            .in('restaurant_id', targetRestaurantIds)
             .neq('status', 'cancelled')
             .neq('payment_status', 'paid')
 

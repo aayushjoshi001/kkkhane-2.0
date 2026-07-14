@@ -25,10 +25,23 @@ async function settleOrdersMatching(
     restaurantId: string,
     match: { session_id: string } | { booking_id: string },
 ) {
+    // Fetch partner restaurant if linked
+    const { data: hotelData } = await supabase
+        .from('restaurants')
+        .select('linked_restaurant_id')
+        .eq('id', restaurantId)
+        .maybeSingle()
+
+    const partnerRestaurantId = hotelData?.linked_restaurant_id
+    const targetRestaurantIds = [restaurantId]
+    if (partnerRestaurantId) {
+        targetRestaurantIds.push(partnerRestaurantId)
+    }
+
     let query = supabase
         .from('orders')
         .select('id')
-        .eq('restaurant_id', restaurantId)
+        .in('restaurant_id', targetRestaurantIds)
         .neq('status', 'cancelled')
 
     query = 'session_id' in match
@@ -170,26 +183,6 @@ export async function POST(req: Request) {
         }
         const authoritativeTotal = folio.total
 
-        // 0b. Atomically claim this checkout: a plain read-then-write check here
-        // ("is status already checked_out?") leaves a window where two requests
-        // (a double-click, a retry) can both pass the check before either writes,
-        // both settle orders, and both post a duplicate ledger income entry for
-        // the same payment. Flipping status in the same statement as the
-        // condition makes Postgres do the check-and-claim as one atomic step —
-        // only one concurrent request can ever move a row from non-checked_out
-        // to checked_out, so only one proceeds past this point.
-        const { data: claimed, error: claimError } = await supabase
-            .from('bookings')
-            .update({ status: 'checked_out' })
-            .eq('id', booking_id)
-            .eq('restaurant_id', currentUser.restaurantId)
-            .neq('status', 'checked_out')
-            .select('id')
-
-        if (claimError) throw claimError
-        if (!claimed || claimed.length === 0) {
-            return NextResponse.json({ error: 'Booking is already checked out' }, { status: 409 })
-        }
         const clientMismatch = Number.isFinite(clientTotal)
             ? round2(Math.abs(clientTotal - authoritativeTotal))
             : null
@@ -200,124 +193,102 @@ export async function POST(req: Request) {
                 : newPaidAmount > 0 ? 'partial'
                     : 'unpaid'
 
-        // 1. Settle every order billed to this stay BEFORE flipping the booking to
-        // checked_out — the room's own QR orders (linked via orders.booking_id,
-        // stamped at placement), the room's own session (defensively, and closed
-        // once settled), and any dining sessions linked to this booking (e.g. a
-        // hotel guest ordered from the restaurant and a waiter linked the session).
-        // Settling first avoids a window where a concurrent read sees the booking
-        // already checked out but its orders not yet marked delivered/paid.
-        await settleOrdersMatching(supabase, currentUser.restaurantId, { booking_id })
-        if (session_id) {
-            await settleAndCloseSession(supabase, currentUser.restaurantId, session_id)
-        }
+        // 1. Fetch current restaurant linkage & split settings
+        const { data: restaurant } = await supabase
+            .from('restaurants')
+            .select('ledger_split_mode, billing_commission_rate, linked_restaurant_id')
+            .eq('id', currentUser.restaurantId)
+            .single()
 
-        // Every session linked to the stay, not just the active ones: computeFolioTotal
-        // bills a linked session's unpaid orders regardless of session status, so
-        // filtering to active here would charge the guest for a closed session's
-        // orders and leave them payment_status != 'paid' — collectable a second time.
-        // settleAndCloseSession only flips status on sessions that are still active.
-        const { data: linkedSessions } = await supabase
-            .from('sessions')
-            .select('id')
-            .eq('booking_id', booking_id)
-
-        for (const sid of (linkedSessions || []).map(s => s.id)) {
-            if (sid === session_id) continue // already handled above
-            await settleAndCloseSession(supabase, currentUser.restaurantId, sid)
-        }
-
-        // 2. Persist the settlement's financial fields (status is already
-        // 'checked_out' - claimed atomically above)
-        const { error: bookingError } = await supabase
-            .from('bookings')
-            .update({
-                total_amount: authoritativeTotal,
-                paid_amount: newPaidAmount,
-                payment_status: paymentStatus,
-                discount_amount: discountAmount,
-                discount_reason: discountAmount > 0 ? discountReason : null,
-                discount_applied_by: discountAmount > 0 ? currentUser.id : null,
-                discount_applied_at: discountAmount > 0 ? new Date().toISOString() : null,
-            })
-            .eq('id', booking_id)
-            .eq('restaurant_id', currentUser.restaurantId)
-
-        if (bookingError) throw bookingError
-
-        // 3. Update Room status to dirty
-        const { error: roomError } = await supabase
+        const partnerRestaurantId = restaurant?.linked_restaurant_id
+        
+        // 2. Fetch room details
+        const { data: roomContext } = await supabase
             .from('rooms')
-            .update({ status: 'dirty' })
+            .select('room_number')
             .eq('id', room_id)
-            .eq('restaurant_id', currentUser.restaurantId)
+            .single()
 
-        if (roomError) throw roomError
- 
-        // Log settlement payments to financial ledger and books automatically
+        const roomNumber = roomContext?.room_number || 'Unknown'
+        const guestName = booking.guest_name || 'Guest'
+
+        // 3. Resolve cash, qr, and credit splits
         const cashPaid = Number(cash_paid) || 0
         const qrPaid = Number(qr_paid) || 0
 
-        if (cashPaid > 0 || qrPaid > 0 || discountAmount > 0 || creditAmount > 0) {
-            const { data: roomContext } = await supabase
-                .from('rooms')
-                .select('room_number')
-                .eq('id', room_id)
-                .single()
+        let hotelCash = cashPaid
+        let hotelQr = qrPaid
+        let hotelCredit = creditAmount
 
-            const roomNumber = roomContext?.room_number || 'Unknown'
-            const guestName = booking.guest_name || 'Guest'
+        let restCash = 0
+        let restQr = 0
+        let restCredit = 0
 
-            if (cashPaid > 0) {
-                await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
-                    bookingId: booking_id,
-                    roomNumber,
-                    guestName,
-                    amount: cashPaid,
-                    paymentMethod: 'cash',
-                    isAdvance: false
-                })
-            }
-            if (qrPaid > 0) {
-                await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
-                    bookingId: booking_id,
-                    roomNumber,
-                    guestName,
-                    amount: qrPaid,
-                    paymentMethod: 'qr_digital',
-                    isAdvance: false,
-                    qrCodeId: qr_code_id || null
-                })
-            }
-            if (creditAmount > 0) {
-                // Checkout has already been claimed and orders settled above —
-                // a failure here is logged, not surfaced as a failed checkout
-                // (same best-effort treatment as the cash/qr postings above),
-                // since the guest has already been checked out at this point.
-                const account = await findOrCreateCustomerCreditAccount(supabase, currentUser.restaurantId, currentUser.id, {
-                    name: creditCustomerName,
-                    phone: creditCustomerPhone,
-                })
-                if ('error' in account) {
-                    console.error('Failed to create/find customer credit account:', account.error)
-                } else {
-                    await postCreditCharge(supabase, currentUser.restaurantId, currentUser.id, {
-                        customerCreditAccountId: account.id,
-                        amount: creditAmount,
-                        description: `Room ${roomNumber} stay on credit (${guestName})`,
-                    })
-                }
-            }
-            if (discountAmount > 0) {
-                await postBargainDiscountExpense(supabase, currentUser.restaurantId, currentUser.id, {
-                    guestName,
-                    locationLabel: `Room ${roomNumber}`,
-                    amount: discountAmount,
-                    reason: discountReason,
-                })
-            }
+        if (partnerRestaurantId && folio.ordersTotal > 0 && settledNow > 0) {
+            const restaurantAlloc = Math.min(folio.ordersTotal, settledNow)
+            const restaurantRatio = restaurantAlloc / settledNow
+
+            restCash = round2(cashPaid * restaurantRatio)
+            restQr = round2(qrPaid * restaurantRatio)
+            restCredit = round2(creditAmount * restaurantRatio)
+
+            hotelCash = round2(cashPaid - restCash)
+            hotelQr = round2(qrPaid - restQr)
+            hotelCredit = round2(creditAmount - restCredit)
         }
 
+        // 4. Resolve customer credit account if credit is used
+        let creditAccountId: string | null = null
+        if (creditAmount > 0) {
+            const account = await findOrCreateCustomerCreditAccount(supabase, currentUser.restaurantId, currentUser.id, {
+                name: creditCustomerName,
+                phone: creditCustomerPhone,
+            })
+            if ('error' in account) {
+                return NextResponse.json({ error: `Credit account error: ${account.error}` }, { status: 400 })
+            }
+            creditAccountId = account.id
+        }
+
+        // 5. Invoke transaction-locked database RPC to settle checkout atomically
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc('settle_booking_checkout_v2', {
+            p_booking_id: booking_id,
+            p_restaurant_id: currentUser.restaurantId,
+            p_room_id: room_id,
+            p_session_id: session_id || null,
+            p_hotel_cash: hotelCash,
+            p_hotel_qr: hotelQr,
+            p_hotel_credit: hotelCredit,
+            p_rest_cash: restCash,
+            p_rest_qr: restQr,
+            p_rest_credit: restCredit,
+            p_discount_amount: discountAmount,
+            p_discount_reason: discountReason || '',
+            p_hotel_credit_account_id: creditAccountId,
+            p_room_number: roomNumber,
+            p_guest_name: guestName,
+            p_user_id: currentUser.id,
+            p_partner_restaurant_id: partnerRestaurantId || null,
+            p_settled_now: settledNow,
+            p_new_paid_amount: newPaidAmount,
+            p_payment_status: paymentStatus,
+            p_authoritative_total: authoritativeTotal,
+            p_orders_total: folio.ordersTotal,
+            p_ledger_split_mode: restaurant?.ledger_split_mode || 'direct',
+            p_commission_rate: Number(restaurant?.billing_commission_rate) || 0.00
+        })
+
+        if (rpcErr) {
+            console.error('RPC Checkout Transaction Error:', rpcErr)
+            return NextResponse.json({ error: `Checkout transaction failed: ${rpcErr.message}` }, { status: 500 })
+        }
+
+        const resObj = rpcRes as unknown as { success: boolean; error?: string }
+        if (!resObj.success) {
+            return NextResponse.json({ error: resObj.error || 'Transaction rolled back' }, { status: 400 })
+        }
+
+        // 6. Log audit event
         void logAudit({
             restaurantId: currentUser.restaurantId,
             userId: currentUser.id,
@@ -336,6 +307,8 @@ export async function POST(req: Request) {
                 discount_amount: discountAmount,
                 discount_reason: discountAmount > 0 ? discountReason : null,
                 session_id: session_id || null,
+                split_mode: restaurant?.ledger_split_mode || 'direct',
+                commission_rate: Number(restaurant?.billing_commission_rate) || 0
             },
         })
 

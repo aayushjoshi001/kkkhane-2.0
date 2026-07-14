@@ -60,7 +60,7 @@ export default function RoomsClient({
     // Which room's booking has been fetched — loading is derived from it
     const [loadedBookingRoomId, setLoadedBookingRoomId] = useState<string | null>(null)
 
-    const [roomForm, setRoomForm] = useState({ room_number: '', floor: '', type_id: '' })
+    const [roomForm, setRoomForm] = useState({ room_number: '', floor: '', type_id: '', beds: '1' })
     const [editingRoomId, setEditingRoomId] = useState<string | null>(null)
     const [typeForm, setTypeForm] = useState({ name: '', base_price: '', capacity: '2', description: '' })
     const [editingTypeId, setEditingTypeId] = useState<string | null>(null)
@@ -228,13 +228,13 @@ export default function RoomsClient({
     // Reset the Add/Edit Room form back to its blank "add" state
     const resetRoomForm = () => {
         setEditingRoomId(null)
-        setRoomForm({ room_number: '', floor: '', type_id: '' })
+        setRoomForm({ room_number: '', floor: '', type_id: '', beds: '1' })
     }
 
     // Load an existing room into the form for editing
     const openEditRoom = (room: Room) => {
         setEditingRoomId(room.id)
-        setRoomForm({ room_number: room.room_number, floor: room.floor || '', type_id: room.type_id || '' })
+        setRoomForm({ room_number: room.room_number, floor: room.floor || '', type_id: room.type_id || '', beds: String(room.beds || 1) })
         setIsAddRoomOpen(true)
     }
 
@@ -559,7 +559,7 @@ export default function RoomsClient({
                                 }`}
                             >
                                 <div className="flex items-start justify-between">
-                                    <span className="text-xs font-bold text-gray-400 capitalize">Floor {room.floor || '1'}</span>
+                                    <span className="text-xs font-bold text-gray-400 capitalize">Floor {room.floor || '1'} • {room.beds || 1} Bed{room.beds !== 1 ? 's' : ''}</span>
                                     <div className={`p-1.5 rounded-lg border flex items-center justify-center shrink-0 ${statusCfg.badge}`}>
                                         <statusCfg.icon size={16} />
                                     </div>
@@ -621,10 +621,14 @@ export default function RoomsClient({
                     {(() => {
                         const t = roomTypesList.find(rt => rt.id === selectedRoom.type_id)
                         return (
-                            <div className="mb-4 bg-gray-50/70 border border-gray-100 rounded-2xl p-4 grid grid-cols-2 gap-x-3 gap-y-3 text-xs">
+                            <div className="mb-4 bg-gray-50/70 border border-gray-100 rounded-2xl p-4 grid grid-cols-3 gap-x-3 gap-y-3 text-xs">
                                 <div>
                                     <p className="text-gray-400 font-bold uppercase tracking-wide">Floor</p>
                                     <p className="font-extrabold text-gray-900 mt-0.5">{selectedRoom.floor || '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 font-bold uppercase tracking-wide">Beds</p>
+                                    <p className="font-extrabold text-gray-900 mt-0.5">{selectedRoom.beds || 1}</p>
                                 </div>
                                 <div>
                                     <p className="text-gray-400 font-bold uppercase tracking-wide">Category</p>
@@ -639,7 +643,7 @@ export default function RoomsClient({
                                     <p className="font-extrabold text-gray-900 mt-0.5">{t ? `${t.capacity} guest${t.capacity === 1 ? '' : 's'}` : '—'}</p>
                                 </div>
                                 {t?.description && (
-                                    <div className="col-span-2">
+                                    <div className="col-span-3">
                                         <p className="text-gray-400 font-bold uppercase tracking-wide">Description</p>
                                         <p className="font-semibold text-gray-700 mt-0.5 leading-snug">{t.description}</p>
                                     </div>
@@ -1086,6 +1090,18 @@ export default function RoomsClient({
                                     value={roomForm.floor}
                                     onChange={e => setRoomForm(r => ({ ...r, floor: e.target.value }))}
                                     placeholder="e.g. Ground, 1st, 2nd"
+                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Number of Beds</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={roomForm.beds}
+                                    onChange={e => setRoomForm(r => ({ ...r, beds: e.target.value }))}
+                                    placeholder="e.g. 1, 2"
                                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
                                 />
                             </div>

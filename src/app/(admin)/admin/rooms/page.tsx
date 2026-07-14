@@ -36,7 +36,7 @@ export default async function RoomsPage() {
                 .order('name', { ascending: true }),
             adminSupabase
                 .from('restaurants')
-                .select('name, slug')
+                .select('name, slug, linked_restaurant_id')
                 .eq('id', restaurantId)
                 .single(),
             adminSupabase
@@ -70,6 +70,19 @@ export default async function RoomsPage() {
         roomTypes = typesRes.data || []
         restaurantSlug = restRes.data?.slug || ''
         restaurantName = restRes.data?.name || ''
+
+        // If this is a Hotel linked to a partner Restaurant, resolve the Restaurant's slug for the QR codes!
+        if (restRes.data?.linked_restaurant_id) {
+            const { data: partnerRest } = await adminSupabase
+                .from('restaurants')
+                .select('slug')
+                .eq('id', restRes.data.linked_restaurant_id)
+                .single()
+            if (partnerRest?.slug) {
+                restaurantSlug = partnerRest.slug
+            }
+        }
+
         activeOrders = (activeOrdersRes.data as unknown as BillingOrder[]) || []
 
         const activeSessions = activeSessionsRes.data || []

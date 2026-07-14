@@ -901,6 +901,7 @@ export interface Room {
     restaurant_id: string
     room_number: string
     floor: string | null
+    beds: number
     status: RoomStatus
     type_id: string | null
     notes: string | null
