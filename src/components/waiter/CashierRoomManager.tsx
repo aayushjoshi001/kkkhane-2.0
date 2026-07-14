@@ -40,6 +40,7 @@ export default function CashierRoomManager({
     bookings,
     setBookings,
     restaurantId,
+    partnerRestaurantId,
     roomsFilter,
     tables,
     activeOrders,
@@ -52,6 +53,7 @@ export default function CashierRoomManager({
     bookings: any[]
     setBookings: React.Dispatch<React.SetStateAction<any[]>>
     restaurantId: string
+    partnerRestaurantId?: string | null
     roomsFilter: 'all' | 'available' | 'reserve' | 'occupied' | 'dirty' | 'closed'
     tables: TableWithSession[]
     activeOrders: any[]
@@ -126,7 +128,7 @@ export default function CashierRoomManager({
     })
 
     // Realtime subscription for orders to refresh linked table dining orders instantly
-    useRestaurantTable(restaurantId, 'orders', (payload) => {
+    useRestaurantTable(partnerRestaurantId || restaurantId, 'orders', (payload) => {
         const currentBooking = activeBookingRef.current
         if (!currentBooking) return
         

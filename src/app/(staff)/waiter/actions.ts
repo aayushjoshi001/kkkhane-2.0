@@ -211,10 +211,20 @@ export async function markTableClean(
 export async function findBookingByPhone(phone: string, restaurantId: string) {
     const adminSupabase = await createAdminClient()
     const cleanPhone = phone.trim()
+
+    // Resolve linked hotel if any
+    const { data: restLink } = await adminSupabase
+        .from('restaurants')
+        .select('linked_hotel_id')
+        .eq('id', restaurantId)
+        .maybeSingle()
+
+    const targetRestaurantId = restLink?.linked_hotel_id || restaurantId
+
     const { data: booking, error } = await adminSupabase
         .from('bookings')
         .select('id, guest_name, guest_phone, status, room_id, rooms(room_number)')
-        .eq('restaurant_id', restaurantId)
+        .eq('restaurant_id', targetRestaurantId)
         .eq('status', 'checked_in')
         .eq('guest_phone', cleanPhone)
         .maybeSingle()
@@ -228,10 +238,20 @@ export async function findBookingByPhone(phone: string, restaurantId: string) {
 
 export async function getActiveBookings(restaurantId: string) {
     const adminSupabase = await createAdminClient()
+
+    // Resolve linked hotel if any
+    const { data: restLink } = await adminSupabase
+        .from('restaurants')
+        .select('linked_hotel_id')
+        .eq('id', restaurantId)
+        .maybeSingle()
+
+    const targetRestaurantId = restLink?.linked_hotel_id || restaurantId
+
     const { data: bookings, error } = await adminSupabase
         .from('bookings')
         .select('id, guest_name, guest_phone, status, room_id, rooms(room_number)')
-        .eq('restaurant_id', restaurantId)
+        .eq('restaurant_id', targetRestaurantId)
         .eq('status', 'checked_in')
         .order('check_in', { ascending: false })
 

@@ -30,6 +30,7 @@
     "@upstash/qstash": "^2.11.1",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.36.4",
+    "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "esbuild": "^0.28.1",
@@ -55,6 +56,7 @@
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
     "@types/leaflet": "^1.9.21",
     "@types/next-pwa": "^5.6.9",
     "@types/node": "^20",
