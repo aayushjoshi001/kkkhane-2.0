@@ -4,6 +4,7 @@
 // lib/print/templates/invoiceTicket.ts mirrors this layout; keep both in sync.
 
 import type { ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
+import { advanceMethodLabel } from '@/lib/utils'
 
 export default function InvoiceReceipt({
     invoice,
@@ -160,7 +161,7 @@ export default function InvoiceReceipt({
                 </div>
                 {!!invoice.advancePaid && invoice.advancePaid > 0 && (
                     <div className="flex justify-between text-gray-600">
-                        <span>Advance Paid ({invoice.advanceMethod === 'qr_digital' ? 'QR/Digital' : 'Cash'})</span>
+                        <span>Advance Paid ({advanceMethodLabel(invoice.advanceMethod)})</span>
                         <span className="tabular-nums">- {money(invoice.advancePaid)}</span>
                     </div>
                 )}
