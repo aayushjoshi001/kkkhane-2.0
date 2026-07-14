@@ -216,6 +216,10 @@ export interface Session {
     guest_count: number | null
     max_seats: number
     notes: string | null
+    discount_amount: number
+    discount_reason: string | null
+    discount_applied_by: string | null
+    discount_applied_at: string | null
     // Joined fields
     tables?: Table
     seats?: SessionSeat[]
@@ -923,6 +927,10 @@ export interface Booking {
     advance_payment_method: 'cash' | 'qr_digital' | 'split' | 'none' | null
     notes: string | null
     created_at: string
+    discount_amount: number
+    discount_reason: string | null
+    discount_applied_by: string | null
+    discount_applied_at: string | null
     rooms?: Room | null
 }
 
