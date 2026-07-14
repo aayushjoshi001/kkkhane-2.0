@@ -37,78 +37,66 @@ const ENTRY_CARDS = [
         icon: TrendingUp,
         label: 'Cash In',
         desc: 'Record cash received, sales proceeds, advances, or any incoming cash.',
-        color: 'emerald',
-        gradient: 'from-emerald-500/20 to-emerald-600/5',
-        iconBg: 'bg-emerald-500/15',
-        iconColor: 'text-emerald-400',
-        border: 'border-emerald-500/20',
+        iconBg: 'bg-emerald-50',
+        iconColor: 'text-emerald-600',
+        border: 'border-gray-100',
         activeBorder: 'border-emerald-500',
-        glow: 'shadow-emerald-500/20',
+        activeBg: 'bg-emerald-50/60',
     },
     {
         type: 'cash_out' as EntryType,
         icon: TrendingDown,
         label: 'Cash Out',
         desc: 'Record cash payments, expenses, salaries, or any outgoing cash.',
-        color: 'rose',
-        gradient: 'from-rose-500/20 to-rose-600/5',
-        iconBg: 'bg-rose-500/15',
-        iconColor: 'text-rose-400',
-        border: 'border-rose-500/20',
+        iconBg: 'bg-rose-50',
+        iconColor: 'text-rose-600',
+        border: 'border-gray-100',
         activeBorder: 'border-rose-500',
-        glow: 'shadow-rose-500/20',
+        activeBg: 'bg-rose-50/60',
     },
     {
         type: 'bank_transaction' as EntryType,
         icon: Landmark,
         label: 'Bank Transaction',
         desc: 'Record bank deposits or withdrawals directly to/from accounts.',
-        color: 'blue',
-        gradient: 'from-blue-500/20 to-blue-600/5',
-        iconBg: 'bg-blue-500/15',
-        iconColor: 'text-blue-400',
-        border: 'border-blue-500/20',
+        iconBg: 'bg-blue-50',
+        iconColor: 'text-blue-600',
+        border: 'border-gray-100',
         activeBorder: 'border-blue-500',
-        glow: 'shadow-blue-500/20',
+        activeBg: 'bg-blue-50/60',
     },
     {
         type: 'voucher' as EntryType,
         icon: FileText,
         label: 'Voucher',
         desc: 'Create payment or receipt vouchers with party details and reference numbers.',
-        color: 'orange',
-        gradient: 'from-orange-500/20 to-orange-600/5',
-        iconBg: 'bg-orange-500/15',
-        iconColor: 'text-orange-400',
-        border: 'border-orange-500/20',
-        activeBorder: 'border-orange-500',
-        glow: 'shadow-orange-500/20',
+        iconBg: 'bg-orange-50',
+        iconColor: 'text-[#ff5a00]',
+        border: 'border-gray-100',
+        activeBorder: 'border-[#ff5a00]',
+        activeBg: 'bg-orange-50/60',
     },
     {
         type: 'inventory' as EntryType,
         icon: Package,
         label: 'Inventory Adjustment',
         desc: 'Manually add or remove stock from ingredients and supplies.',
-        color: 'purple',
-        gradient: 'from-purple-500/20 to-purple-600/5',
-        iconBg: 'bg-purple-500/15',
-        iconColor: 'text-purple-400',
-        border: 'border-purple-500/20',
+        iconBg: 'bg-purple-50',
+        iconColor: 'text-purple-600',
+        border: 'border-gray-100',
         activeBorder: 'border-purple-500',
-        glow: 'shadow-purple-500/20',
+        activeBg: 'bg-purple-50/60',
     },
     {
         type: 'supplier_payment' as EntryType,
         icon: Truck,
         label: 'Supplier Payment',
         desc: 'Record a direct payment to a supplier against outstanding bills.',
-        color: 'teal',
-        gradient: 'from-teal-500/20 to-teal-600/5',
-        iconBg: 'bg-teal-500/15',
-        iconColor: 'text-teal-400',
-        border: 'border-teal-500/20',
+        iconBg: 'bg-teal-50',
+        iconColor: 'text-teal-600',
+        border: 'border-gray-100',
         activeBorder: 'border-teal-500',
-        glow: 'shadow-teal-500/20',
+        activeBg: 'bg-teal-50/60',
     },
 ]
 
@@ -128,10 +116,10 @@ const emptyForms = {
 function InputField({ label, ...props }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
     return (
         <div className="space-y-1.5">
-            <label className="block text-xs font-semibold text-white/50 uppercase tracking-wider">{label}</label>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{label}</label>
             <input
                 {...props}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-white/30 focus:bg-white/8 transition-all"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00] transition-all"
             />
         </div>
     )
@@ -140,10 +128,10 @@ function InputField({ label, ...props }: { label: string } & React.InputHTMLAttr
 function SelectField({ label, children, ...props }: { label: string } & React.SelectHTMLAttributes<HTMLSelectElement> & { children: React.ReactNode }) {
     return (
         <div className="space-y-1.5">
-            <label className="block text-xs font-semibold text-white/50 uppercase tracking-wider">{label}</label>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{label}</label>
             <select
                 {...props}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-white/30 transition-all appearance-none"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00] transition-all cursor-pointer"
             >
                 {children}
             </select>
@@ -323,134 +311,117 @@ export default function ManualEntryClient({
     }
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white">
-            {/* Ambient background */}
-            <div className="fixed inset-0 pointer-events-none overflow-hidden">
-                <div className="absolute top-[-15%] left-[-10%] w-[500px] h-[500px] bg-brand-500 opacity-[0.06] blur-[120px] rounded-full" />
-                <div className="absolute bottom-[-10%] right-[-10%] w-[400px] h-[400px] bg-blue-500 opacity-[0.05] blur-[120px] rounded-full" />
-            </div>
-
-            <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
-
-                {/* Header */}
-                <div className="mb-8">
-                    <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2.5 rounded-xl bg-brand-500/15 border border-brand-500/20">
-                            <PenLine size={20} className="text-brand-500" />
-                        </div>
-                        <div>
-                            <h1 className="text-2xl font-bold text-white tracking-tight">Manual Entry</h1>
-                            <p className="text-sm text-white/40 mt-0.5">All entry types in one place — no need to navigate between sections</p>
-                        </div>
+        <div className="space-y-6 pb-16">
+            {/* Header */}
+            <div>
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center">
+                        <PenLine size={20} className="text-[#ff5a00]" />
                     </div>
-
-                    {/* Session warning */}
-                    {!hasOpenSession && (
-                        <div className="mt-5 flex items-start gap-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl px-4 py-3.5">
-                            <AlertCircle size={16} className="text-amber-400 mt-0.5 shrink-0" />
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-amber-300">No Active Day Book Session</p>
-                                <p className="text-xs text-amber-400/70 mt-0.5">Cash In, Cash Out, Bank, Voucher, and Supplier Payment entries require an open session.</p>
-                            </div>
-                            {canManage && (
-                                <button
-                                    onClick={handleOpenSession}
-                                    disabled={isPending}
-                                    className="shrink-0 text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
-                                >
-                                    {isPending ? <Loader2 size={12} className="animate-spin" /> : null}
-                                    Open Session
-                                </button>
-                            )}
-                        </div>
-                    )}
+                    <div>
+                        <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Manual Entry</h1>
+                        <p className="text-sm text-gray-500 mt-0.5">All entry types in one place — no need to navigate between sections</p>
+                    </div>
                 </div>
 
-                <div className="flex gap-6 items-start">
-                    {/* Entry Type Grid */}
-                    <div className="flex-1 min-w-0">
-                        <p className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-white/30 mb-4">Select Entry Type</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                            {ENTRY_CARDS.map((card) => {
-                                const Icon = card.icon
-                                const isActive = activeType === card.type
-                                const isSuccess = lastSuccess?.type === card.type
+                {/* Session warning */}
+                {!hasOpenSession && (
+                    <div className="mt-5 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3.5">
+                        <AlertCircle size={16} className="text-amber-500 mt-0.5 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-amber-800">No Active Day Book Session</p>
+                            <p className="text-xs text-amber-600 mt-0.5">Cash In, Cash Out, Bank, Voucher, and Supplier Payment entries require an open session.</p>
+                        </div>
+                        {canManage && (
+                            <button
+                                onClick={handleOpenSession}
+                                disabled={isPending}
+                                className="shrink-0 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+                            >
+                                {isPending ? <Loader2 size={12} className="animate-spin" /> : null}
+                                Open Session
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
 
-                                return (
-                                    <button
-                                        key={card.type}
-                                        onClick={() => selectCard(card.type)}
-                                        className={[
-                                            'group relative text-left rounded-2xl border p-4 transition-all duration-300 overflow-hidden',
-                                            isActive
-                                                ? `${card.activeBorder} bg-white/8 shadow-lg ${card.glow}`
-                                                : `${card.border} bg-white/3 hover:bg-white/6 hover:border-white/20`,
-                                        ].join(' ')}
-                                    >
-                                        {/* Gradient bg */}
-                                        <div className={`absolute inset-0 bg-gradient-to-br ${card.gradient} opacity-0 group-hover:opacity-100 transition-opacity ${isActive ? 'opacity-100' : ''}`} />
+            <div className="flex flex-col lg:flex-row gap-6 items-start">
+                {/* Entry Type Grid */}
+                <div className="flex-1 min-w-0 w-full">
+                    <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-4">Select Entry Type</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {ENTRY_CARDS.map((card) => {
+                            const Icon = card.icon
+                            const isActive = activeType === card.type
+                            const isSuccess = lastSuccess?.type === card.type
 
-                                        <div className="relative z-10">
-                                            <div className="flex items-start justify-between mb-3">
-                                                <div className={`p-2.5 rounded-xl ${card.iconBg}`}>
-                                                    <Icon size={18} className={card.iconColor} />
-                                                </div>
-                                                <div className={`transition-all duration-300 ${isActive ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'}`}>
-                                                    {isSuccess
-                                                        ? <CheckCircle size={16} className="text-emerald-400" />
-                                                        : <ChevronRight size={16} className={card.iconColor} />
-                                                    }
-                                                </div>
-                                            </div>
-                                            <p className="font-bold text-sm text-white">{card.label}</p>
-                                            <p className="text-xs text-white/40 mt-1 leading-relaxed line-clamp-2">{card.desc}</p>
+                            return (
+                                <button
+                                    key={card.type}
+                                    onClick={() => selectCard(card.type)}
+                                    className={[
+                                        'group relative text-left rounded-2xl border p-4 transition-all duration-300 bg-white shadow-[0_4px_20px_rgb(0,0,0,0.01)]',
+                                        isActive
+                                            ? `${card.activeBorder} ${card.activeBg} shadow-md`
+                                            : `${card.border} hover:border-gray-200 hover:shadow-md`,
+                                    ].join(' ')}
+                                >
+                                    <div className="flex items-start justify-between mb-3">
+                                        <div className={`p-2.5 rounded-xl ${card.iconBg}`}>
+                                            <Icon size={18} className={card.iconColor} />
                                         </div>
-
-                                        {isActive && (
-                                            <div className={`absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-${card.color}-500 to-transparent`} />
-                                        )}
-                                    </button>
-                                )
-                            })}
-                        </div>
-
-                        {/* Tip */}
-                        <div className="mt-5 flex items-center gap-2 text-white/20 text-xs">
-                            <Info size={12} />
-                            <span>Click any card to expand its form. Entries are posted immediately to the relevant ledgers.</span>
-                        </div>
+                                        <div className={`transition-all duration-300 ${isActive ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'}`}>
+                                            {isSuccess
+                                                ? <CheckCircle size={16} className="text-emerald-500" />
+                                                : <ChevronRight size={16} className={card.iconColor} />
+                                            }
+                                        </div>
+                                    </div>
+                                    <p className="font-bold text-sm text-gray-900">{card.label}</p>
+                                    <p className="text-xs text-gray-500 mt-1 leading-relaxed line-clamp-2">{card.desc}</p>
+                                </button>
+                            )
+                        })}
                     </div>
 
-                    {/* Side Panel */}
-                    <div className={[
-                        'w-[360px] shrink-0 sticky top-6 transition-all duration-500',
-                        activeType ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-8 pointer-events-none',
-                    ].join(' ')}>
-                        {activeCard && (
-                            <div className="bg-white/[0.04] border border-white/10 rounded-2xl overflow-hidden">
-                                {/* Panel Header */}
-                                <div className={`px-5 py-4 border-b border-white/8 bg-gradient-to-r ${activeCard.gradient}`}>
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-2 rounded-xl ${activeCard.iconBg}`}>
-                                                <activeCard.icon size={16} className={activeCard.iconColor} />
-                                            </div>
-                                            <div>
-                                                <p className="font-bold text-sm text-white">{activeCard.label}</p>
-                                                <p className="text-[11px] text-white/40 mt-0.5">Fill in the details below</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => setActiveType(null)}
-                                            className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition-colors"
-                                        >
-                                            <X size={14} />
-                                        </button>
-                                    </div>
-                                </div>
+                    {/* Tip */}
+                    <div className="mt-5 flex items-center gap-2 text-gray-400 text-xs">
+                        <Info size={12} />
+                        <span>Click any card to expand its form. Entries are posted immediately to the relevant ledgers.</span>
+                    </div>
+                </div>
 
-                                {/* Form Body */}
-                                <div className="p-5 space-y-4">
+                {/* Side Panel */}
+                <div className={[
+                    'w-full lg:w-[360px] shrink-0 lg:sticky lg:top-6 transition-all duration-500',
+                    activeType ? 'opacity-100 translate-x-0' : 'lg:opacity-0 lg:translate-x-8 lg:pointer-events-none lg:h-0 lg:overflow-hidden',
+                ].join(' ')}>
+                    {activeCard && (
+                        <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
+                            {/* Panel Header */}
+                            <div className={`px-5 py-4 border-b border-gray-100 ${activeCard.iconBg}`}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 rounded-xl bg-white">
+                                            <activeCard.icon size={16} className={activeCard.iconColor} />
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-sm text-gray-900">{activeCard.label}</p>
+                                            <p className="text-[11px] text-gray-500 mt-0.5">Fill in the details below</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setActiveType(null)}
+                                        className="p-1.5 rounded-lg hover:bg-white/60 text-gray-400 hover:text-gray-700 transition-colors"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Form Body */}
+                            <div className="p-5 space-y-4">
                                     {/* ── CASH IN ── */}
                                     {activeType === 'cash_in' && (
                                         <>
@@ -737,45 +708,42 @@ export default function ManualEntryClient({
                                         </>
                                     )}
 
-                                    {/* Submit */}
-                                    <button
-                                        onClick={handleSubmit}
-                                        disabled={isPending}
-                                        className={[
-                                            'w-full flex items-center justify-center gap-2.5 rounded-xl py-3 font-bold text-sm transition-all duration-200',
-                                            isPending
-                                                ? 'bg-white/10 text-white/40 cursor-not-allowed'
-                                                : `bg-gradient-to-r from-brand-500 to-[#ff7a00] text-white hover:shadow-lg hover:shadow-brand-500/25 hover:scale-[1.02] active:scale-[0.98]`,
-                                        ].join(' ')}
-                                    >
-                                        {isPending
-                                            ? <><Loader2 size={15} className="animate-spin" /> Saving...</>
-                                            : <><ArrowRight size={15} /> Save Entry</>
-                                        }
-                                    </button>
+                                {/* Submit */}
+                                <button
+                                    onClick={handleSubmit}
+                                    disabled={isPending}
+                                    className={[
+                                        'w-full flex items-center justify-center gap-2.5 rounded-xl py-3 font-bold text-sm transition-all duration-200',
+                                        isPending
+                                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                            : 'bg-[#ff5a00] hover:bg-[#ff4500] text-white shadow-md shadow-[#ff5a00]/20 hover:scale-[1.01] active:scale-[0.98]',
+                                    ].join(' ')}
+                                >
+                                    {isPending ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
+                                    {isPending ? 'Saving...' : 'Save Entry'}
+                                </button>
 
-                                    {/* Success state */}
-                                    {lastSuccess?.type === activeType && (
-                                        <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-2.5 text-xs text-emerald-400">
-                                            <CheckCircle size={13} />
-                                            Entry saved! Form cleared for next entry.
-                                        </div>
-                                    )}
-                                </div>
+                                {/* Success state */}
+                                {lastSuccess?.type === activeType && (
+                                    <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 text-xs font-semibold text-emerald-700">
+                                        <CheckCircle size={13} />
+                                        Entry saved! Form cleared for next entry.
+                                    </div>
+                                )}
                             </div>
-                        )}
+                        </div>
+                    )}
 
-                        {/* Placeholder when nothing selected */}
-                        {!activeType && (
-                            <div className="bg-white/[0.03] border border-white/8 border-dashed rounded-2xl p-8 text-center">
-                                <div className="p-3 rounded-2xl bg-white/5 inline-flex mb-3">
-                                    <PenLine size={22} className="text-white/20" />
-                                </div>
-                                <p className="text-sm font-semibold text-white/30">Select an entry type</p>
-                                <p className="text-xs text-white/20 mt-1.5">Click any card on the left to open its form here</p>
+                    {/* Placeholder when nothing selected */}
+                    {!activeType && (
+                        <div className="hidden lg:block bg-white border border-dashed border-gray-200 rounded-2xl p-8 text-center">
+                            <div className="p-3 rounded-2xl bg-gray-50 inline-flex mb-3">
+                                <PenLine size={22} className="text-gray-300" />
                             </div>
-                        )}
-                    </div>
+                            <p className="text-sm font-semibold text-gray-400">Select an entry type</p>
+                            <p className="text-xs text-gray-400 mt-1.5">Click any card on the left to open its form here</p>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

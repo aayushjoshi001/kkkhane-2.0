@@ -38,7 +38,7 @@ export type UnpaidOrder = {
     payment_method: string | null
     session_id: string | null
     booking_id?: string | null
-    sessions: { id: string; tables: TableRef } | null
+    sessions: { id: string; seat_number?: number; tables: TableRef } | null
     order_items: OrderItem[]
 }
 
@@ -54,7 +54,7 @@ export type ActiveOrder = {
     customer_name?: string | null
     customer_phone?: string | null
     delivery_address?: string | null
-    sessions: { id: string; tables: TableRef } | null
+    sessions: { id: string; seat_number?: number; tables: TableRef } | null
     order_items?: OrderItem[]
 }
 
@@ -75,8 +75,17 @@ interface Props {
     initialBookings?: any[]
 }
 
-function tableLabel(sessions: { tables: TableRef } | null): string {
-    return (sessions?.tables as { label?: string } | null)?.label ?? '?'
+// Label for an order's table, seat-aware: seat 2+ of a split table is always
+// "4-2"; seat 1 only gets the "-1" suffix when its table is actually split
+// (splitSessionIds), so ordinary single-session tables stay plain "4".
+function tableLabel(
+    sessions: { id?: string; seat_number?: number; tables: TableRef } | null,
+    splitSessionIds?: Set<string>,
+): string {
+    const base = (sessions?.tables as { label?: string } | null)?.label ?? '?'
+    const seat = sessions?.seat_number ?? 1
+    if (seat >= 2 || (sessions?.id && splitSessionIds?.has(sessions.id))) return `${base}-${seat}`
+    return base
 }
 
 export default function CashierClient({ 
@@ -784,7 +793,7 @@ export default function CashierClient({
         if (payload.eventType === 'INSERT') {
             const { data } = await supabase
                 .from('orders')
-                .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, tables ( label ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
+                .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, seat_number, tables ( label ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
                 .eq('id', payload.new.id)
                 .single()
             if (data) setActive(prev => [...prev, data as unknown as ActiveOrder])
@@ -794,7 +803,7 @@ export default function CashierClient({
                 // Fetch full record to show in unpaid list
                 const { data } = await supabase
                     .from('orders')
-                    .select(`id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id, sessions ( id, tables ( label ) ), order_items ( quantity, unit_price, menu_items ( name ) )`)
+                    .select(`id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id, sessions ( id, seat_number, tables ( label ) ), order_items ( quantity, unit_price, menu_items ( name ) )`)
                     .eq('id', id)
                     .single()
                 if (data) {
@@ -830,19 +839,52 @@ export default function CashierClient({
         setProcessingId(null)
     }
 
+    // Seat-1 session ids of split tables — their orders must display as "4-1"
+    // even though seat 1 alone can't tell it belongs to a split table.
+    const splitSessionIds = useMemo(() => {
+        const ids = new Set<string>()
+        for (const t of tables as any[]) {
+            if (t.activeSession && (t.otherActiveSessions?.length ?? 0) > 0) ids.add(t.activeSession.id)
+        }
+        return ids
+    }, [tables])
+
+    // One billing card per active session — a split table (Table 4-1, 4-2, ...)
+    // settles each seat as its own independent bill, so each seat session becomes
+    // its own entry with the seat-suffixed label and that seat's session as
+    // `activeSession` (which is all the downstream items/total/checkout code reads).
+    const billingTableEntries = useMemo(() => {
+        const entries: any[] = []
+        for (const t of tables as any[]) {
+            const tableSessions = [t.activeSession, ...(t.otherActiveSessions || [])].filter(Boolean)
+            for (const s of tableSessions) {
+                if (s.booking_id) continue
+                const split = tableSessions.length > 1 || (s.seat_number ?? 1) >= 2
+                entries.push({
+                    ...t,
+                    label: split ? `${t.label}-${s.seat_number ?? 1}` : t.label,
+                    activeSession: s,
+                    otherActiveSessions: [],
+                    uiKey: `${t.id}:${s.seat_number ?? 1}`,
+                })
+            }
+        }
+        return entries
+    }, [tables])
+
     // Group unpaid by session
     const unpaidBySession = useMemo(() => {
         const groups = new Map<string, { label: string; orders: UnpaidOrder[]; total: number }>()
         for (const o of unpaid) {
             const key = o.session_id ?? o.id
-            const label = tableLabel(o.sessions)
+            const label = tableLabel(o.sessions, splitSessionIds)
             if (!groups.has(key)) groups.set(key, { label, orders: [], total: 0 })
             const g = groups.get(key)!
             g.orders.push(o)
             g.total += o.total_amount ?? 0
         }
         return [...groups.entries()].sort(([, a], [, b]) => a.label.localeCompare(b.label))
-    }, [unpaid])
+    }, [unpaid, splitSessionIds])
 
     const activeDineIn = useMemo(() => active.filter(o => o.order_type === 'dine_in' || o.session_id !== null), [active])
     const activeTakeoutDelivery = useMemo(() => active.filter(o => o.order_type === 'takeout' || o.order_type === 'delivery'), [active])
@@ -852,12 +894,12 @@ export default function CashierClient({
         const groups = new Map<string, { label: string; orders: ActiveOrder[] }>()
         for (const o of activeDineIn) {
             const key = o.session_id ?? o.id
-            const label = tableLabel(o.sessions)
+            const label = tableLabel(o.sessions, splitSessionIds)
             if (!groups.has(key)) groups.set(key, { label, orders: [] })
             groups.get(key)!.orders.push(o)
         }
         return [...groups.entries()].sort(([, a], [, b]) => a.label.localeCompare(b.label))
-    }, [activeDineIn])
+    }, [activeDineIn, splitSessionIds])
 
     const handleUpdateStatus = async (orderId: string, status: 'confirmed' | 'cancelled') => {
         const res = await updateTakeoutStatusAction(orderId, status)
@@ -1000,7 +1042,7 @@ export default function CashierClient({
                                 const supabase = supabaseRef.current
                                 const { data } = await supabase
                                     .from('orders')
-                                    .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, tables ( label ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
+                                    .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, seat_number, tables ( label ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
                                     .eq('id', orderId)
                                     .single()
                                 if (data) {
@@ -1206,7 +1248,7 @@ export default function CashierClient({
                                                 billingSubTab === 'tables' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
                                             }`}
                                         >
-                                            Tables ({tables.filter(t => t.activeSession !== null && !(t.activeSession as any).booking_id).length})
+                                            Tables ({billingTableEntries.length})
                                         </button>
                                     </div>
                                 </div>
@@ -1219,7 +1261,7 @@ export default function CashierClient({
                                 </h2>
                             )}
 
-                            {((isHotel && billingSubTab === 'rooms') ? roomsState.filter(r => r.status === 'occupied') : tables.filter(t => t.activeSession !== null && !(t.activeSession as any).booking_id)).length === 0 ? (
+                            {((isHotel && billingSubTab === 'rooms') ? roomsState.filter(r => r.status === 'occupied') : billingTableEntries).length === 0 ? (
                                 <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-10 text-center">
                                     <CheckCircle size={32} className="mx-auto text-emerald-300 mb-2" />
                                     <p className="text-sm font-medium text-ink-subtle">All bills settled</p>
@@ -1263,13 +1305,13 @@ export default function CashierClient({
                                     ) : (
                                         // Occupied Tables Grid
                                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                                            {tables.filter(t => t.activeSession !== null && !(t.activeSession as any).booking_id).map(table => {
+                                            {billingTableEntries.map(table => {
                                                 const sessionItems = getTableSessionItems(table)
                                                 const total = sessionItems.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
-                                                
+
                                                 return (
                                                     <button
-                                                        key={table.id}
+                                                        key={table.uiKey}
                                                         onClick={() => setSelectedBillingTable(table)}
                                                         className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
                                                     >

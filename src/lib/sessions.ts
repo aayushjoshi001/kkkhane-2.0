@@ -30,9 +30,10 @@ export async function getOrCreateActiveSession(
     tableId: string,
     restaurantId: string,
     room?: RoomSessionOptions,
+    seatNumber: number = 1,
 ): Promise<ActiveSession | null> {
     // 1. Reuse an existing active, non-expired session if there is one.
-    const existing = await findActiveSession(admin, tableId)
+    const existing = await findActiveSession(admin, tableId, seatNumber)
     if (existing) {
         // If this is a hotel room stay and the active booking has changed,
         // we must NOT reuse this session! Close it so a new one is created.
@@ -58,11 +59,13 @@ export async function getOrCreateActiveSession(
     }
 
     // 2. Expire any stale active sessions that passed expires_at but were never
-    //    cleaned up — otherwise the unique-active-per-table index blocks the insert.
+    //    cleaned up — otherwise the unique-active-per-table-per-seat index blocks
+    //    the insert.
     await admin
         .from('sessions')
         .update({ status: 'expired', closed_at: new Date().toISOString() })
         .eq('table_id', tableId)
+        .eq('seat_number', seatNumber)
         .eq('status', 'active')
         .lt('expires_at', new Date().toISOString())
 
@@ -76,6 +79,7 @@ export async function getOrCreateActiveSession(
             restaurant_id: restaurantId,
             opened_by: null,
             session_token: sessionToken,
+            seat_number: seatNumber,
             ...(room?.bookingId ? { booking_id: room.bookingId } : {}),
             ...(room?.expiresAt ? { expires_at: room.expiresAt } : {}),
         })
@@ -87,7 +91,7 @@ export async function getOrCreateActiveSession(
     // 4. Race: a concurrent scan created the session first (unique-active index
     //    violation). Return whatever is active now.
     if (error?.code === '23505') {
-        return await findActiveSession(admin, tableId)
+        return await findActiveSession(admin, tableId, seatNumber)
     }
 
     console.error('[getOrCreateActiveSession] insert failed:', error)
@@ -97,11 +101,13 @@ export async function getOrCreateActiveSession(
 async function findActiveSession(
     admin: SupabaseClient,
     tableId: string,
+    seatNumber: number = 1,
 ): Promise<ActiveSession | null> {
     const { data } = await admin
         .from('sessions')
         .select('id, session_token, booking_id')
         .eq('table_id', tableId)
+        .eq('seat_number', seatNumber)
         .eq('status', 'active')
         .gt('expires_at', new Date().toISOString())
         .order('opened_at', { ascending: false })
