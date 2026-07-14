@@ -9,8 +9,8 @@ import { createVoucherAction, deleteVoucherAction, approveChequeAction, rejectCh
 import { toast } from 'react-hot-toast'
 import { downloadCsv } from '@/lib/exportCsv'
 import PrintableReport, { type PrintableReportHandle } from '@/components/admin/PrintableReport'
+import VoucherPrintSlip from '@/components/admin/VoucherPrintSlip'
 import { useDateFormatter, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
-import { toNepaliDate } from '@/lib/nepaliDate'
 
 interface BankAccount {
     id: string
@@ -70,27 +70,6 @@ interface VouchersManagerProps {
     hasOpenSession: boolean
 }
 
-function amountInWords(amount: number): string {
-    const num = Math.floor(amount)
-    if (num === 0) return 'Zero Rupees Only'
-    
-    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 
-                  'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen']
-    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
-    
-    function helper(n: number): string {
-        if (n < 20) return ones[n]
-        if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + ones[n % 10] : '')
-        if (n < 1000) return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' ' + helper(n % 150) : '')
-        if (n < 100000) return helper(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 !== 0 ? ' ' + helper(n % 1000) : '')
-        if (n < 10000000) return helper(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 !== 0 ? ' ' + helper(n % 100000) : '')
-        return helper(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 !== 0 ? ' ' + helper(n % 10000000) : '')
-    }
-    
-    // Quick and safe Nepalese conversion helper
-    return helper(num) + ' Rupees Only'
-}
-
 export default function VouchersManager({
     bankAccounts,
     initialEntries,
@@ -140,6 +119,9 @@ export default function VouchersManager({
     const [payoutCategory, setPayoutCategory] = useState<'suppliers' | 'staff' | 'expenses' | 'other'>('other')
     const [selectedSupplierId, setSelectedSupplierId] = useState('')
     const [selectedStaffUserId, setSelectedStaffUserId] = useState('')
+    // Salary Payout is capped at the staff member's current due; Advance
+    // Payment and Bonus are not (paid before due, or discretionary).
+    const [staffEntryType, setStaffEntryType] = useState<'salary_payout' | 'advance_payment' | 'bonus'>('salary_payout')
 
     // Cheque specific form fields
     const [chequeWrittenName, setChequeWrittenName] = useState('')
@@ -255,7 +237,7 @@ export default function VouchersManager({
 
     const printRef = useRef<PrintableReportHandle>(null)
     const reportColumns = [
-        { key: 'date', label: 'Date' },
+        { key: 'date', label: 'Date', dateStacked: true },
         { key: 'voucher_number', label: 'Voucher No' },
         { key: 'type', label: 'Type' },
         { key: 'party_name', label: 'Party Name' },
@@ -355,6 +337,7 @@ export default function VouchersManager({
                 category: voucherType === 'payment' ? payoutCategory : undefined,
                 supplier_id: voucherType === 'payment' && payoutCategory === 'suppliers' ? selectedSupplierId : undefined,
                 staff_user_id: voucherType === 'payment' && payoutCategory === 'staff' ? selectedStaffUserId : undefined,
+                staff_entry_type: voucherType === 'payment' && payoutCategory === 'staff' ? staffEntryType : undefined,
                 cheque_details: paymentMode === 'cheque' ? {
                     written_name: chequeWrittenName.trim(),
                     bank_cheque: chequeBank.trim(),
@@ -381,6 +364,7 @@ export default function VouchersManager({
                 setSelectedSupplierId('')
                 setSelectedStaffUserId('')
                 setPayoutCategory('other')
+                setStaffEntryType('salary_payout')
                 setCreateModalOpen(false)
                 
                 // Determine redirect tab
@@ -487,10 +471,6 @@ export default function VouchersManager({
         } finally {
             setDeleting(false)
         }
-    }
-
-    const handlePrint = () => {
-        window.print()
     }
 
     return (
@@ -894,6 +874,29 @@ export default function VouchersManager({
                                                 <option value="">Choose Staff Profile</option>
                                                 {staffList.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
                                             </select>
+
+                                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 mt-3">Pay Category *</label>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {([
+                                                    { value: 'salary_payout', label: 'Salary Payout' },
+                                                    { value: 'advance_payment', label: 'Advance Payment' },
+                                                    { value: 'bonus', label: 'Bonus' },
+                                                ] as const).map(opt => (
+                                                    <button
+                                                        key={opt.value}
+                                                        type="button"
+                                                        onClick={() => setStaffEntryType(opt.value)}
+                                                        className={`py-2 text-[10px] font-black uppercase tracking-wider border rounded-lg transition-all ${
+                                                            staffEntryType === opt.value ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                                                        }`}
+                                                    >
+                                                        {opt.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <p className="text-[10px] text-gray-400 mt-1">
+                                                Salary Payout is capped at what&apos;s currently due; Advance Payment and Bonus are not.
+                                            </p>
                                         </div>
                                     )}
                                 </div>
@@ -1096,194 +1099,8 @@ export default function VouchersManager({
                 </div>
             )}
 
-            {/* Printable Voucher Slip Modal — thermal receipt width (80mm),
-                same visibility-isolation print technique as the cashier
-                invoice (CashierClient.tsx) and KOT tickets (KotPrintFallback),
-                not the A4 report layout used by PrintableReport below. */}
             {printVoucher && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 print:p-0 print:absolute print:inset-0">
-                    <style>{`
-                        @page { size: 80mm auto; margin: 0; }
-                        @media print {
-                            html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
-                            body * { visibility: hidden !important; }
-                            .voucher-slip-print, .voucher-slip-print * { visibility: visible !important; }
-                            .voucher-slip-print {
-                                position: absolute !important; left: 0 !important; top: 0 !important;
-                                width: 72mm !important; max-width: 72mm !important;
-                                font-family: monospace !important;
-                            }
-                        }
-                    `}</style>
-                    <div
-                        className="fixed inset-0 bg-[#0a0a0a]/60 backdrop-blur-md transition-opacity duration-300 print:hidden"
-                        onClick={() => setPrintVoucher(null)}
-                    />
-
-                    <div className="bg-white rounded-2xl border border-gray-150 shadow-2xl w-full max-w-sm relative z-10 overflow-hidden flex flex-col max-h-[90vh] print:max-h-none print:w-full print:border-none print:shadow-none print:static">
-
-                        <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50 print:hidden shrink-0">
-                            <span className="text-xs font-black text-gray-800 uppercase tracking-wider">Voucher Print Preview</span>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={handlePrint}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-500 hover:bg-brand-600 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition shadow-md shadow-brand-500/10 focus-ring"
-                                >
-                                    <Printer size={13} /> Print Slip
-                                </button>
-                                <button
-                                    onClick={() => setPrintVoucher(null)}
-                                    className="p-1.5 hover:bg-gray-150 rounded-xl text-gray-400 hover:text-gray-600 transition-colors"
-                                >
-                                    <X size={16} />
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-5 print:p-0 print:overflow-visible">
-                            <div className="voucher-slip-print border border-gray-300 p-4 rounded-xl font-mono text-[11px] text-gray-800 space-y-3 print:border-none print:p-1 print:rounded-none">
-
-                                <div className="text-center border-b border-dashed border-gray-300 pb-2">
-                                    <h2 className="text-sm font-black tracking-tight text-gray-900">KKKHANE RESTAURANT</h2>
-                                    <p className="text-[9px] text-gray-500 uppercase font-bold tracking-widest mt-0.5">Workspace Account Voucher</p>
-                                </div>
-
-                                <div className="text-center py-1 bg-gray-100 border border-gray-200 rounded">
-                                    <h3 className="text-xs font-black tracking-widest text-gray-900 uppercase">
-                                        {printVoucher.voucher_type === 'receipt' ? 'RECEIPT VOUCHER' : 'PAYMENT VOUCHER'}
-                                    </h3>
-                                </div>
-
-                                {/* Metadata — stacked single-column, not a grid, so it stays
-                                    readable at 72mm print width */}
-                                <div className="space-y-1 border-b border-dashed border-gray-300 pb-2 text-[10px]">
-                                    <div>
-                                        <span className="font-bold text-gray-400 uppercase">Voucher No: </span>
-                                        <span className="font-black text-gray-900">{printVoucher.voucher_number}</span>
-                                    </div>
-                                    <div>
-                                        <span className="font-bold text-gray-400 uppercase">Date: </span>
-                                        <span className="font-black text-gray-900">
-                                            {(() => {
-                                                const d = new Date(printVoucher.date)
-                                                const ad = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
-                                                if (!bsEnabled) return ad
-                                                try {
-                                                    return `${ad} (${toNepaliDate(d, 'MMMM DD, YYYY', 'en')} BS)`
-                                                } catch {
-                                                    return ad
-                                                }
-                                            })()}
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <span className="font-bold text-gray-400 uppercase">
-                                            {printVoucher.voucher_type === 'receipt' ? 'Received From: ' : 'Paid To: '}
-                                        </span>
-                                        <span className="font-black text-gray-900 uppercase">{printVoucher.party_name}</span>
-                                    </div>
-                                    <div>
-                                        <span className="font-bold text-gray-400 uppercase">Payment Mode: </span>
-                                        <span className="font-black text-gray-900 uppercase">
-                                            {printVoucher.payment_mode === 'cash' ? 'CASH' : printVoucher.payment_mode === 'qr' ? `QR (${printVoucher.bank_name})` : printVoucher.payment_mode === 'cheque' ? `CHEQUE (${printVoucher.bank_name})` : `BANK (${printVoucher.bank_name})`}
-                                        </span>
-                                    </div>
-                                    {printVoucher.reference_no && (
-                                        <div>
-                                            <span className="font-bold text-gray-400 uppercase">Ref Phone: </span>
-                                            <span className="font-black text-gray-900">{printVoucher.reference_no}</span>
-                                        </div>
-                                    )}
-                                    {printVoucher.receiver_name && (
-                                        <div>
-                                            <span className="font-bold text-gray-400 uppercase">Receiver Staff: </span>
-                                            <span className="font-black text-gray-900 uppercase">{printVoucher.receiver_name}</span>
-                                        </div>
-                                    )}
-                                    {printVoucher.voucher_type === 'payment' && printVoucher.category && (
-                                        <div>
-                                            <span className="font-bold text-gray-400 uppercase">Ledger Category: </span>
-                                            <span className="font-black text-gray-950 uppercase">{printVoucher.category}</span>
-                                        </div>
-                                    )}
-                                    {printVoucher.payment_mode === 'cheque' && printVoucher.cheque_details && (
-                                        <div className="border-t border-gray-200 pt-1.5 mt-1 space-y-1">
-                                            <div>
-                                                <span className="font-bold text-gray-400 uppercase">Issuer Bank: </span>
-                                                <span className="font-black text-gray-900 uppercase">{printVoucher.cheque_details.bank_cheque}</span>
-                                            </div>
-                                            <div>
-                                                <span className="font-bold text-gray-400 uppercase">Cheque Number: </span>
-                                                <span className="font-black text-gray-900">{printVoucher.cheque_details.cheque_number}</span>
-                                            </div>
-                                            <div>
-                                                <span className="font-bold text-gray-400 uppercase">Written Name: </span>
-                                                <span className="font-black text-gray-900 uppercase">{printVoucher.cheque_details.written_name}</span>
-                                            </div>
-                                            <div>
-                                                <span className="font-bold text-gray-400 uppercase">Cheque Date: </span>
-                                                <span className="font-black text-gray-900">{printVoucher.cheque_details.cheque_date}</span>
-                                            </div>
-                                            <div>
-                                                <span className="font-bold text-gray-400 uppercase">Cheque Type: </span>
-                                                <span className="font-black text-gray-900 uppercase">
-                                                    {printVoucher.cheque_details.cheque_type === 'ac_payee' ? 'A/C Payee' : 'Normal Cheque'}
-                                                </span>
-                                            </div>
-                                            <div>
-                                                <span className="font-bold text-gray-400 uppercase">Status: </span>
-                                                <span className={`font-black uppercase ${printVoucher.status === 'approved' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                    {printVoucher.status}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Particulars — single line item, stacked description then amount */}
-                                <div className="space-y-1 border-b border-dashed border-gray-300 pb-2">
-                                    <div className="text-[9px] font-bold text-gray-400 uppercase">Particulars / Description</div>
-                                    <div className="font-semibold leading-relaxed text-[10px]">
-                                        {printVoucher.payment_mode === 'cheque' && printVoucher.cheque_details ? (
-                                            <span>
-                                                Cheque settlement payout: No. {printVoucher.cheque_details.cheque_number} issued on {printVoucher.cheque_details.bank_cheque}. (Payee: {printVoucher.cheque_details.written_name})
-                                            </span>
-                                        ) : (
-                                            printVoucher.particulars
-                                        )}
-                                    </div>
-                                    <div className="flex items-center justify-between font-black text-gray-900 pt-1">
-                                        <span className="uppercase text-[9px] text-gray-400">Total Amount</span>
-                                        <span className="text-sm">{formatCurrency(printVoucher.amount)}</span>
-                                    </div>
-                                </div>
-
-                                <div className="p-2 bg-gray-50 border border-gray-150 rounded text-[10px] space-y-0.5">
-                                    <span className="block font-bold text-gray-400 uppercase">Sum In Words:</span>
-                                    <span className="font-black text-gray-800 italic capitalize">{amountInWords(printVoucher.amount)}</span>
-                                </div>
-
-                                {/* Signatures — stacked vertically, not side-by-side columns,
-                                    so each signature line has room on narrow paper */}
-                                <div className="space-y-4 pt-6 text-[9px] font-bold text-gray-400 uppercase">
-                                    <div className="border-t border-gray-300 pt-1.5">
-                                        <span className="text-gray-800 font-black">Prepared By</span> — Cashier / Accountant
-                                    </div>
-                                    <div className="border-t border-gray-300 pt-1.5">
-                                        <span className="text-gray-800 font-black">Approved By</span> — Manager / Owner
-                                    </div>
-                                    <div className="border-t border-gray-300 pt-1.5">
-                                        <span className="text-gray-800 font-black">
-                                            {printVoucher.voucher_type === 'receipt' ? 'Paid By' : 'Received By'}
-                                        </span> — Receiver Signature
-                                    </div>
-                                </div>
-
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
+                <VoucherPrintSlip voucher={printVoucher} bsEnabled={bsEnabled} onClose={() => setPrintVoucher(null)} />
             )}
 
             {/* Delete voucher — requires a reason, same pattern as refunds

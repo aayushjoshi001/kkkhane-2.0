@@ -14,6 +14,8 @@ export interface RoomContext {
     /** The stay currently checked in to this room, or null if nobody is. */
     bookingId: string | null
     guestName: string | null
+    /** Phone on the active booking — used to verify the scanning guest. */
+    guestPhone: string | null
 }
 
 /** The stay currently checked in to a room, if any. */
@@ -57,5 +59,6 @@ export async function getRoomContextForTable(
         roomNumber: room?.room_number ?? '',
         bookingId: booking?.id ?? null,
         guestName: booking?.guest_name ?? null,
+        guestPhone: booking?.guest_phone ?? null,
     }
 }

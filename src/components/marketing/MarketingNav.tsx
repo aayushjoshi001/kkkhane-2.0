@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Logo from '@/components/shared/Logo'
 import MobileNav from '@/app/MobileNav'
+import UserAvatarMenu, { type NavUser } from './UserAvatarMenu'
 import {
     ChevronDown, FileText, LayoutGrid, PiggyBank, QrCode, Gift,
     Clock, Globe, MessageCircle, Users2, ArrowLeft
@@ -34,6 +35,11 @@ const RESOURCE_LINKS = [
 /** Shared marketing top nav (full desktop dropdowns + mobile). */
 export default function MarketingNav() {
     const [scrolled, setScrolled] = useState(false)
+    // null = not authenticated (or still loading). We default to showing the
+    // Login / Start Free buttons so logged-out visitors — the majority here —
+    // see no flash; a logged-in session swaps them for the avatar menu once
+    // /api/me resolves.
+    const [user, setUser] = useState<NavUser | null>(null)
     const pathname = usePathname()
 
     useEffect(() => {
@@ -43,6 +49,28 @@ export default function MarketingNav() {
         window.addEventListener('scroll', handleScroll, { passive: true })
         handleScroll()
         return () => window.removeEventListener('scroll', handleScroll)
+    }, [])
+
+    useEffect(() => {
+        let active = true
+        fetch('/api/me', { cache: 'no-store' })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => {
+                if (active && data?.authenticated) {
+                    setUser({
+                        fullName: data.fullName || '',
+                        email: data.email || '',
+                        avatarUrl: data.avatarUrl ?? null,
+                        dashboardHref: data.dashboardHref || '/admin/dashboard',
+                    })
+                }
+            })
+            .catch(() => {
+                /* stay logged-out — keep the default buttons */
+            })
+        return () => {
+            active = false
+        }
     }, [])
 
     return (
@@ -122,13 +150,19 @@ export default function MarketingNav() {
                 </div>
 
                 <div className="flex items-center gap-4">
-                    <Link href="/login" className="hidden font-bold text-[14px] text-ink-muted transition-colors hover:text-[var(--color-primary)] sm:block">
-                        Login
-                    </Link>
-                    <Link href="/signup" className="rounded-full bg-[var(--color-primary)] px-5 py-2 font-bold text-[13px] text-white shadow-md transition-transform hover:scale-105 hover:bg-brand-600">
-                        Start Free
-                    </Link>
-                    <MobileNav />
+                    {user ? (
+                        <UserAvatarMenu user={user} />
+                    ) : (
+                        <>
+                            <Link href="/login" className="hidden font-bold text-[14px] text-ink-muted transition-colors hover:text-[var(--color-primary)] sm:block">
+                                Login
+                            </Link>
+                            <Link href="/signup" className="rounded-full bg-[var(--color-primary)] px-5 py-2 font-bold text-[13px] text-white shadow-md transition-transform hover:scale-105 hover:bg-brand-600">
+                                Start Free
+                            </Link>
+                        </>
+                    )}
+                    <MobileNav user={user} />
                 </div>
             </div>
         </nav>

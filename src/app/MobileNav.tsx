@@ -1,8 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Menu, X } from 'lucide-react'
+import { Menu, X, LayoutDashboard, LogOut } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
+import { useRouter } from 'next/navigation'
+import { signOutAndRedirect } from '@/lib/auth/signOut'
+import { avatarFor, type NavUser } from '@/components/marketing/UserAvatarMenu'
 
 const NAV_LINKS = [
     { href: '/#features', label: 'Features' },
@@ -11,8 +15,15 @@ const NAV_LINKS = [
     { href: '/#faq', label: 'FAQ' },
 ]
 
-export default function MobileNav() {
+export default function MobileNav({ user = null }: { user?: NavUser | null }) {
     const [open, setOpen] = useState(false)
+    const [signingOut, setSigningOut] = useState(false)
+    const router = useRouter()
+
+    const handleSignOut = async () => {
+        setSigningOut(true)
+        await signOutAndRedirect(router)
+    }
 
     // Lock body scroll when menu is open
     useEffect(() => {
@@ -76,20 +87,55 @@ export default function MobileNav() {
                         </a>
                     ))}
                     <hr className="my-2 border-hairline" />
-                    <Link
-                        href="/login"
-                        onClick={() => setTimeout(() => setOpen(false), 150)}
-                        className="flex items-center px-4 py-3 text-base font-medium text-ink-muted hover:text-ink hover:bg-surface-muted rounded-xl transition-colors"
-                    >
-                        Staff Login
-                    </Link>
-                    <Link
-                        href="/#pricing"
-                        onClick={() => setTimeout(() => setOpen(false), 150)}
-                        className="flex items-center justify-center mt-2 px-4 py-3 text-base font-semibold text-white bg-brand-500 rounded-xl hover:bg-brand-600 transition-all shadow-[0_4px_12px_rgba(251,99,3,0.25)]"
-                    >
-                        Get Started
-                    </Link>
+                    {user ? (
+                        <>
+                            <div className="flex items-center gap-3 px-4 py-3">
+                                <Image
+                                    src={avatarFor(user)}
+                                    alt={user.fullName || user.email}
+                                    width={40}
+                                    height={40}
+                                    unoptimized
+                                    className="h-10 w-10 rounded-full object-cover"
+                                />
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-bold text-ink">{user.fullName || 'Your account'}</p>
+                                    <p className="truncate text-xs text-ink-subtle">{user.email}</p>
+                                </div>
+                            </div>
+                            <Link
+                                href={user.dashboardHref}
+                                onClick={() => setTimeout(() => setOpen(false), 150)}
+                                className="flex items-center gap-2.5 px-4 py-3 text-base font-medium text-ink-muted hover:text-ink hover:bg-surface-muted rounded-xl transition-colors"
+                            >
+                                <LayoutDashboard size={18} /> Dashboard
+                            </Link>
+                            <button
+                                onClick={handleSignOut}
+                                disabled={signingOut}
+                                className="flex items-center gap-2.5 px-4 py-3 text-base font-medium text-danger-fg hover:bg-red-50 rounded-xl transition-colors disabled:opacity-60"
+                            >
+                                <LogOut size={18} /> {signingOut ? 'Logging out…' : 'Log out'}
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <Link
+                                href="/login"
+                                onClick={() => setTimeout(() => setOpen(false), 150)}
+                                className="flex items-center px-4 py-3 text-base font-medium text-ink-muted hover:text-ink hover:bg-surface-muted rounded-xl transition-colors"
+                            >
+                                Staff Login
+                            </Link>
+                            <Link
+                                href="/#pricing"
+                                onClick={() => setTimeout(() => setOpen(false), 150)}
+                                className="flex items-center justify-center mt-2 px-4 py-3 text-base font-semibold text-white bg-brand-500 rounded-xl hover:bg-brand-600 transition-all shadow-[0_4px_12px_rgba(251,99,3,0.25)]"
+                            >
+                                Get Started
+                            </Link>
+                        </>
+                    )}
                 </nav>
             </div>
         </>

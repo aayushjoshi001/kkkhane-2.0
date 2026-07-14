@@ -53,6 +53,7 @@ export default function RoomsClient({
     const [isAddTypeOpen, setIsAddTypeOpen] = useState(false)
     const [isBookModalOpen, setIsBookModalOpen] = useState(false)
     const [isConfirmCloseOpen, setIsConfirmCloseOpen] = useState(false)
+    const [isDeletingRoom, setIsDeletingRoom] = useState(false)
 
     // Active Booking (occupied room check-in details)
     const [activeBooking, setActiveBooking] = useState<Booking | null>(null)
@@ -208,14 +209,14 @@ export default function RoomsClient({
     // Delete (deactivate) Category handler — refused server-side if any active
     // room still uses it (see api/rooms/types DELETE).
     const handleDeleteType = async (type: RoomType) => {
-        if (!confirm(`Delete category "${type.name}"? This cannot be undone.`)) return
+        if (!confirm(`Delete category "${type.name}"? Rooms using it must be reassigned first.`)) return
         try {
             const res = await fetch('/api/rooms/types', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: type.id }),
             })
-            const data = await res.json()
+            const data = await res.json().catch(() => ({}))
             if (!res.ok) throw new Error(data.error)
             setRoomTypesList(prev => prev.filter(t => t.id !== type.id))
             toast.success('Category deleted')
@@ -268,29 +269,27 @@ export default function RoomsClient({
         }
     }
 
-    // Delete (deactivate) Room handler — rooms with stay history can't be hard-deleted
-    // (see api/rooms DELETE), so this just hides the room from the list.
-    const handleDeleteRoom = async () => {
-        if (!editingRoomId) return
-        if (!confirm(`Delete Room ${roomForm.room_number}? This cannot be undone.`)) return
-        setIsSubmittingRoom(true)
+    // Delete (soft) a room — rooms with stay history can't be hard-deleted (see
+    // api/rooms DELETE), so this just hides the room from the list. Occupied
+    // rooms are blocked by the API.
+    const handleDeleteRoom = async (room: Room) => {
+        if (!confirm(`Delete Room ${room.room_number}? This cannot be undone.`)) return
+        setIsDeletingRoom(true)
         try {
             const res = await fetch('/api/rooms', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: editingRoomId }),
+                body: JSON.stringify({ id: room.id }),
             })
-            const data = await res.json()
+            const data = await res.json().catch(() => ({}))
             if (!res.ok) throw new Error(data.error)
-            setRooms(prev => prev.filter(r => r.id !== editingRoomId))
-            if (selectedRoom?.id === editingRoomId) setSelectedRoom(null)
-            setIsAddRoomOpen(false)
-            resetRoomForm()
-            toast.success('Room deleted')
+            setRooms(prev => prev.filter(r => r.id !== room.id))
+            setSelectedRoom(null)
+            toast.success(`Room ${room.room_number} deleted`)
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'Failed to delete room')
         } finally {
-            setIsSubmittingRoom(false)
+            setIsDeletingRoom(false)
         }
     }
 
@@ -592,22 +591,68 @@ export default function RoomsClient({
                             <h4 className="text-lg font-black text-gray-900">Room {selectedRoom.room_number}</h4>
                             <p className="text-xs text-gray-500 font-semibold uppercase">{roomTypesList.find(t => t.id === selectedRoom.type_id)?.name || 'Standard'}</p>
                         </div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                             <button
                                 onClick={() => openEditRoom(selectedRoom)}
+                                title="Edit room"
                                 className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-900"
-                                title="Edit Room"
                             >
                                 <Pencil size={15} />
                             </button>
                             <button
+                                onClick={() => handleDeleteRoom(selectedRoom)}
+                                disabled={isDeletingRoom || selectedRoom.status === 'occupied'}
+                                title={selectedRoom.status === 'occupied' ? 'Check out the guest before deleting' : 'Delete room'}
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-rose-500 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                {isDeletingRoom ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                            </button>
+                            <button
                                 onClick={() => setSelectedRoom(null)}
+                                title="Close"
                                 className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-900"
                             >
                                 ✕
                             </button>
                         </div>
                     </div>
+
+                    {/* Room Details — the static facts a manager needs at a glance. */}
+                    {(() => {
+                        const t = roomTypesList.find(rt => rt.id === selectedRoom.type_id)
+                        return (
+                            <div className="mb-4 bg-gray-50/70 border border-gray-100 rounded-2xl p-4 grid grid-cols-2 gap-x-3 gap-y-3 text-xs">
+                                <div>
+                                    <p className="text-gray-400 font-bold uppercase tracking-wide">Floor</p>
+                                    <p className="font-extrabold text-gray-900 mt-0.5">{selectedRoom.floor || '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 font-bold uppercase tracking-wide">Category</p>
+                                    <p className="font-extrabold text-gray-900 mt-0.5 truncate">{t?.name || 'Standard'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 font-bold uppercase tracking-wide">Base Price</p>
+                                    <p className="font-extrabold text-gray-900 mt-0.5">{t ? `Rs. ${t.base_price}` : '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 font-bold uppercase tracking-wide">Capacity</p>
+                                    <p className="font-extrabold text-gray-900 mt-0.5">{t ? `${t.capacity} guest${t.capacity === 1 ? '' : 's'}` : '—'}</p>
+                                </div>
+                                {t?.description && (
+                                    <div className="col-span-2">
+                                        <p className="text-gray-400 font-bold uppercase tracking-wide">Description</p>
+                                        <p className="font-semibold text-gray-700 mt-0.5 leading-snug">{t.description}</p>
+                                    </div>
+                                )}
+                                {selectedRoom.notes && (
+                                    <div className="col-span-2">
+                                        <p className="text-gray-400 font-bold uppercase tracking-wide">Notes</p>
+                                        <p className="font-semibold text-gray-700 mt-0.5 leading-snug">{selectedRoom.notes}</p>
+                                    </div>
+                                )}
+                            </div>
+                        )
+                    })()}
 
                     {/* Action Buttons (Book, Closed) — a room automatically goes to
                         Cleaning on checkout (see /api/bookings/checkout), so there's no
@@ -1015,7 +1060,7 @@ export default function RoomsClient({
                         <div className="px-6 py-5 bg-[#ff5a00] flex items-center justify-between text-white shrink-0">
                             <div className="flex items-center gap-3">
                                 <Bed size={22} />
-                                <h3 className="font-extrabold text-lg">{editingRoomId ? 'Edit Room' : 'Add New Room'}</h3>
+                                <h3 className="font-extrabold text-lg">{editingRoomId ? `Edit Room ${roomForm.room_number}` : 'Add New Room'}</h3>
                             </div>
                             <button onClick={() => { setIsAddRoomOpen(false); resetRoomForm() }} className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
                                 <X size={16} />
@@ -1067,32 +1112,21 @@ export default function RoomsClient({
                                 </select>
                             </div>
 
-                            <div className={`pt-4 flex items-center gap-2.5 ${editingRoomId ? 'justify-between' : 'justify-end'}`}>
-                                {editingRoomId && (
-                                    <button
-                                        onClick={handleDeleteRoom}
-                                        disabled={isSubmittingRoom}
-                                        className="flex items-center gap-1.5 px-4 py-2.5 text-rose-600 hover:bg-rose-50 font-semibold rounded-xl text-sm transition-colors disabled:opacity-50"
-                                    >
-                                        <Trash2 size={14} /> Delete Room
-                                    </button>
-                                )}
-                                <div className="flex items-center gap-2.5">
-                                    <button
-                                        onClick={() => { setIsAddRoomOpen(false); resetRoomForm() }}
-                                        className="px-4 py-2.5 text-gray-500 hover:text-gray-700 font-semibold rounded-xl text-sm"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        onClick={handleSubmitRoom}
-                                        disabled={isSubmittingRoom}
-                                        className="flex items-center gap-2 px-5 py-2.5 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-semibold rounded-xl text-sm transition-all disabled:opacity-50"
-                                    >
-                                        {isSubmittingRoom ? <Loader2 size={15} className="animate-spin" /> : null}
-                                        {editingRoomId ? 'Save Changes' : 'Create Room'}
-                                    </button>
-                                </div>
+                            <div className="pt-4 flex items-center justify-end gap-2.5">
+                                <button
+                                    onClick={() => { setIsAddRoomOpen(false); resetRoomForm() }}
+                                    className="px-4 py-2.5 text-gray-500 hover:text-gray-700 font-semibold rounded-xl text-sm"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleSubmitRoom}
+                                    disabled={isSubmittingRoom}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-semibold rounded-xl text-sm transition-all disabled:opacity-50"
+                                >
+                                    {isSubmittingRoom ? <Loader2 size={15} className="animate-spin" /> : null}
+                                    {editingRoomId ? 'Save Changes' : 'Create Room'}
+                                </button>
                             </div>
                         </div>
                 </Modal>

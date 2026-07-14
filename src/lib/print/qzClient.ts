@@ -24,10 +24,46 @@ export interface QzResult {
 
 let qzModule: typeof import('qz-tray').default | null = null
 
+// Wire qz-tray's certificate + signature promises to our server endpoints so
+// QZ Tray trusts this site silently instead of prompting Allow/Block on every
+// print. The private key stays server-side (/api/qz/sign); the browser only
+// ever fetches the public cert and per-request signatures.
+//
+// Fully silent printing also needs the matching public certificate installed
+// as `override.crt` in the QZ Tray desktop app's install dir — without it QZ
+// still recognises the signature but shows its trust prompt once. If the
+// signing env vars aren't set, /api/qz/cert 204s: the cert promise rejects and
+// qz-tray falls back to unsigned mode (one-off prompt), same as before.
+function configureSecurity(qz: typeof import('qz-tray').default) {
+    if (typeof qz.security.setSignatureAlgorithm === 'function') {
+        qz.security.setSignatureAlgorithm('SHA512')
+    }
+    qz.security.setCertificatePromise((resolve: (v: string) => void, reject: (e?: unknown) => void) => {
+        fetch('/api/qz/cert', { cache: 'no-store' })
+            .then((r) => {
+                if (!r.ok) { reject(); return null }
+                return r.text()
+            })
+            .then((text) => { if (text) resolve(text); else reject() })
+            .catch(reject)
+    })
+    qz.security.setSignaturePromise((toSign: string) => (resolve: (v: string) => void, reject: (e?: unknown) => void) => {
+        fetch('/api/qz/sign', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ request: toSign }),
+        })
+            .then((r) => r.text())
+            .then(resolve)
+            .catch(reject)
+    })
+}
+
 async function getQz() {
     if (qzModule) return qzModule
     const mod = await import('qz-tray')
     qzModule = mod.default
+    configureSecurity(qzModule)
     return qzModule
 }
 

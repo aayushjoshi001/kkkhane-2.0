@@ -36,6 +36,8 @@ export async function POST(req: Request) {
     }
 }
 
+// Update a room category. Only the fields present in the body are changed; every
+// query is scoped to the caller's restaurant so one tenant can't edit another's.
 export async function PATCH(req: Request) {
     try {
         const currentUser = await getCurrentUser()
@@ -45,32 +47,47 @@ export async function PATCH(req: Request) {
 
         const body = await req.json().catch(() => ({}))
         const { id, name, description, base_price, capacity } = body
+        if (!id) {
+            return NextResponse.json({ error: 'Room category id is required' }, { status: 400 })
+        }
 
-        if (!id || !name || isNaN(Number(base_price)) || isNaN(Number(capacity))) {
-            return NextResponse.json({ error: 'Missing or invalid parameters' }, { status: 400 })
+        const updates: Record<string, unknown> = {}
+        if (name !== undefined) {
+            if (!String(name).trim()) return NextResponse.json({ error: 'Category name cannot be empty' }, { status: 400 })
+            updates.name = String(name).trim()
+        }
+        if (description !== undefined) updates.description = description?.trim() || null
+        if (base_price !== undefined) {
+            if (isNaN(Number(base_price)) || Number(base_price) < 0) return NextResponse.json({ error: 'Enter a valid base price' }, { status: 400 })
+            updates.base_price = Number(base_price)
+        }
+        if (capacity !== undefined) {
+            if (isNaN(Number(capacity)) || Number(capacity) < 1) return NextResponse.json({ error: 'Enter a valid capacity' }, { status: 400 })
+            updates.capacity = Number(capacity)
+        }
+        if (Object.keys(updates).length === 0) {
+            return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
         }
 
         const supabase = await createAdminClient()
         const { data, error } = await supabase
             .from('room_types')
-            .update({
-                name: name.trim(),
-                description: description?.trim() || null,
-                base_price: Number(base_price),
-                capacity: Number(capacity)
-            })
+            .update(updates)
             .eq('id', id)
             .eq('restaurant_id', currentUser.restaurantId)
             .select()
             .single()
 
         if (error) throw error
+        if (!data) return NextResponse.json({ error: 'Room category not found' }, { status: 404 })
         return NextResponse.json({ success: true, data })
     } catch (e: any) {
         return NextResponse.json({ error: e.message || 'Server error' }, { status: 500 })
     }
 }
 
+// Soft-delete a room category. Blocked while any active room still uses it, so a
+// room is never orphaned onto a category that has vanished from the list.
 export async function DELETE(req: Request) {
     try {
         const currentUser = await getCurrentUser()
@@ -79,35 +96,27 @@ export async function DELETE(req: Request) {
         }
 
         const body = await req.json().catch(() => ({}))
-        const { id } = body
+        const id = body?.id || new URL(req.url).searchParams.get('id')
         if (!id) {
-            return NextResponse.json({ error: 'Category id is required' }, { status: 400 })
+            return NextResponse.json({ error: 'Room category id is required' }, { status: 400 })
         }
 
         const supabase = await createAdminClient()
 
-        // Refuse to delete a category still assigned to any active room — the
-        // room's category picker would otherwise point at a category that no
-        // longer shows up anywhere in the UI.
-        const { count, error: countError } = await supabase
+        const { count } = await supabase
             .from('rooms')
             .select('id', { count: 'exact', head: true })
-            .eq('type_id', id)
             .eq('restaurant_id', currentUser.restaurantId)
+            .eq('type_id', id)
             .eq('is_active', true)
 
-        if (countError) throw countError
-        if (count && count > 0) {
+        if ((count ?? 0) > 0) {
             return NextResponse.json(
-                { error: `${count} room${count > 1 ? 's' : ''} still use this category. Reassign or delete ${count > 1 ? 'them' : 'it'} first.` },
+                { error: `This category is used by ${count} room${count === 1 ? '' : 's'}. Reassign or remove those rooms first.` },
                 { status: 409 }
             )
         }
 
-        // Soft-delete: room_types.id is referenced by rooms.type_id (ON DELETE SET
-        // NULL) and by historical bookings via the room, so a hard delete would
-        // either silently strip categories off rooms or fight the FK. Deactivating
-        // just hides it from the category list and pickers.
         const { error } = await supabase
             .from('room_types')
             .update({ is_active: false })

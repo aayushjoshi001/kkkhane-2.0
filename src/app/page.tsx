@@ -1,5 +1,3 @@
-import { redirect } from 'next/navigation'
-import { getOptionalUser } from '@/lib/auth'
 import Link from 'next/link'
 import Image from 'next/image'
 import { MarketingNav, MarketingFooter, PricingCards } from '@/components/marketing'
@@ -8,15 +6,6 @@ import {
     Globe, CheckCircle,
     Plus, ChefHat, Receipt, LayoutDashboard
 } from 'lucide-react'
-
-const ROLE_LANDING: Record<string, string> = {
-    super_admin: '/admin/dashboard',
-    manager: '/admin/dashboard',
-    kitchen: '/kitchen',
-    bartender: '/bar',
-    waiter: '/waiter',
-    onboarding: '/onboarding',
-}
 
 const faqs = [
     { q: "What is KKKhane?", a: "KKKhane is a mobile-first restaurant ordering and table management system built in Nepal — menus, KOTs, billing, and everything in between." },
@@ -28,12 +17,9 @@ const faqs = [
 ]
 
 export default async function Home() {
-    const currentUser = await getOptionalUser()
-    if (currentUser) {
-        const landing = ROLE_LANDING[currentUser.role] || '/admin/dashboard'
-        redirect(landing)
-    }
-
+    // Logged-in users are no longer bounced to their dashboard here — the
+    // marketing nav shows their avatar (with a Dashboard link) instead, so they
+    // can browse the home page and jump back into the app from the avatar menu.
     return (
         <div className="min-h-screen bg-transparent text-ink overflow-x-hidden font-sans">
             <MarketingNav />

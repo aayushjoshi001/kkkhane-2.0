@@ -2,8 +2,9 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
-import { postHotelPaymentIncomeAndLedger } from '@/lib/ledger'
+import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense } from '@/lib/ledger'
 import { computeFolioTotal } from '@/lib/folio'
+import { findOrCreateCustomerCreditAccount, postCreditCharge } from '@/lib/customerCredit'
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>
 
@@ -93,7 +94,10 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json().catch(() => ({}))
-        const { booking_id, room_id, total_amount, cash_paid, qr_paid, qr_code_id, session_id } = body
+        const {
+            booking_id, room_id, total_amount, cash_paid, qr_paid, qr_code_id, session_id,
+            discount_amount, discount_reason, credit_amount, customer_name, customer_phone,
+        } = body
 
         if (!booking_id || !room_id) {
             return NextResponse.json({ error: 'Missing booking_id or room_id' }, { status: 400 })
@@ -105,7 +109,32 @@ export async function POST(req: Request) {
         if (total_amount != null && (!Number.isFinite(clientTotal) || clientTotal < 0)) {
             return NextResponse.json({ error: 'total_amount must be a number >= 0' }, { status: 400 })
         }
-        const settledNow = (Number(cash_paid) || 0) + (Number(qr_paid) || 0)
+
+        // A stay can be settled cash + QR + credit in any combination — the
+        // credit portion isn't collected now, it's charged to the guest's
+        // customer_credit_accounts balance below (see findOrCreateCustomerCreditAccount).
+        const creditAmount = Number(credit_amount) || 0
+        if (creditAmount < 0) {
+            return NextResponse.json({ error: 'credit_amount cannot be negative' }, { status: 400 })
+        }
+        const creditCustomerName = typeof customer_name === 'string' ? customer_name.trim() : ''
+        const creditCustomerPhone = typeof customer_phone === 'string' ? customer_phone.trim() : ''
+        if (creditAmount > 0 && (!creditCustomerName || !creditCustomerPhone)) {
+            return NextResponse.json({ error: 'Customer name and phone are required for credit' }, { status: 400 })
+        }
+        const settledNow = (Number(cash_paid) || 0) + (Number(qr_paid) || 0) + creditAmount
+
+        // A bargained room rate — any staff at checkout can apply one, but a
+        // reason is mandatory as the audit trail (no separate manager
+        // approval step, since a guest is standing there waiting to pay).
+        const discountAmount = Number(discount_amount) || 0
+        if (discountAmount < 0) {
+            return NextResponse.json({ error: 'discount_amount cannot be negative' }, { status: 400 })
+        }
+        const discountReason = typeof discount_reason === 'string' ? discount_reason.trim() : ''
+        if (discountAmount > 0 && !discountReason) {
+            return NextResponse.json({ error: 'A reason is required to apply a discount' }, { status: 400 })
+        }
 
         const supabase = await createAdminClient()
 
@@ -123,7 +152,25 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
         }
 
-        // 0a. Atomically claim this checkout: a plain read-then-write check here
+        // 0a. Authoritative, server-computed folio total — computed before the
+        // atomic claim below so an invalid discount can be rejected without
+        // ever flipping the booking to checked_out (that claim can't be
+        // cleanly undone once made).
+        const folio = await computeFolioTotal(supabase, {
+            restaurantId: currentUser.restaurantId,
+            bookingId: booking_id,
+            roomId: booking.room_id || room_id,
+            checkIn: booking.check_in,
+            checkOut: booking.check_out,
+            sessionId: session_id || null,
+            discountAmount,
+        })
+        if (discountAmount > folio.stayCost) {
+            return NextResponse.json({ error: 'Discount cannot exceed the room rate' }, { status: 400 })
+        }
+        const authoritativeTotal = folio.total
+
+        // 0b. Atomically claim this checkout: a plain read-then-write check here
         // ("is status already checked_out?") leaves a window where two requests
         // (a double-click, a retry) can both pass the check before either writes,
         // both settle orders, and both post a duplicate ledger income entry for
@@ -143,17 +190,6 @@ export async function POST(req: Request) {
         if (!claimed || claimed.length === 0) {
             return NextResponse.json({ error: 'Booking is already checked out' }, { status: 409 })
         }
-
-        // 0a. Authoritative, server-computed folio total.
-        const folio = await computeFolioTotal(supabase, {
-            restaurantId: currentUser.restaurantId,
-            bookingId: booking_id,
-            roomId: booking.room_id || room_id,
-            checkIn: booking.check_in,
-            checkOut: booking.check_out,
-            sessionId: session_id || null,
-        })
-        const authoritativeTotal = folio.total
         const clientMismatch = Number.isFinite(clientTotal)
             ? round2(Math.abs(clientTotal - authoritativeTotal))
             : null
@@ -199,6 +235,10 @@ export async function POST(req: Request) {
                 total_amount: authoritativeTotal,
                 paid_amount: newPaidAmount,
                 payment_status: paymentStatus,
+                discount_amount: discountAmount,
+                discount_reason: discountAmount > 0 ? discountReason : null,
+                discount_applied_by: discountAmount > 0 ? currentUser.id : null,
+                discount_applied_at: discountAmount > 0 ? new Date().toISOString() : null,
             })
             .eq('id', booking_id)
             .eq('restaurant_id', currentUser.restaurantId)
@@ -217,17 +257,17 @@ export async function POST(req: Request) {
         // Log settlement payments to financial ledger and books automatically
         const cashPaid = Number(cash_paid) || 0
         const qrPaid = Number(qr_paid) || 0
-        
-        if (cashPaid > 0 || qrPaid > 0) {
+
+        if (cashPaid > 0 || qrPaid > 0 || discountAmount > 0 || creditAmount > 0) {
             const { data: roomContext } = await supabase
                 .from('rooms')
                 .select('room_number')
                 .eq('id', room_id)
                 .single()
-            
+
             const roomNumber = roomContext?.room_number || 'Unknown'
             const guestName = booking.guest_name || 'Guest'
-            
+
             if (cashPaid > 0) {
                 await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
                     bookingId: booking_id,
@@ -249,6 +289,33 @@ export async function POST(req: Request) {
                     qrCodeId: qr_code_id || null
                 })
             }
+            if (creditAmount > 0) {
+                // Checkout has already been claimed and orders settled above —
+                // a failure here is logged, not surfaced as a failed checkout
+                // (same best-effort treatment as the cash/qr postings above),
+                // since the guest has already been checked out at this point.
+                const account = await findOrCreateCustomerCreditAccount(supabase, currentUser.restaurantId, currentUser.id, {
+                    name: creditCustomerName,
+                    phone: creditCustomerPhone,
+                })
+                if ('error' in account) {
+                    console.error('Failed to create/find customer credit account:', account.error)
+                } else {
+                    await postCreditCharge(supabase, currentUser.restaurantId, currentUser.id, {
+                        customerCreditAccountId: account.id,
+                        amount: creditAmount,
+                        description: `Room ${roomNumber} stay on credit (${guestName})`,
+                    })
+                }
+            }
+            if (discountAmount > 0) {
+                await postBargainDiscountExpense(supabase, currentUser.restaurantId, currentUser.id, {
+                    guestName,
+                    locationLabel: `Room ${roomNumber}`,
+                    amount: discountAmount,
+                    reason: discountReason,
+                })
+            }
         }
 
         void logAudit({
@@ -266,6 +333,8 @@ export async function POST(req: Request) {
                 payment_status: paymentStatus,
                 cash_paid: Number(cash_paid) || 0,
                 qr_paid: Number(qr_paid) || 0,
+                discount_amount: discountAmount,
+                discount_reason: discountAmount > 0 ? discountReason : null,
                 session_id: session_id || null,
             },
         })

@@ -809,7 +809,7 @@ export default function MenuManager({
                                     <label className="block text-small font-bold text-ink mb-1.5">Price *</label>
                                     <div className="relative">
                                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                            <span className="text-ink-subtle font-medium sm:text-sm">$</span>
+                                            <span className="text-ink-subtle font-medium sm:text-sm">Rs.</span>
                                         </div>
                                         <input
                                             type="text"
@@ -818,7 +818,7 @@ export default function MenuManager({
                                             value={hasVariations ? 'Variations' : (itemFormData.price ?? '')}
                                             onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setItemFormData({ ...itemFormData, price: v === '' ? undefined : Number(v) }) }}
                                             placeholder={hasVariations ? 'Set in variations' : 'e.g. 12.99'}
-                                            className="w-full pl-7 border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all disabled:bg-surface-muted disabled:text-ink-subtle disabled:opacity-70 tabular-nums"
+                                            className="w-full pl-10 border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all disabled:bg-surface-muted disabled:text-ink-subtle disabled:opacity-70 tabular-nums"
                                         />
                                     </div>
                                 </div>
@@ -975,7 +975,7 @@ export default function MenuManager({
                                                     <div className="flex items-center gap-2">
                                                         <div className="relative flex-1 sm:flex-none sm:w-36">
                                                             <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
-                                                                <span className="text-ink-subtle text-xs font-medium">$</span>
+                                                                <span className="text-ink-subtle text-xs font-medium">Rs.</span>
                                                             </div>
                                                             <input
                                                                 type="text"
@@ -990,7 +990,7 @@ export default function MenuManager({
                                                                     }
                                                                 }}
                                                                 placeholder="Price"
-                                                                className="w-full pl-6 border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-2 border bg-surface text-ink transition-all tabular-nums"
+                                                                className="w-full pl-9 border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-2 border bg-surface text-ink transition-all tabular-nums"
                                                             />
                                                         </div>
                                                         {v.image_url && (

@@ -54,7 +54,7 @@ export default function PromoCodeInput({
                             {appliedPromo.promo_type === 'percentage_off'
                                 ? `${appliedPromo.value}% off`
                                 : appliedPromo.promo_type === 'amount_off'
-                                ? `$${appliedPromo.value.toFixed(2)} off`
+                                ? `Rs. ${appliedPromo.value.toFixed(2)} off`
                                 : appliedPromo.promo_type === 'bogo'
                                 ? 'Buy One Get One'
                                 : 'Free item included'}

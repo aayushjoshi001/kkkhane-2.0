@@ -180,6 +180,7 @@ export default function InvoiceReceipt({
                         <span className="font-bold uppercase">
                             {invoice.paymentMethod === 'cash' ? 'CASH'
                                 : invoice.paymentMethod === 'qr_digital' ? 'QR / DIGITAL'
+                                : invoice.paymentMethod === 'credit' ? 'CREDIT'
                                 : 'SPLIT'}
                         </span>
                     </div>
@@ -193,7 +194,19 @@ export default function InvoiceReceipt({
                                 <span>· QR / Digital</span>
                                 <span className="tabular-nums">{money(invoice.qrPaid ?? 0)}</span>
                             </div>
+                            {!!invoice.creditPaid && (
+                                <div className="flex justify-between text-gray-600">
+                                    <span>· On credit</span>
+                                    <span className="tabular-nums">{money(invoice.creditPaid)}</span>
+                                </div>
+                            )}
                         </>
+                    )}
+                    {invoice.paymentMethod === 'credit' && !!invoice.creditPaid && (
+                        <div className="flex justify-between text-gray-600">
+                            <span>· On credit</span>
+                            <span className="tabular-nums">{money(invoice.creditPaid)}</span>
+                        </div>
                     )}
                 </div>
             )}

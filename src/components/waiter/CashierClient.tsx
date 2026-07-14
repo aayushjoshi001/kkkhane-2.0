@@ -7,10 +7,9 @@ import { createClient } from '@/lib/supabase/client'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { markDeliveredAndCashPaid } from '@/app/(staff)/waiter/order-actions'
 import { updateTakeoutStatusAction } from '@/app/(admin)/admin/takeout/actions'
-import { closeSession } from '@/app/(staff)/waiter/actions'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
-import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart } from 'lucide-react'
+import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent } from 'lucide-react'
 import PaymentVerificationFeed, { type PaymentClaim } from './PaymentVerificationFeed'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import Button from '@/components/ui/Button'
@@ -133,10 +132,26 @@ export default function CashierClient({
     const [billingStayBooking, setBillingStayBooking] = useState<any | null>(null)
     const [billingRoomCharges, setBillingRoomCharges] = useState<any[]>([])
     const [billingLinkedOrders, setBillingLinkedOrders] = useState<any[]>([])
-    const [billingPaymentMethod, setBillingPaymentMethod] = useState<'cash' | 'qr_digital' | 'both'>('cash')
+    const [billingPaymentMethod, setBillingPaymentMethod] = useState<'cash' | 'qr_digital' | 'both' | 'credit'>('cash')
     const [splitCashAmount, setSplitCashAmount] = useState<string>('')
     const [splitQrAmount, setSplitQrAmount] = useState<string>('')
     const [billingQrCodeId, setBillingQrCodeId] = useState<string>('')
+    // Table bargain rate: blank means "no change", same convention as
+    // RoomBillingModal's bargainRate — the input holds the new desired total,
+    // not the discount amount itself.
+    const [tableBargainRate, setTableBargainRate] = useState<string>('')
+    const [tableBargainReason, setTableBargainReason] = useState<string>('')
+    // Shared by both the room and table billing panels below — only one is
+    // ever open at a time, so one pair of fields is enough. Only ever read
+    // from the settlement confirmation popup now (see showSettlementConfirm) —
+    // 'both'/'credit' settlements no longer show these inline.
+    const [creditCustomerName, setCreditCustomerName] = useState<string>('')
+    const [creditCustomerPhone, setCreditCustomerPhone] = useState<string>('')
+    // Gates every 'both' or 'credit' settlement (room or table) behind one
+    // confirmation popup — protects against a cashier's typo in the split
+    // amounts, and is where a credit portion's name/phone gets collected.
+    const [showSettlementConfirm, setShowSettlementConfirm] = useState(false)
+    const [pendingInvoice, setPendingInvoice] = useState<{ type: 'room' | 'table'; item: any; data: any } | null>(null)
     const qrCodes = useQrCodes()
 
     const [mounted, setMounted] = useState(false)
@@ -236,8 +251,24 @@ export default function CashierClient({
             setSplitCashAmount('')
             setSplitQrAmount('')
             setBillingQrCodeId('')
+            setCreditCustomerName('')
+            setCreditCustomerPhone('')
         }
     }, [selectedBillingRoom, bookings])
+
+    // Same reset for the table billing panel — keyed on the table's id so it
+    // also fires when switching straight from one table to another, not just
+    // on close.
+    useEffect(() => {
+        setBillingPaymentMethod('cash')
+        setSplitCashAmount('')
+        setSplitQrAmount('')
+        setBillingQrCodeId('')
+        setTableBargainRate('')
+        setTableBargainReason('')
+        setCreditCustomerName('')
+        setCreditCustomerPhone('')
+    }, [selectedBillingTable?.id])
 
     const calculateStayCost = (room: any, booking: any) => {
         if (!room || !booking) return 0
@@ -310,6 +341,22 @@ export default function CashierClient({
         return items
     }
 
+    // The authoritative bill for a table session — sums each order's own
+    // total_amount (already includes tax/service charge from placement time),
+    // NOT unitPrice*quantity like getTableSessionItems above, which is only
+    // the pre-tax line-item breakdown. /api/tables/checkout bills off this
+    // same total_amount field, so the bargain rate and split-payment amounts
+    // must be calculated against this number, not the pre-tax item sum —
+    // otherwise a bargain rate entered against the wrong baseline over- or
+    // under-charges the guest relative to what's displayed.
+    const getTableSessionOrdersTotal = (table: any) => {
+        if (!table || !table.activeSession) return 0
+        const sessionId = table.activeSession.id
+        const allActive = active.filter(o => o.session_id === sessionId)
+        const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
+        return [...allActive, ...allUnpaid].reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0)
+    }
+
     const calculateGrandTotal = (room: any, booking: any) => {
         const stayCost = calculateStayCost(room, booking)
         const qrOrdersTotal = getRoomQrOrders(room).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
@@ -318,14 +365,18 @@ export default function CashierClient({
         return stayCost + qrOrdersTotal + linkedOrdersTotal + manualChargesTotal
     }
 
-    const compileInvoice = (type: 'room' | 'table', item: any) => {
+    // Pure computation — no side effects — so compileInvoice below can inspect
+    // the result (does this settlement involve credit? is it overpaid?) before
+    // deciding whether to open the confirmation popup or go straight to the
+    // invoice preview.
+    const buildInvoiceData = (type: 'room' | 'table', item: any): any => {
         if (type === 'room') {
             const room = item
             // Prefer the freshly fetched billingStayBooking (newest checked_in via API)
             // This avoids showing stale data from a previous booking session
             const booking = billingStayBooking ?? bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
-            if (!booking) return
-            
+            if (!booking) return null
+
             const price = room.room_types?.base_price || 0
             const nights = calculateNights(booking.check_in, booking.check_out)
             const stayCost = price * nights
@@ -341,15 +392,26 @@ export default function CashierClient({
             const advancePaid = Number(booking.paid_amount) || 0
             const balanceDue = Math.max(0, total - advancePaid)
 
-            // Resolve split amounts (apply to balance due, not gross total)
+            // Resolve split amounts (apply to balance due, not gross total).
+            // Each branch is explicit (rather than falling through to an
+            // "else") so a stale splitCashAmount left over from a previous
+            // 'both' selection can't leak into a 'credit' settlement.
             const resolvedCash = billingPaymentMethod === 'cash' ? balanceDue
-                : billingPaymentMethod === 'qr_digital' ? 0
-                : parseFloat(splitCashAmount) || 0
+                : billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0)
+                : 0
             const resolvedQr = billingPaymentMethod === 'qr_digital' ? balanceDue
-                : billingPaymentMethod === 'cash' ? 0
-                : parseFloat(splitQrAmount) || 0
+                : billingPaymentMethod === 'both' ? (parseFloat(splitQrAmount) || 0)
+                : 0
+            // 'both' no longer requires cash+qr to exactly equal the balance —
+            // whatever's left over (if any) becomes credit, confirmed via the
+            // settlement popup below (guards against a cashier's typo, not
+            // just a deliberate part-credit sale).
+            const resolvedCredit = billingPaymentMethod === 'credit' ? balanceDue
+                : billingPaymentMethod === 'both' ? Math.max(0, balanceDue - resolvedCash - resolvedQr)
+                : 0
+            const overpaid = billingPaymentMethod === 'both' && (resolvedCash + resolvedQr) > balanceDue + 0.01
 
-            setActiveInvoice({
+            return {
                 type: 'room',
                 id: room.id,
                 label: `Room ${room.room_number}`,
@@ -380,18 +442,46 @@ export default function CashierClient({
                 paymentMethod: billingPaymentMethod,
                 cashPaid: resolvedCash,
                 qrPaid: resolvedQr,
-                qrCodeId: resolvedQr > 0 ? (billingQrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined)) : undefined,
-            })
+                creditPaid: resolvedCredit,
+                overpaid,
+                qrCodeId: (resolvedQr > 0) ? (billingQrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined)) : undefined,
+                customerName: booking.guest_name,
+                customerPhone: booking.guest_phone,
+            }
         } else {
             const table = item
             const sessionOrders = getTableSessionItems(table)
-            const total = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
+            const itemsSubtotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
+            // The authoritative, tax-inclusive total — /api/tables/checkout
+            // bills off the same orders.total_amount field, so the bargain
+            // rate must be calculated against this, not itemsSubtotal (which
+            // is pre-tax and would understate what's actually charged).
+            const subtotal = getTableSessionOrdersTotal(table)
 
-            setActiveInvoice({
+            // Bargain rate: blank input = no change, standard subtotal stands
+            // (same convention as RoomBillingModal's bargainRate) — the input
+            // holds the new desired total, not the discount amount itself.
+            const bargainRateEntered = tableBargainRate.trim() !== ''
+            const bargainRateValue = bargainRateEntered ? parseFloat(tableBargainRate) || 0 : subtotal
+            const discountAmount = bargainRateEntered ? Math.max(0, subtotal - bargainRateValue) : 0
+            const total = subtotal - discountAmount
+
+            const resolvedCash = billingPaymentMethod === 'cash' ? total
+                : billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0)
+                : 0
+            const resolvedQr = billingPaymentMethod === 'qr_digital' ? total
+                : billingPaymentMethod === 'both' ? (parseFloat(splitQrAmount) || 0)
+                : 0
+            const resolvedCredit = billingPaymentMethod === 'credit' ? total
+                : billingPaymentMethod === 'both' ? Math.max(0, total - resolvedCash - resolvedQr)
+                : 0
+            const overpaid = billingPaymentMethod === 'both' && (resolvedCash + resolvedQr) > total + 0.01
+
+            return {
                 type: 'table',
                 id: table.id,
                 label: `Table ${table.label}`,
-                guestName: `Table Guest`,
+                guestName: 'Table Guest',
                 guestPhone: null,
                 checkIn: table.activeSession.opened_at,
                 checkOut: new Date().toISOString(),
@@ -399,13 +489,68 @@ export default function CashierClient({
                 basePrice: 0,
                 stayCost: 0,
                 qrOrders: sessionOrders,
-                qrOrdersTotal: total,
+                qrOrdersTotal: itemsSubtotal,
                 manualCharges: [],
                 manualChargesTotal: 0,
                 total,
-                sessionId: table.activeSession.id
-            })
+                discountAmount,
+                discountReason: discountAmount > 0 ? tableBargainReason.trim() : '',
+                sessionId: table.activeSession.id,
+                paymentMethod: billingPaymentMethod,
+                cashPaid: resolvedCash,
+                qrPaid: resolvedQr,
+                creditPaid: resolvedCredit,
+                overpaid,
+                qrCodeId: (resolvedQr > 0) ? (billingQrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined)) : undefined,
+                customerName: undefined,
+                customerPhone: undefined,
+            }
         }
+    }
+
+    // 'cash' and 'qr_digital' are unambiguous (one method, the full amount) —
+    // straight to the invoice preview. 'both' and 'credit' always go through
+    // the settlement confirmation popup first: 'both' because a typo in the
+    // split fields would otherwise silently under- or over-charge, 'credit'
+    // (whether the whole bill or a leftover from 'both') because it needs a
+    // customer name + phone to post against.
+    const compileInvoice = (type: 'room' | 'table', item: any) => {
+        const data = buildInvoiceData(type, item)
+        if (!data) return
+
+        if (data.paymentMethod === 'both' || data.paymentMethod === 'credit') {
+            // Seed the popup's name/phone from whatever identity is already
+            // known (a room's own booking guest — blank for a table, where
+            // there's no such default) rather than always starting blank.
+            setCreditCustomerName(data.customerName || '')
+            setCreditCustomerPhone(data.customerPhone || '')
+            setPendingInvoice({ type, item, data })
+            setShowSettlementConfirm(true)
+            return
+        }
+        setActiveInvoice(data)
+    }
+
+    // Confirm button on the settlement popup — folds the just-entered (or
+    // pre-filled) customer details into the invoice and only now actually
+    // opens the invoice preview / Mark Paid step.
+    const finalizeSettlementConfirm = () => {
+        if (!pendingInvoice) return
+        const d = pendingInvoice.data
+        setActiveInvoice({
+            ...d,
+            guestName: d.creditPaid > 0.01 ? (creditCustomerName.trim() || d.guestName) : d.guestName,
+            guestPhone: d.creditPaid > 0.01 ? (creditCustomerPhone.trim() || d.guestPhone) : d.guestPhone,
+            customerName: d.creditPaid > 0.01 ? creditCustomerName.trim() : undefined,
+            customerPhone: d.creditPaid > 0.01 ? creditCustomerPhone.trim() : undefined,
+        })
+        setShowSettlementConfirm(false)
+        setPendingInvoice(null)
+    }
+
+    const cancelSettlementConfirm = () => {
+        setShowSettlementConfirm(false)
+        setPendingInvoice(null)
     }
 
     const handleMarkPaid = async () => {
@@ -413,45 +558,57 @@ export default function CashierClient({
         isSettlingRef.current = true
         setIsSettlingInvoice(true)
         try {
-            // Settle all unpaid orders associated with this room or table
-            const sessionId = activeInvoice.type === 'room'
-                ? tables.find(t => t.room_id === activeInvoice.roomId)?.activeSession?.id
-                : activeInvoice.sessionId
+            if (activeInvoice.type === 'room') {
+                // Settle all unpaid orders associated with this room's session
+                // client-side first — /api/bookings/checkout also settles
+                // idempotently, but doing it here records exactly what the
+                // cashier selected (Cash / QR / Both) per order for the EOD
+                // report's cash-vs-digital breakdown.
+                const sessionId = tables.find(t => t.room_id === activeInvoice.roomId)?.activeSession?.id
 
-            if (sessionId) {
-                const sessionOrders = active.filter(o => o.session_id === sessionId)
-                const sessionUnpaid = unpaid.filter(o => o.session_id === sessionId)
-                const allUnpaid = [...sessionOrders, ...sessionUnpaid].filter(o => o.payment_status === 'unpaid')
+                if (sessionId) {
+                    const sessionOrders = active.filter(o => o.session_id === sessionId)
+                    const sessionUnpaid = unpaid.filter(o => o.session_id === sessionId)
+                    const allUnpaid = [...sessionOrders, ...sessionUnpaid].filter(o => o.payment_status === 'unpaid')
 
-                // Record what the cashier actually selected (Cash / QR / Both)
-                // instead of hardcoding "cash" for every order — the EOD report's
-                // cash-vs-digital breakdown reads this exact field. For a split
-                // settlement there's no single right answer per order, so draw
-                // sequentially from the cash pool first, then the QR pool, so the
-                // two totals still add up to what was actually collected.
-                let remainingCash = billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0) : Infinity
-                const methodForOrder = (amount: number): 'cash' | 'qr_scan' => {
-                    if (billingPaymentMethod === 'qr_digital') return 'qr_scan'
-                    if (billingPaymentMethod === 'cash') return 'cash'
-                    // both: allocate from the cash pool until it runs out
-                    if (remainingCash >= amount) {
-                        remainingCash -= amount
-                        return 'cash'
+                    // For a split settlement there's no single right answer per
+                    // order, so draw sequentially from the cash pool first, then
+                    // the QR pool — whatever's left over (both pools exhausted)
+                    // is the credit portion, which has no fitting method for
+                    // markDeliveredAndCashPaid, so those orders are left unpaid
+                    // here for /api/bookings/checkout's own settling to pick up
+                    // without a payment_verifications row (no cash/qr method
+                    // fits a credit sale).
+                    let remainingCash = billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0) : billingPaymentMethod === 'cash' ? Infinity : 0
+                    let remainingQr = billingPaymentMethod === 'both' ? (parseFloat(splitQrAmount) || 0) : billingPaymentMethod === 'qr_digital' ? Infinity : 0
+                    const methodForOrder = (amount: number): 'cash' | 'qr_scan' | null => {
+                        if (remainingCash >= amount) {
+                            remainingCash -= amount
+                            return 'cash'
+                        }
+                        if (remainingQr >= amount) {
+                            remainingQr -= amount
+                            return 'qr_scan'
+                        }
+                        return null
                     }
-                    return 'qr_scan'
+
+                    if (billingPaymentMethod !== 'credit') {
+                        // Independent per-order updates (each keyed by its own id) —
+                        // settle them concurrently instead of one network round-trip
+                        // at a time, which was the main reason "Mark Paid" felt slow
+                        // on a big bill.
+                        const results = await Promise.all(
+                            allUnpaid.map(order => {
+                                const method = methodForOrder(order.total_amount)
+                                return method ? markDeliveredAndCashPaid(order.id, method) : Promise.resolve<{ error?: string; success?: boolean }>({ success: true })
+                            })
+                        )
+                        const failed = results.find(res => res.error)
+                        if (failed) throw new Error(failed.error)
+                    }
                 }
 
-                // Independent per-order updates (each keyed by its own id) — settle
-                // them concurrently instead of one network round-trip at a time,
-                // which was the main reason "Mark Paid" felt slow on a big bill.
-                const results = await Promise.all(
-                    allUnpaid.map(order => markDeliveredAndCashPaid(order.id, methodForOrder(order.total_amount)))
-                )
-                const failed = results.find(res => res.error)
-                if (failed) throw new Error(failed.error)
-            }
-
-            if (activeInvoice.type === 'room') {
                 const res = await fetch(`/api/bookings/checkout`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -462,7 +619,10 @@ export default function CashierClient({
                         cash_paid: activeInvoice.cashPaid,
                         qr_paid: activeInvoice.qrPaid,
                         qr_code_id: activeInvoice.qrCodeId,
-                        session_id: sessionId || null
+                        session_id: sessionId || null,
+                        credit_amount: activeInvoice.creditPaid || 0,
+                        customer_name: activeInvoice.customerName,
+                        customer_phone: activeInvoice.customerPhone,
                     })
                 })
                 const data = await res.json()
@@ -484,8 +644,26 @@ export default function CashierClient({
                 // room would still see the previous guest's now-settled orders here.
                 router.refresh()
             } else {
-                const res = await closeSession(activeInvoice.sessionId)
-                if (res.error) throw new Error(res.error)
+                // The dine-in equivalent — /api/tables/checkout does its own
+                // order settling, session closing, and ledger/credit posting
+                // server-side (no client-side pre-settle loop needed).
+                const res = await fetch(`/api/tables/checkout`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: activeInvoice.sessionId,
+                        cash_paid: activeInvoice.cashPaid,
+                        qr_paid: activeInvoice.qrPaid,
+                        credit_amount: activeInvoice.creditPaid || 0,
+                        qr_code_id: activeInvoice.qrCodeId,
+                        discount_amount: activeInvoice.discountAmount || 0,
+                        discount_reason: activeInvoice.discountReason,
+                        customer_name: activeInvoice.customerName,
+                        customer_phone: activeInvoice.customerPhone,
+                    })
+                })
+                const data = await res.json()
+                if (!res.ok) throw new Error(data.error || 'Failed to checkout table')
 
                 toast.success('Table session settled and closed successfully!')
             }
@@ -498,17 +676,20 @@ export default function CashierClient({
             setIsSettlingInvoice(false)
             setInvoiceSettled(true)
 
-            // Auto-print the invoice. Falls back to the browser print dialog
-            // (this modal is already styled for it) if QZ Tray isn't
-            // connected/trusted on this till yet.
+            // Auto-print the invoice via QZ Tray as raw ESC/POS (same path as
+            // the kitchen KOT printer). Only fall back to the browser dialog
+            // when QZ is actually unreachable — not when no printer is picked,
+            // since a thermal roll on a driverless raw queue can't be rasterized
+            // by the browser anyway, and that just surfaced a confusing
+            // "printer not available" dialog after a bill was already settled.
             const printResult = await printInvoice(buildInvoiceTicket(activeInvoice, money))
             if (!printResult.ok) {
                 toast.error(
                     printResult.status === 'no-printer-selected'
-                        ? 'No invoice printer set — opening browser print instead.'
-                        : 'Invoice printer not connected — opening browser print instead.'
+                        ? 'Bill settled, but no printer is set for this till — pick one in Printer Settings.'
+                        : 'Bill settled, but the printer isn’t connected — opening browser print instead.'
                 )
-                window.print()
+                if (printResult.status !== 'no-printer-selected') window.print()
             }
 
             setActiveInvoice(null)
@@ -523,7 +704,25 @@ export default function CashierClient({
             setIsSettlingInvoice(false)
         }
     }
-    
+
+    // Manual re-print of the current invoice. Goes through QZ Tray as raw
+    // ESC/POS (the same path the kitchen KOT printer uses), so it prints a
+    // clean receipt on a thermal roll instead of the browser rasterizing an
+    // A4 page to a driverless raw queue. Only if QZ can't be reached at all do
+    // we fall back to the browser print dialog for driver-based printers.
+    const handlePrintBill = async () => {
+        if (!activeInvoice) return
+        const result = await printInvoice(buildInvoiceTicket(activeInvoice, money))
+        if (!result.ok) {
+            toast.error(
+                result.status === 'no-printer-selected'
+                    ? 'No printer set for this till — pick one in Printer Settings.'
+                    : 'Printer not connected — opening browser print instead.'
+            )
+            if (result.status !== 'no-printer-selected') window.print()
+        }
+    }
+
     // Set default active tab correctly
     useEffect(() => {
         setMounted(true)
@@ -1368,7 +1567,7 @@ export default function CashierClient({
                                 {/* Payment Method Selector */}
                                 <div className="pt-4">
                                     <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Payment Method</p>
-                                    <div className="grid grid-cols-3 gap-2">
+                                    <div className="grid grid-cols-4 gap-2">
                                         <button
                                             onClick={() => setBillingPaymentMethod('cash')}
                                             className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
@@ -1406,7 +1605,24 @@ export default function CashierClient({
                                             <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></svg>
                                             Both
                                         </button>
+                                        <button
+                                            onClick={() => setBillingPaymentMethod('credit')}
+                                            className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                billingPaymentMethod === 'credit'
+                                                    ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                    : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                            }`}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 9V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M22 17v-1a2 2 0 0 0-2-2h-1"/><rect width="8" height="8" x="14" y="14" rx="2"/></svg>
+                                            Credit
+                                        </button>
                                     </div>
+
+                                    {billingPaymentMethod === 'credit' && (
+                                        <p className="mt-3 text-[10px] text-ink-subtle font-semibold text-center">
+                                            You&apos;ll confirm the customer&apos;s name and phone in the next step.
+                                        </p>
+                                    )}
 
                                     {/* Split amount inputs — shown only when Both is selected */}
                                     {billingPaymentMethod === 'both' && (() => {
@@ -1425,12 +1641,7 @@ export default function CashierClient({
                                                             max={balanceDue}
                                                             placeholder="0.00"
                                                             value={splitCashAmount}
-                                                            onChange={e => {
-                                                                const v = e.target.value
-                                                                setSplitCashAmount(v)
-                                                                const cash = parseFloat(v) || 0
-                                                                setSplitQrAmount(Math.max(0, balanceDue - cash).toFixed(2))
-                                                            }}
+                                                            onChange={e => setSplitCashAmount(e.target.value)}
                                                             className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
                                                         />
                                                     </div>
@@ -1445,27 +1656,28 @@ export default function CashierClient({
                                                             max={balanceDue}
                                                             placeholder="0.00"
                                                             value={splitQrAmount}
-                                                            onChange={e => {
-                                                                const v = e.target.value
-                                                                setSplitQrAmount(v)
-                                                                const qr = parseFloat(v) || 0
-                                                                setSplitCashAmount(Math.max(0, balanceDue - qr).toFixed(2))
-                                                            }}
+                                                            onChange={e => setSplitQrAmount(e.target.value)}
                                                             className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
                                                         />
                                                     </div>
                                                 </div>
-                                                {/* Balance check */}
+                                                {/* Balance check — a shortfall is no longer an error: it becomes
+                                                    credit, confirmed (with customer details) in the next step. */}
                                                 {(() => {
                                                     const cash = parseFloat(splitCashAmount) || 0
                                                     const qr = parseFloat(splitQrAmount) || 0
                                                     const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
                                                     const advancePaid = Number(billingStayBooking?.paid_amount) || 0
                                                     const balanceDue = Math.max(0, grandTotal - advancePaid)
-                                                    const diff = Math.abs(cash + qr - balanceDue)
-                                                    if (diff > 0.01) return (
+                                                    const remainder = balanceDue - cash - qr
+                                                    if (remainder > 0.01) return (
+                                                        <p className="col-span-2 text-[9px] text-amber-600 font-bold text-center">
+                                                            Rs. {remainder.toFixed(2)} left over will go on customer credit
+                                                        </p>
+                                                    )
+                                                    if (remainder < -0.01) return (
                                                         <p className="col-span-2 text-[9px] text-rose-500 font-bold text-center">
-                                                            ⚠ Cash + QR must equal {money(balanceDue)} (difference: {money(diff)})
+                                                            ⚠ Cash + QR exceeds the bill by {money(Math.abs(remainder))}
                                                         </p>
                                                     )
                                                     return (
@@ -1521,7 +1733,13 @@ export default function CashierClient({
                                                     </div>
                                                     <div className="flex gap-2">
                                                         <Button variant="secondary" onClick={() => setSelectedBillingRoom(null)}>Close</Button>
-                                                        <Button variant="primary" onClick={() => compileInvoice('room', selectedBillingRoom)} className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs">Generate Invoice</Button>
+                                                        <Button
+                                                            variant="primary"
+                                                            onClick={() => compileInvoice('room', selectedBillingRoom)}
+                                                            className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs"
+                                                        >
+                                                            Generate Invoice
+                                                        </Button>
                                                     </div>
                                                 </div>
                                             </>
@@ -1580,17 +1798,319 @@ export default function CashierClient({
                             )}
                         </div>
 
-                        <div className="border-t border-hairline pt-4 flex items-center justify-between mt-2">
-                            <div>
-                                <span className="text-[10px] font-bold text-ink-subtle uppercase">Total session bill</span>
-                                <p className="text-2xl font-black text-brand-600 tabular-nums">
-                                    {money(getTableSessionItems(selectedBillingTable).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0))}
+                        {(() => {
+                            // The authoritative, tax-inclusive total — matches
+                            // exactly what /api/tables/checkout bills off
+                            // (orders.total_amount), unlike the raw item list
+                            // above which is pre-tax and would understate it.
+                            const itemsSubtotal = getTableSessionItems(selectedBillingTable).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
+                            const tableSubtotal = getTableSessionOrdersTotal(selectedBillingTable)
+                            const taxOrServiceAdjustment = tableSubtotal - itemsSubtotal
+                            const bargainRateEntered = tableBargainRate.trim() !== ''
+                            const bargainRateValue = bargainRateEntered ? parseFloat(tableBargainRate) || 0 : tableSubtotal
+                            const tableDiscountAmount = bargainRateEntered ? Math.max(0, tableSubtotal - bargainRateValue) : 0
+                            const tableDiscountInvalid = bargainRateEntered && (bargainRateValue < 0 || bargainRateValue > tableSubtotal)
+                            const tableTotal = tableSubtotal - tableDiscountAmount
+
+                            return (
+                                <>
+                                    {Math.abs(taxOrServiceAdjustment) > 0.01 && (
+                                        <div className="flex justify-between items-center px-1 text-xs">
+                                            <span className="text-ink-subtle font-semibold">Tax / Service charge</span>
+                                            <span className="font-bold text-ink-muted tabular-nums">{money(taxOrServiceAdjustment)}</span>
+                                        </div>
+                                    )}
+
+                                    {/* Bargain rate */}
+                                    <div className="border-2 border-amber-200 rounded-2xl p-4 space-y-3 bg-amber-50/60 shadow-sm">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                                                    <Percent size={14} className="text-amber-700" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-black text-amber-800 uppercase tracking-wider">Bargain Rate</p>
+                                                    <p className="text-[10px] text-amber-700/70 font-semibold">Standard total: {money(tableSubtotal)}</p>
+                                                </div>
+                                            </div>
+                                            <div className="relative w-32">
+                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-700">Rs.</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max={tableSubtotal}
+                                                    placeholder={tableSubtotal.toFixed(2)}
+                                                    value={tableBargainRate}
+                                                    onChange={e => setTableBargainRate(e.target.value)}
+                                                    className={`w-full pl-7 pr-2 py-2 border-2 rounded-xl text-xs font-bold bg-white focus:outline-none ${tableDiscountInvalid ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
+                                                />
+                                            </div>
+                                        </div>
+                                        {tableDiscountInvalid && (
+                                            <p className="text-[9px] text-rose-500 font-bold">Rate must be between Rs. 0 and the standard total.</p>
+                                        )}
+                                        {tableDiscountAmount > 0 && (
+                                            <div>
+                                                <label className="block text-[9px] font-black text-amber-700 uppercase mb-1">Reason (required)</label>
+                                                <input
+                                                    type="text"
+                                                    value={tableBargainReason}
+                                                    onChange={e => setTableBargainReason(e.target.value)}
+                                                    placeholder="e.g. Repeat guest, manager approved"
+                                                    className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-amber-500"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Payment Method Selector */}
+                                    <div>
+                                        <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Payment Method</p>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            <button
+                                                onClick={() => setBillingPaymentMethod('cash')}
+                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                    billingPaymentMethod === 'cash'
+                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                        : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                }`}
+                                            >
+                                                <Banknote size={15} />
+                                                Cash
+                                            </button>
+                                            <button
+                                                onClick={() => setBillingPaymentMethod('qr_digital')}
+                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                    billingPaymentMethod === 'qr_digital'
+                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                        : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                }`}
+                                            >
+                                                <CreditCard size={15} />
+                                                QR / Digital
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setBillingPaymentMethod('both')
+                                                    setSplitCashAmount('')
+                                                    setSplitQrAmount('')
+                                                }}
+                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                    billingPaymentMethod === 'both'
+                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                        : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                }`}
+                                            >
+                                                <Receipt size={15} />
+                                                Both
+                                            </button>
+                                            <button
+                                                onClick={() => setBillingPaymentMethod('credit')}
+                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                    billingPaymentMethod === 'credit'
+                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                        : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                }`}
+                                            >
+                                                <ShoppingBag size={15} />
+                                                Credit
+                                            </button>
+                                        </div>
+
+                                        {billingPaymentMethod === 'both' && (
+                                            <div className="mt-3 grid grid-cols-2 gap-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl">
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash Amount</label>
+                                                    <div className="relative">
+                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max={tableTotal}
+                                                            placeholder="0.00"
+                                                            value={splitCashAmount}
+                                                            onChange={e => setSplitCashAmount(e.target.value)}
+                                                            className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">QR / Digital Amount</label>
+                                                    <div className="relative">
+                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max={tableTotal}
+                                                            placeholder="0.00"
+                                                            value={splitQrAmount}
+                                                            onChange={e => setSplitQrAmount(e.target.value)}
+                                                            className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                {(() => {
+                                                    const cash = parseFloat(splitCashAmount) || 0
+                                                    const qr = parseFloat(splitQrAmount) || 0
+                                                    const remainder = tableTotal - cash - qr
+                                                    if (remainder > 0.01) return (
+                                                        <p className="col-span-2 text-[9px] text-amber-600 font-bold text-center">
+                                                            Rs. {remainder.toFixed(2)} left over will go on customer credit
+                                                        </p>
+                                                    )
+                                                    if (remainder < -0.01) return (
+                                                        <p className="col-span-2 text-[9px] text-rose-500 font-bold text-center">
+                                                            ⚠ Cash + QR exceeds the bill by {money(Math.abs(remainder))}
+                                                        </p>
+                                                    )
+                                                    return (
+                                                        <p className="col-span-2 text-[9px] text-emerald-600 font-bold text-center">✓ Amounts balanced</p>
+                                                    )
+                                                })()}
+                                            </div>
+                                        )}
+
+                                        {billingPaymentMethod === 'qr_digital' && qrCodes.length > 1 && (
+                                            <div className="mt-3">
+                                                <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
+                                                <select
+                                                    value={billingQrCodeId}
+                                                    onChange={e => setBillingQrCodeId(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                >
+                                                    <option value="">Select QR code…</option>
+                                                    {qrCodes.map(qr => (
+                                                        <option key={qr.id} value={qr.id}>{qr.label}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
+
+                                        {billingPaymentMethod === 'credit' && (
+                                            <p className="mt-3 text-[10px] text-ink-subtle font-semibold text-center">
+                                                You&apos;ll confirm the customer&apos;s name and phone in the next step.
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="border-t border-hairline pt-4 flex items-center justify-between mt-2">
+                                        <div>
+                                            <span className="text-[10px] font-bold text-ink-subtle uppercase">Total session bill</span>
+                                            <p className="text-2xl font-black text-brand-600 tabular-nums">{money(tableTotal)}</p>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <Button variant="secondary" onClick={() => setSelectedBillingTable(null)}>Close</Button>
+                                            <Button
+                                                variant="primary"
+                                                disabled={
+                                                    tableDiscountInvalid ||
+                                                    (tableDiscountAmount > 0 && !tableBargainReason.trim())
+                                                }
+                                                onClick={() => compileInvoice('table', selectedBillingTable)}
+                                                className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs"
+                                            >
+                                                Generate Invoice
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </>
+                            )
+                        })()}
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* Settlement Confirmation modal — gates every 'both' or 'credit'
+                settlement (room or table) behind one explicit confirm step,
+                showing the exact Cash/QR/Credit breakdown so a typo in the
+                split amounts (not just a deliberate part-credit sale) gets
+                caught before anything is charged, and collecting the
+                customer's name/phone right here when credit is involved. */}
+            {mounted && showSettlementConfirm && pendingInvoice && createPortal(
+                <div
+                    className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100000] flex items-center justify-center p-4 animate-in fade-in duration-200"
+                    onClick={cancelSettlementConfirm}
+                >
+                    <div
+                        className="bg-surface w-full max-w-sm rounded-[28px] shadow-2xl border border-hairline p-6 space-y-4 animate-in zoom-in-95 duration-200"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div>
+                            <h3 className="text-lg font-black text-ink">Confirm Settlement</h3>
+                            <p className="text-xs text-ink-subtle mt-0.5">{pendingInvoice.data.label}</p>
+                        </div>
+
+                        <div className="border border-hairline rounded-2xl p-4 space-y-2 text-xs">
+                            {pendingInvoice.data.cashPaid > 0 && (
+                                <div className="flex justify-between">
+                                    <span className="text-ink-subtle font-semibold">Cash</span>
+                                    <span className="font-bold text-ink tabular-nums">{money(pendingInvoice.data.cashPaid)}</span>
+                                </div>
+                            )}
+                            {pendingInvoice.data.qrPaid > 0 && (
+                                <div className="flex justify-between">
+                                    <span className="text-ink-subtle font-semibold">QR / Digital</span>
+                                    <span className="font-bold text-ink tabular-nums">{money(pendingInvoice.data.qrPaid)}</span>
+                                </div>
+                            )}
+                            {pendingInvoice.data.creditPaid > 0.01 && (
+                                <div className="flex justify-between">
+                                    <span className="text-amber-700 font-semibold">On Credit</span>
+                                    <span className="font-bold text-amber-700 tabular-nums">{money(pendingInvoice.data.creditPaid)}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between pt-2 border-t border-dashed border-hairline">
+                                <span className="text-[10px] font-bold text-ink-subtle uppercase">Total</span>
+                                <span className="font-black text-ink tabular-nums">{money(pendingInvoice.data.total)}</span>
+                            </div>
+                        </div>
+
+                        {pendingInvoice.data.overpaid ? (
+                            <p className="text-[11px] text-rose-500 font-bold text-center">
+                                ⚠ Cash + QR exceeds the total — go back and fix the split before continuing.
+                            </p>
+                        ) : pendingInvoice.data.creditPaid > 0.01 && (
+                            <div className="space-y-3">
+                                <p className="text-[11px] text-amber-700 font-semibold">
+                                    {money(pendingInvoice.data.creditPaid)} will be added to this customer&apos;s credit account — enter their details to continue:
                                 </p>
+                                <div>
+                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Customer Name</label>
+                                    <input
+                                        type="text"
+                                        value={creditCustomerName}
+                                        onChange={e => setCreditCustomerName(e.target.value)}
+                                        placeholder="Customer name"
+                                        className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Phone</label>
+                                    <input
+                                        type="tel"
+                                        value={creditCustomerPhone}
+                                        onChange={e => setCreditCustomerPhone(e.target.value)}
+                                        placeholder="98XXXXXXXX"
+                                        className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                    />
+                                </div>
                             </div>
-                            <div className="flex gap-2">
-                                <Button variant="secondary" onClick={() => setSelectedBillingTable(null)}>Close</Button>
-                                <Button variant="primary" onClick={() => compileInvoice('table', selectedBillingTable)} className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs">Generate Invoice</Button>
-                            </div>
+                        )}
+
+                        <div className="flex gap-2 pt-2">
+                            <Button variant="secondary" className="flex-1" onClick={cancelSettlementConfirm}>Cancel</Button>
+                            <Button
+                                variant="primary"
+                                className="flex-1 bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 text-white font-bold"
+                                disabled={
+                                    pendingInvoice.data.overpaid ||
+                                    (pendingInvoice.data.creditPaid > 0.01 && (!creditCustomerName.trim() || !creditCustomerPhone.trim()))
+                                }
+                                onClick={finalizeSettlementConfirm}
+                            >
+                                Confirm &amp; Continue
+                            </Button>
                         </div>
                     </div>
                 </div>,
@@ -1626,7 +2146,7 @@ export default function CashierClient({
                                         Cancel
                                     </Button>
                                     <button
-                                        onClick={() => window.print()}
+                                        onClick={handlePrintBill}
                                         className="flex-1 py-1.5 px-3 border border-gray-300 rounded-xl text-[10px] font-bold text-gray-700 bg-white hover:bg-gray-50 transition active:scale-95 text-center flex items-center justify-center gap-1.5 shadow-sm min-w-[70px]"
                                     >
                                         Print Bill

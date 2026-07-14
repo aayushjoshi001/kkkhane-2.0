@@ -60,7 +60,15 @@ function fmt(amount: number) {
 }
 
 function timeStr(iso: string) {
-    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kathmandu' })
+}
+
+// A session stays open across midnight until the manager closes it, so an
+// entry's real calendar date can differ from the day the session was opened
+// on — show it next to the time so cash counting always reflects when the
+// money actually moved, not just what business day it's filed under.
+function entryDateStr(iso: string) {
+    return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kathmandu' })
 }
 
 function formatDescription(desc: string): string {
@@ -621,7 +629,7 @@ export default function BankBookClient({
                                 <table className="w-full text-left text-xs border-collapse">
                                     <thead>
                                         <tr className="bg-gray-50 border-b border-gray-150">
-                                            <th className="px-6 py-3 font-bold text-gray-500 w-24">Time</th>
+                                            <th className="px-6 py-3 font-bold text-gray-500 w-24">Date &amp; Time</th>
                                             <th className="px-6 py-3 font-bold text-gray-500 w-24">Type</th>
                                             <th className="px-6 py-3 font-bold text-gray-500 w-32">Category</th>
                                             <th className="px-6 py-3 font-bold text-gray-500 w-32">Bank Name</th>
@@ -633,7 +641,10 @@ export default function BankBookClient({
                                     <tbody className="divide-y divide-gray-100">
                                         {entries.map(e => (
                                             <tr key={e.id} className="hover:bg-gray-50 transition-colors">
-                                                <td className="px-6 py-4 text-gray-500 font-semibold">{timeStr(e.created_at)}</td>
+                                                <td className="px-6 py-4 text-gray-500 font-semibold">
+                                                    <div>{timeStr(e.created_at)}</div>
+                                                    <div className="text-[10px] text-gray-400 font-bold">{entryDateStr(e.created_at)}</div>
+                                                </td>
                                                 <td className="px-6 py-4">
                                                     <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
                                                         e.type === 'bank_in' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'

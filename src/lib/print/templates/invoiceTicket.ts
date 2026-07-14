@@ -40,9 +40,10 @@ export interface ActiveInvoice {
     advancePaid?: number
     advanceMethod?: AdvancePaymentMethod | null
     balanceDue?: number
-    paymentMethod?: 'cash' | 'qr_digital' | 'both'
+    paymentMethod?: 'cash' | 'qr_digital' | 'both' | 'credit'
     cashPaid?: number
     qrPaid?: number
+    creditPaid?: number
 }
 
 const COL = { desc: 18, qty: 4, rate: 9, amt: 11 }
@@ -132,11 +133,20 @@ export function buildInvoiceTicket(
     b.size({}).bold(false)
 
     if (invoice.paymentMethod) {
-        const label = invoice.paymentMethod === 'cash' ? 'CASH' : invoice.paymentMethod === 'qr_digital' ? 'QR / DIGITAL' : 'SPLIT'
+        const label = invoice.paymentMethod === 'cash' ? 'CASH'
+            : invoice.paymentMethod === 'qr_digital' ? 'QR / DIGITAL'
+            : invoice.paymentMethod === 'credit' ? 'CREDIT'
+            : 'SPLIT'
         b.line(`Payment: ${label}`)
         if (invoice.paymentMethod === 'both') {
             b.line(`  Cash: ${money(invoice.cashPaid ?? 0)}`)
             b.line(`  QR/Digital: ${money(invoice.qrPaid ?? 0)}`)
+            if (invoice.creditPaid) {
+                b.line(`  On credit: ${money(invoice.creditPaid)}`)
+            }
+        }
+        if (invoice.paymentMethod === 'credit' && invoice.creditPaid) {
+            b.line(`  On credit: ${money(invoice.creditPaid)}`)
         }
     }
 

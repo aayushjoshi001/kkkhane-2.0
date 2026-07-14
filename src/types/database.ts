@@ -216,6 +216,10 @@ export interface Session {
     guest_count: number | null
     max_seats: number
     notes: string | null
+    discount_amount: number
+    discount_reason: string | null
+    discount_applied_by: string | null
+    discount_applied_at: string | null
     // Joined fields
     tables?: Table
     seats?: SessionSeat[]
@@ -355,6 +359,12 @@ export interface Settings {
         // Notification
         notificationSoundUrl?: string | null
         financeEnabled?: boolean
+        // In-room service: when true, a hotel room's QR requires the guest to
+        // confirm the phone on their booking, then surfaces a "Call for Service"
+        // tel: button to the reception number below. Off = today's self-service.
+        roomServiceCallEnabled?: boolean
+        // Reception / room-service phone the "Call for Service" button dials.
+        receptionPhone?: string | null
     }
     business_hours: BusinessHours | null
     updated_at: string
@@ -893,6 +903,8 @@ export interface Room {
     floor: string | null
     status: RoomStatus
     type_id: string | null
+    notes: string | null
+    is_active: boolean
     created_at: string
     room_types?: RoomType | null
 }
@@ -919,6 +931,10 @@ export interface Booking {
     advance_payment_method: AdvancePaymentMethod | null
     notes: string | null
     created_at: string
+    discount_amount: number
+    discount_reason: string | null
+    discount_applied_by: string | null
+    discount_applied_at: string | null
     rooms?: Room | null
 }
 

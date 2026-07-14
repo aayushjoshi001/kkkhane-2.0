@@ -12,9 +12,11 @@ import { createInvitationAction, revokeInvitationAction, resendInvitationAction 
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import { fetchStaffData } from '@/lib/swr-fetchers'
-import { useFeatures } from '@/lib/contexts/FeatureContext'
+import { useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { FINANCE_GATED_ROLES } from '@/types/database'
 import { formatCurrency } from '@/lib/utils'
+import PayPartyModal from '@/components/admin/PayPartyModal'
+import { computeStaffCurrentDue, type StaffLedgerEntryType } from '@/lib/staffLedger'
 
 // Ledger entry types that represent money actually paid out to staff (as opposed
 // to 'accrual', which only increases what's owed, or 'deduction', which reduces it)
@@ -189,10 +191,14 @@ export default function StaffManager({
         saving: false
     })
 
+    // Deduction/Accrual only now — "Pay" (Salary/Advance/Bonus) is a real
+    // Payment Voucher via PayPartyModal, since only those two are not an
+    // actual payment leaving the business (accrual adds nothing paid yet;
+    // deduction reduces what's owed without cash changing hands).
     const [transactionModal, setTransactionModal] = useState<{
         isOpen: boolean
         user: StaffMember | null
-        entryType: 'salary_payout' | 'advance_payment' | 'bonus' | 'deduction' | 'accrual'
+        entryType: 'deduction' | 'accrual'
         amount: string
         paymentMethod: 'cash' | 'bank_transfer' | 'qr_digital'
         note: string
@@ -201,13 +207,18 @@ export default function StaffManager({
     }>({
         isOpen: false,
         user: null,
-        entryType: 'salary_payout',
+        entryType: 'accrual',
         amount: '',
         paymentMethod: 'cash',
         note: '',
         bankName: '',
         saving: false
     })
+
+    // Pay (Salary Payout / Advance Payment / Bonus) — routes through the
+    // shared voucher-connected modal instead of transactionModal, so it
+    // gets a real voucher number, due-validation, and the print prompt.
+    const [payPartyUser, setPayPartyUser] = useState<StaffMember | null>(null)
 
     const [ledgerModal, setLedgerModal] = useState<{
         isOpen: boolean
@@ -461,7 +472,7 @@ export default function StaffManager({
                 setTransactionModal({
                     isOpen: false,
                     user: null,
-                    entryType: 'salary_payout',
+                    entryType: 'accrual',
                     amount: '',
                     paymentMethod: 'cash',
                     note: '',
@@ -485,6 +496,24 @@ export default function StaffManager({
             toast.error(e instanceof Error ? e.message : 'Failed to record transaction')
         } finally {
             setTransactionModal(prev => ({ ...prev, saving: false }))
+        }
+    }
+
+    // Called after PayPartyModal successfully records a Payment Voucher for
+    // a staff member — refresh the staff list and, if open, the ledger
+    // modal's entries so the new payout shows up immediately.
+    const handlePaySettled = async () => {
+        const userId = payPartyUser?.id
+        mutate()
+        if (userId && ledgerModal.isOpen && ledgerModal.user?.id === userId) {
+            try {
+                const data = await fetchStaffLedgerAction(userId)
+                setLedgerModal(p => ({
+                    ...p,
+                    entries: data.entries,
+                    user: p.user ? { ...p.user, opening_balance: data.openingBalance, monthly_salary: data.monthlySalary } : null
+                }))
+            } catch { /* non-fatal — list still refetches via mutate() */ }
         }
     }
 
@@ -880,6 +909,7 @@ export default function StaffManager({
     }
 
     const { financeEnabled } = useFeatures()
+    const bsEnabled = useFeatureEnabled('bsDateEnabled')
 
     // Business Logic: only super_admin can assign super_admin, and the
     // finance/receptionist roles require the enterprise finance plan.
@@ -894,9 +924,6 @@ export default function StaffManager({
         if (invitation.status === 'pending' && new Date(invitation.expires_at) < new Date()) return 'expired'
         return invitation.status
     }
-
-    const isTransactionPay = PAY_ENTRY_TYPES.includes(transactionModal.entryType)
-    const transactionTopLevelType = isTransactionPay ? 'pay' : transactionModal.entryType
 
     return (
         <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden">
@@ -1497,11 +1524,11 @@ export default function StaffManager({
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center justify-center gap-3">
-                                                        <button 
-                                                            onClick={() => setTransactionModal({ isOpen: true, user, entryType: 'salary_payout', amount: '', paymentMethod: 'cash', note: '', bankName: '', saving: false })}
+                                                        <button
+                                                            onClick={() => setPayPartyUser(user)}
                                                             className="inline-flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-3 py-2 rounded-[var(--r-md)] border border-brand-100/50 transition-all focus-ring"
                                                         >
-                                                            <DollarSign size={13} /> Pay / Record
+                                                            <DollarSign size={13} /> Pay
                                                         </button>
                                                         <button 
                                                             onClick={() => handleOpenLedger(user)}
@@ -2097,12 +2124,14 @@ export default function StaffManager({
                 </Modal>
             )}
 
-            {/* Record Payment Transaction Modal */}
+            {/* Add Due / Deduction Modal — actual payments (Salary/Advance/Bonus)
+                go through PayPartyModal instead, since those are real
+                Payment Vouchers, not just ledger bookkeeping entries. */}
             {transactionModal.isOpen && transactionModal.user && (
-                <Modal open onClose={() => setTransactionModal(prev => ({ ...prev, isOpen: false }))} size="md" ariaLabel="Record Payment / Ledger Entry">
+                <Modal open onClose={() => setTransactionModal(prev => ({ ...prev, isOpen: false }))} size="md" ariaLabel="Add Due / Deduction">
                         <div className="px-6 py-5 border-b border-hairline flex items-center justify-between bg-surface-muted/30">
                             <div>
-                                <h3 className="font-extrabold text-ink text-base">Record Payment / Ledger Entry</h3>
+                                <h3 className="font-extrabold text-ink text-base">Add Due / Deduction</h3>
                                 <p className="text-[11px] text-ink-subtle uppercase tracking-wider font-bold mt-1">{transactionModal.user.full_name}</p>
                             </div>
                             <button onClick={() => setTransactionModal(prev => ({ ...prev, isOpen: false }))} className="w-8 h-8 flex items-center justify-center rounded-[var(--r-md)] text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors focus-ring">×</button>
@@ -2113,14 +2142,10 @@ export default function StaffManager({
                                 <div>
                                     <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Entry Type</label>
                                     <select
-                                        value={transactionTopLevelType}
-                                        onChange={e => {
-                                            const val = e.target.value
-                                            setTransactionModal(prev => ({ ...prev, entryType: val === 'pay' ? 'salary_payout' : val as typeof transactionModal.entryType }))
-                                        }}
+                                        value={transactionModal.entryType}
+                                        onChange={e => setTransactionModal(prev => ({ ...prev, entryType: e.target.value as typeof transactionModal.entryType }))}
                                         className="w-full px-3 py-2 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
                                     >
-                                        <option value="pay">Pay</option>
                                         <option value="accrual">Add to Amount Due (Not Paid Yet)</option>
                                         <option value="deduction">Deduction / Fine</option>
                                     </select>
@@ -2141,21 +2166,6 @@ export default function StaffManager({
                                     </div>
                                 </div>
                             </div>
-
-                            {isTransactionPay && (
-                                <div>
-                                    <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Pay Category</label>
-                                    <select
-                                        value={transactionModal.entryType}
-                                        onChange={e => setTransactionModal(prev => ({ ...prev, entryType: e.target.value as typeof transactionModal.entryType }))}
-                                        className="w-full px-3 py-2 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
-                                    >
-                                        <option value="salary_payout">Salary Payout</option>
-                                        <option value="advance_payment">Advance Payment</option>
-                                        <option value="bonus">Bonus / Award</option>
-                                    </select>
-                                </div>
-                            )}
 
                             {transactionModal.entryType !== 'accrual' && (
                                 <div>
@@ -2227,6 +2237,27 @@ export default function StaffManager({
                 </Modal>
             )}
 
+            {payPartyUser && (
+                <PayPartyModal
+                    isOpen={!!payPartyUser}
+                    onClose={() => setPayPartyUser(null)}
+                    category="staff"
+                    partyId={payPartyUser.id}
+                    partyName={payPartyUser.full_name}
+                    currentDue={
+                        ledgerModal.user?.id === payPartyUser.id
+                            ? computeStaffCurrentDue(
+                                  ledgerModal.entries.map(e => ({ entry_type: e.entry_type as StaffLedgerEntryType, amount: Number(e.amount) })),
+                                  Number(ledgerModal.user.opening_balance ?? 0)
+                              )
+                            : undefined
+                    }
+                    bsEnabled={bsEnabled}
+                    bankAccounts={bankAccounts}
+                    onSettled={handlePaySettled}
+                />
+            )}
+
             {/* Ledger History Modal */}
             {ledgerModal.isOpen && ledgerModal.user && (
                 <Modal open onClose={() => setLedgerModal(prev => ({ ...prev, isOpen: false }))} size="xl" ariaLabel="Staff Ledger Statement" className="max-w-5xl flex flex-col overflow-hidden">
@@ -2262,10 +2293,20 @@ export default function StaffManager({
                                 <button
                                     onClick={() => {
                                         if (!ledgerModal.user) return
+                                        setPayPartyUser(ledgerModal.user)
+                                    }}
+                                    className="px-3 py-1.5 text-[11px] font-black text-white bg-brand-500 hover:bg-brand-600 rounded-[var(--r-sm)] flex items-center gap-1.5 transition shadow-sm"
+                                >
+                                    <DollarSign size={12} />
+                                    Pay
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (!ledgerModal.user) return
                                         setTransactionModal({
                                             isOpen: true,
                                             user: ledgerModal.user,
-                                            entryType: 'salary_payout',
+                                            entryType: 'accrual',
                                             amount: '',
                                             paymentMethod: 'cash',
                                             note: '',
@@ -2273,10 +2314,10 @@ export default function StaffManager({
                                             saving: false
                                         })
                                     }}
-                                    className="px-3 py-1.5 text-[11px] font-black text-white bg-brand-500 hover:bg-brand-600 rounded-[var(--r-sm)] flex items-center gap-1.5 transition shadow-sm"
+                                    className="px-3 py-1.5 text-[11px] font-black text-ink bg-surface-muted hover:bg-surface-muted/80 border border-hairline rounded-[var(--r-sm)] flex items-center gap-1.5 transition shadow-sm"
                                 >
                                     <Plus size={12} />
-                                    Add Transaction
+                                    Add Due / Deduction
                                 </button>
                                 <button onClick={() => setLedgerModal(prev => ({ ...prev, isOpen: false }))} className="w-8 h-8 flex items-center justify-center rounded-[var(--r-md)] text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors">×</button>
                             </div>

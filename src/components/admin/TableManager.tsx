@@ -77,29 +77,39 @@ export default function TableManager({
 
         const capacityNum = formData.capacity ? parseInt(formData.capacity) : undefined
 
-        if (editingTable) {
-            const res = await updateTableAction(editingTable.id, {
-                label: formData.label,
-                capacity: capacityNum
-            })
-            if (res.success) {
-                mutate()
-                toast.success('Table updated')
+        // Wrap the server-action calls: a transient network failure rejects the
+        // promise with "Failed to fetch" (or "Failed to fetch..."). Without this
+        // it surfaced as an unhandled rejection with the modal stuck open and the
+        // spinner never resetting. Catch it, show a retriable toast, and always
+        // clear the submitting state in finally.
+        try {
+            if (editingTable) {
+                const res = await updateTableAction(editingTable.id, {
+                    label: formData.label,
+                    capacity: capacityNum
+                })
+                if (res.success) {
+                    mutate()
+                    toast.success('Table updated')
+                    setIsModalOpen(false)
+                } else {
+                    toast.error(res.error || 'Failed to update table')
+                }
             } else {
-                toast.error(res.error || 'Failed to update table')
+                const res = await addTableAction(restaurantId, formData.label, capacityNum)
+                if (res.data) {
+                    mutate()
+                    toast.success('Table added')
+                    setIsModalOpen(false)
+                } else {
+                    toast.error(res.error || 'Failed to add table')
+                }
             }
-        } else {
-            const res = await addTableAction(restaurantId, formData.label, capacityNum)
-            if (res.data) {
-                mutate()
-                toast.success('Table added')
-            } else {
-                toast.error(res.error || 'Failed to add table')
-            }
+        } catch {
+            toast.error('Network error — please check your connection and try again.')
+        } finally {
+            setIsSubmitting(false)
         }
-
-        setIsModalOpen(false)
-        setIsSubmitting(false)
     }
 
     const deleteTable = async (id: string, label: string) => {
