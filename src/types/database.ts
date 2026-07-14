@@ -897,6 +897,10 @@ export interface Room {
     room_types?: RoomType | null
 }
 
+// How a booking's advance was collected. Older rows predate the column and
+// carry null; the API writes 'none' when no advance was paid.
+export type AdvancePaymentMethod = 'cash' | 'qr_digital' | 'split' | 'none'
+
 export interface Booking {
     id: string
     restaurant_id: string
@@ -912,7 +916,7 @@ export interface Booking {
     total_amount: number
     paid_amount: number
     payment_status: 'unpaid' | 'partial' | 'paid' | 'refunded'
-    advance_payment_method: 'cash' | 'qr_digital' | 'split' | 'none' | null
+    advance_payment_method: AdvancePaymentMethod | null
     notes: string | null
     created_at: string
     rooms?: Room | null

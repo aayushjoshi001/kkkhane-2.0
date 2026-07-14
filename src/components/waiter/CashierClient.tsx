@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState, useMemo, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
@@ -17,7 +18,7 @@ import { usePrinter } from '@/lib/print/usePrinter'
 import { buildInvoiceTicket } from '@/lib/print/templates/invoiceTicket'
 
 
-import { formatDateTime, calculateNights } from '@/lib/utils'
+import { formatDateTime, calculateNights, advanceMethodLabel } from '@/lib/utils'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 
 type OrderItem = { 
@@ -91,6 +92,7 @@ export default function CashierClient({
     isHotel = false,
     initialBookings = [],
 }: Props) {
+    const router = useRouter()
     const [unpaid, setUnpaid] = useState<UnpaidOrder[]>(initialUnpaid)
     const money = useCurrency()
     const { print: printInvoice } = usePrinter('invoice')
@@ -475,6 +477,12 @@ export default function CashierClient({
                 ))
 
                 toast.success('Room billing settled and guest checked out successfully!')
+
+                // `tables` is a server-fetched prop, never refreshed on the client —
+                // the checkout just closed this room's dining session and marked its
+                // orders paid in the DB. Without this, the next guest booked into the
+                // room would still see the previous guest's now-settled orders here.
+                router.refresh()
             } else {
                 const res = await closeSession(activeInvoice.sessionId)
                 if (res.error) throw new Error(res.error)
@@ -1501,7 +1509,7 @@ export default function CashierClient({
                                                     <div className="flex items-center justify-between">
                                                         <span className="text-[10px] font-bold text-emerald-600 uppercase flex items-center gap-1">
                                                             <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                                            Advance Paid ({billingStayBooking?.advance_payment_method === 'split' ? 'Split Cash+QR' : billingStayBooking?.advance_payment_method === 'qr_digital' ? 'QR/Digital' : 'Cash'})
+                                                            Advance Paid ({advanceMethodLabel(billingStayBooking?.advance_payment_method)})
                                                         </span>
                                                         <span className="text-sm font-black text-emerald-600 tabular-nums">− {money(advancePaid)}</span>
                                                     </div>

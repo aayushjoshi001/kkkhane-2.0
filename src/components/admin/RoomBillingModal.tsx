@@ -5,7 +5,7 @@ import { X, Loader2, CheckCircle2 } from 'lucide-react'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
-import { formatDateTime, calculateNights } from '@/lib/utils'
+import { formatDateTime, calculateNights, advanceMethodLabel } from '@/lib/utils'
 import { usePrinter } from '@/lib/print/usePrinter'
 import { buildInvoiceTicket, type ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
@@ -452,7 +452,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                 <div className="flex items-center justify-between">
                                     <span className="text-[10px] font-bold text-emerald-600 uppercase flex items-center gap-1">
                                         <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                        Advance Paid ({booking.advance_payment_method === 'split' ? 'Split Cash+QR' : booking.advance_payment_method === 'qr_digital' ? 'QR/Digital' : 'Cash'})
+                                        Advance Paid ({advanceMethodLabel(booking.advance_payment_method)})
                                     </span>
                                     <span className="text-sm font-black text-emerald-600 tabular-nums">− {money(advancePaid)}</span>
                                 </div>

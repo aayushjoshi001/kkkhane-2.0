@@ -4,6 +4,8 @@
 // changes, mirror the change here too.
 
 import { EscPosBuilder, LINE_WIDTH } from '../escpos'
+import { advanceMethodLabel } from '@/lib/utils'
+import type { AdvancePaymentMethod } from '@/types/database'
 
 export interface InvoiceLineItem {
     name: string
@@ -36,7 +38,7 @@ export interface ActiveInvoice {
     manualChargesTotal: number
     total: number
     advancePaid?: number
-    advanceMethod?: string
+    advanceMethod?: AdvancePaymentMethod | null
     balanceDue?: number
     paymentMethod?: 'cash' | 'qr_digital' | 'both'
     cashPaid?: number
@@ -119,7 +121,7 @@ export function buildInvoiceTicket(
     b.bold(false)
 
     if (invoice.advancePaid && invoice.advancePaid > 0) {
-        const label = `Advance (${invoice.advanceMethod === 'qr_digital' ? 'QR/Digital' : 'Cash'})`
+        const label = `Advance (${advanceMethodLabel(invoice.advanceMethod)})`
         b.columns([{ text: label, width: LINE_WIDTH - 14 }, { text: `-${money(invoice.advancePaid)}`, width: 14, align: 'right' }])
     }
 

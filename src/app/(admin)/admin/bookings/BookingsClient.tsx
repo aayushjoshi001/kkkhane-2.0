@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Plus, Filter, Calendar } from 'lucide-react'
 import type { Booking, Room, BookingStatus } from '@/types/database'
 import EmptyState from '@/components/ui/EmptyState'
@@ -15,6 +16,7 @@ interface BookingsClientProps {
 }
 
 export default function BookingsClient({ initialBookings, tables = [], activeOrders = [] }: BookingsClientProps) {
+    const router = useRouter()
     const [bookings, setBookings] = useState<Booking[]>(initialBookings)
     const [filterStatus, setFilterStatus] = useState<string>('all')
     // Booking being settled in the checkout/billing modal
@@ -215,6 +217,10 @@ export default function BookingsClient({ initialBookings, tables = [], activeOrd
                                 : b
                         ))
                         setBillingBooking(null)
+                        // tables/activeOrders are server-fetched props — refresh so a stale,
+                        // now-settled session/order doesn't bleed into the next guest booked
+                        // into this room (see the identical fix in admin/rooms/RoomsClient.tsx).
+                        router.refresh()
                     }}
                 />
             )}

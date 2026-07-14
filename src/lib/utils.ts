@@ -3,6 +3,7 @@
 
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import type { AdvancePaymentMethod } from '@/types/database'
 
 /**
  * Merge class names with Tailwind-aware deduplication.
@@ -96,6 +97,18 @@ export function formatDateTime(dateStr: string | Date | null | undefined): strin
         minute: '2-digit',
         hour12: true
     })
+}
+
+/**
+ * Display label for how a booking's advance was collected. Single source for
+ * the on-screen billing summaries and both printed receipts (HTML + thermal),
+ * which previously each had their own inline ternary — and the receipts'
+ * copies mislabeled a 'split' advance as plain "Cash".
+ */
+export function advanceMethodLabel(method: AdvancePaymentMethod | null | undefined): string {
+    if (method === 'split') return 'Split Cash+QR'
+    if (method === 'qr_digital') return 'QR/Digital'
+    return 'Cash'
 }
 
 /**
