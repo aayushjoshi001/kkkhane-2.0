@@ -38,7 +38,7 @@ export default function TaxManager({
         <div className="space-y-4">
             <SectionTabs tabs={tabs} active={tab} onChange={setTab} />
             {tab === 'vat' && <VatTab restaurantTax={restaurantTax} configurations={configurations} setConfigurations={setConfigurations} />}
-            {tab === 'filings' && <FilingsTab configurations={configurations} filings={filings} setFilings={setFilings} />}
+            {tab === 'filings' && <FilingsTab configurations={configurations} filings={filings} setFilings={setFilings} restaurantTax={restaurantTax} />}
         </div>
     )
 }
@@ -153,11 +153,28 @@ function FilingsTab({
     configurations,
     filings,
     setFilings,
+    restaurantTax,
 }: {
     configurations: TaxConfiguration[]
     filings: any[]
     setFilings: (fn: (prev: any[]) => any[]) => void
+    restaurantTax: { vat_registered: boolean }
 }) {
+    if (!restaurantTax.vat_registered) {
+        return (
+            <div className="border border-hairline rounded-3xl p-8 text-center space-y-3 bg-surface-muted/30">
+                <AlertCircle className="w-12 h-12 text-amber-500 mx-auto animate-pulse" />
+                <h3 className="font-extrabold text-sm text-ink">VAT Returns Locked</h3>
+                <p className="text-xs text-ink-subtle max-w-sm mx-auto">
+                    VAT filing summary panels and IRD return estimators are only available for VAT registered hotels and restaurants.
+                </p>
+                <p className="text-[11px] text-ink-subtle mt-2">
+                    Operating mode: **PAN Standalone**. You can configure your VAT registration status under settings.
+                </p>
+            </div>
+        )
+    }
+
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ tax_configuration_id: '', period_start: '', period_end: '', ird_reference: '', notes: '' })
