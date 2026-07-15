@@ -26,7 +26,7 @@ export default async function AdminDashboardPage() {
     // One fast, single-row query gates the whole shell — everything else below
     // streams in independently instead of blocking on 13 queries up front.
     const adminSupabase = await createAdminClient()
-    const [restaurantSettingsRes, restaurantRes] = await Promise.all([
+    const [restaurantSettingsRes, restaurantRes, turnoverRes] = await Promise.all([
         adminSupabase
             .from('settings')
             .select('business_hours, features_v2')
@@ -34,15 +34,23 @@ export default async function AdminDashboardPage() {
             .maybeSingle(),
         adminSupabase
             .from('restaurants')
-            .select('business_type')
+            .select('business_type, vat_registered')
             .eq('id', restaurantId)
-            .single()
+            .single(),
+        adminSupabase
+            .from('income_entries')
+            .select('amount')
+            .eq('restaurant_id', restaurantId)
+            .eq('status', 'posted')
     ])
 
     const restaurantSettings = restaurantSettingsRes.data
     const restaurant = restaurantRes.data
     const businessMode = restaurant?.business_type ? getBusinessMode(restaurant.business_type) : 'dine_in'
     const isHotel = businessMode === 'hotel'
+
+    const totalTurnover = (turnoverRes.data || []).reduce((sum, r) => sum + Number(r.amount), 0)
+    const showVatWarning = totalTurnover > 2000000 && !restaurant?.vat_registered
 
     const currencyFeatures = restaurantSettings?.features_v2 as { currency?: string; currencySymbol?: string | null; dineInEnabled?: boolean } | null
     const money: Money = (amount) => formatCurrency(amount, currencyFeatures?.currency, currencyFeatures?.currencySymbol)
@@ -84,6 +92,24 @@ export default async function AdminDashboardPage() {
                     </div>
                 </div>
             </div>
+
+            {showVatWarning && (
+                <div className="p-6 bg-rose-50/70 border border-rose-100 rounded-[2rem] flex items-start gap-4 animate-fade-up shadow-sm">
+                    <AlertTriangle className="text-rose-600 shrink-0 w-5 h-5 mt-0.5 animate-bounce" />
+                    <div className="space-y-1 text-left">
+                        <h4 className="font-extrabold text-sm text-rose-900">⚠️ Mandatory VAT Registration Warning (Inland Revenue Department Compliance)</h4>
+                        <p className="text-xs text-rose-700 leading-relaxed font-semibold">
+                            Your sales turnover has reached <strong className="text-rose-900">{money(totalTurnover)}</strong>, which exceeds the Inland Revenue Department (IRD) mandatory VAT threshold of <strong className="text-rose-900">Rs. 20 Lakhs</strong>. According to IRD regulations, your business is required to register for VAT.
+                        </p>
+                        <div className="pt-1.5 flex gap-3 text-xs">
+                            <Link href="/admin/finance/tax" className="font-extrabold text-rose-900 underline hover:text-rose-950 flex items-center gap-1">
+                                Update Tax Settings & Configure VAT
+                                <ChevronRight size={14} />
+                            </Link>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* KPI Cards — own query, own boundary */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 animate-fade-up" style={{ animationDelay: '0.1s' }}>

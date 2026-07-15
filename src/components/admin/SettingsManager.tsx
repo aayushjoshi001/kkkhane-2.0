@@ -23,6 +23,10 @@ type RestaurantSettings = {
     currency_symbol: string | null
     pan_number: string | null
     vat_registered: boolean
+    vat_number: string | null
+    ird_api_url: string | null
+    ird_api_user: string | null
+    ird_api_password: string | null
     allowed_ips: string | null
     business_type: string | null
 }
@@ -631,6 +635,72 @@ export default function SettingsManager({
                                 </div>
                             </label>
                         </div>
+
+                        {formData.vat_registered && (
+                            <div className="md:col-span-2 p-5 bg-amber-50/20 border border-amber-100 rounded-3xl mt-4 space-y-4 text-left">
+                                <div className="flex items-center gap-2">
+                                    <Shield size={16} className="text-amber-700 animate-pulse" />
+                                    <div>
+                                        <h4 className="font-extrabold text-sm text-amber-900">Inland Revenue Department (IRD) Synchronization Setup</h4>
+                                        <p className="text-[10px] text-amber-700 font-bold uppercase tracking-wider mt-0.5">Required credentials for CBMS direct API billing transmission</p>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">9-Digit VAT Number *</label>
+                                        <input
+                                            type="text"
+                                            name="vat_number"
+                                            value={formData.vat_number || ''}
+                                            onChange={handleChange}
+                                            disabled={!canEdit || isSubmitting}
+                                            maxLength={9}
+                                            placeholder="e.g. 301234567"
+                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink p-2.5 outline-none focus:border-brand-500 transition"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">IRD CBMS API URL (Production/Sandbox) *</label>
+                                        <input
+                                            type="text"
+                                            name="ird_api_url"
+                                            value={formData.ird_api_url || ''}
+                                            onChange={handleChange}
+                                            disabled={!canEdit || isSubmitting}
+                                            placeholder="https://cbms.ird.gov.np/api/billing"
+                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink p-2.5 outline-none focus:border-brand-500 transition"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">IRD API Username *</label>
+                                        <input
+                                            type="text"
+                                            name="ird_api_user"
+                                            value={formData.ird_api_user || ''}
+                                            onChange={handleChange}
+                                            disabled={!canEdit || isSubmitting}
+                                            placeholder="e.g. T1234567"
+                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink p-2.5 outline-none focus:border-brand-500 transition"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">IRD API Password / Dev Key *</label>
+                                        <input
+                                            type="password"
+                                            name="ird_api_password"
+                                            value={formData.ird_api_password || ''}
+                                            onChange={handleChange}
+                                            disabled={!canEdit || isSubmitting}
+                                            placeholder="••••••••"
+                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink p-2.5 outline-none focus:border-brand-500 transition"
+                                        />
+                                    </div>
+                                </div>
+                                <p className="text-[10px] text-ink-subtle leading-normal">
+                                    * Note: Configuring these credentials ensures compliance with IRD real-time sync regulations, enabling direct, secure synchronization of checkout receipts to Nepal tax servers.
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
