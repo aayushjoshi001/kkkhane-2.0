@@ -69,13 +69,13 @@ export async function computeFolioTotal(
     // Fetch partner restaurant if linked
     const { data: hotelData } = await supabase
         .from('restaurants')
-        .select('linked_restaurant_id')
+        .select('linked_restaurant_id, link_allow_folio_charges')
         .eq('id', restaurantId)
         .maybeSingle()
     
     const partnerRestaurantId = hotelData?.linked_restaurant_id
     const targetRestaurantIds = [restaurantId]
-    if (partnerRestaurantId) {
+    if (partnerRestaurantId && hotelData?.link_allow_folio_charges !== false) {
         targetRestaurantIds.push(partnerRestaurantId)
     }
 

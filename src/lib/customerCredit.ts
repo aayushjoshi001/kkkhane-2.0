@@ -22,14 +22,42 @@ export async function findOrCreateCustomerCreditAccount(
     if (!name) return { error: 'Customer name is required for credit.' }
     if (!phone) return { error: 'Customer phone is required for credit.' }
 
-    const { data: existing } = await supabase
+    // Fetch partner linking info
+    const { data: currentRest } = await supabase
+        .from('restaurants')
+        .select('linked_restaurant_id, linked_hotel_id, link_allow_loyalty_sharing, link_allow_credit_sharing')
+        .eq('id', restaurantId)
+        .maybeSingle()
+
+    const partnerId = currentRest?.linked_restaurant_id || currentRest?.linked_hotel_id
+    const allowLoyalty = currentRest?.link_allow_loyalty_sharing !== false
+    const allowCredit = currentRest?.link_allow_credit_sharing !== false
+
+    let existingAccount: { id: string } | null = null
+
+    // 1. Look up in current tenant
+    const { data: curAcc } = await supabase
         .from('customer_credit_accounts')
         .select('id')
         .eq('restaurant_id', restaurantId)
         .eq('customer_phone', phone)
         .maybeSingle()
 
-    if (existing) return { id: existing.id }
+    existingAccount = curAcc
+
+    // 2. If not found in current tenant, check partner tenant if loyalty/credit sharing is enabled
+    if (!existingAccount && partnerId && (allowLoyalty || allowCredit)) {
+        const { data: partAcc } = await supabase
+            .from('customer_credit_accounts')
+            .select('id')
+            .eq('restaurant_id', partnerId)
+            .eq('customer_phone', phone)
+            .maybeSingle()
+
+        existingAccount = partAcc
+    }
+
+    if (existingAccount) return { id: existingAccount.id }
 
     const { data: created, error } = await supabase
         .from('customer_credit_accounts')
