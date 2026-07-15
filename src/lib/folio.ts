@@ -79,16 +79,69 @@ export async function computeFolioTotal(
         targetRestaurantIds.push(partnerRestaurantId)
     }
 
-    // Room stay cost = nightly rate × nights.
-    const { data: room } = await supabase
-        .from('rooms')
-        .select('room_types:type_id(base_price)')
-        .eq('id', roomId)
-        .eq('restaurant_id', restaurantId)
-        .maybeSingle()
-    const basePrice = Number((room?.room_types as { base_price?: number } | null)?.base_price) || 0
+    // Fetch dynamic pricing rules, total rooms, and checked-in bookings count
+    const [roomRes, bookingsCountRes, roomsCountRes, rulesRes] = await Promise.all([
+        supabase
+            .from('rooms')
+            .select('room_types:type_id(base_price)')
+            .eq('id', roomId)
+            .eq('restaurant_id', restaurantId)
+            .maybeSingle(),
+        supabase
+            .from('bookings')
+            .select('*', { count: 'exact', head: true })
+            .eq('restaurant_id', restaurantId)
+            .eq('status', 'checked_in'),
+        supabase
+            .from('rooms')
+            .select('*', { count: 'exact', head: true })
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true),
+        supabase
+            .from('dynamic_pricing_rules')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
+    ])
+
+    const basePrice = Number((roomRes.data?.room_types as { base_price?: number } | null)?.base_price) || 0
     const nights = calculateNights(checkIn, checkOut)
-    const stayCost = basePrice * nights
+    
+    // Calculate current occupancy rate
+    const totalRoomsCount = roomsCountRes.count || 1
+    const activeBookingsCount = bookingsCountRes.count || 0
+    const occupancyPct = (activeBookingsCount / totalRoomsCount) * 100
+
+    let stayCost = 0
+    const start = new Date(checkIn)
+    const pricingRules = rulesRes.data || []
+
+    if (nights > 0) {
+        for (let i = 0; i < nights; i++) {
+            const nightDate = new Date(start)
+            nightDate.setDate(start.getDate() + i)
+            
+            let nightMultiplier = 1.0
+            
+            // Apply weekend rules (Friday / Saturday nights)
+            const weekendRule = pricingRules.find(r => r.rule_type === 'weekend')
+            if (weekendRule && (nightDate.getDay() === 5 || nightDate.getDay() === 6)) {
+                nightMultiplier *= Number(weekendRule.multiplier)
+            }
+            
+            // Apply occupancy rules
+            const occupancyRule = pricingRules.find(r => 
+                r.rule_type === 'occupancy' && 
+                occupancyPct >= Number(r.occupancy_threshold_pct || 0)
+            )
+            if (occupancyRule) {
+                nightMultiplier *= Number(occupancyRule.multiplier)
+            }
+            
+            stayCost += basePrice * nightMultiplier
+        }
+    }
+
     // Clamped so a stale/oversized discount can never push the room cost
     // negative — the checkout route also rejects discount > stayCost
     // up front, this is just the calculation's own floor.

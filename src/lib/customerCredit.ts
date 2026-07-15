@@ -70,3 +70,99 @@ export async function postCreditCharge(
     }
     return { success: true }
 }
+
+export async function postLoyaltyEarn(
+    supabase: SupabaseClient,
+    restaurantId: string,
+    customerCreditAccountId: string,
+    points: number,
+    description: string
+): Promise<{ success: boolean; error?: string }> {
+    if (points <= 0) return { success: true }
+
+    try {
+        // 1. Increment points in account
+        const { data: account, error: getErr } = await supabase
+            .from('customer_credit_accounts')
+            .select('loyalty_points')
+            .eq('id', customerCreditAccountId)
+            .single()
+
+        if (getErr) throw getErr
+
+        const currentPoints = Number(account?.loyalty_points || 0)
+        const newPoints = currentPoints + points
+
+        const { error: updateErr } = await supabase
+            .from('customer_credit_accounts')
+            .update({ loyalty_points: newPoints })
+            .eq('id', customerCreditAccountId)
+
+        if (updateErr) throw updateErr
+
+        // 2. Insert into loyalty ledger
+        const { error: ledgerErr } = await supabase.from('loyalty_ledger').insert({
+            restaurant_id: restaurantId,
+            account_id: customerCreditAccountId,
+            points_changed: points,
+            type: 'earn',
+            description
+        })
+
+        if (ledgerErr) throw ledgerErr
+        return { success: true }
+    } catch (err) {
+        console.error('Failed to award loyalty points:', err)
+        return { success: false, error: err instanceof Error ? err.message : 'Failed to award points' }
+    }
+}
+
+export async function postLoyaltyRedeem(
+    supabase: SupabaseClient,
+    restaurantId: string,
+    customerCreditAccountId: string,
+    points: number,
+    description: string
+): Promise<{ success: boolean; error?: string }> {
+    if (points <= 0) return { success: true }
+
+    try {
+        // 1. Decrement points in account
+        const { data: account, error: getErr } = await supabase
+            .from('customer_credit_accounts')
+            .select('loyalty_points')
+            .eq('id', customerCreditAccountId)
+            .single()
+
+        if (getErr) throw getErr
+
+        const currentPoints = Number(account?.loyalty_points || 0)
+        if (currentPoints < points) {
+            return { success: false, error: 'Insufficient loyalty points' }
+        }
+
+        const newPoints = currentPoints - points
+
+        const { error: updateErr } = await supabase
+            .from('customer_credit_accounts')
+            .update({ loyalty_points: newPoints })
+            .eq('id', customerCreditAccountId)
+
+        if (updateErr) throw updateErr
+
+        // 2. Insert into loyalty ledger
+        const { error: ledgerErr } = await supabase.from('loyalty_ledger').insert({
+            restaurant_id: restaurantId,
+            account_id: customerCreditAccountId,
+            points_changed: -points,
+            type: 'redeem',
+            description
+        })
+
+        if (ledgerErr) throw ledgerErr
+        return { success: true }
+    } catch (err) {
+        console.error('Failed to redeem loyalty points:', err)
+        return { success: false, error: err instanceof Error ? err.message : 'Failed to redeem points' }
+    }
+}

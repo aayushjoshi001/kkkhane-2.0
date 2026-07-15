@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
 import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense } from '@/lib/ledger'
-import { findOrCreateCustomerCreditAccount, postCreditCharge } from '@/lib/customerCredit'
+import { findOrCreateCustomerCreditAccount, postCreditCharge, postLoyaltyEarn, postLoyaltyRedeem } from '@/lib/customerCredit'
 import { markTableDirtyForSession } from '@/lib/tableLifecycle'
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>
@@ -68,6 +68,7 @@ export async function POST(req: Request) {
         const {
             session_id, cash_paid, qr_paid, credit_amount, qr_code_id,
             discount_amount, discount_reason, customer_name, customer_phone,
+            redeemed_points,
         } = body
 
         if (!session_id) {
@@ -253,6 +254,26 @@ export async function POST(req: Request) {
                 amount: discountAmount,
                 reason: discountReason,
             })
+        }
+
+        // Handle loyalty points (5% earn on Cash/QR payments)
+        const rPoints = Number(redeemed_points) || 0
+        const phone = customerPhone ? customerPhone.trim() : ''
+        const name = customerName ? customerName.trim() : 'Table Guest'
+        if (phone && (cashPaid > 0 || qrPaid > 0 || rPoints > 0)) {
+            const pointsToEarn = Math.round((cashPaid + qrPaid) * 0.05)
+            const account = await findOrCreateCustomerCreditAccount(supabase, currentUser.restaurantId, currentUser.id, {
+                name,
+                phone,
+            })
+            if (!('error' in account)) {
+                if (pointsToEarn > 0) {
+                    await postLoyaltyEarn(supabase, currentUser.restaurantId, account.id, pointsToEarn, `Earned from Table ${tableLabel} bill`)
+                }
+                if (rPoints > 0) {
+                    await postLoyaltyRedeem(supabase, currentUser.restaurantId, account.id, rPoints, `Redeemed on Table ${tableLabel} bill`)
+                }
+            }
         }
 
         void logAudit({

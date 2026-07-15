@@ -4,7 +4,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
 import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense } from '@/lib/ledger'
 import { computeFolioTotal } from '@/lib/folio'
-import { findOrCreateCustomerCreditAccount, postCreditCharge } from '@/lib/customerCredit'
+import { findOrCreateCustomerCreditAccount, postCreditCharge, postLoyaltyEarn, postLoyaltyRedeem } from '@/lib/customerCredit'
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>
 
@@ -110,6 +110,7 @@ export async function POST(req: Request) {
         const {
             booking_id, room_id, total_amount, cash_paid, qr_paid, qr_code_id, session_id,
             discount_amount, discount_reason, credit_amount, customer_name, customer_phone,
+            redeemed_points,
         } = body
 
         if (!booking_id || !room_id) {
@@ -155,7 +156,7 @@ export async function POST(req: Request) {
         // with the advance already collected and to recompute its folio.
         const { data: booking, error: fetchError } = await supabase
             .from('bookings')
-            .select('id, paid_amount, status, check_in, check_out, room_id, guest_name')
+            .select('id, paid_amount, status, check_in, check_out, room_id, guest_name, guest_phone, guest_email')
             .eq('id', booking_id)
             .eq('restaurant_id', currentUser.restaurantId)
             .maybeSingle()
@@ -311,6 +312,26 @@ export async function POST(req: Request) {
                 commission_rate: Number(restaurant?.billing_commission_rate) || 0
             },
         })
+
+        // Handle loyalty points (5% earn on Cash/QR payments)
+        const rPoints = Number(redeemed_points) || 0
+        const phone = customer_phone ? customer_phone.trim() : (booking.guest_phone ? booking.guest_phone.trim() : '')
+        const name = customer_name ? customer_name.trim() : (booking.guest_name ? booking.guest_name.trim() : 'Guest')
+        if (phone && (cashPaid > 0 || qrPaid > 0 || rPoints > 0)) {
+            const pointsToEarn = Math.round((cashPaid + qrPaid) * 0.05)
+            const account = await findOrCreateCustomerCreditAccount(supabase, currentUser.restaurantId, currentUser.id, {
+                name,
+                phone,
+            })
+            if (!('error' in account)) {
+                if (pointsToEarn > 0) {
+                    await postLoyaltyEarn(supabase, currentUser.restaurantId, account.id, pointsToEarn, `Earned from Room ${roomNumber} stay`)
+                }
+                if (rPoints > 0) {
+                    await postLoyaltyRedeem(supabase, currentUser.restaurantId, account.id, rPoints, `Redeemed on Room ${roomNumber} stay`)
+                }
+            }
+        }
 
         return NextResponse.json({ success: true, total: authoritativeTotal, breakdown: folio })
     } catch (e) {

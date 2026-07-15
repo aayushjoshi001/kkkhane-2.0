@@ -2,10 +2,11 @@
 
 import { useState } from 'react'
 import StatCard from '@/components/ui/StatCard'
-import { TrendingUp, ShoppingBag, BarChart3, Star, XCircle, Trophy, Clock, ArrowUp, ArrowDown, Minus, Truck } from 'lucide-react'
+import { TrendingUp, ShoppingBag, BarChart3, Star, XCircle, Trophy, Clock, ArrowUp, ArrowDown, Minus, Truck, Percent, PercentSquare, Bed } from 'lucide-react'
+import { useBusinessMode } from '@/lib/contexts/FeatureContext'
 
 interface DayBucket {
-    date: string; label: string; dayNum: number; monthStr: string; revenue: number; orders: number
+    date: string; label: string; dayNum: number; monthStr: string; revenue: number; orders: number; bargainDiscount?: number; occupiedRoomsCount?: number
 }
 interface TopItem { name: string; count: number; revenue: number }
 interface CancelledOrder { id: string; note: string | null; placed_at: string; total: number }
@@ -26,6 +27,12 @@ interface Props {
     ratingCounts: { star: number; count: number }[]
     topComments: { comment: string; rating: number; created_at: string }[]
     topSuppliers: TopSupplier[]
+    hotelMetrics?: {
+        totalRooms: number
+        totalRoomRev30d: number
+        totalDiscount30d: number
+        bargainLeakage30d: number
+    }
 }
 
 function fmt(n: number) {
@@ -119,9 +126,13 @@ const HOUR_LABELS: Record<number, string> = {
     18: '6pm', 19: '7pm', 20: '8pm', 21: '9pm', 22: '10pm', 23: '11pm',
 }
 
-export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled, kpis, ratingCounts, topComments, topSuppliers }: Props) {
+export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled, kpis, ratingCounts, topComments, topSuppliers, hotelMetrics }: Props) {
     const [period, setPeriod] = useState<'7d' | '30d'>('7d')
     const [chartMetric, setChartMetric] = useState<'revenue' | 'orders'>('revenue')
+    const [hotelChartMetric, setHotelChartMetric] = useState<'occupancy' | 'leakage'>('occupancy')
+
+    const businessMode = useBusinessMode()
+    const isHotel = businessMode === 'hotel'
 
     const days = period === '7d' ? daily.slice(-7) : daily
     const rev = period === '7d' ? kpis.rev7d : kpis.rev30d
@@ -135,12 +146,29 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
     const ordTrend = trendInfo(ord, prevOrd)
     const aovTrend = trendInfo(aov, prevAov)
 
+    // Hotel period calculations
+    const totalRooms = hotelMetrics?.totalRooms || 1
+    const daysCount = period === '7d' ? 7 : 30
+    const periodOccupiedCount = days.reduce((s, d) => s + (d.occupiedRoomsCount || 0), 0)
+    const periodBargainLeakage = days.reduce((s, d) => s + (d.bargainDiscount || 0), 0)
+    const occupancyRate = (periodOccupiedCount / (totalRooms * daysCount)) * 100
+
     const chartData = days.map(d => ({
         date: d.date,
         label: d.label,
         dayNum: d.dayNum,
         monthStr: d.monthStr,
         value: chartMetric === 'revenue' ? d.revenue : d.orders,
+    }))
+
+    const hotelChartData = days.map(d => ({
+        date: d.date,
+        label: d.label,
+        dayNum: d.dayNum,
+        monthStr: d.monthStr,
+        value: hotelChartMetric === 'occupancy' 
+            ? (totalRooms > 0 ? ((d.occupiedRoomsCount || 0) / totalRooms) * 100 : 0)
+            : (d.bargainDiscount || 0),
     }))
 
     const peakHours = hourly.filter(h => h.hour >= 6 && h.hour <= 23)
@@ -201,6 +229,35 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
                 />
             </div>
 
+            {isHotel && (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <StatCard
+                        label="Occupancy Rate"
+                        value={`${occupancyRate.toFixed(1)}%`}
+                        icon={Percent}
+                        tone="brand"
+                    />
+                    <StatCard
+                        label="Bargain Leakage"
+                        value={fmt(periodBargainLeakage)}
+                        icon={TrendingUp}
+                        tone="warning"
+                    />
+                    <StatCard
+                        label="Total Rooms"
+                        value={String(totalRooms)}
+                        icon={Bed}
+                        tone="info"
+                    />
+                    <StatCard
+                        label="Room Sales (30d)"
+                        value={fmt(hotelMetrics?.totalRoomRev30d || 0)}
+                        icon={BarChart3}
+                        tone="success"
+                    />
+                </div>
+            )}
+
             {/* Main chart */}
             <div className="bg-surface rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)] p-6">
                 <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
@@ -228,6 +285,35 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
                     fmtVal={chartMetric === 'revenue' ? fmt : (n) => String(n)}
                 />
             </div>
+
+            {isHotel && (
+                <div className="bg-surface rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)] p-6">
+                    <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
+                        <h2 className="font-extrabold text-ink text-base">
+                            {hotelChartMetric === 'occupancy' ? 'Occupancy Rate' : 'Bargain Leakage'}
+                            <span className="text-ink-subtle font-medium ml-2 text-xs">
+                                {period === '7d' ? 'last 7 days' : 'last 30 days'}
+                            </span>
+                        </h2>
+                        <div className="flex items-center bg-surface-muted rounded-[var(--r-md)] p-1 gap-1 border border-hairline shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
+                            {(['occupancy', 'leakage'] as const).map(m => (
+                                <button
+                                    key={m}
+                                    onClick={() => setHotelChartMetric(m)}
+                                    className={`px-4 py-1.5 rounded-md text-[11px] font-bold tracking-wider transition-all capitalize focus-ring ${hotelChartMetric === m ? 'bg-surface text-ink shadow-sm' : 'text-ink-subtle hover:text-ink hover:bg-surface/50'}`}
+                                >
+                                    {m}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    <BarChart
+                        data={hotelChartData}
+                        color={hotelChartMetric === 'occupancy' ? '#8b5cf6' : '#f59e0b'}
+                        fmtVal={hotelChartMetric === 'occupancy' ? (n) => `${n.toFixed(1)}%` : fmt}
+                    />
+                </div>
+            )}
 
             {/* Rush hour + Top items */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
