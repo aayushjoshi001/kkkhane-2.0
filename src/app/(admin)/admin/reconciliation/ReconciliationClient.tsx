@@ -352,25 +352,31 @@ export default function ReconciliationClient({
                             <span>Link Partner Property</span>
                         </h2>
                         <p className="text-xs text-ink-subtle leading-relaxed">
-                            Select the partner property operating on this computer to send an instant linking request. Since you run both from here, you can approve the connection directly below.
+                            To prevent unauthorized linking, enter your partner property's exact Tenant ID (UUID) below. You can find this ID in the partner's settings dashboard.
                         </p>
+                        
+                        <div className="p-3 bg-surface border border-hairline rounded-2xl">
+                            <span className="block text-[10px] text-ink-subtle font-extrabold uppercase">Your Property Tenant ID:</span>
+                            <code className="block text-xs font-mono font-bold text-gray-700 select-all mt-1 bg-surface-muted p-2.5 rounded-xl border border-hairline break-all">
+                                {restaurant.id}
+                            </code>
+                            <span className="block text-[9px] text-ink-subtle font-semibold mt-1">Copy and share this ID with your partner property to establish a connection.</span>
+                        </div>
+
                         <div className="space-y-3 pt-2">
                             <div>
-                                <label className="block text-xs font-extrabold mb-1">Select Property to Link</label>
-                                <select 
+                                <label className="block text-xs font-extrabold mb-1">Partner Property Tenant ID (UUID) *</label>
+                                <input 
+                                    type="text"
                                     value={selectedPartnerId}
-                                    onChange={(e) => setSelectedPartnerId(e.target.value)}
-                                    className="w-full px-4 py-3 bg-surface border border-hairline rounded-2xl text-sm outline-none focus:border-primary transition font-bold"
-                                >
-                                    <option value="">Choose partner property...</option>
-                                    {allRestaurants.map(r => (
-                                        <option key={r.id} value={r.id}>{r.name} ({r.business_type})</option>
-                                    ))}
-                                </select>
+                                    onChange={(e) => setSelectedPartnerId(e.target.value.trim())}
+                                    placeholder="Enter 36-character partner UUID..."
+                                    className="w-full px-4 py-3 bg-surface border border-hairline rounded-2xl text-xs font-mono font-bold outline-none focus:border-primary transition"
+                                />
                             </div>
                             <Button 
                                 onClick={handleSendRequest}
-                                disabled={isRequesting || !selectedPartnerId}
+                                disabled={isRequesting || !selectedPartnerId || selectedPartnerId.length < 32}
                                 className="w-full flex items-center justify-center gap-2 font-bold"
                             >
                                 {isRequesting ? 'Sending...' : 'Send Link Request'}
