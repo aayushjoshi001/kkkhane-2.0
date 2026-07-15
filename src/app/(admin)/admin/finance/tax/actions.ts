@@ -101,3 +101,61 @@ export async function deleteTaxFilingAction(id: string) {
     revalidatePath(PATH)
     return { success: true }
 }
+
+export async function calculateVatFilingSummaryAction(periodStart: string, periodEnd: string) {
+    let user
+    try { user = await requireFinanceManager() } catch { return { error: 'Unauthorized' } }
+
+    const supabase = await createAdminClient()
+
+    // 1. Fetch restaurant registration details
+    const { data: rest } = await supabase
+        .from('restaurants')
+        .select('vat_registered')
+        .eq('id', user.restaurantId)
+        .single()
+
+    const vatRegistered = !!rest?.vat_registered
+
+    // 2. Fetch sales (income entries)
+    const { data: salesRows, error: salesErr } = await supabase
+        .from('income_entries')
+        .select('amount')
+        .eq('restaurant_id', user.restaurantId)
+        .gte('created_at', periodStart + 'T00:00:00.000Z')
+        .lte('created_at', periodEnd + 'T23:59:59.999Z')
+
+    if (salesErr) return { error: salesErr.message }
+
+    // 3. Fetch purchases (expenses)
+    const { data: expRows, error: expErr } = await supabase
+        .from('expenses')
+        .select('amount')
+        .eq('restaurant_id', user.restaurantId)
+        .gte('created_at', periodStart + 'T00:00:00.000Z')
+        .lte('created_at', periodEnd + 'T23:59:59.999Z')
+
+    if (expErr) return { error: expErr.message }
+
+    const totalSales = (salesRows || []).reduce((s, r) => s + Number(r.amount), 0)
+    const totalPurchases = (expRows || []).reduce((s, r) => s + Number(r.amount), 0)
+
+    // Nepal standard VAT is 13% inclusive on standard retail transactions
+    const vatRate = 13
+    const outputVat = vatRegistered ? (totalSales - (totalSales / (1 + vatRate / 100))) : 0
+    const inputVat = vatRegistered ? (totalPurchases - (totalPurchases / (1 + vatRate / 100))) : 0
+    const netVat = outputVat - inputVat
+
+    return {
+        data: {
+            vatRegistered,
+            totalSales,
+            taxableSales: totalSales - outputVat,
+            outputVat,
+            totalPurchases,
+            taxablePurchases: totalPurchases - inputVat,
+            inputVat,
+            netVat
+        }
+    }
+}

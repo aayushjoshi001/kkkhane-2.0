@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { Plus, Trash2, Percent } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Plus, Trash2, Percent, Loader2, ChevronDown, ChevronUp, AlertCircle, FileText, CheckCircle, Calculator } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { DataTable, FormModal, FormInput, FormSelect, SectionTabs, type SectionTab } from '@/components/finance'
 import Button from '@/components/ui/Button'
@@ -11,7 +11,10 @@ import type { TaxConfiguration, TaxFiling, TaxType } from '@/types/database'
 import {
     createTaxConfigurationAction, updateTaxConfigurationAction, deleteTaxConfigurationAction,
     createTaxFilingAction, markTaxFilingFiledAction, deleteTaxFilingAction,
+    calculateVatFilingSummaryAction
 } from './actions'
+
+const fmt = (n: number) => `Rs. ${new Intl.NumberFormat('en-IN').format(Math.round(n))}`
 
 export default function TaxManager({
     initialConfigurations,
@@ -27,8 +30,8 @@ export default function TaxManager({
     const [filings, setFilings] = useState(initialFilings)
 
     const tabs: SectionTab[] = [
-        { key: 'vat', label: 'VAT & PAN', count: configurations.length },
-        { key: 'filings', label: 'Tax Reports, Summary & IRD', count: filings.length },
+        { key: 'vat', label: 'VAT & PAN Configurations', count: configurations.length },
+        { key: 'filings', label: 'VAT Return, Summary & IRD Filings', count: filings.length },
     ]
 
     return (
@@ -135,18 +138,80 @@ function VatTab({
     )
 }
 
+interface ExpandedSummary {
+    vatRegistered: boolean
+    totalSales: number
+    taxableSales: number
+    outputVat: number
+    totalPurchases: number
+    taxablePurchases: number
+    inputVat: number
+    netVat: number
+}
+
 function FilingsTab({
     configurations,
     filings,
     setFilings,
 }: {
     configurations: TaxConfiguration[]
-    filings: TaxFiling[]
-    setFilings: (fn: (prev: TaxFiling[]) => TaxFiling[]) => void
+    filings: any[]
+    setFilings: (fn: (prev: any[]) => any[]) => void
 }) {
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ tax_configuration_id: '', period_start: '', period_end: '', ird_reference: '', notes: '' })
+
+    // Expanded filing state for dynamic audit reporting
+    const [expandedId, setExpandedId] = useState<string | null>(null)
+    const [summaries, setSummaries] = useState<Record<string, ExpandedSummary>>({})
+    const [loadingSummary, setLoadingSummary] = useState<string | null>(null)
+
+    // Live return preview calculations
+    const [previewData, setPreviewData] = useState<ExpandedSummary | null>(null)
+    const [loadingPreview, setLoadingPreview] = useState(false)
+
+    // Load preview when date range changes in form
+    useEffect(() => {
+        if (form.period_start && form.period_end && form.period_end >= form.period_start) {
+            const loadPreview = async () => {
+                setLoadingPreview(true)
+                const res = await calculateVatFilingSummaryAction(form.period_start, form.period_end)
+                setLoadingPreview(false)
+                if (res.data) {
+                    setPreviewData(res.data)
+                } else {
+                    setPreviewData(null)
+                }
+            }
+            loadPreview()
+        } else {
+            setPreviewData(null)
+        }
+    }, [form.period_start, form.period_end])
+
+    const handleRowExpand = async (id: string, start: string, end: string) => {
+        if (expandedId === id) {
+            setExpandedId(null)
+            return
+        }
+        setExpandedId(id)
+        if (summaries[id]) return
+
+        setLoadingSummary(id)
+        try {
+            const res = await calculateVatFilingSummaryAction(start, end)
+            if (res.data) {
+                setSummaries(prev => ({ ...prev, [id]: res.data }))
+            } else if (res.error) {
+                toast.error(res.error)
+            }
+        } catch {
+            toast.error('Failed to load filing summary statistics')
+        } finally {
+            setLoadingSummary(null)
+        }
+    }
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
@@ -154,17 +219,18 @@ function FilingsTab({
         const result = await createTaxFilingAction(form)
         setSaving(false)
         if (result.error) { toast.error(result.error); return }
-        setFilings((prev) => [result.data as TaxFiling, ...prev])
-        toast.success('Tax filing recorded')
+        setFilings((prev) => [result.data as any, ...prev])
+        toast.success('Tax filing recorded successfully')
         setOpen(false)
         setForm({ tax_configuration_id: '', period_start: '', period_end: '', ird_reference: '', notes: '' })
+        setPreviewData(null)
     }
 
     async function markFiled(id: string) {
         const result = await markTaxFilingFiledAction(id)
         if (result.error) { toast.error(result.error); return }
         setFilings((prev) => prev.map((f) => (f.id === id ? { ...f, status: 'filed' } : f)))
-        toast.success('Marked as filed')
+        toast.success('Filing marked as filed')
     }
 
     async function handleDelete(id: string) {
@@ -176,37 +242,208 @@ function FilingsTab({
     }
 
     return (
-        <div className="space-y-3">
+        <div className="space-y-4">
             <div className="flex justify-end">
-                <Button icon={Plus} size="sm" onClick={() => setOpen(true)} disabled={configurations.length === 0}>New Filing</Button>
+                <Button icon={Plus} size="sm" onClick={() => setOpen(true)} disabled={configurations.length === 0}>
+                    New Tax Return Filing
+                </Button>
             </div>
-            <DataTable
-                columns={[
-                    { key: 'configuration', header: 'Tax', render: (f) => f.tax_configurations?.name || '—' },
-                    { key: 'period', header: 'Period', render: (f) => `${new Date(f.period_start).toLocaleDateString()} – ${new Date(f.period_end).toLocaleDateString()}` },
-                    { key: 'ird_reference', header: 'IRD Reference', render: (f) => f.ird_reference || <span className="text-ink-subtle">—</span> },
-                    { key: 'status', header: 'Status', render: (f) => <StatusBadge status={f.status} label={f.status === 'filed' ? 'Filed' : 'Draft'} /> },
-                ]}
-                rows={filings}
-                rowKey={(f) => f.id}
-                emptyIcon={Percent}
-                emptyTitle="No tax filings yet"
-                emptyDescription="Track VAT/PAN filing periods and IRD references."
-                renderActions={(f) => (
-                    <div className="flex items-center justify-end gap-1.5">
-                        {f.status === 'draft' && <Button size="sm" variant="ghost" onClick={() => markFiled(f.id)}>Mark Filed</Button>}
-                        <Button size="sm" variant="ghost" icon={Trash2} onClick={() => handleDelete(f.id)} />
-                    </div>
-                )}
-            />
-            <FormModal open={open} onClose={() => setOpen(false)} title="New Tax Filing" onSubmit={handleSubmit} submitting={saving}>
+
+            {filings.length === 0 ? (
+                <div className="border border-hairline rounded-3xl p-12 text-center space-y-3 bg-surface-muted/30">
+                    <FileText className="w-12 h-12 text-ink-subtle/50 mx-auto" />
+                    <h3 className="font-extrabold text-sm text-ink">No Tax Filings Recorded</h3>
+                    <p className="text-xs text-ink-subtle max-w-sm mx-auto">
+                        Record and audit your VAT/PAN filing periods, view sales vs purchase VAT declarations, and keep track of IRD references.
+                    </p>
+                </div>
+            ) : (
+                <div className="space-y-3">
+                    {filings.map((filing) => {
+                        const isExpanded = expandedId === filing.id
+                        const summary = summaries[filing.id]
+                        const isFilingLoading = loadingSummary === filing.id
+
+                        return (
+                            <div 
+                                key={filing.id} 
+                                className="border border-hairline bg-surface rounded-3xl overflow-hidden transition-all duration-200"
+                            >
+                                {/* Header Summary Row */}
+                                <div 
+                                    onClick={() => handleRowExpand(filing.id, filing.period_start, filing.period_end)}
+                                    className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 cursor-pointer hover:bg-surface-muted/20 transition"
+                                >
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-extrabold text-sm text-ink">
+                                                {filing.tax_configurations?.name || 'Standard VAT'}
+                                            </span>
+                                            <StatusBadge 
+                                                status={filing.status} 
+                                                label={filing.status === 'filed' ? 'Filed' : 'Draft'} 
+                                            />
+                                        </div>
+                                        <p className="text-xs text-ink-subtle font-semibold">
+                                            Period: {new Date(filing.period_start).toLocaleDateString()} to {new Date(filing.period_end).toLocaleDateString()}
+                                        </p>
+                                    </div>
+
+                                    <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
+                                        <div className="text-right">
+                                            <span className="block text-[10px] text-ink-subtle font-bold uppercase">IRD Ref Reference</span>
+                                            <span className="text-xs font-bold text-ink">{filing.ird_reference || '—'}</span>
+                                        </div>
+                                        {isExpanded ? <ChevronUp className="w-4 h-4 text-ink-subtle" /> : <ChevronDown className="w-4 h-4 text-ink-subtle" />}
+                                    </div>
+                                </div>
+
+                                {/* Expanded Audit Details Panel */}
+                                {isExpanded && (
+                                    <div className="border-t border-hairline bg-surface-muted/10 p-5 space-y-4">
+                                        {isFilingLoading ? (
+                                            <div className="flex items-center justify-center py-8 gap-2 text-xs font-bold text-ink-subtle">
+                                                <Loader2 className="w-4 h-4 animate-spin text-[#ff5a00]" />
+                                                <span>Calculating returns and totals...</span>
+                                            </div>
+                                        ) : summary ? (
+                                            <div className="space-y-4">
+                                                {/* Audit Grid */}
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                    {/* Sales */}
+                                                    <div className="p-4 bg-surface border border-hairline rounded-2xl space-y-2">
+                                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Sales Revenue (Output)</span>
+                                                        <div className="flex justify-between items-baseline">
+                                                            <span className="text-xs font-bold text-ink-subtle">Total Gross:</span>
+                                                            <span className="text-sm font-bold text-ink">{fmt(summary.totalSales)}</span>
+                                                        </div>
+                                                        <div className="flex justify-between items-baseline border-t border-hairline pt-1 text-xs">
+                                                            <span className="text-ink-subtle font-medium">Output VAT (13%):</span>
+                                                            <span className="font-extrabold text-rose-600">+{fmt(summary.outputVat)}</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Purchases */}
+                                                    <div className="p-4 bg-surface border border-hairline rounded-2xl space-y-2">
+                                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Supplier Purchases (Input)</span>
+                                                        <div className="flex justify-between items-baseline">
+                                                            <span className="text-xs font-bold text-ink-subtle">Total Gross:</span>
+                                                            <span className="text-sm font-bold text-ink">{fmt(summary.totalPurchases)}</span>
+                                                        </div>
+                                                        <div className="flex justify-between items-baseline border-t border-hairline pt-1 text-xs">
+                                                            <span className="text-ink-subtle font-medium">Input VAT (13%):</span>
+                                                            <span className="font-extrabold text-emerald-600">-{fmt(summary.inputVat)}</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Net Payable / Refund */}
+                                                    <div className="p-4 bg-surface border border-hairline rounded-2xl space-y-2 flex flex-col justify-between">
+                                                        <div>
+                                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Net Return Calculation</span>
+                                                            <p className={`text-xl font-black mt-2 ${summary.netVat >= 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                                {fmt(Math.abs(summary.netVat))}
+                                                            </p>
+                                                        </div>
+                                                        <div className="pt-2 border-t border-hairline flex items-center justify-between">
+                                                            <span className="text-[10px] font-bold uppercase text-ink-subtle">Filing Return:</span>
+                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                                                summary.netVat >= 0 ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                                                            }`}>
+                                                                {summary.netVat >= 0 ? 'Payable to Government' : 'Tax Refund Claim'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {filing.notes && (
+                                                    <p className="text-xs text-ink-subtle bg-surface p-3 border border-hairline rounded-xl">
+                                                        <strong>Filing Notes:</strong> {filing.notes}
+                                                    </p>
+                                                )}
+
+                                                {/* Actions */}
+                                                <div className="flex justify-between items-center border-t border-hairline pt-4 text-xs font-bold">
+                                                    <span className="text-ink-subtle">
+                                                        {filing.status === 'filed' && filing.filed_at && (
+                                                            <span>Filed on {new Date(filing.filed_at).toLocaleDateString()}</span>
+                                                        )}
+                                                    </span>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => handleDelete(filing.id)}
+                                                            className="p-1.5 text-ink-subtle hover:text-rose-600 border border-hairline hover:border-rose-100 bg-surface rounded-xl transition"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                        {filing.status === 'draft' && (
+                                                            <button
+                                                                onClick={() => markFiled(filing.id)}
+                                                                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1"
+                                                            >
+                                                                <CheckCircle size={12} />
+                                                                Submit & Mark Filed
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs text-ink-subtle py-4 text-center">Filing details could not be retrieved.</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
+
+            {/* Creation Dialog */}
+            <FormModal open={open} onClose={() => setOpen(false)} title="New Tax Return Filing" onSubmit={handleSubmit} submitting={saving}>
                 <FormSelect label="Tax Configuration" required value={form.tax_configuration_id} onChange={(e) => setForm((f) => ({ ...f, tax_configuration_id: e.target.value }))}>
                     <option value="">Select a tax configuration</option>
                     {configurations.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </FormSelect>
                 <FormInput label="Period Start" type="date" required value={form.period_start} onChange={(e) => setForm((f) => ({ ...f, period_start: e.target.value }))} />
                 <FormInput label="Period End" type="date" required value={form.period_end} onChange={(e) => setForm((f) => ({ ...f, period_end: e.target.value }))} />
-                <FormInput label="IRD Reference" value={form.ird_reference} onChange={(e) => setForm((f) => ({ ...f, ird_reference: e.target.value }))} />
+                <FormInput label="IRD Reference (optional)" value={form.ird_reference} onChange={(e) => setForm((f) => ({ ...f, ird_reference: e.target.value }))} placeholder="e.g. IRD-VAT-2026-Q1" />
+                <FormInput label="Notes (optional)" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Additional filing comments..." />
+
+                {/* Return preview loading state */}
+                {loadingPreview && (
+                    <div className="p-4 bg-gray-50 border border-hairline rounded-2xl flex items-center justify-center gap-1.5 text-xs text-ink-subtle font-bold">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-[#ff5a00]" />
+                        <span>Calculating taxable sales, purchases & net return preview...</span>
+                    </div>
+                )}
+
+                {/* Return preview card (Nepalese inclusive tax regulations compliant) */}
+                {!loadingPreview && previewData && (
+                    <div className="p-4 bg-amber-50/20 border border-amber-100 rounded-2xl space-y-3">
+                        <div className="flex items-center gap-1.5 text-xs font-black text-amber-800">
+                            <Calculator size={14} />
+                            <span>IRD Return Estimation Preview</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 text-xs font-bold">
+                            <div className="bg-surface p-2.5 rounded-xl border border-hairline">
+                                <span className="text-[9px] text-ink-subtle uppercase tracking-wider block">Taxable Sales</span>
+                                <span className="text-ink">{fmt(previewData.taxableSales)}</span>
+                                <span className="block text-[10px] text-rose-600 mt-0.5">VAT: +{fmt(previewData.outputVat)}</span>
+                            </div>
+                            <div className="bg-surface p-2.5 rounded-xl border border-hairline">
+                                <span className="text-[9px] text-ink-subtle uppercase tracking-wider block">Taxable Purchases</span>
+                                <span className="text-ink">{fmt(previewData.taxablePurchases)}</span>
+                                <span className="block text-[10px] text-emerald-600 mt-0.5">VAT: -{fmt(previewData.inputVat)}</span>
+                            </div>
+                        </div>
+                        <div className="bg-surface p-3 border border-hairline rounded-xl flex items-center justify-between text-xs font-bold">
+                            <span className="text-ink-subtle">Estimated Net VAT Return:</span>
+                            <span className={previewData.netVat >= 0 ? 'text-rose-600' : 'text-emerald-600'}>
+                                {fmt(Math.abs(previewData.netVat))} ({previewData.netVat >= 0 ? 'Payable' : 'Refund'})
+                            </span>
+                        </div>
+                    </div>
+                )}
             </FormModal>
         </div>
     )
