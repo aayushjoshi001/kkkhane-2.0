@@ -26,6 +26,7 @@ export interface PostFinancialTransactionInput {
     requireOpenSession?: boolean
     // Defaults to '*'. Vouchers joins in the session date for display.
     selectClause?: string
+    referenceId?: string | null
 }
 
 export interface PostFinancialTransactionResult {
@@ -348,7 +349,8 @@ export async function postFinancialTransaction(
             description: input.description,
             category: input.category,
             bank_name: input.bankName?.trim() || null,
-            created_by: user.id
+            created_by: user.id,
+            reference_id: input.referenceId || null
         })
         .select(input.selectClause || '*')
         .single() as { data: (DayBookEntry & Record<string, unknown>) | null, error: { message: string } | null }

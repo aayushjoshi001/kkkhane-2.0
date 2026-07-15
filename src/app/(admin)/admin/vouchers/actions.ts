@@ -329,7 +329,12 @@ export async function createVoucherAction(input: {
         category: dbCategory,
         bankName: input.payment_mode !== 'cash' ? input.bank_name : null,
         requireOpenSession: true,
-        selectClause: '*, day_book_sessions(date)'
+        selectClause: '*, day_book_sessions(date)',
+        referenceId: input.category === 'suppliers' ? input.supplier_id 
+                   : input.category === 'staff' ? input.staff_user_id 
+                   : input.category === 'expenses' ? input.expense_category_id 
+                   : input.category === 'stock' ? input.expense_category_id 
+                   : null
     })
 
     if (postResult.error || !postResult.entry) return { error: postResult.error || 'Failed to post voucher entry.' }

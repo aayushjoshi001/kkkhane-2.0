@@ -4,22 +4,57 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import { 
-    Users, Link, Link2Off, RefreshCw, Key, Shield, FileText, 
-    ArrowUpRight, ArrowDownLeft, Landmark, DollarSign, Calendar, Clock, Lock
+    Users, Link as LinkIcon, Link2Off, RefreshCw, Key, Shield, FileText, 
+    ArrowUpRight, ArrowDownLeft, Landmark, DollarSign, Calendar, Clock, Lock,
+    Check, X, Settings, ArrowRight, ToggleLeft, ToggleRight
 } from 'lucide-react'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import Button from '@/components/ui/Button'
 import { createClient } from '@/lib/supabase/client'
+import { 
+    sendLinkRequestAction, 
+    acceptLinkRequestAction, 
+    rejectLinkRequestAction, 
+    updateLinkSettingsAction 
+} from './actions'
+
+interface RestaurantOption {
+    id: string
+    name: string
+    business_type: string
+}
+
+interface LinkRequest {
+    id: string
+    sender_id: string
+    receiver_id: string
+    status: string
+    created_at: string
+    sender?: {
+        name: string
+        business_type: string
+    } | null
+    receiver?: {
+        name: string
+        business_type: string
+    } | null
+}
 
 export default function ReconciliationClient({
     restaurant,
     partner,
+    allRestaurants = [],
+    sentRequests = [],
+    receivedRequests = [],
     payables,
     receivables,
     auditLogs
 }: {
     restaurant: any
     partner: any
+    allRestaurants?: RestaurantOption[]
+    sentRequests?: LinkRequest[]
+    receivedRequests?: LinkRequest[]
     payables: any[]
     receivables: any[]
     auditLogs: any[]
@@ -33,11 +68,16 @@ export default function ReconciliationClient({
         setMounted(true)
     }, [])
 
-    // Invites state
-    const [recipientEmail, setRecipientEmail] = useState('')
-    const [generatedToken, setGeneratedToken] = useState('')
-    const [acceptToken, setAcceptToken] = useState('')
-    const [loadingInvite, setLoadingInvite] = useState(false)
+    // Link Request State
+    const [selectedPartnerId, setSelectedPartnerId] = useState('')
+    const [isRequesting, setIsRequesting] = useState(false)
+    const [actioningId, setActioningId] = useState<string | null>(null)
+
+    // Feature toggles
+    const [allowFolio, setAllowFolio] = useState(restaurant.link_allow_folio_charges !== false)
+    const [allowLoyalty, setAllowLoyalty] = useState(restaurant.link_allow_loyalty_sharing !== false)
+    const [allowCredit, setAllowCredit] = useState(restaurant.link_allow_credit_sharing !== false)
+    const [isSavingToggles, setIsSavingToggles] = useState(false)
 
     // Config options
     const [ledgerMode, setLedgerMode] = useState(restaurant.ledger_split_mode || 'direct')
@@ -57,58 +97,84 @@ export default function ReconciliationClient({
     // Sum totals
     const totalPayables = payables.reduce((acc, p) => acc + Number(p.amount), 0)
     const totalReceivables = receivables.reduce((acc, r) => acc + Number(r.amount), 0)
-    const netBalance = totalReceivables - totalPayables // positive means partner owes us, negative means we owe partner
+    const netBalance = totalReceivables - totalPayables
 
-    // Invite handle
-    const handleGenerateInvite = async () => {
-        if (!recipientEmail) {
-            toast.error('Please enter a recipient email')
+    // Handle Send Link Request
+    const handleSendRequest = async () => {
+        if (!selectedPartnerId) {
+            toast.error('Please select a partner property.')
             return
         }
-        setLoadingInvite(true)
+        setIsRequesting(true)
         try {
-            const res = await fetch('/api/tenants/invitation/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ recipientEmail })
-            })
-            const data = await res.json()
-            if (data.error) {
-                toast.error(data.error)
+            const res = await sendLinkRequestAction(selectedPartnerId)
+            if (res.error) {
+                toast.error(res.error)
             } else {
-                setGeneratedToken(data.token)
-                toast.success('Invitation token generated! Copy it below.')
+                toast.success('Link request sent successfully!')
+                setSelectedPartnerId('')
+                router.refresh()
             }
-        } catch (err) {
-            toast.error('Failed to generate invitation')
+        } catch {
+            toast.error('Failed to send request.')
         } finally {
-            setLoadingInvite(false)
+            setIsRequesting(false)
         }
     }
 
-    const handleAcceptInvite = async () => {
-        if (!acceptToken) {
-            toast.error('Please paste a token')
-            return
-        }
-        setLoadingInvite(true)
+    // Handle Accept Request
+    const handleAcceptRequest = async (id: string) => {
+        setActioningId(id)
         try {
-            const res = await fetch('/api/tenants/invitation/accept', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: acceptToken })
-            })
-            const data = await res.json()
-            if (data.error) {
-                toast.error(data.error)
+            const res = await acceptLinkRequestAction(id)
+            if (res.error) {
+                toast.error(res.error)
             } else {
-                toast.success('Handshake accepted! tenants linked successfully.')
+                toast.success('Link established successfully!')
                 router.refresh()
             }
-        } catch (err) {
-            toast.error('Failed to accept invitation')
+        } catch {
+            toast.error('Failed to accept request.')
         } finally {
-            setLoadingInvite(false)
+            setActioningId(null)
+        }
+    }
+
+    // Handle Reject Request
+    const handleRejectRequest = async (id: string) => {
+        setActioningId(id)
+        try {
+            const res = await rejectLinkRequestAction(id)
+            if (res.error) {
+                toast.error(res.error)
+            } else {
+                toast.success('Link request rejected.')
+                router.refresh()
+            }
+        } catch {
+            toast.error('Failed to reject request.')
+        } finally {
+            setActioningId(null)
+        }
+    }
+
+    // Handle Save Feature Toggles
+    const handleSaveToggles = async (folio: boolean, loyalty: boolean, credit: boolean) => {
+        setIsSavingToggles(true)
+        try {
+            const res = await updateLinkSettingsAction({ folio, loyalty, credit })
+            if (res.error) {
+                toast.error(res.error)
+            } else {
+                toast.success('Link feature toggles updated!')
+                setAllowFolio(folio)
+                setAllowLoyalty(loyalty)
+                setAllowCredit(credit)
+            }
+        } catch {
+            toast.error('Failed to save toggles.')
+        } finally {
+            setIsSavingToggles(false)
         }
     }
 
@@ -142,30 +208,42 @@ export default function ReconciliationClient({
         }
         setLoadingPin(true)
         try {
-            const res = await fetch('/api/tenants/analytics/pin/set', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pin: newPin })
-            })
-            const data = await res.json()
-            if (data.error) {
-                toast.error(data.error)
-            } else {
-                toast.success('Analytics PIN updated')
-                setNewPin('')
-                router.refresh()
-            }
-        } catch (err) {
-            toast.error('Failed to save PIN')
+            const pinHash = btoa(newPin)
+            const { error } = await supabase
+                .from('restaurants')
+                .update({ analytics_pin_hash: pinHash })
+                .eq('id', restaurant.id)
+
+            if (error) throw error
+            toast.success('Security PIN set successfully!')
+            setNewPin('')
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to set PIN')
         } finally {
             setLoadingPin(false)
         }
     }
 
-    // Auth Partner Analytics
-    const handleAuthPartner = async () => {
-        if (!partnerPin) {
-            toast.error('Please enter the partner PIN')
+    // Toggle Shared Analytics
+    const handleToggleShared = async (val: boolean) => {
+        setSharedAnalytics(val)
+        try {
+            const { error } = await supabase
+                .from('restaurants')
+                .update({ analytics_shared: val })
+                .eq('id', restaurant.id)
+            if (error) throw error
+            toast.success(val ? 'Partner analytics sharing enabled' : 'Partner analytics sharing disabled')
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to toggle analytics setting')
+            setSharedAnalytics(!val)
+        }
+    }
+
+    // Authenticate Analytics
+    const handleAuthAnalytics = async () => {
+        if (!partnerPin || !/^\d{6}$/.test(partnerPin)) {
+            toast.error('PIN must be exactly 6 digits')
             return
         }
         setLoadingPartnerData(true)
@@ -179,21 +257,23 @@ export default function ReconciliationClient({
             if (data.error) {
                 toast.error(data.error)
             } else {
-                toast.success('PIN Verified! Loading metrics...')
-                setActiveSessionToken(data.token)
+                setActiveSessionToken(data.sessionToken)
                 setSessionExpires(data.expiresAt)
-                fetchPartnerPnl(data.token)
+                toast.success('Partner analytics session authorized!')
+                await fetchPartnerMetrics(data.sessionToken)
             }
         } catch (err) {
-            toast.error('Authorization failed')
+            toast.error('Failed to authorize partner analytics')
         } finally {
             setLoadingPartnerData(false)
         }
     }
 
-    const fetchPartnerPnl = async (token: string) => {
+    const fetchPartnerMetrics = async (token: string) => {
         try {
-            const res = await fetch(`/api/tenants/analytics/pnl?token=${token}`)
+            const res = await fetch('/api/tenants/analytics/metrics', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
             const data = await res.json()
             if (data.error) {
                 toast.error(data.error)
@@ -234,7 +314,7 @@ export default function ReconciliationClient({
                 <div>
                     <h1 className="text-3xl font-extrabold tracking-tight">Cross-Tenant Integration Settings</h1>
                     <p className="text-ink-subtle mt-1 text-sm">
-                        Manage secure hotel-restaurant cryptographic invites, real-time table sync options, B2B ledger configuration, and PIN-authorized cross-analytics.
+                        Configure direct restaurant checkout post to rooms, share loyalty ledgers, and synchronize credit balances between properties from a single computer panel.
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -262,85 +342,109 @@ export default function ReconciliationClient({
                 </div>
             </div>
 
-            {/* If Unlinked: Setup Invites */}
+            {/* If Unlinked: Setup direct one-computer linking */}
             {!partner ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Send Invite */}
+                    {/* Link Property Request */}
                     <div className="border border-hairline rounded-3xl p-6 bg-surface-muted/50 space-y-4">
                         <h2 className="text-xl font-bold flex items-center gap-2">
-                            <Link className="w-5 h-5 text-primary" />
-                            <span>Generate Link Invitation</span>
+                            <LinkIcon className="w-5 h-5 text-primary" />
+                            <span>Link Partner Property</span>
                         </h2>
                         <p className="text-xs text-ink-subtle leading-relaxed">
-                            Generate a cryptographically signed, secure invitation URL that contains your unique tenant ID and signature. This link strictly expires after **15 minutes**.
+                            To prevent unauthorized linking, enter your partner property's exact Tenant ID (UUID) below. You can find this ID in the partner's settings dashboard.
                         </p>
+                        
+                        <div className="p-3 bg-surface border border-hairline rounded-2xl">
+                            <span className="block text-[10px] text-ink-subtle font-extrabold uppercase">Your Property Tenant ID:</span>
+                            <code className="block text-xs font-mono font-bold text-gray-700 select-all mt-1 bg-surface-muted p-2.5 rounded-xl border border-hairline break-all">
+                                {restaurant.id}
+                            </code>
+                            <span className="block text-[9px] text-ink-subtle font-semibold mt-1">Copy and share this ID with your partner property to establish a connection.</span>
+                        </div>
+
                         <div className="space-y-3 pt-2">
                             <div>
-                                <label className="block text-xs font-extrabold mb-1">Partner Email Address</label>
+                                <label className="block text-xs font-extrabold mb-1">Partner Property Tenant ID (UUID) *</label>
                                 <input 
-                                    type="email" 
-                                    value={recipientEmail}
-                                    onChange={(e) => setRecipientEmail(e.target.value)}
-                                    placeholder="manager@partnerproperty.com"
-                                    className="w-full px-4 py-3 bg-surface border border-hairline rounded-2xl text-sm outline-none focus:border-primary transition"
+                                    type="text"
+                                    value={selectedPartnerId}
+                                    onChange={(e) => setSelectedPartnerId(e.target.value.trim())}
+                                    placeholder="Enter 36-character partner UUID..."
+                                    className="w-full px-4 py-3 bg-surface border border-hairline rounded-2xl text-xs font-mono font-bold outline-none focus:border-primary transition"
                                 />
                             </div>
                             <Button 
-                                onClick={handleGenerateInvite}
-                                disabled={loadingInvite}
-                                className="w-full flex items-center justify-center gap-2"
+                                onClick={handleSendRequest}
+                                disabled={isRequesting || !selectedPartnerId || selectedPartnerId.length < 32}
+                                className="w-full flex items-center justify-center gap-2 font-bold"
                             >
-                                {loadingInvite ? 'Generating...' : 'Generate Secure Invitation'}
+                                {isRequesting ? 'Sending...' : 'Send Link Request'}
                             </Button>
                         </div>
-                        {generatedToken && (
-                            <div className="mt-4 p-3 bg-surface border border-hairline rounded-2xl space-y-2">
-                                <span className="block text-xs font-bold text-ink-subtle">Copy Token:</span>
-                                <textarea
-                                    readOnly
-                                    value={generatedToken}
-                                    onClick={(e) => {
-                                        navigator.clipboard.writeText(generatedToken)
-                                        toast.success('Token copied!')
-                                    }}
-                                    className="w-full h-24 p-2 bg-surface-muted text-xs border border-hairline rounded-xl outline-none cursor-pointer"
-                                />
-                                <span className="block text-[10px] text-amber-600 font-medium">Click box to copy token. Share this secretly with the partner.</span>
+
+                        {sentRequests.length > 0 && (
+                            <div className="mt-4 border-t border-hairline pt-4 space-y-2">
+                                <span className="block text-xs font-bold text-ink-subtle">Outgoing Requests:</span>
+                                {sentRequests.map(req => (
+                                    <div key={req.id} className="p-3 bg-surface border border-hairline rounded-2xl flex items-center justify-between text-xs font-bold">
+                                        <span>Sent to {req.receiver?.name}</span>
+                                        <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] uppercase">Pending</span>
+                                    </div>
+                                ))}
                             </div>
                         )}
                     </div>
 
-                    {/* Accept Invite */}
+                    {/* Incoming Requests Handshake (Allows instant one-click approval on one computer) */}
                     <div className="border border-hairline rounded-3xl p-6 bg-surface-muted/50 space-y-4">
                         <h2 className="text-xl font-bold flex items-center gap-2">
                             <Users className="w-5 h-5 text-primary" />
-                            <span>Accept Partner Invitation</span>
+                            <span>Incoming Link Requests</span>
                         </h2>
                         <p className="text-xs text-ink-subtle leading-relaxed">
-                            Paste the encrypted Base64 invitation token shared by the partner. The system will perform a bidirectional cryptographic handshake to link your accounts.
+                            Approve or reject linking requests from partner properties operating on this device. Accepting establishes the link instantly.
                         </p>
+                        
                         <div className="space-y-3 pt-2">
-                            <div>
-                                <label className="block text-xs font-extrabold mb-1">Paste Token Here</label>
-                                <textarea
-                                    value={acceptToken}
-                                    onChange={(e) => setAcceptToken(e.target.value)}
-                                    placeholder="eyJhbGciOi..."
-                                    className="w-full h-24 p-3 bg-surface border border-hairline rounded-2xl text-sm outline-none focus:border-primary transition"
-                                />
-                            </div>
-                            <Button 
-                                onClick={handleAcceptInvite}
-                                disabled={loadingInvite}
-                                className="w-full"
-                            >
-                                {loadingInvite ? 'Verifying handshake...' : 'Accept Invite & Handshake'}
-                            </Button>
+                            {receivedRequests.length === 0 ? (
+                                <div className="p-8 text-center border border-dashed border-hairline rounded-2xl text-xs text-ink-subtle font-medium">
+                                    No incoming requests. Select your partner property on the left to initiate.
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {receivedRequests.map(req => (
+                                        <div key={req.id} className="p-4 bg-surface border border-hairline rounded-2xl flex items-center justify-between">
+                                            <div>
+                                                <p className="text-sm font-bold text-gray-900">{req.sender?.name}</p>
+                                                <p className="text-[10px] text-ink-subtle uppercase tracking-wider font-semibold mt-0.5">{req.sender?.business_type}</p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => handleRejectRequest(req.id)}
+                                                    disabled={actioningId !== null}
+                                                    className="p-1.5 border border-red-200 text-red-600 hover:bg-red-50 rounded-xl transition"
+                                                >
+                                                    <X size={16} />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleAcceptRequest(req.id)}
+                                                    disabled={actioningId !== null}
+                                                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1"
+                                                >
+                                                    <Check size={14} />
+                                                    Approve
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
             ) : (
-                /* If Linked: Show settings and split ledgers */
+                /* If Linked: Show settings, feature toggles and split ledgers */
                 <div className="space-y-8">
                     {/* Settings & Configuration Grid */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -412,6 +516,68 @@ export default function ReconciliationClient({
                             </div>
                         </div>
 
+                        {/* Feature Link Controls */}
+                        <div className="border border-hairline rounded-3xl p-6 bg-surface space-y-4 shadow-sm flex flex-col justify-between">
+                            <div className="space-y-4">
+                                <h2 className="text-lg font-bold flex items-center gap-2">
+                                    <Settings className="w-5 h-5 text-primary" />
+                                    <span>Enabled Shared Features</span>
+                                </h2>
+                                <p className="text-xs text-ink-subtle">
+                                    Control which customer-facing features are synchronized or linkable between the properties.
+                                </p>
+                                <div className="space-y-4 pt-2">
+                                    <label className="flex items-center justify-between p-3 border border-hairline rounded-2xl cursor-pointer hover:bg-surface-muted/30 transition">
+                                        <div className="pr-4">
+                                            <span className="block text-xs font-extrabold">Room Folio Charges</span>
+                                            <span className="block text-[9px] text-ink-subtle mt-0.5 leading-normal">
+                                                Allow restaurant customers to post their dine-in food bills to hotel room invoices.
+                                            </span>
+                                        </div>
+                                        <button 
+                                            onClick={() => handleSaveToggles(!allowFolio, allowLoyalty, allowCredit)}
+                                            disabled={isSavingToggles}
+                                            className="text-[#ff5a00]"
+                                        >
+                                            {allowFolio ? <ToggleRight size={32} /> : <ToggleLeft className="text-gray-300" size={32} />}
+                                        </button>
+                                    </label>
+
+                                    <label className="flex items-center justify-between p-3 border border-hairline rounded-2xl cursor-pointer hover:bg-surface-muted/30 transition">
+                                        <div className="pr-4">
+                                            <span className="block text-xs font-extrabold">Loyalty Points Sharing</span>
+                                            <span className="block text-[9px] text-ink-subtle mt-0.5 leading-normal">
+                                                Share customer rewards point balances and ledger tracking between properties.
+                                            </span>
+                                        </div>
+                                        <button 
+                                            onClick={() => handleSaveToggles(allowFolio, !allowLoyalty, allowCredit)}
+                                            disabled={isSavingToggles}
+                                            className="text-[#ff5a00]"
+                                        >
+                                            {allowLoyalty ? <ToggleRight size={32} /> : <ToggleLeft className="text-gray-300" size={32} />}
+                                        </button>
+                                    </label>
+
+                                    <label className="flex items-center justify-between p-3 border border-hairline rounded-2xl cursor-pointer hover:bg-surface-muted/30 transition">
+                                        <div className="pr-4">
+                                            <span className="block text-xs font-extrabold">Receivable Credit accounts</span>
+                                            <span className="block text-[9px] text-ink-subtle mt-0.5 leading-normal">
+                                                Share customer ledger credit limits and profile details between properties.
+                                            </span>
+                                        </div>
+                                        <button 
+                                            onClick={() => handleSaveToggles(allowFolio, allowLoyalty, !allowCredit)}
+                                            disabled={isSavingToggles}
+                                            className="text-[#ff5a00]"
+                                        >
+                                            {allowCredit ? <ToggleRight size={32} /> : <ToggleLeft className="text-gray-300" size={32} />}
+                                        </button>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
                         {/* PIN Settings */}
                         <div className="border border-hairline rounded-3xl p-6 bg-surface space-y-4 shadow-sm">
                             <h2 className="text-lg font-bold flex items-center gap-2">
@@ -419,184 +585,85 @@ export default function ReconciliationClient({
                                 <span>Security Analytics PIN</span>
                             </h2>
                             <p className="text-xs text-ink-subtle">
-                                Set a unique 6-digit PIN to securely authorize cross-tenant financial analytics viewing.
+                                Set a numeric security PIN to encrypt cross-tenant analytics access.
                             </p>
                             <div className="space-y-3 pt-2">
-                                <div className="flex items-center justify-between border-b border-hairline pb-2 mb-2">
-                                    <span className="text-xs font-bold">Sharing Enabled</span>
-                                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${sharedAnalytics ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
-                                        {sharedAnalytics ? 'Yes' : 'No'}
-                                    </span>
-                                </div>
                                 <div>
-                                    <label className="block text-xs font-extrabold mb-1">Set 6-Digit PIN</label>
+                                    <label className="block text-xs font-extrabold mb-1">New 6-Digit PIN</label>
                                     <input 
                                         type="password" 
                                         maxLength={6}
                                         value={newPin}
-                                        onChange={(e) => setNewPin(e.target.value)}
-                                        placeholder="••••••"
-                                        className="w-full px-3 py-2 bg-surface border border-hairline rounded-xl text-sm tracking-widest outline-none focus:border-primary"
+                                        onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                                        placeholder="******"
+                                        className="w-full px-3 py-2 bg-surface border border-hairline rounded-xl text-xs outline-none focus:border-primary font-mono tracking-widest text-center"
                                     />
                                 </div>
                                 <Button 
                                     onClick={handleSetPin}
                                     disabled={loadingPin}
-                                    className="w-full"
+                                    className="w-full mt-2"
                                 >
-                                    {loadingPin ? 'Updating...' : 'Save Analytics PIN'}
+                                    {loadingPin ? 'Updating PIN...' : 'Set Security PIN'}
                                 </Button>
-                            </div>
-                        </div>
 
-                        {/* PIN Analytics Access */}
-                        <div className="border border-hairline rounded-3xl p-6 bg-surface space-y-4 shadow-sm">
-                            <h2 className="text-lg font-bold flex items-center gap-2">
-                                <Shield className="w-5 h-5 text-primary" />
-                                <span>Access Partner P&L</span>
-                            </h2>
-                            <p className="text-xs text-ink-subtle">
-                                Input the partner's security PIN to unlock their financial metrics for exactly **10 minutes**.
-                            </p>
-                            <div className="space-y-3 pt-2">
-                                <div>
-                                    <label className="block text-xs font-extrabold mb-1">Enter Partner PIN</label>
-                                    <input 
-                                        type="password" 
-                                        maxLength={6}
-                                        value={partnerPin}
-                                        onChange={(e) => setPartnerPin(e.target.value)}
-                                        placeholder="••••••"
-                                        className="w-full px-3 py-2 bg-surface border border-hairline rounded-xl text-sm tracking-widest outline-none focus:border-primary"
-                                    />
+                                <div className="border-t border-hairline pt-4 space-y-2">
+                                    <label className="flex items-center justify-between cursor-pointer">
+                                        <div>
+                                            <span className="block text-xs font-extrabold">Enable Sharing</span>
+                                            <span className="block text-[9px] text-ink-subtle leading-normal">Allow partner to view analytics with PIN.</span>
+                                        </div>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={sharedAnalytics}
+                                            onChange={(e) => handleToggleShared(e.target.checked)}
+                                            className="rounded border-hairline text-primary focus:ring-primary"
+                                        />
+                                    </label>
                                 </div>
-                                <Button 
-                                    onClick={handleAuthPartner}
-                                    disabled={loadingPartnerData}
-                                    className="w-full"
-                                >
-                                    {loadingPartnerData ? 'Authorizing PIN...' : 'Verify & Access Analytics'}
-                                </Button>
                             </div>
                         </div>
                     </div>
 
-                    {/* Partner analytics view (if active) */}
-                    {partnerData && (
-                        <div className="border border-emerald-200 rounded-3xl p-6 bg-emerald-50/10 space-y-4 shadow-sm">
-                            <div className="flex items-center justify-between border-b border-emerald-100 pb-3">
-                                <h3 className="text-lg font-extrabold text-emerald-800 flex items-center gap-2">
-                                    <Lock className="w-5 h-5" />
-                                    <span>Financial P&L for Partner: {partnerData.partner.name}</span>
-                                </h3>
-                                <div className="text-xs text-amber-700 flex items-center gap-1">
-                                    <Clock className="w-3.5 h-3.5" />
-                                    <span>Session ends at: {mounted ? new Date(sessionExpires!).toLocaleTimeString() : ''}</span>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                                <div className="bg-surface border border-hairline p-4 rounded-2xl flex items-center justify-between">
-                                    <div>
-                                        <span className="block text-xs font-bold text-ink-subtle">Total Income</span>
-                                        <span className="block text-lg font-extrabold mt-1 text-emerald-600">{money(partnerData.totalIncome)}</span>
+                    {/* Active Link Financial Dashboard & Split Ledger Reports */}
+                    {ledgerMode === 'b2b' && (
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* Summary Card */}
+                            <div className="border border-hairline rounded-3xl p-6 bg-surface-muted/30 space-y-4">
+                                <h3 className="text-lg font-extrabold">B2B Monthly Settlement Summary</h3>
+                                <p className="text-xs text-ink-subtle">
+                                    Overview of outstanding payables and receivables with your partner property.
+                                </p>
+                                <div className="grid grid-cols-2 gap-4 pt-2">
+                                    <div className="p-4 bg-surface border border-hairline rounded-2xl">
+                                        <span className="block text-[10px] text-ink-subtle font-extrabold uppercase">Receivables</span>
+                                        <span className="block text-lg font-black text-emerald-600 mt-1">{money(totalReceivables)}</span>
                                     </div>
-                                    <ArrowDownLeft className="w-8 h-8 text-emerald-500 bg-emerald-50 p-1.5 rounded-full" />
-                                </div>
-                                <div className="bg-surface border border-hairline p-4 rounded-2xl flex items-center justify-between">
-                                    <div>
-                                        <span className="block text-xs font-bold text-ink-subtle">Total Expense</span>
-                                        <span className="block text-lg font-extrabold mt-1 text-rose-600">{money(partnerData.totalExpense)}</span>
+                                    <div className="p-4 bg-surface border border-hairline rounded-2xl">
+                                        <span className="block text-[10px] text-ink-subtle font-extrabold uppercase">Payables</span>
+                                        <span className="block text-lg font-black text-rose-600 mt-1">{money(totalPayables)}</span>
                                     </div>
-                                    <ArrowUpRight className="w-8 h-8 text-rose-500 bg-rose-50 p-1.5 rounded-full" />
                                 </div>
-                                <div className="bg-surface border border-hairline p-4 rounded-2xl flex items-center justify-between">
+                                <div className="p-4 bg-surface border border-hairline rounded-2xl flex items-center justify-between">
                                     <div>
-                                        <span className="block text-xs font-bold text-ink-subtle">Net Profit</span>
-                                        <span className={`block text-lg font-extrabold mt-1 ${partnerData.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                                            {money(partnerData.netProfit)}
+                                        <span className="block text-[10px] text-ink-subtle font-extrabold uppercase">Net Balance</span>
+                                        <span className={`block text-xl font-black mt-1 ${netBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                            {netBalance >= 0 ? '+' : ''}{money(netBalance)}
                                         </span>
                                     </div>
-                                    <Landmark className="w-8 h-8 text-primary bg-primary/5 p-1.5 rounded-full" />
-                                </div>
-                            </div>
-
-                            {/* Categorized splits */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                <div className="bg-surface border border-hairline p-4 rounded-2xl">
-                                    <h4 className="text-sm font-extrabold border-b border-hairline pb-2 mb-2">Income Categories</h4>
-                                    <div className="space-y-2">
-                                        {partnerData.incomeByCategory.length > 0 ? partnerData.incomeByCategory.map((c: any) => (
-                                            <div key={c.name} className="flex justify-between text-xs">
-                                                <span>{c.name}</span>
-                                                <span className="font-bold">{money(c.amount)}</span>
-                                            </div>
-                                        )) : <span className="text-xs text-ink-subtle">No income logged.</span>}
-                                    </div>
-                                </div>
-                                <div className="bg-surface border border-hairline p-4 rounded-2xl">
-                                    <h4 className="text-sm font-extrabold border-b border-hairline pb-2 mb-2">Expense Categories</h4>
-                                    <div className="space-y-2">
-                                        {partnerData.expenseByCategory.length > 0 ? partnerData.expenseByCategory.map((c: any) => (
-                                            <div key={c.name} className="flex justify-between text-xs">
-                                                <span>{c.name}</span>
-                                                <span className="font-bold">{money(c.amount)}</span>
-                                            </div>
-                                        )) : <span className="text-xs text-ink-subtle">No expenses logged.</span>}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* B2B monthly reconciliation report */}
-                    {ledgerMode === 'b2b' && (
-                        <div className="border border-hairline rounded-3xl p-6 bg-surface shadow-sm space-y-6">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-hairline pb-4">
-                                <div>
-                                    <h3 className="text-xl font-bold flex items-center gap-2">
-                                        <FileText className="w-5 h-5 text-primary" />
-                                        <span>B2B Monthly Reconciliation Statement</span>
-                                    </h3>
-                                    <p className="text-xs text-ink-subtle mt-0.5">
-                                        Authoritative reconciliation summary of Accounts Receivable and Accounts Payable transactions.
-                                    </p>
-                                </div>
-                                <button
-                                    onClick={() => window.print()}
-                                    className="px-4 py-2 border border-hairline rounded-xl text-xs font-extrabold shadow-sm bg-surface hover:bg-surface-muted transition active:scale-95 flex items-center gap-2"
-                                >
-                                    <FileText className="w-4 h-4" />
-                                    <span>Print Statement / PDF</span>
-                                </button>
-                            </div>
-
-                            {/* Summary Totals */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="p-4 bg-surface-muted/30 border border-hairline rounded-2xl">
-                                    <span className="text-xs text-ink-subtle font-bold">Total Accounts Receivable</span>
-                                    <span className="block text-xl font-extrabold mt-1 text-emerald-700">{money(totalReceivables)}</span>
-                                    <span className="text-[10px] text-ink-subtle mt-1 block">Revenue you are waiting to collect from Hotel</span>
-                                </div>
-                                <div className="p-4 bg-surface-muted/30 border border-hairline rounded-2xl">
-                                    <span className="text-xs text-ink-subtle font-bold">Total Accounts Payable</span>
-                                    <span className="block text-xl font-extrabold mt-1 text-rose-700">{money(totalPayables)}</span>
-                                    <span className="text-[10px] text-ink-subtle mt-1 block">Revenue you owe to Restaurant</span>
-                                </div>
-                                <div className="p-4 bg-surface-muted/30 border border-hairline rounded-2xl">
-                                    <span className="text-xs text-ink-subtle font-bold">Net Settlement Due</span>
-                                    <span className={`block text-xl font-extrabold mt-1 ${netBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                                        {netBalance >= 0 ? '+' : '-'}{money(Math.abs(netBalance))}
-                                    </span>
-                                    <span className="text-[10px] text-ink-subtle mt-1 block">
-                                        {netBalance >= 0 ? 'Hotel owes this net total to Restaurant' : 'Restaurant owes this net total to Hotel'}
+                                    <span className="text-[10px] text-ink-subtle font-extrabold max-w-[120px] text-right leading-snug">
+                                        {netBalance >= 0 ? 'Partner owes you this amount' : 'You owe partner this amount'}
                                     </span>
                                 </div>
                             </div>
 
-                            {/* Detailed transaction entries */}
-                            <div className="space-y-4">
-                                <h4 className="text-sm font-extrabold border-b border-hairline pb-2">B2B Financial Ledger Audit Trails</h4>
-                                <div className="overflow-x-auto">
+                            {/* Detailed Ledger list */}
+                            <div className="lg:col-span-2 border border-hairline rounded-3xl p-6 bg-surface space-y-4 shadow-sm">
+                                <h3 className="text-lg font-bold flex items-center gap-2">
+                                    <FileText className="w-5 h-5 text-primary" />
+                                    <span>B2B Settlement Transactions Ledger</span>
+                                </h3>
+                                <div className="overflow-y-auto max-h-[220px] scrollbar-none pr-1">
                                     <table className="w-full text-left border-collapse text-xs">
                                         <thead>
                                             <tr className="border-b border-hairline text-ink-subtle font-extrabold">

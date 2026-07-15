@@ -97,6 +97,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // is needed to sync it once the booking loads.
     const [creditCustomerNameInput, setCreditCustomerNameInput] = useState('')
     const [creditCustomerPhoneInput, setCreditCustomerPhoneInput] = useState('')
+    const [guestEmailInput, setGuestEmailInput] = useState('')
     // 'split' and 'credit' always go through this confirmation popup —
     // 'split' because a typo in the amounts would otherwise silently
     // mischarge the guest, 'credit' because it needs a name/phone to post
@@ -112,6 +113,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
 
     useEffect(() => {
         if (!booking) return
+        setGuestEmailInput(booking.guest_email || '')
         let cancelled = false
         fetch(`/api/rooms/charges?bookingId=${booking.id}`)
             .then(r => r.json())
@@ -277,6 +279,28 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             setIsSaving(false)
             setInvoiceSettled(true)
 
+            // Trigger digital invoice email if provided
+            if (guestEmailInput.trim()) {
+                fetch(`/api/bookings/checkout/email`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        booking_id: booking.id,
+                        email: guestEmailInput.trim()
+                    })
+                }).then(async r => {
+                    if (r.ok) {
+                        toast.success('Digital invoice sent to guest!')
+                    } else {
+                        const err = await r.json()
+                        console.error('Failed to send digital invoice:', err.error)
+                        toast.error(`Could not email receipt: ${err.error}`)
+                    }
+                }).catch(err => {
+                    console.error('Email dispatch error:', err)
+                })
+            }
+
             // Printing runs after the bill is already settled in the database,
             // so a slow/unconfigured printer never blocks the checkout itself.
             if (invoiceData) {
@@ -441,6 +465,18 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         />
                                     </div>
                                 )}
+                            </div>
+
+                            {/* Send Digital Invoice */}
+                            <div className="mt-3 pt-3 border-t border-dashed border-gray-150">
+                                <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Send Digital Invoice</label>
+                                <input
+                                    type="email"
+                                    value={guestEmailInput}
+                                    onChange={e => setGuestEmailInput(e.target.value)}
+                                    placeholder="guest@example.com (optional)"
+                                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
+                                />
                             </div>
 
                             {/* Payment Method Selector */}

@@ -32,11 +32,14 @@ export default async function ReconciliationPage() {
     const partnerId = restaurant.linked_restaurant_id || restaurant.linked_hotel_id
     const auditLogs = auditLogsRes || []
 
-    // 2. Parallel Stage 2: Fetch partner details, payables list, and receivables list concurrently
-    const [partnerRes, payablesRes, receivablesRes] = await Promise.all([
+    // 2. Parallel Stage 2: Fetch partner details, other restaurants list, link requests, and ledger entries concurrently
+    const [partnerRes, allRestaurantsRes, sentReqRes, receivedReqRes, payablesRes, receivablesRes] = await Promise.all([
         partnerId 
             ? supabase.from('restaurants').select('id, name, business_type, billing_commission_rate').eq('id', partnerId).maybeSingle()
             : Promise.resolve({ data: null }),
+        supabase.from('restaurants').select('id, name, business_type').neq('id', myId).eq('is_active', true).order('name', { ascending: true }),
+        supabase.from('partner_link_requests').select('*, receiver:receiver_id(name, business_type)').eq('sender_id', myId).eq('status', 'pending'),
+        supabase.from('partner_link_requests').select('*, sender:sender_id(name, business_type)').eq('receiver_id', myId).eq('status', 'pending'),
         apCat?.id
             ? supabase.from('expenses').select('*').eq('restaurant_id', myId).eq('category_id', apCat.id).order('created_at', { ascending: false })
             : Promise.resolve({ data: [] }),
@@ -46,6 +49,9 @@ export default async function ReconciliationPage() {
     ])
 
     const partner = partnerRes.data
+    const allRestaurants = allRestaurantsRes.data || []
+    const sentRequests = sentReqRes.data || []
+    const receivedRequests = receivedReqRes.data || []
     const payables = payablesRes.data || []
     const receivables = receivablesRes.data || []
 
@@ -53,6 +59,9 @@ export default async function ReconciliationPage() {
         <ReconciliationClient
             restaurant={restaurant}
             partner={partner}
+            allRestaurants={allRestaurants}
+            sentRequests={sentRequests}
+            receivedRequests={receivedRequests}
             payables={payables}
             receivables={receivables}
             auditLogs={auditLogs}
