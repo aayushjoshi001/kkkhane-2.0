@@ -14,6 +14,9 @@ interface SyncInvoicePayload {
  * Direct sync hook to submit billing receipts to Nepal Inland Revenue Department (IRD)
  * according to CBMS API standards. If credentials are not fully configured,
  * it runs in simulation mode to ensure audit-readiness without throwing errors.
+ * 
+ * NOTE: All log database operations are wrapped in safe try-catch blocks to prevent
+ * checkout failures if SQL table migrations have not been applied.
  */
 export async function syncInvoiceToIrd(restaurantId: string, data: SyncInvoicePayload) {
     const supabase = await createAdminClient()
@@ -40,17 +43,21 @@ export async function syncInvoiceToIrd(restaurantId: string, data: SyncInvoicePa
     // 2. SIMULATION MODE (auditor ready): If credentials are not set, log a successful simulated sync
     if (!ird_api_url || ird_api_url.trim() === '' || !ird_api_user || !ird_api_password) {
         const textResponse = "SIMULATED_CBMS_ACK - Invoice sync successful (Simulation Mode)."
-        await supabase.from('ird_sync_logs').insert({
-            restaurant_id: restaurantId,
-            invoice_number: data.invoiceNumber,
-            buyer_pan: data.buyerPan || null,
-            total_amount: data.totalAmount,
-            taxable_amount: data.taxableAmount,
-            vat_amount: data.vatAmount,
-            sync_status: 'synced',
-            sync_response: textResponse,
-            synced_at: new Date().toISOString()
-        })
+        try {
+            await supabase.from('ird_sync_logs').insert({
+                restaurant_id: restaurantId,
+                invoice_number: data.invoiceNumber,
+                buyer_pan: data.buyerPan || null,
+                total_amount: data.totalAmount,
+                taxable_amount: data.taxableAmount,
+                vat_amount: data.vatAmount,
+                sync_status: 'synced',
+                sync_response: textResponse,
+                synced_at: new Date().toISOString()
+            })
+        } catch (dbErr) {
+            console.warn('Defensive Warn: Failed to write ird_sync_logs (migration may not be run):', dbErr)
+        }
         return { success: true, mocked: true, response: textResponse }
     }
 
@@ -72,22 +79,26 @@ export async function syncInvoiceToIrd(restaurantId: string, data: SyncInvoicePa
         is_realtime: true
     }
 
-    // 4. Insert initial log record as pending
-    const { data: logRow, error: logErr } = await supabase
-        .from('ird_sync_logs')
-        .insert({
-            restaurant_id: restaurantId,
-            invoice_number: data.invoiceNumber,
-            buyer_pan: data.buyerPan || null,
-            total_amount: data.totalAmount,
-            taxable_amount: data.taxableAmount,
-            vat_amount: data.vatAmount,
-            sync_status: 'pending'
-        })
-        .select('id')
-        .single()
-
-    const logId = logRow?.id
+    // 4. Insert initial log record as pending (defended against database errors)
+    let logId: string | null = null
+    try {
+        const { data: logRow } = await supabase
+            .from('ird_sync_logs')
+            .insert({
+                restaurant_id: restaurantId,
+                invoice_number: data.invoiceNumber,
+                buyer_pan: data.buyerPan || null,
+                total_amount: data.totalAmount,
+                taxable_amount: data.taxableAmount,
+                vat_amount: data.vatAmount,
+                sync_status: 'pending'
+            })
+            .select('id')
+            .single()
+        logId = logRow?.id || null
+    } catch (dbErr) {
+        console.warn('Defensive Warn: Failed to write ird_sync_logs (migration may not be run):', dbErr)
+    }
 
     // 5. Fire the HTTP request to the government CBMS endpoint
     try {
@@ -105,14 +116,18 @@ export async function syncInvoiceToIrd(restaurantId: string, data: SyncInvoicePa
 
         // 6. Update log record with response details
         if (logId) {
-            await supabase
-                .from('ird_sync_logs')
-                .update({
-                    sync_status: isSuccess ? 'synced' : 'failed',
-                    sync_response: `Status: ${response.status} - ${textResponse}`,
-                    synced_at: new Date().toISOString()
-                })
-                .eq('id', logId)
+            try {
+                await supabase
+                    .from('ird_sync_logs')
+                    .update({
+                        sync_status: isSuccess ? 'synced' : 'failed',
+                        sync_response: `Status: ${response.status} - ${textResponse}`,
+                        synced_at: new Date().toISOString()
+                    })
+                    .eq('id', logId)
+            } catch (dbErr) {
+                console.error('Failed to update ird_sync_logs status:', dbErr)
+            }
         }
 
         return { success: isSuccess, status: response.status, response: textResponse }
@@ -120,13 +135,17 @@ export async function syncInvoiceToIrd(restaurantId: string, data: SyncInvoicePa
     } catch (err: any) {
         console.error('IRD Sync Connection Error:', err)
         if (logId) {
-            await supabase
-                .from('ird_sync_logs')
-                .update({
-                    sync_status: 'failed',
-                    sync_response: `Error: ${err.message || 'Connection Timeout'}`
-                })
-                .eq('id', logId)
+            try {
+                await supabase
+                    .from('ird_sync_logs')
+                    .update({
+                        sync_status: 'failed',
+                        sync_response: `Error: ${err.message || 'Connection Timeout'}`
+                    })
+                    .eq('id', logId)
+            } catch (dbErr) {
+                console.error('Failed to update failed ird_sync_logs status:', dbErr)
+            }
         }
         return { success: false, error: err.message || 'Connection Timeout' }
     }
