@@ -11,7 +11,8 @@ import type { TaxConfiguration, TaxFiling, TaxType } from '@/types/database'
 import {
     createTaxConfigurationAction, updateTaxConfigurationAction, deleteTaxConfigurationAction,
     createTaxFilingAction, markTaxFilingFiledAction, deleteTaxFilingAction,
-    calculateVatFilingSummaryAction
+    calculateVatFilingSummaryAction,
+    getMonthlyVatDetailsAction
 } from './actions'
 import { getIrdSyncLogsAction, retryIrdSyncAction } from './sync-actions'
 
@@ -193,6 +194,15 @@ function FilingsTab({
     const [previewData, setPreviewData] = useState<ExpandedSummary | null>(null)
     const [loadingPreview, setLoadingPreview] = useState(false)
 
+    // Monthly Auto VAT Report States
+    const [reportMonth, setReportMonth] = useState('07')
+    const [reportYear, setReportYear] = useState('2026')
+    const [compilingReport, setCompilingReport] = useState(false)
+    const [monthlyReportData, setMonthlyReportData] = useState<any | null>(null)
+    const [monthlyReportDetails, setMonthlyReportDetails] = useState<any | null>(null)
+    const [showReportModal, setShowReportModal] = useState(false)
+    const [reportTab, setReportTab] = useState('summary')
+
     // Load preview when date range changes in form
     useEffect(() => {
         if (form.period_start && form.period_end && form.period_end >= form.period_start) {
@@ -235,6 +245,40 @@ function FilingsTab({
         }
     }
 
+    const handleCompileMonthlyReport = async () => {
+        setCompilingReport(true)
+        try {
+            const yearNum = Number(reportYear)
+            const monthNum = Number(reportMonth)
+            const lastDay = new Date(yearNum, monthNum, 0).getDate()
+            const periodStart = `${reportYear}-${reportMonth}-01`
+            const periodEnd = `${reportYear}-${reportMonth}-${lastDay < 10 ? '0' + lastDay : lastDay}`
+
+            const [summaryRes, detailsRes] = await Promise.all([
+                calculateVatFilingSummaryAction(periodStart, periodEnd),
+                getMonthlyVatDetailsAction(periodStart, periodEnd)
+            ])
+
+            if (summaryRes.error) {
+                toast.error(summaryRes.error)
+                return
+            }
+            if (detailsRes.error) {
+                toast.error(detailsRes.error)
+                return
+            }
+
+            setMonthlyReportData(summaryRes.data)
+            setMonthlyReportDetails(detailsRes.data)
+            setShowReportModal(true)
+            toast.success('VAT Registers compiled successfully')
+        } catch {
+            toast.error('Failed to compile monthly VAT registers')
+        } finally {
+            setCompilingReport(false)
+        }
+    }
+
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
         setSaving(true)
@@ -265,10 +309,72 @@ function FilingsTab({
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+                <h3 className="font-extrabold text-sm text-ink uppercase tracking-wide">Filing History</h3>
                 <Button icon={Plus} size="sm" onClick={() => setOpen(true)} disabled={configurations.length === 0}>
                     New Tax Return Filing
                 </Button>
+            </div>
+
+            {/* Monthly VAT Report Compiler Widget */}
+            <div className="bg-surface border border-hairline rounded-3xl p-5 space-y-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
+                <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center border border-orange-100">
+                        <Calculator className="w-5 h-5" />
+                    </div>
+                    <div>
+                        <h4 className="font-extrabold text-xs text-ink uppercase tracking-wider">Compile Monthly VAT Registers</h4>
+                        <p className="text-[10px] text-ink-subtle font-semibold">Generate Annex 7 (Sales Book) and Annex 8 (Purchase Book) automatically from ledger entry records.</p>
+                    </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                    <div className="flex-1 min-w-[120px]">
+                        <label className="block text-[9px] font-bold text-ink-subtle uppercase tracking-wider mb-1">Select Month</label>
+                        <select
+                            value={reportMonth}
+                            onChange={(e) => setReportMonth(e.target.value)}
+                            className="w-full px-3 py-2 bg-surface border border-hairline rounded-xl text-xs font-bold outline-none"
+                        >
+                            <option value="01">January</option>
+                            <option value="02">February</option>
+                            <option value="03">March</option>
+                            <option value="04">April</option>
+                            <option value="05">May</option>
+                            <option value="06">June</option>
+                            <option value="07">July</option>
+                            <option value="08">August</option>
+                            <option value="09">September</option>
+                            <option value="10">October</option>
+                            <option value="11">November</option>
+                            <option value="12">December</option>
+                        </select>
+                    </div>
+                    <div className="flex-1 min-w-[100px]">
+                        <label className="block text-[9px] font-bold text-ink-subtle uppercase tracking-wider mb-1">Select Year</label>
+                        <select
+                            value={reportYear}
+                            onChange={(e) => setReportYear(e.target.value)}
+                            className="w-full px-3 py-2 bg-surface border border-hairline rounded-xl text-xs font-bold outline-none"
+                        >
+                            <option value="2026">2026</option>
+                            <option value="2025">2025</option>
+                        </select>
+                    </div>
+                    <button
+                        onClick={handleCompileMonthlyReport}
+                        disabled={compilingReport}
+                        className="px-4 py-2 bg-[#ff5a00] hover:bg-[#ff4500] text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 self-end h-[34px]"
+                    >
+                        {compilingReport ? (
+                            <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                Compiling...
+                            </>
+                        ) : (
+                            'Compile VAT Registers'
+                        )}
+                    </button>
+                </div>
             </div>
 
             {filings.length === 0 ? (
@@ -466,6 +572,195 @@ function FilingsTab({
                         </div>
                     </div>
                 )}
+            </FormModal>
+
+            {/* Monthly VAT Registers & Return Modal */}
+            <FormModal 
+                open={showReportModal} 
+                onClose={() => setShowReportModal(false)} 
+                title={`Monthly VAT Return Sheet - ${reportMonth}/${reportYear}`} 
+                onSubmit={(e) => { e.preventDefault(); setShowReportModal(false) }}
+                submitting={false}
+                maxWidth="xl"
+            >
+                <div className="space-y-4 text-left">
+                    {/* Modal Tab Switcher */}
+                    <div className="flex gap-2 border-b border-hairline pb-2 no-print">
+                        <button
+                            type="button"
+                            onClick={() => setReportTab('summary')}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
+                                reportTab === 'summary' ? 'bg-[#ff5a00] text-white' : 'bg-surface-muted hover:bg-surface-muted/80 text-ink'
+                            }`}
+                        >
+                            Summary Return Sheet
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setReportTab('annex7')}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
+                                reportTab === 'annex7' ? 'bg-[#ff5a00] text-white' : 'bg-surface-muted hover:bg-surface-muted/80 text-ink'
+                            }`}
+                        >
+                            Annex 7 (Sales Book)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setReportTab('annex8')}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
+                                reportTab === 'annex8' ? 'bg-[#ff5a00] text-white' : 'bg-surface-muted hover:bg-surface-muted/80 text-ink'
+                            }`}
+                        >
+                            Annex 8 (Purchase Book)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => window.print()}
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition ml-auto flex items-center gap-1.5"
+                        >
+                            <FileText className="w-3.5 h-3.5" />
+                            Print Registers
+                        </button>
+                    </div>
+
+                    {/* Content Section */}
+                    {reportTab === 'summary' && monthlyReportData && (
+                        <div className="space-y-4">
+                            <h3 className="font-extrabold text-sm text-ink border-b border-hairline pb-1.5 uppercase tracking-wide">
+                                Nepal IRD VAT return Sheet (Estimator)
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="p-4 border border-hairline rounded-2xl space-y-2.5 bg-surface">
+                                    <h4 className="font-bold text-xs text-rose-800 uppercase tracking-wide">1. Sales (Output VAT) Declarations</h4>
+                                    <div className="flex justify-between text-xs font-medium border-b border-hairline pb-1.5">
+                                        <span className="text-ink-subtle">Total Gross Sales:</span>
+                                        <span className="text-ink font-bold">{fmt(monthlyReportData.totalSales)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs font-medium border-b border-hairline pb-1.5">
+                                        <span className="text-ink-subtle">Taxable Sales (Net):</span>
+                                        <span className="text-ink font-bold">{fmt(monthlyReportData.taxableSales)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs font-bold pt-1">
+                                        <span className="text-rose-700">Output VAT (13%):</span>
+                                        <span className="text-rose-600">+{fmt(monthlyReportData.outputVat)}</span>
+                                    </div>
+                                </div>
+
+                                <div className="p-4 border border-hairline rounded-2xl space-y-2.5 bg-surface">
+                                    <h4 className="font-bold text-xs text-emerald-800 uppercase tracking-wide">2. Purchases (Input VAT) Declarations</h4>
+                                    <div className="flex justify-between text-xs font-medium border-b border-hairline pb-1.5">
+                                        <span className="text-ink-subtle">Total Gross Purchases:</span>
+                                        <span className="text-ink font-bold">{fmt(monthlyReportData.totalPurchases)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs font-medium border-b border-hairline pb-1.5">
+                                        <span className="text-ink-subtle">Taxable Purchases (Net):</span>
+                                        <span className="text-ink font-bold">{fmt(monthlyReportData.taxablePurchases)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs font-bold pt-1">
+                                        <span className="text-emerald-700">Input VAT (13%):</span>
+                                        <span className="text-emerald-600">-{fmt(monthlyReportData.inputVat)}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-4 bg-surface border border-hairline rounded-2xl flex items-center justify-between text-xs font-bold">
+                                <div>
+                                    <span className="block text-[10px] text-ink-subtle uppercase">Net VAT Position</span>
+                                    <span className={monthlyReportData.netVat >= 0 ? 'text-rose-600 text-sm' : 'text-emerald-600 text-sm'}>
+                                        {fmt(Math.abs(monthlyReportData.netVat))} ({monthlyReportData.netVat >= 0 ? 'Payable' : 'Refundable'})
+                                    </span>
+                                </div>
+                                <span className={`px-3 py-1 rounded-xl text-[10px] font-black uppercase border ${
+                                    monthlyReportData.netVat >= 0 
+                                        ? 'bg-rose-50 text-rose-700 border-rose-100' 
+                                        : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                }`}>
+                                    {monthlyReportData.netVat >= 0 ? 'Payable to Government' : 'Tax Refund Claim'}
+                                </span>
+                            </div>
+                        </div>
+                    )}
+
+                    {reportTab === 'annex7' && monthlyReportDetails && (
+                        <div className="space-y-3">
+                            <h3 className="font-extrabold text-sm text-ink border-b border-hairline pb-1.5 uppercase tracking-wide">
+                                Annex 7 - VAT Sales Register (बिक्री खाता)
+                            </h3>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-xs font-bold border-collapse border border-hairline">
+                                    <thead>
+                                        <tr className="bg-surface-muted text-[10px] text-ink-subtle uppercase tracking-wider">
+                                            <th className="border border-hairline p-2 text-left">Date</th>
+                                            <th className="border border-hairline p-2 text-left">Customer / Guest</th>
+                                            <th className="border border-hairline p-2 text-left">Reference No</th>
+                                            <th className="border border-hairline p-2 text-right">Taxable Sales</th>
+                                            <th className="border border-hairline p-2 text-right">Output VAT (13%)</th>
+                                            <th className="border border-hairline p-2 text-right">Gross Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {monthlyReportDetails.sales.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={6} className="text-center py-6 text-ink-subtle">No sales transactions in this period.</td>
+                                            </tr>
+                                        ) : (
+                                            monthlyReportDetails.sales.map((s: any, idx: number) => (
+                                                <tr key={idx} className="hover:bg-surface-muted/20">
+                                                    <td className="border border-hairline p-2">{new Date(s.date).toLocaleDateString()}</td>
+                                                    <td className="border border-hairline p-2">{s.customerName}</td>
+                                                    <td className="border border-hairline p-2 font-mono text-[10px]">{s.description}</td>
+                                                    <td className="border border-hairline p-2 text-right tabular-nums">{fmt(s.taxable)}</td>
+                                                    <td className="border border-hairline p-2 text-right tabular-nums text-rose-600">+{fmt(s.vat)}</td>
+                                                    <td className="border border-hairline p-2 text-right tabular-nums">{fmt(s.total)}</td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {reportTab === 'annex8' && monthlyReportDetails && (
+                        <div className="space-y-3">
+                            <h3 className="font-extrabold text-sm text-ink border-b border-hairline pb-1.5 uppercase tracking-wide">
+                                Annex 8 - VAT Purchase Register (खरिद खाता)
+                            </h3>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-xs font-bold border-collapse border border-hairline">
+                                    <thead>
+                                        <tr className="bg-surface-muted text-[10px] text-ink-subtle uppercase tracking-wider">
+                                            <th className="border border-hairline p-2 text-left">Date</th>
+                                            <th className="border border-hairline p-2 text-left">Supplier / Payee</th>
+                                            <th className="border border-hairline p-2 text-left">Bill Ref No</th>
+                                            <th className="border border-hairline p-2 text-right">Taxable Purchases</th>
+                                            <th className="border border-hairline p-2 text-right">Input VAT (13%)</th>
+                                            <th className="border border-hairline p-2 text-right">Gross Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {monthlyReportDetails.purchases.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={6} className="text-center py-6 text-ink-subtle">No purchases recorded in this period.</td>
+                                            </tr>
+                                        ) : (
+                                            monthlyReportDetails.purchases.map((p: any, idx: number) => (
+                                                <tr key={idx} className="hover:bg-surface-muted/20">
+                                                    <td className="border border-hairline p-2">{new Date(p.date).toLocaleDateString()}</td>
+                                                    <td className="border border-hairline p-2">{p.recipient}</td>
+                                                    <td className="border border-hairline p-2 font-mono text-[10px]">{p.description}</td>
+                                                    <td className="border border-hairline p-2 text-right tabular-nums">{fmt(p.taxable)}</td>
+                                                    <td className="border border-hairline p-2 text-right tabular-nums text-emerald-600">-{fmt(p.vat)}</td>
+                                                    <td className="border border-hairline p-2 text-right tabular-nums">{fmt(p.total)}</td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </FormModal>
         </div>
     )

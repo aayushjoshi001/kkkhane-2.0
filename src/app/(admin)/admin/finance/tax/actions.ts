@@ -159,3 +159,62 @@ export async function calculateVatFilingSummaryAction(periodStart: string, perio
         }
     }
 }
+
+export async function getMonthlyVatDetailsAction(periodStart: string, periodEnd: string) {
+    let user
+    try { user = await requireFinanceManager() } catch { return { error: 'Unauthorized' } }
+
+    const supabase = await createAdminClient()
+
+    // 1. Fetch sales
+    const { data: sales, error: salesErr } = await supabase
+        .from('income_entries')
+        .select('created_at, amount, guest_name, description')
+        .eq('restaurant_id', user.restaurantId)
+        .gte('created_at', periodStart + 'T00:00:00.000Z')
+        .lte('created_at', periodEnd + 'T23:59:59.999Z')
+        .order('created_at', { ascending: true })
+
+    if (salesErr) return { error: salesErr.message }
+
+    // 2. Fetch purchases
+    const { data: purchases, error: expErr } = await supabase
+        .from('expenses')
+        .select('created_at, amount, recipient, description, category:category_id(name)')
+        .eq('restaurant_id', user.restaurantId)
+        .gte('created_at', periodStart + 'T00:00:00.000Z')
+        .lte('created_at', periodEnd + 'T23:59:59.999Z')
+        .order('created_at', { ascending: true })
+
+    if (expErr) return { error: expErr.message }
+
+    return {
+        data: {
+            sales: (sales || []).map(s => {
+                const total = Number(s.amount) || 0
+                const vat = total - (total / 1.13)
+                return {
+                    date: s.created_at,
+                    customerName: s.guest_name || 'Walk-in Guest',
+                    description: s.description || 'Sales Transaction',
+                    total,
+                    taxable: total - vat,
+                    vat
+                }
+            }),
+            purchases: (purchases || []).map(p => {
+                const total = Number(p.amount) || 0
+                const vat = total - (total / 1.13)
+                const categoryName = (p.category as any)?.name || 'General Expense'
+                return {
+                    date: p.created_at,
+                    recipient: p.recipient || categoryName,
+                    description: p.description || 'Stock/Purchase',
+                    total,
+                    taxable: total - vat,
+                    vat
+                }
+            })
+        }
+    }
+}
