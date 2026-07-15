@@ -13,16 +13,19 @@ import {
     createTaxFilingAction, markTaxFilingFiledAction, deleteTaxFilingAction,
     calculateVatFilingSummaryAction
 } from './actions'
+import { getIrdSyncLogsAction, retryIrdSyncAction } from './sync-actions'
 
 const fmt = (n: number) => `Rs. ${new Intl.NumberFormat('en-IN').format(Math.round(n))}`
 
 export default function TaxManager({
     initialConfigurations,
     initialFilings,
+    initialSyncLogs,
     restaurantTax,
 }: {
     initialConfigurations: TaxConfiguration[]
     initialFilings: TaxFiling[]
+    initialSyncLogs: any[]
     restaurantTax: { pan_number: string | null; vat_registered: boolean; vat_number: string | null }
 }) {
     const [tab, setTab] = useState('vat')
@@ -32,6 +35,7 @@ export default function TaxManager({
     const tabs: SectionTab[] = [
         { key: 'vat', label: 'VAT & PAN Configurations', count: configurations.length },
         { key: 'filings', label: 'VAT Return, Summary & IRD Filings', count: filings.length },
+        { key: 'logs', label: 'Nepal IRD API Sync Logs', count: initialSyncLogs.length },
     ]
 
     return (
@@ -39,6 +43,7 @@ export default function TaxManager({
             <SectionTabs tabs={tabs} active={tab} onChange={setTab} />
             {tab === 'vat' && <VatTab restaurantTax={restaurantTax} configurations={configurations} setConfigurations={setConfigurations} />}
             {tab === 'filings' && <FilingsTab configurations={configurations} filings={filings} setFilings={setFilings} restaurantTax={restaurantTax} />}
+            {tab === 'logs' && <IrdSyncLogsTab initialLogs={initialSyncLogs} restaurantTax={restaurantTax} />}
         </div>
     )
 }
@@ -462,6 +467,99 @@ function FilingsTab({
                     </div>
                 )}
             </FormModal>
+        </div>
+    )
+}
+
+function IrdSyncLogsTab({
+    initialLogs,
+    restaurantTax,
+}: {
+    initialLogs: any[]
+    restaurantTax: { vat_registered: boolean }
+}) {
+    const [logs, setLogs] = useState(initialLogs)
+    const [retryingId, setRetryingId] = useState<string | null>(null)
+
+    if (!restaurantTax.vat_registered) {
+        return (
+            <div className="border border-hairline rounded-3xl p-8 text-center space-y-3 bg-surface-muted/30">
+                <AlertCircle className="w-12 h-12 text-amber-500 mx-auto animate-pulse" />
+                <h3 className="font-extrabold text-sm text-ink">Sync Logs Locked</h3>
+                <p className="text-xs text-ink-subtle max-w-sm mx-auto">
+                    Inland Revenue Department (IRD) billing transmission logs are only generated for VAT registered properties.
+                </p>
+            </div>
+        )
+    }
+
+    const handleRetry = async (id: string) => {
+        setRetryingId(id)
+        try {
+            const res = await retryIrdSyncAction(id)
+            setRetryingId(null)
+            if (res.success) {
+                toast.success('Invoice synchronized successfully!')
+                const refreshRes = await getIrdSyncLogsAction()
+                if (refreshRes.data) {
+                    setLogs(refreshRes.data)
+                }
+            } else if (res.error) {
+                toast.error(res.error)
+            } else {
+                toast.error(res.response || 'Sync failed')
+            }
+        } catch {
+            toast.error('An unexpected error occurred during sync retry')
+            setRetryingId(null)
+        }
+    }
+
+    return (
+        <div className="space-y-4">
+            <DataTable
+                columns={[
+                    { key: 'invoice_number', header: 'Invoice Number', render: (l) => <span className="font-bold text-ink">{l.invoice_number}</span> },
+                    { key: 'total_amount', header: 'Total Amount', align: 'right', render: (l) => fmt(Number(l.total_amount)) },
+                    { key: 'tax_vat', header: 'Taxable / VAT', render: (l) => (
+                        <span className="text-xs text-ink-subtle font-semibold">
+                            Taxable: {fmt(Number(l.taxable_amount))} | VAT: {fmt(Number(l.vat_amount))}
+                        </span>
+                    ) },
+                    { key: 'sync_status', header: 'Sync Status', render: (l) => (
+                        <StatusBadge 
+                            status={l.sync_status === 'synced' ? 'active' : 'closed'} 
+                            label={l.sync_status.toUpperCase()} 
+                        />
+                    ) },
+                    { key: 'synced_at', header: 'Synced At', render: (l) => l.synced_at ? new Date(l.synced_at).toLocaleString() : '—' },
+                    { key: 'response', header: 'CBMS Gateway Response', render: (l) => (
+                        <span className="text-xs text-ink-subtle max-w-[250px] truncate block" title={l.sync_response}>
+                            {l.sync_response || 'Pending response...'}
+                        </span>
+                    ) },
+                ]}
+                rows={logs}
+                rowKey={(l) => l.id}
+                searchKeys={(l) => [l.invoice_number, l.sync_status]}
+                emptyIcon={FileText}
+                emptyTitle="No IRD transmission logs yet"
+                emptyDescription="Live invoice transmissions to the Nepal CBMS server will be logged here."
+                renderActions={(l) => (
+                    <div className="flex items-center justify-end gap-1.5">
+                        {l.sync_status !== 'synced' && (
+                            <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                disabled={retryingId === l.id} 
+                                onClick={() => handleRetry(l.id)}
+                            >
+                                {retryingId === l.id ? 'Retrying...' : 'Retry Sync'}
+                            </Button>
+                        )}
+                    </div>
+                )}
+            />
         </div>
     )
 }

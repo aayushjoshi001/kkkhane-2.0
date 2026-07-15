@@ -5,6 +5,7 @@ import { logAudit } from '@/lib/audit'
 import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense } from '@/lib/ledger'
 import { computeFolioTotal } from '@/lib/folio'
 import { findOrCreateCustomerCreditAccount, postCreditCharge, postLoyaltyEarn, postLoyaltyRedeem } from '@/lib/customerCredit'
+import { syncInvoiceToIrd } from '@/lib/irdSync'
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>
 
@@ -197,7 +198,7 @@ export async function POST(req: Request) {
         // 1. Fetch current restaurant linkage & split settings
         const { data: restaurant } = await supabase
             .from('restaurants')
-            .select('ledger_split_mode, billing_commission_rate, linked_restaurant_id')
+            .select('ledger_split_mode, billing_commission_rate, linked_restaurant_id, vat_registered, vat_number')
             .eq('id', currentUser.restaurantId)
             .single()
 
@@ -288,6 +289,24 @@ export async function POST(req: Request) {
         if (!resObj.success) {
             return NextResponse.json({ error: resObj.error || 'Transaction rolled back' }, { status: 400 })
         }
+
+        // Trigger IRD CBMS Synchronization
+        const isVatRegistered = !!restaurant?.vat_registered
+        const totalAmount = Number(authoritativeTotal) || 0
+        const discountVal = Number(discountAmount) || 0
+        const vatVal = isVatRegistered ? (totalAmount - (totalAmount / 1.13)) : 0
+        const taxableVal = totalAmount - vatVal
+        const invoiceNumber = `INV-HOTEL-${booking_id.split('-')[0].toUpperCase()}`
+
+        void syncInvoiceToIrd(currentUser.restaurantId, {
+            invoiceNumber,
+            buyerName: guestName,
+            buyerPan: null,
+            totalAmount,
+            discountAmount: discountVal,
+            taxableAmount: taxableVal,
+            vatAmount: vatVal
+        })
 
         // 6. Log audit event
         void logAudit({
