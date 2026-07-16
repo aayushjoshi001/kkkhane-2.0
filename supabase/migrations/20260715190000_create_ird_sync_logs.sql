@@ -15,3 +15,14 @@ CREATE TABLE IF NOT EXISTS public.ird_sync_logs (
 
 -- Index for scanning and retrying failed/pending sync logs
 CREATE INDEX IF NOT EXISTS idx_ird_sync_logs_status ON public.ird_sync_logs(restaurant_id, sync_status);
+
+-- Enable RLS
+ALTER TABLE public.ird_sync_logs ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+CREATE POLICY "Enable all actions for authenticated users belonging to the restaurant"
+    ON public.ird_sync_logs FOR ALL
+    TO authenticated
+    USING (restaurant_id = (auth.jwt() ->> 'restaurant_id')::uuid)
+    WITH CHECK (restaurant_id = (auth.jwt() ->> 'restaurant_id')::uuid);
+

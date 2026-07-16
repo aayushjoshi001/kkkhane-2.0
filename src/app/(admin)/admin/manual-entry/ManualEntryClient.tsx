@@ -7,7 +7,7 @@ import {
     PenLine, Banknote, Building2, Receipt, Boxes, HandCoins, Info
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
-import { createVoucherAction, openTodayDayBookSessionAction } from '@/app/(admin)/admin/vouchers/actions'
+import { createVoucherAction, openTodayDayBookSessionAction, getSupplierOutstandingBalanceAction, getStaffCurrentDueAction } from '@/app/(admin)/admin/vouchers/actions'
 import { addStockMovementAction } from '@/app/(admin)/admin/ingredients/actions'
 import type { BankAccount, ExpenseCategory, Supplier } from '@/types/database'
 
@@ -115,11 +115,11 @@ const emptyForms = {
 
 function InputField({ label, ...props }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
     return (
-        <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{label}</label>
+        <div className="space-y-1">
+            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">{label}</label>
             <input
                 {...props}
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00] transition-all"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00] transition-all"
             />
         </div>
     )
@@ -127,11 +127,11 @@ function InputField({ label, ...props }: { label: string } & React.InputHTMLAttr
 
 function SelectField({ label, children, ...props }: { label: string } & React.SelectHTMLAttributes<HTMLSelectElement> & { children: React.ReactNode }) {
     return (
-        <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{label}</label>
+        <div className="space-y-1">
+            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">{label}</label>
             <select
                 {...props}
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00] transition-all cursor-pointer"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00] transition-all cursor-pointer"
             >
                 {children}
             </select>
@@ -162,6 +162,66 @@ export default function ManualEntryClient({
 
     function updateForm<T extends EntryType>(type: T, field: string, value: string) {
         setForms(prev => ({ ...prev, [type]: { ...prev[type], [field]: value } }))
+    }
+
+    const handleSupplierPaymentSelect = (sId: string) => {
+        updateForm('supplier_payment', 'supplier_id', sId)
+        if (!sId) {
+            updateForm('supplier_payment', 'amount', '')
+            updateForm('supplier_payment', 'notes', '')
+            return
+        }
+        const supplierObj = suppliers.find(s => s.id === sId)
+        const sName = supplierObj ? supplierObj.name : ''
+        getSupplierOutstandingBalanceAction(sId).then(res => {
+            if (res.data !== undefined) {
+                setForms(prev => ({
+                    ...prev,
+                    supplier_payment: {
+                        ...prev.supplier_payment,
+                        amount: String(res.data),
+                        notes: `Payment to ${sName} for outstanding bills`
+                    }
+                }))
+                toast.success(`Auto-filled due: Rs. ${res.data}`, { id: 'due-autofill-toast' })
+            }
+        })
+    }
+
+    const handleCashOutDescriptionBlur = (desc: string) => {
+        const query = desc.toLowerCase().trim()
+        if (!query) return
+
+        const keywords: Record<string, string[]> = {
+            'food': ['chicken', 'vegetable', 'rice', 'oil', 'fish', 'meat', 'paneer', 'mutton', 'flour', 'sugar', 'salt', 'spice', 'potato', 'onion', 'milk', 'cheese', 'butter', 'egg', 'grocery', 'sauce', 'cream', 'spices', 'bread', 'yeast', 'bakery', 'tea', 'coffee'],
+            'gas': ['gas', 'cylinder', 'lpg', 'fuel', 'petrol', 'diesel', 'kerosene'],
+            'supplies': ['soap', 'shampoo', 'towel', 'tissue', 'cleaner', 'detergent', 'toilet', 'napkin', 'broom', 'mop', 'harpic', 'sanitizer', 'disinfectant'],
+            'utilities': ['electricity', 'water', 'internet', 'wifi', 'phone', 'bill', 'electricity bill', 'water bill'],
+            'salaries': ['salary', 'wage', 'payroll', 'salary payment', 'bonus', 'staff', 'salary staff'],
+            'marketing': ['facebook', 'ads', 'marketing', 'poster', 'banner', 'flyer', 'ad'],
+        }
+
+        for (const [catName, words] of Object.entries(keywords)) {
+            if (words.some(w => query.includes(w))) {
+                const matchedCat = expenseCategories.find(c => 
+                    c.name.toLowerCase().includes(catName.toLowerCase()) || 
+                    catName.toLowerCase().includes(c.name.toLowerCase())
+                )
+                if (matchedCat) {
+                    setForms(prev => ({
+                        ...prev,
+                        cash_out: {
+                            ...prev.cash_out,
+                            expense_category_id: matchedCat.id
+                        }
+                    }))
+                    toast.success(`Auto-selected Expense Category: ${matchedCat.name}`, {
+                        id: 'cash-out-auto-category-toast'
+                    })
+                    break
+                }
+            }
+        }
     }
 
     function selectCard(type: EntryType) {
@@ -421,7 +481,7 @@ export default function ManualEntryClient({
                             </div>
 
                             {/* Form Body */}
-                            <div className="p-5 space-y-4">
+                            <div className="p-5 space-y-3">
                                     {/* ── CASH IN ── */}
                                     {activeType === 'cash_in' && (
                                         <>
@@ -509,6 +569,7 @@ export default function ManualEntryClient({
                                                 placeholder="What is this payment for?"
                                                 value={forms.cash_out.description}
                                                 onChange={e => updateForm('cash_out', 'description', e.target.value)}
+                                                onBlur={e => handleCashOutDescriptionBlur(e.target.value)}
                                             />
                                         </>
                                     )}
@@ -661,7 +722,7 @@ export default function ManualEntryClient({
                                             <SelectField
                                                 label="Supplier"
                                                 value={forms.supplier_payment.supplier_id}
-                                                onChange={e => updateForm('supplier_payment', 'supplier_id', e.target.value)}
+                                                onChange={e => handleSupplierPaymentSelect(e.target.value)}
                                             >
                                                 <option value="">Select supplier...</option>
                                                 {suppliers.map(s => (

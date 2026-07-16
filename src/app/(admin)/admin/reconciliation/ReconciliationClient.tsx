@@ -66,6 +66,25 @@ export default function ReconciliationClient({
 
     useEffect(() => {
         setMounted(true)
+        
+        // Load partner session from localStorage if present
+        const savedToken = localStorage.getItem(`partner_session_token_${restaurant.id}`)
+        const savedExpires = localStorage.getItem(`partner_session_expires_${restaurant.id}`)
+        
+        if (savedToken && savedExpires) {
+            const expiresDate = new Date(savedExpires)
+            if (expiresDate > new Date()) {
+                setActiveSessionToken(savedToken)
+                setSessionExpires(savedExpires)
+                setLoadingPartnerData(true)
+                fetchPartnerMetrics(savedToken).finally(() => {
+                    setLoadingPartnerData(false)
+                })
+            } else {
+                localStorage.removeItem(`partner_session_token_${restaurant.id}`)
+                localStorage.removeItem(`partner_session_expires_${restaurant.id}`)
+            }
+        }
     }, [])
 
     // Link Request State
@@ -103,6 +122,10 @@ export default function ReconciliationClient({
     const handleSendRequest = async () => {
         if (!selectedPartnerId) {
             toast.error('Please select a partner property.')
+            return
+        }
+        if (selectedPartnerId === restaurant.id) {
+            toast.error('You cannot link to your own property.')
             return
         }
         setIsRequesting(true)
@@ -259,6 +282,8 @@ export default function ReconciliationClient({
             } else {
                 setActiveSessionToken(data.sessionToken)
                 setSessionExpires(data.expiresAt)
+                localStorage.setItem(`partner_session_token_${restaurant.id}`, data.sessionToken)
+                localStorage.setItem(`partner_session_expires_${restaurant.id}`, data.expiresAt)
                 toast.success('Partner analytics session authorized!')
                 await fetchPartnerMetrics(data.sessionToken)
             }
@@ -269,7 +294,7 @@ export default function ReconciliationClient({
         }
     }
 
-    const fetchPartnerMetrics = async (token: string) => {
+    async function fetchPartnerMetrics(token: string) {
         try {
             const res = await fetch('/api/tenants/analytics/metrics', {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -277,6 +302,10 @@ export default function ReconciliationClient({
             const data = await res.json()
             if (data.error) {
                 toast.error(data.error)
+                setActiveSessionToken(null)
+                setSessionExpires(null)
+                localStorage.removeItem(`partner_session_token_${restaurant.id}`)
+                localStorage.removeItem(`partner_session_expires_${restaurant.id}`)
             } else {
                 setPartnerData(data)
             }
@@ -297,6 +326,11 @@ export default function ReconciliationClient({
             if (data.error) {
                 toast.error(data.error)
             } else {
+                localStorage.removeItem(`partner_session_token_${restaurant.id}`)
+                localStorage.removeItem(`partner_session_expires_${restaurant.id}`)
+                setActiveSessionToken(null)
+                setSessionExpires(null)
+                setPartnerData(null)
                 toast.success('Partner property unlinked successfully')
                 router.refresh()
             }
@@ -373,6 +407,9 @@ export default function ReconciliationClient({
                                     placeholder="Enter 36-character partner UUID..."
                                     className="w-full px-4 py-3 bg-surface border border-hairline rounded-2xl text-xs font-mono font-bold outline-none focus:border-primary transition"
                                 />
+                                {selectedPartnerId === restaurant.id && (
+                                    <span className="text-[10px] text-red-500 font-semibold block mt-1">You cannot link to your own property.</span>
+                                )}
                             </div>
                             <Button 
                                 onClick={handleSendRequest}

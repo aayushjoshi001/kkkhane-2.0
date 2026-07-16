@@ -18,6 +18,9 @@ const PATH = '/admin/reconciliation'
 export async function sendLinkRequestAction(receiverId: string) {
     try {
         const user = await requireManager()
+        if (receiverId === user.restaurantId) {
+            return { error: 'You cannot link to your own property.' }
+        }
         const supabase = await createAdminClient()
 
         // Verify receiver exists
@@ -53,6 +56,7 @@ export async function sendLinkRequestAction(receiverId: string) {
         revalidatePath(PATH)
         return { success: true }
     } catch (e) {
+        if (e instanceof Error && (e.message === 'NEXT_REDIRECT' || (e as any).digest?.startsWith('NEXT_REDIRECT'))) throw e;
         return { error: e instanceof Error ? e.message : 'Failed to send link request' }
     }
 }
@@ -118,6 +122,7 @@ export async function acceptLinkRequestAction(requestId: string) {
         revalidatePath(PATH)
         return { success: true }
     } catch (e) {
+        if (e instanceof Error && (e.message === 'NEXT_REDIRECT' || (e as any).digest?.startsWith('NEXT_REDIRECT'))) throw e;
         return { error: e instanceof Error ? e.message : 'Failed to accept link request' }
     }
 }
@@ -138,6 +143,7 @@ export async function rejectLinkRequestAction(requestId: string) {
         revalidatePath(PATH)
         return { success: true }
     } catch (e) {
+        if (e instanceof Error && (e.message === 'NEXT_REDIRECT' || (e as any).digest?.startsWith('NEXT_REDIRECT'))) throw e;
         return { error: e instanceof Error ? e.message : 'Failed to reject request' }
     }
 }
@@ -165,6 +171,7 @@ export async function updateLinkSettingsAction(settings: {
         revalidatePath(PATH)
         return { success: true }
     } catch (e) {
+        if (e instanceof Error && (e.message === 'NEXT_REDIRECT' || (e as any).digest?.startsWith('NEXT_REDIRECT'))) throw e;
         return { error: e instanceof Error ? e.message : 'Failed to update link settings' }
     }
 }
