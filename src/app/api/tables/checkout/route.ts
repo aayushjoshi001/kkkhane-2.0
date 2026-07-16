@@ -5,6 +5,7 @@ import { logAudit } from '@/lib/audit'
 import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense } from '@/lib/ledger'
 import { findOrCreateCustomerCreditAccount, postCreditCharge, postLoyaltyEarn, postLoyaltyRedeem } from '@/lib/customerCredit'
 import { markTableDirtyForSession } from '@/lib/tableLifecycle'
+import { syncInvoiceToIrd } from '@/lib/irdSync'
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>
 type OrderRow = { id: string; total_amount: number }
@@ -104,6 +105,12 @@ export async function POST(req: Request) {
         }
 
         const supabase = await createAdminClient()
+
+        const { data: restaurant } = await supabase
+            .from('restaurants')
+            .select('vat_registered')
+            .eq('id', currentUser.restaurantId)
+            .single()
 
         // 0. Fetch the session (with its table label) to confirm it belongs to
         // this restaurant before touching anything.
@@ -293,6 +300,24 @@ export async function POST(req: Request) {
                 customer_name: creditAmount > 0 ? customerName : null,
                 customer_phone: creditAmount > 0 ? customerPhone : null,
             },
+        })
+
+        // Trigger IRD CBMS Synchronization
+        const isVatRegistered = !!restaurant?.vat_registered
+        const totalAmount = Number(authoritativeTotal) || 0
+        const discountVal = Number(discountAmount) || 0
+        const vatVal = isVatRegistered ? (totalAmount - (totalAmount / 1.13)) : 0
+        const taxableVal = totalAmount - vatVal
+        const invoiceNumber = `INV-DINE-${session_id.split('-')[0].toUpperCase()}`
+
+        void syncInvoiceToIrd(currentUser.restaurantId, {
+            invoiceNumber,
+            buyerName: customerName || 'Walk-in Guest',
+            buyerPan: null,
+            totalAmount,
+            discountAmount: discountVal,
+            taxableAmount: taxableVal,
+            vatAmount: vatVal
         })
 
         return NextResponse.json({ success: true, total: authoritativeTotal, subtotal })

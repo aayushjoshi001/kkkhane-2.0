@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { logAudit } from '@/lib/audit'
+import { syncInvoiceToIrd } from '@/lib/irdSync'
 
 export async function refundOrderAction(
     orderId: string,
@@ -58,6 +59,32 @@ export async function refundOrderAction(
         .eq('id', orderId)
 
     if (updateError) return { error: updateError.message }
+
+    // Trigger IRD CBMS Credit Note Sync on refund
+    const { data: rest } = await supabase
+        .from('restaurants')
+        .select('vat_registered')
+        .eq('id', order.restaurant_id)
+        .single()
+
+    if (rest?.vat_registered) {
+        const isVatRegistered = true
+        const vatRate = 13
+        const negativeAmount = -amount
+        const negativeVatVal = isVatRegistered ? (negativeAmount - (negativeAmount / 1.13)) : 0
+        const negativeTaxableVal = negativeAmount - negativeVatVal
+        const creditNoteNumber = `CN-DINE-${orderId.split('-')[0].toUpperCase()}`
+
+        void syncInvoiceToIrd(order.restaurant_id, {
+            invoiceNumber: creditNoteNumber,
+            buyerName: 'Refunded Guest',
+            buyerPan: null,
+            totalAmount: negativeAmount,
+            discountAmount: 0,
+            taxableAmount: negativeTaxableVal,
+            vatAmount: negativeVatVal
+        })
+    }
 
     void logAudit({
         restaurantId: order.restaurant_id,
