@@ -19,6 +19,17 @@ export default async function BookingsPage() {
     let activeOrders: BillingOrder[] = []
 
     try {
+        const { data: restData } = await adminSupabase
+            .from('restaurants')
+            .select('linked_restaurant_id')
+            .eq('id', restaurantId)
+            .maybeSingle()
+
+        const targetRestaurantIds = [restaurantId]
+        if (restData?.linked_restaurant_id) {
+            targetRestaurantIds.push(restData.linked_restaurant_id)
+        }
+
         const [bookingsRes, roomsRes, tablesRes, activeSessionsRes, activeOrdersRes] = await Promise.all([
             adminSupabase
                 .from('bookings')
@@ -48,7 +59,7 @@ export default async function BookingsPage() {
                     sessions ( id, tables ( label ) ),
                     order_items ( id, quantity, status, unit_price, menu_items ( name ) )
                 `)
-                .eq('restaurant_id', restaurantId)
+                .in('restaurant_id', targetRestaurantIds)
                 // Every unpaid, non-cancelled order still owed on this room's bill -
                 // not just ones still in the kitchen workflow. A 'delivered' order
                 // that hasn't been paid yet used to be silently excluded here, making
