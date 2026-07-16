@@ -9,6 +9,7 @@ import { Plus, Edit2, Trash2, GripVertical, Check, X, Tag, Loader2, Image as Ima
 import type { MenuCategory, MenuItem, Ingredient, StationKind } from '@/types/database'
 import { STATIONS, STATION_META, resolveStation } from '@/lib/stations'
 import { createClient } from '@/lib/supabase/client'
+import { useFileDrop } from '@/lib/hooks/useFileDrop'
 import {
     addCategoryAction, updateCategoryAction, deleteCategoryAction,
     addItemAction, updateItemAction, deleteItemAction,
@@ -28,6 +29,20 @@ type TranslationRow = { language_code: string; entity_type: string; entity_id: s
 // Monotonic counter for unique upload paths. Avoids crypto.randomUUID (unavailable
 // on non-HTTPS LAN origins) and Date.now/Math.random (flagged by react-hooks/purity).
 let uploadSeq = 0
+
+// The limit the upload zones promise the user ("up to 5MB").
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+// The file picker filters by accept="image/*", but a drag-and-drop doesn't —
+// anything the OS lets you drag lands here, so the check has to happen in code.
+// Returns a message to show the user, or null when the file is fine.
+function imageFileError(file: File): string | null {
+    if (!file.type.startsWith('image/')) return 'That file isn’t an image. Try a JPG, PNG, or WEBP.'
+    if (file.size > MAX_IMAGE_BYTES) {
+        return `That image is ${(file.size / 1024 / 1024).toFixed(1)}MB. The limit is 5MB.`
+    }
+    return null
+}
 
 export default function MenuManager({
     initialCategories,
@@ -195,6 +210,8 @@ export default function MenuManager({
 
     // --- Image Upload Handlers ---
     const uploadToStorage = async (file: File): Promise<string | null> => {
+        const invalid = imageFileError(file)
+        if (invalid) throw new Error(invalid)
         const supabase = createClient()
         const ext = file.name.split('.').pop()
         const path = `${restaurantId}/${file.lastModified}-${uploadSeq++}.${ext}`
@@ -240,6 +257,12 @@ export default function MenuManager({
             setCategoryImageUploading(false)
         }
     }
+
+    // Drop targets for the two full-size image zones. The variation thumbnails
+    // are 64px squares — too small to be a sensible drop target, so they stay
+    // click-to-browse.
+    const itemImageDrop = useFileDrop(uploadMenuImage, { disabled: imageUploading })
+    const categoryImageDrop = useFileDrop(uploadCategoryImage, { disabled: categoryImageUploading })
 
     // --- Item Handlers ---
     const openItemModal = async (item?: MenuItem) => {
@@ -707,23 +730,37 @@ export default function MenuManager({
                             <div>
                                 <label className="block text-small font-bold text-ink mb-1.5">Category Image (Optional)</label>
                                 {categoryImageUrl ? (
-                                    <div className="relative rounded-[var(--r-md)] overflow-hidden border border-hairline bg-surface-muted h-32 group/cat shadow-inner">
+                                    <div
+                                        {...categoryImageDrop.dropProps}
+                                        className={`relative rounded-[var(--r-md)] overflow-hidden bg-surface-muted h-32 group/cat shadow-inner border transition-shadow ${categoryImageDrop.isOver ? 'border-brand-500 ring-4 ring-brand-500/20' : 'border-hairline'}`}
+                                    >
                                         <Image src={categoryImageUrl} alt="Category" fill sizes="400px" className="object-cover" />
-                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/cat:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-sm">
-                                            <label className="bg-surface text-ink text-xs font-bold px-4 py-2 rounded-[var(--r-md)] shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 cursor-pointer hover:-translate-y-0.5">
-                                                <input type="file" accept="image/*" className="sr-only" disabled={categoryImageUploading} onChange={e => { const f = e.target.files?.[0]; if (f) uploadCategoryImage(f); e.target.value = '' }} />
-                                                <Upload size={14} /> Change
-                                            </label>
-                                            <button type="button" onClick={() => setCategoryImageUrl('')} className="bg-danger-bg text-danger-fg text-xs font-bold px-4 py-2 rounded-[var(--r-md)] shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 hover:-translate-y-0.5">
-                                                <X size={14} /> Remove
-                                            </button>
-                                        </div>
+                                        {categoryImageDrop.isOver ? (
+                                            <div className="absolute inset-0 bg-brand-500/80 backdrop-blur-sm flex items-center justify-center gap-2 text-white text-xs font-bold pointer-events-none">
+                                                <Upload size={14} /> Drop to replace
+                                            </div>
+                                        ) : (
+                                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/cat:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-sm">
+                                                <label className="bg-surface text-ink text-xs font-bold px-4 py-2 rounded-[var(--r-md)] shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 cursor-pointer hover:-translate-y-0.5">
+                                                    <input type="file" accept="image/*" className="sr-only" disabled={categoryImageUploading} onChange={e => { const f = e.target.files?.[0]; if (f) uploadCategoryImage(f); e.target.value = '' }} />
+                                                    <Upload size={14} /> Change
+                                                </label>
+                                                <button type="button" onClick={() => setCategoryImageUrl('')} className="bg-danger-bg text-danger-fg text-xs font-bold px-4 py-2 rounded-[var(--r-md)] shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 hover:-translate-y-0.5">
+                                                    <X size={14} /> Remove
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 ) : (
-                                    <label className="w-full border-2 border-dashed border-hairline rounded-[var(--r-md)] h-32 flex flex-col items-center justify-center gap-2 text-ink-subtle hover:border-brand-400 hover:text-brand-500 hover:bg-brand-50 transition-colors cursor-pointer">
+                                    <label
+                                        {...categoryImageDrop.dropProps}
+                                        className={`w-full border-2 border-dashed rounded-[var(--r-md)] h-32 flex flex-col items-center justify-center gap-2 transition-colors cursor-pointer ${categoryImageDrop.isOver ? 'border-brand-500 bg-brand-50 text-brand-500' : 'border-hairline text-ink-subtle hover:border-brand-400 hover:text-brand-500 hover:bg-brand-50'}`}
+                                    >
                                         <input type="file" accept="image/*" className="sr-only" disabled={categoryImageUploading} onChange={e => { const f = e.target.files?.[0]; if (f) uploadCategoryImage(f); e.target.value = '' }} />
                                         {categoryImageUploading ? <Loader2 size={24} className="animate-spin" /> : <ImageIcon size={24} />}
-                                        <span className="text-xs font-bold">{categoryImageUploading ? 'Uploading…' : 'Click to upload photo'}</span>
+                                        <span className="text-xs font-bold">
+                                            {categoryImageUploading ? 'Uploading…' : categoryImageDrop.isOver ? 'Drop to upload' : 'Drag a photo here, or click to browse'}
+                                        </span>
                                     </label>
                                 )}
                             </div>
@@ -865,26 +902,44 @@ export default function MenuManager({
                                             type="file"
                                             accept="image/*"
                                             className="sr-only"
-                                            onChange={e => { const f = e.target.files?.[0]; if (f) uploadMenuImage(f) }}
+                                            onChange={e => { const f = e.target.files?.[0]; if (f) uploadMenuImage(f); e.target.value = '' }}
                                         />
                                         {itemFormData.image_url ? (
-                                            <div className="relative rounded-[var(--r-md)] overflow-hidden border border-hairline bg-surface-muted shadow-inner group/img" style={{ height: 160 }}>
+                                            <div
+                                                {...itemImageDrop.dropProps}
+                                                className={`relative rounded-[var(--r-md)] overflow-hidden bg-surface-muted shadow-inner group/img border transition-shadow ${itemImageDrop.isOver ? 'border-brand-500 ring-4 ring-brand-500/20' : 'border-hairline'}`}
+                                                style={{ height: 160 }}
+                                            >
                                                 <Image src={itemFormData.image_url} alt="Preview" fill sizes="400px" className="object-cover" />
-                                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-sm">
-                                                    <button type="button" onClick={() => imageInputRef.current?.click()} className="bg-surface text-ink text-xs font-bold px-4 py-2 rounded-[var(--r-md)] shadow-sm flex items-center gap-1.5 hover:-translate-y-0.5 transition-transform">
-                                                        <Upload size={14} /> Change
-                                                    </button>
-                                                    <button type="button" onClick={() => setItemFormData(prev => ({ ...prev, image_url: '' }))} className="bg-danger-bg text-danger-fg text-xs font-bold px-4 py-2 rounded-[var(--r-md)] shadow-sm flex items-center gap-1.5 hover:-translate-y-0.5 transition-transform">
-                                                        <X size={14} /> Remove
-                                                    </button>
-                                                </div>
+                                                {itemImageDrop.isOver ? (
+                                                    <div className="absolute inset-0 bg-brand-500/80 backdrop-blur-sm flex items-center justify-center gap-2 text-white text-sm font-bold pointer-events-none">
+                                                        <Upload size={16} /> Drop to replace
+                                                    </div>
+                                                ) : (
+                                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-sm">
+                                                        <button type="button" onClick={() => imageInputRef.current?.click()} className="bg-surface text-ink text-xs font-bold px-4 py-2 rounded-[var(--r-md)] shadow-sm flex items-center gap-1.5 hover:-translate-y-0.5 transition-transform">
+                                                            <Upload size={14} /> Change
+                                                        </button>
+                                                        <button type="button" onClick={() => setItemFormData(prev => ({ ...prev, image_url: '' }))} className="bg-danger-bg text-danger-fg text-xs font-bold px-4 py-2 rounded-[var(--r-md)] shadow-sm flex items-center gap-1.5 hover:-translate-y-0.5 transition-transform">
+                                                            <X size={14} /> Remove
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
                                         ) : (
-                                            <button type="button" onClick={() => imageInputRef.current?.click()} disabled={imageUploading} className="w-full border-2 border-dashed border-hairline rounded-[var(--r-md)] h-36 flex flex-col items-center justify-center gap-3 text-ink-subtle hover:border-brand-400 hover:text-brand-500 hover:bg-brand-50 transition-colors disabled:opacity-50 focus-ring">
+                                            <button
+                                                type="button"
+                                                onClick={() => imageInputRef.current?.click()}
+                                                disabled={imageUploading}
+                                                {...itemImageDrop.dropProps}
+                                                className={`w-full border-2 border-dashed rounded-[var(--r-md)] h-36 flex flex-col items-center justify-center gap-3 transition-colors disabled:opacity-50 focus-ring ${itemImageDrop.isOver ? 'border-brand-500 bg-brand-50 text-brand-500' : 'border-hairline text-ink-subtle hover:border-brand-400 hover:text-brand-500 hover:bg-brand-50'}`}
+                                            >
                                                 {imageUploading ? <Loader2 size={28} className="animate-spin" /> : <ImageIcon size={28} />}
                                                 <div className="flex flex-col items-center gap-1">
-                                                    <span className="text-sm font-bold">{imageUploading ? 'Uploading…' : 'Click to upload photo'}</span>
-                                                    {!imageUploading && <span className="text-xs text-ink-subtle">JPG, PNG, WEBP up to 5MB</span>}
+                                                    <span className="text-sm font-bold">
+                                                        {imageUploading ? 'Uploading…' : itemImageDrop.isOver ? 'Drop to upload' : 'Drag a photo here, or click to browse'}
+                                                    </span>
+                                                    {!imageUploading && !itemImageDrop.isOver && <span className="text-xs text-ink-subtle">JPG, PNG, WEBP up to 5MB</span>}
                                                 </div>
                                             </button>
                                         )}
