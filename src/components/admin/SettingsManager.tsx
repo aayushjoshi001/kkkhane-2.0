@@ -33,6 +33,48 @@ type RestaurantSettings = {
 
 type Features = Settings['features_v2']
 
+const CURRENCY_MAP: Record<string, string> = {
+    NPR: 'Rs.',
+    USD: '$',
+    EUR: '€',
+    INR: '₹',
+    GBP: '£',
+    JPY: '¥',
+    AUD: '$',
+    CAD: '$',
+    SGD: '$',
+    NZD: '$',
+    HKD: '$',
+    CNY: '¥',
+    AED: 'د.إ',
+    SAR: 'ر.س',
+    QAR: 'ر.ق',
+    KWD: 'د.ك',
+    BHD: '.د.ب',
+    OMR: 'ر.ع.',
+    MYR: 'RM',
+    THB: '฿',
+    KRW: '₩',
+    RUB: '₽',
+}
+
+const SYMBOL_MAP: Record<string, string> = {
+    'Rs.': 'NPR',
+    'Rs': 'NPR',
+    '$': 'USD',
+    '€': 'EUR',
+    '₹': 'INR',
+    '£': 'GBP',
+    '¥': 'JPY',
+    'د.إ': 'AED',
+    'ر.س': 'SAR',
+    'ر.ق': 'QAR',
+    'RM': 'MYR',
+    '฿': 'THB',
+    '₩': 'KRW',
+    '₽': 'RUB',
+}
+
 const WEEKDAYS: { key: string; label: string }[] = [
     { key: 'monday', label: 'Monday' },
     { key: 'tuesday', label: 'Tuesday' },
@@ -67,25 +109,31 @@ export default function SettingsManager({
     canEdit: boolean
 }) {
     const [formData, setFormData] = useState<RestaurantSettings>(initialRestaurant)
-    const [features, setFeatures] = useState<Features>(initialFeatures || {
-        loyaltyEnabled: false,
-        promosEnabled: true,
-        takeoutEnabled: false,
-        multiLanguageEnabled: false,
-        serviceRequestsEnabled: true,
-        splitBillingEnabled: true,
-        dynamicPricingEnabled: false,
-        ingredientTrackingEnabled: false,
-        staffShiftsEnabled: false,
-        defaultTaxRate: 13.0,
-        currency: 'NPR',
-        currencySymbol: 'Rs.',
-        nepalPayEnabled: false,
-        vatEnabled: false,
-        phoneOtpEnabled: false,
-        bsDateEnabled: false,
-        feedbackEnabled: true,
-        dineInEnabled: true,
+    const [features, setFeatures] = useState<Features>(() => {
+        const base = initialFeatures || {}
+        return {
+            loyaltyEnabled: false,
+            promosEnabled: true,
+            takeoutEnabled: false,
+            multiLanguageEnabled: false,
+            serviceRequestsEnabled: true,
+            splitBillingEnabled: true,
+            dynamicPricingEnabled: false,
+            ingredientTrackingEnabled: false,
+            staffShiftsEnabled: false,
+            defaultTaxRate: 13.0,
+            currency: 'NPR',
+            currencySymbol: 'Rs.',
+            nepalPayEnabled: false,
+            vatEnabled: false,
+            phoneOtpEnabled: false,
+            bsDateEnabled: false,
+            feedbackEnabled: true,
+            dineInEnabled: true,
+            printInvoiceEnabled: true,
+            generateInvoiceEnabled: true,
+            ...base
+        }
     })
     const [taxRateStr, setTaxRateStr] = useState((initialRestaurant.tax_rate ?? 13).toString())
     const [businessHours, setBusinessHours] = useState<BusinessHours>(() => buildBusinessHours(initialBusinessHours))
@@ -503,7 +551,15 @@ export default function SettingsManager({
                                 value={features.currency || ''}
                                 onChange={e => {
                                     const value = e.target.value
-                                    setFeatures(prev => ({ ...prev, currency: value }))
+                                    setFeatures(prev => {
+                                        const code = value.toUpperCase()
+                                        const guessedSymbol = CURRENCY_MAP[code]
+                                        return {
+                                            ...prev,
+                                            currency: value,
+                                            ...(guessedSymbol ? { currencySymbol: guessedSymbol } : {})
+                                        }
+                                    })
                                 }}
                                 disabled={!canEdit || isSubmitting}
                                 maxLength={3}
@@ -524,7 +580,14 @@ export default function SettingsManager({
                                 value={features.currencySymbol || ''}
                                 onChange={e => {
                                     const value = e.target.value
-                                    setFeatures(prev => ({ ...prev, currencySymbol: value }))
+                                    setFeatures(prev => {
+                                        const guessedCode = SYMBOL_MAP[value]
+                                        return {
+                                            ...prev,
+                                            currencySymbol: value,
+                                            ...(guessedCode ? { currency: guessedCode } : {})
+                                        }
+                                    })
                                 }}
                                 disabled={!canEdit || isSubmitting}
                                 maxLength={5}
@@ -769,6 +832,8 @@ export default function SettingsManager({
                         { key: 'phoneOtpEnabled' as const, label: 'Phone OTP Login', desc: 'Allow phone number login via SMS OTP' },
                         { key: 'multiLanguageEnabled' as const, label: 'Multi-Language', desc: 'Menu in multiple languages' },
                         { key: 'bsDateEnabled' as const, label: 'Bikram Sambat Date', desc: 'Show BS calendar dates' },
+                        { key: 'generateInvoiceEnabled' as const, label: 'Generate Invoice', desc: 'Allow cashier POS or room billing to settle checkouts and generate invoices' },
+                        { key: 'printInvoiceEnabled' as const, label: 'Print Invoice', desc: 'Allow printing invoices or previewing bills at checkout (disable to skip printing entirely)' },
                     ]).map(({ key, label, desc }) => (
                         <button
                             key={key}
