@@ -28,6 +28,8 @@ const defaultFeatures: Features = {
     bsDateEnabled: false,
     feedbackEnabled: true,
     financeEnabled: false,
+    printInvoiceEnabled: true,
+    generateInvoiceEnabled: true,
 }
 
 const FeatureContext = createContext<Features>(defaultFeatures)
@@ -50,7 +52,20 @@ export function useFeatures(): Features {
  */
 export function useFeatureEnabled(key: keyof Omit<Features, 'defaultTaxRate' | 'currency' | 'currencySymbol'>): boolean {
     const features = useFeatures()
-    return !!features[key]
+    const val = features[key]
+    if (val === undefined) {
+        const defaultTrueKeys: string[] = [
+            'promosEnabled',
+            'feedbackEnabled',
+            'dineInEnabled',
+            'serviceRequestsEnabled',
+            'splitBillingEnabled',
+            'printInvoiceEnabled',
+            'generateInvoiceEnabled'
+        ]
+        return defaultTrueKeys.includes(key)
+    }
+    return !!val
 }
 
 /**

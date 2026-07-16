@@ -370,6 +370,8 @@ export interface Settings {
         roomServiceCallEnabled?: boolean
         // Reception / room-service phone the "Call for Service" button dials.
         receptionPhone?: string | null
+        printInvoiceEnabled?: boolean
+        generateInvoiceEnabled?: boolean
     }
     business_hours: BusinessHours | null
     updated_at: string

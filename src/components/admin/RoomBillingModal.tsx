@@ -11,6 +11,7 @@ import { usePrinter } from '@/lib/print/usePrinter'
 import { buildInvoiceTicket, type ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
+import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 
 /** Table shape the admin room pages pass in (with its active QR session, if any). */
 export interface BillingTable {
@@ -105,6 +106,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const [showSettlementConfirm, setShowSettlementConfirm] = useState(false)
     const qrCodes = useQrCodes()
     const [isSaving, setIsSaving] = useState(false)
+    const printInvoiceEnabled = useFeatureEnabled('printInvoiceEnabled')
+    const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     // True once the checkout API confirms the room is settled — printing
     // happens after this, so the manager sees "Settled" immediately instead
     // of waiting on a printer that may be slow or not configured.
@@ -303,7 +306,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
 
             // Printing runs after the bill is already settled in the database,
             // so a slow/unconfigured printer never blocks the checkout itself.
-            if (invoiceData) {
+            if (invoiceData && printInvoiceEnabled) {
                 const printResult = await printInvoice(buildInvoiceTicket(invoiceData, money))
                 if (!printResult.ok) {
                     toast.error(
@@ -645,20 +648,28 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                             >
                                                 Close
                                             </button>
-                                            <button
-                                                onClick={() => window.print()}
-                                                className="px-4 py-2 border border-gray-200 rounded-xl text-xs font-semibold hover:bg-gray-50 transition"
-                                            >
-                                                Print Bill
-                                            </button>
-                                            <button
-                                                onClick={handleSettleClick}
-                                                disabled={isSaving || discountInvalid || (discountAmount > 0 && !bargainReason.trim())}
-                                                className="px-6 py-2 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-[#ff5a00]/10 disabled:opacity-50 flex items-center gap-1.5"
-                                            >
-                                                {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
-                                                Settle & Checkout
-                                            </button>
+                                            {printInvoiceEnabled && (
+                                                <button
+                                                    onClick={() => window.print()}
+                                                    className="px-4 py-2 border border-gray-200 rounded-xl text-xs font-semibold hover:bg-gray-50 transition"
+                                                >
+                                                    Print Bill
+                                                </button>
+                                            )}
+                                            {!generateInvoiceEnabled ? (
+                                                <div className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-1.5 flex items-center">
+                                                    Invoice generation disabled
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={handleSettleClick}
+                                                    disabled={isSaving || discountInvalid || (discountAmount > 0 && !bargainReason.trim())}
+                                                    className="px-6 py-2 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-[#ff5a00]/10 disabled:opacity-50 flex items-center gap-1.5"
+                                                >
+                                                    {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
+                                                    Settle & Checkout
+                                                </button>
+                                            )}
                                         </>
                                     )}
                                 </div>

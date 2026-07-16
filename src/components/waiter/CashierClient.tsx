@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { markDeliveredAndCashPaid } from '@/app/(staff)/waiter/order-actions'
 import { updateTakeoutStatusAction } from '@/app/(admin)/admin/takeout/actions'
-import { useCurrency } from '@/lib/contexts/FeatureContext'
+import { useCurrency, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
 import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent } from 'lucide-react'
 import PaymentVerificationFeed, { type PaymentClaim } from './PaymentVerificationFeed'
@@ -103,6 +103,8 @@ export default function CashierClient({
     const router = useRouter()
     const [unpaid, setUnpaid] = useState<UnpaidOrder[]>(initialUnpaid)
     const money = useCurrency()
+    const printInvoiceEnabled = useFeatureEnabled('printInvoiceEnabled')
+    const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     const { print: printInvoice } = usePrinter('invoice')
     const [active, setActive] = useState<ActiveOrder[]>(initialActive)
     const [processingId, setProcessingId] = useState<string | null>(null)
@@ -706,14 +708,16 @@ export default function CashierClient({
             // since a thermal roll on a driverless raw queue can't be rasterized
             // by the browser anyway, and that just surfaced a confusing
             // "printer not available" dialog after a bill was already settled.
-            const printResult = await printInvoice(buildInvoiceTicket(activeInvoice, money))
-            if (!printResult.ok) {
-                toast.error(
-                    printResult.status === 'no-printer-selected'
-                        ? 'Bill settled, but no printer is set for this till — pick one in Printer Settings.'
-                        : 'Bill settled, but the printer isn’t connected — opening browser print instead.'
-                )
-                if (printResult.status !== 'no-printer-selected') window.print()
+            if (printInvoiceEnabled) {
+                const printResult = await printInvoice(buildInvoiceTicket(activeInvoice, money))
+                if (!printResult.ok) {
+                    toast.error(
+                        printResult.status === 'no-printer-selected'
+                            ? 'Bill settled, but no printer is set for this till — pick one in Printer Settings.'
+                            : 'Bill settled, but the printer isn’t connected — opening browser print instead.'
+                    )
+                    if (printResult.status !== 'no-printer-selected') window.print()
+                }
             }
 
             setActiveInvoice(null)
@@ -1789,16 +1793,22 @@ export default function CashierClient({
                                                         <span className="text-[10px] font-bold text-ink-subtle uppercase">{advancePaid > 0 ? 'Balance Due' : 'Total Due'}</span>
                                                         <p className="text-2xl font-black text-brand-600 tabular-nums">{money(balanceDue)}</p>
                                                     </div>
-                                                    <div className="flex gap-2">
-                                                        <Button variant="secondary" onClick={() => setSelectedBillingRoom(null)}>Close</Button>
-                                                        <Button
-                                                            variant="primary"
-                                                            onClick={() => compileInvoice('room', selectedBillingRoom)}
-                                                            className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs"
-                                                        >
-                                                            Generate Invoice
-                                                        </Button>
-                                                    </div>
+                                                    <div className="flex gap-2 items-center">
+                                                         <Button variant="secondary" onClick={() => setSelectedBillingRoom(null)}>Close</Button>
+                                                         {!generateInvoiceEnabled ? (
+                                                             <div className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-1.5 animate-pulse-once">
+                                                                 Invoice generation disabled
+                                                             </div>
+                                                         ) : (
+                                                             <Button
+                                                                 variant="primary"
+                                                                 onClick={() => compileInvoice('room', selectedBillingRoom)}
+                                                                 className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                             >
+                                                                 Generate Invoice
+                                                             </Button>
+                                                         )}
+                                                     </div>
                                                 </div>
                                             </>
                                         )
@@ -2056,19 +2066,25 @@ export default function CashierClient({
                                             <span className="text-[10px] font-bold text-ink-subtle uppercase">Total session bill</span>
                                             <p className="text-2xl font-black text-brand-600 tabular-nums">{money(tableTotal)}</p>
                                         </div>
-                                        <div className="flex gap-2">
+                                        <div className="flex gap-2 items-center">
                                             <Button variant="secondary" onClick={() => setSelectedBillingTable(null)}>Close</Button>
-                                            <Button
-                                                variant="primary"
-                                                disabled={
-                                                    tableDiscountInvalid ||
-                                                    (tableDiscountAmount > 0 && !tableBargainReason.trim())
-                                                }
-                                                onClick={() => compileInvoice('table', selectedBillingTable)}
-                                                className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs"
-                                            >
-                                                Generate Invoice
-                                            </Button>
+                                            {!generateInvoiceEnabled ? (
+                                                <div className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-1.5 animate-pulse-once">
+                                                    Invoice generation disabled
+                                                </div>
+                                            ) : (
+                                                <Button
+                                                    variant="primary"
+                                                    disabled={
+                                                        tableDiscountInvalid ||
+                                                        (tableDiscountAmount > 0 && !tableBargainReason.trim())
+                                                    }
+                                                    onClick={() => compileInvoice('table', selectedBillingTable)}
+                                                    className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                >
+                                                    Generate Invoice
+                                                </Button>
+                                            )}
                                         </div>
                                     </div>
                                 </>
@@ -2203,20 +2219,24 @@ export default function CashierClient({
                                     >
                                         Cancel
                                     </Button>
-                                    <button
-                                        onClick={handlePrintBill}
-                                        className="flex-1 py-1.5 px-3 border border-gray-300 rounded-xl text-[10px] font-bold text-gray-700 bg-white hover:bg-gray-50 transition active:scale-95 text-center flex items-center justify-center gap-1.5 shadow-sm min-w-[70px]"
-                                    >
-                                        Print Bill
-                                    </button>
-                                    <Button
-                                        variant="primary"
-                                        loading={isSettlingInvoice}
-                                        onClick={handleMarkPaid}
-                                        className="font-bold flex-1 bg-emerald-600 hover:bg-emerald-700 border-emerald-600 hover:border-emerald-700 text-[10px] text-white py-1.5 min-w-[70px]"
-                                    >
-                                        Mark Paid
-                                    </Button>
+                                    {printInvoiceEnabled && (
+                                        <button
+                                            onClick={handlePrintBill}
+                                            className="flex-1 py-1.5 px-3 border border-gray-300 rounded-xl text-[10px] font-bold text-gray-700 bg-white hover:bg-gray-50 transition active:scale-95 text-center flex items-center justify-center gap-1.5 shadow-sm min-w-[70px] animate-scale-in"
+                                        >
+                                            Print Bill
+                                        </button>
+                                    )}
+                                    {generateInvoiceEnabled && (
+                                        <Button
+                                            variant="primary"
+                                            loading={isSettlingInvoice}
+                                            onClick={handleMarkPaid}
+                                            className="font-bold flex-1 bg-emerald-600 hover:bg-emerald-700 border-emerald-600 hover:border-emerald-700 text-[10px] text-white py-1.5 min-w-[70px] animate-scale-in"
+                                        >
+                                            Mark Paid
+                                        </Button>
+                                    )}
                                 </>
                             )}
                         </div>
