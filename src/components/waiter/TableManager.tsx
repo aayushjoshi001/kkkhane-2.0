@@ -39,7 +39,7 @@ function getFontSizeClass(label: string): string {
     return 'text-xs sm:text-sm md:text-base'
 }
 
-export default function TableManager({ initialTables, restaurantId, appUrl, initialOrders = [], userId, staffNames = {}, isHotel = false }: {
+export default function TableManager({ initialTables, restaurantId, appUrl, initialOrders = [], userId, staffNames = {}, isHotel = false, waiterSessionEnabled = true }: {
     initialTables: TableWithSession[]
     restaurantId: string
     appUrl: string
@@ -47,6 +47,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
     userId: string
     staffNames?: Record<string, string>
     isHotel?: boolean
+    waiterSessionEnabled?: boolean
 }) {
     const [tables, setTables] = useState<TableWithSession[]>(initialTables)
     // Mirror of `tables` for realtime handlers that need the previous state
@@ -443,7 +444,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                 pending:  { dot: 'bg-warning',               label: '● Waiting', cls: 'text-warning-fg' },
                             }
                             const tl = orderLight ? trafficLight[orderLight] : null
-                            const hasOpenRequest = !table.activeSession && !!openSessionRequests[table.id]
+                            const hasOpenRequest = waiterSessionEnabled && !table.activeSession && !!openSessionRequests[table.id]
 
                             return (
                                 <button
@@ -723,46 +724,107 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                 })()
                             ) : (
                                 <div className="space-y-4">
-                                    <div className="flex flex-col items-center py-4 text-[var(--color-primary)]">
-                                        <UtensilsCrossed size={48} strokeWidth={1.5} />
-                                        <p className="text-center text-body font-semibold text-ink mt-3">Open a new guest session for this table</p>
-                                    </div>
-                                    
-                                    <Button block variant="primary" icon={Power} loading={isProcessing} onClick={async () => {
-                                        await handleOpenSession(selectedTable.id)
-                                        setSelectedTable(null)
-                                    }}>
-                                        Open Session
-                                    </Button>
+                                    {waiterSessionEnabled === false ? (
+                                        <>
+                                            <div className="flex flex-col items-center py-4 text-[var(--color-primary)]">
+                                                <UtensilsCrossed size={48} strokeWidth={1.5} />
+                                                <p className="text-center text-body font-semibold text-ink mt-3">Select order type for Table {selectedTable.label}</p>
+                                            </div>
 
-                                    <div className="pt-3 border-t border-hairline">
-                                        <p className="text-label text-ink-subtle mb-2">Table Status</p>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {selectedTable.table_status === 'reserved' ? (
-                                                <Button block variant="secondary" icon={X} loading={isProcessing} onClick={async () => {
-                                                    await handleSetStatus(selectedTable.id, 'available')
-                                                    setSelectedTable(null)
-                                                }} className="col-span-2">
-                                                    Release Reservation
-                                                </Button>
-                                            ) : (
-                                                <>
-                                                    <Button block variant="secondary" icon={Sparkles} loading={isProcessing} onClick={async () => {
-                                                        await handleSetStatus(selectedTable.id, 'dirty')
+                                            <Button
+                                                block
+                                                variant="primary"
+                                                icon={ShoppingCart}
+                                                loading={isProcessing}
+                                                onClick={async () => {
+                                                    setIsProcessing(true)
+                                                    const res = await openSession(selectedTable.id, restaurantId, undefined, 1)
+                                                    if (res.error || !res.session) {
+                                                        toast.error(res.error || 'Failed to open session')
+                                                        setIsProcessing(false)
+                                                        return
+                                                    }
+                                                    const session = res.session as unknown as Session
+                                                    await setTableStatus(selectedTable.id, 'available')
+                                                    
+                                                    setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, activeSession: session } : t))
+                                                    
+                                                    if (isHotel) {
+                                                        setSelectedTable({ ...selectedTable, activeSession: session })
+                                                        setShowGuestPicker(true)
+                                                        setGuestPickerStep('choose')
+                                                        setPhoneInput('')
+                                                        setPhoneResult(null)
+                                                        setActiveBookingsList([])
+                                                    } else {
+                                                        setQuickOrderSession({
+                                                            sessionId: session.session_token,
+                                                            tableName: selectedTable.label
+                                                        })
                                                         setSelectedTable(null)
-                                                    }}>
-                                                        Mark Dirty
-                                                    </Button>
-                                                    <Button block variant="secondary" icon={CalendarClock} loading={isProcessing} onClick={async () => {
-                                                        await handleSetStatus(selectedTable.id, 'reserved')
-                                                        setSelectedTable(null)
-                                                    }}>
-                                                        Mark Reserved
-                                                    </Button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
+                                                    }
+                                                    setIsProcessing(false)
+                                                }}
+                                            >
+                                                Order for Whole Table
+                                            </Button>
+
+                                            <Button
+                                                block
+                                                variant="secondary"
+                                                icon={Users}
+                                                loading={isProcessing}
+                                                onClick={() => {
+                                                    setSplitView(true)
+                                                }}
+                                            >
+                                                Split / Order by Seat
+                                            </Button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="flex flex-col items-center py-4 text-[var(--color-primary)]">
+                                                <UtensilsCrossed size={48} strokeWidth={1.5} />
+                                                <p className="text-center text-body font-semibold text-ink mt-3">Open a new guest session for this table</p>
+                                            </div>
+                                            
+                                            <Button block variant="primary" icon={Power} loading={isProcessing} onClick={async () => {
+                                                await handleOpenSession(selectedTable.id)
+                                                setSelectedTable(null)
+                                            }}>
+                                                Open Session
+                                            </Button>
+
+                                            <div className="pt-3 border-t border-hairline">
+                                                <p className="text-label text-ink-subtle mb-2">Table Status</p>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    {selectedTable.table_status === 'reserved' ? (
+                                                        <Button block variant="secondary" icon={X} loading={isProcessing} onClick={async () => {
+                                                            await handleSetStatus(selectedTable.id, 'available')
+                                                            setSelectedTable(null)
+                                                        }} className="col-span-2">
+                                                            Release Reservation
+                                                        </Button>
+                                                    ) : (
+                                                        <>
+                                                            <Button block variant="secondary" icon={Sparkles} loading={isProcessing} onClick={async () => {
+                                                                await handleSetStatus(selectedTable.id, 'dirty')
+                                                                setSelectedTable(null)
+                                                            }}>
+                                                                Mark Dirty
+                                                            </Button>
+                                                            <Button block variant="secondary" icon={CalendarClock} loading={isProcessing} onClick={async () => {
+                                                                await handleSetStatus(selectedTable.id, 'reserved')
+                                                                setSelectedTable(null)
+                                                            }}>
+                                                                Mark Reserved
+                                                            </Button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             )}
                         </div>

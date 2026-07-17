@@ -212,6 +212,7 @@ export default async function WaiterPage() {
                 userId={userId}
                 staffNames={staffNames}
                 isHotel={businessMode === 'hotel'}
+                waiterSessionEnabled={features?.waiterSessionEnabled}
             />
         </div>
     )

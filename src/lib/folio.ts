@@ -66,15 +66,18 @@ export async function computeFolioTotal(
 ): Promise<FolioBreakdown> {
     const { restaurantId, bookingId, roomId, checkIn, checkOut, sessionId, discountAmount: rawDiscount } = opts
 
-    // Fetch partner restaurant if linked
-    const { data: hotelData } = await supabase
+    // Fetch partner restaurant/hotel if linked
+    const { data: currentRest } = await supabase
         .from('restaurants')
-        .select('linked_restaurant_id')
+        .select('linked_restaurant_id, linked_hotel_id')
         .eq('id', restaurantId)
         .maybeSingle()
+
+    const hotelId = currentRest?.linked_hotel_id || restaurantId
+    const partnerRestaurantId = currentRest?.linked_restaurant_id || currentRest?.linked_hotel_id
     
     let linkAllowFolioCharges = true
-    if (hotelData?.linked_restaurant_id) {
+    if (currentRest?.linked_restaurant_id) {
         const { data: colCheck } = await supabase
             .from('restaurants')
             .select('link_allow_folio_charges')
@@ -83,9 +86,17 @@ export async function computeFolioTotal(
         if (colCheck && colCheck.link_allow_folio_charges === false) {
             linkAllowFolioCharges = false
         }
+    } else if (currentRest?.linked_hotel_id) {
+        const { data: colCheck } = await supabase
+            .from('restaurants')
+            .select('link_allow_folio_charges')
+            .eq('id', currentRest.linked_hotel_id)
+            .maybeSingle()
+        if (colCheck && colCheck.link_allow_folio_charges === false) {
+            linkAllowFolioCharges = false
+        }
     }
     
-    const partnerRestaurantId = hotelData?.linked_restaurant_id
     const targetRestaurantIds = [restaurantId]
     if (partnerRestaurantId && linkAllowFolioCharges) {
         targetRestaurantIds.push(partnerRestaurantId)
@@ -97,22 +108,22 @@ export async function computeFolioTotal(
             .from('rooms')
             .select('room_types:type_id(base_price)')
             .eq('id', roomId)
-            .eq('restaurant_id', restaurantId)
+            .eq('restaurant_id', hotelId)
             .maybeSingle(),
         supabase
             .from('bookings')
             .select('*', { count: 'exact', head: true })
-            .eq('restaurant_id', restaurantId)
+            .eq('restaurant_id', hotelId)
             .eq('status', 'checked_in'),
         supabase
             .from('rooms')
             .select('*', { count: 'exact', head: true })
-            .eq('restaurant_id', restaurantId)
+            .eq('restaurant_id', hotelId)
             .eq('is_active', true),
         supabase
             .from('dynamic_pricing_rules')
             .select('*')
-            .eq('restaurant_id', restaurantId)
+            .eq('restaurant_id', hotelId)
             .eq('is_active', true)
     ])
 
@@ -165,7 +176,7 @@ export async function computeFolioTotal(
         .from('room_charges')
         .select('id, amount, description, charge_type')
         .eq('booking_id', bookingId)
-        .eq('restaurant_id', restaurantId)
+        .eq('restaurant_id', hotelId)
         .order('created_at', { ascending: true })
     const charges: FolioCharge[] = (chargeRows || []).map((c) => ({
         id: c.id,
@@ -223,7 +234,7 @@ export async function computeFolioTotal(
     // VAT (Nepal) applies to the room + manual charges only; room-service items are
     // already priced with their own tax at order time, so taxing them again here
     // would double-charge. Off unless the tenant has vatEnabled set.
-    const features = await getRestaurantFeatures(restaurantId)
+    const features = await getRestaurantFeatures(hotelId)
     const vatEnabled = !!features?.vatEnabled
     const taxRate = Number(features?.defaultTaxRate) || 0
     const vat = vatEnabled ? round2((netStayCost + chargesTotal) * (taxRate / 100)) : 0
