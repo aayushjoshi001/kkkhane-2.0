@@ -160,11 +160,7 @@ export default function CashierClient({
     const [billingRoomCharges, setBillingRoomCharges] = useState<any[]>([])
     const [billingLinkedOrders, setBillingLinkedOrders] = useState<any[]>([])
     const filteredLinkedOrders = (() => {
-        if (!selectedBillingRoom) return []
-        const matchingTable = tables.find(t => t.room_id === selectedBillingRoom.id)
-        const roomSessionId = matchingTable?.activeSession?.id
-        if (!roomSessionId) return billingLinkedOrders
-        return billingLinkedOrders.filter(o => o.session_id !== roomSessionId)
+        return billingLinkedOrders.filter(o => !o.is_room_order)
     })()
     const [billingPaymentMethod, setBillingPaymentMethod] = useState<'cash' | 'qr_digital' | 'both' | 'credit'>('cash')
     const [splitCashAmount, setSplitCashAmount] = useState<string>('')

@@ -60,7 +60,11 @@ export async function GET(req: NextRequest) {
         // Fetch all order items from these sessions or directly linked to the booking
         let query = supabase
             .from('orders')
-            .select('id, session_id, status, payment_status, order_items(id, quantity, unit_price, menu_items(name))')
+            .select(`
+                id, session_id, status, payment_status, 
+                order_items(id, quantity, unit_price, menu_items(name)),
+                sessions(id, table_id, tables:table_id(room_id))
+            `)
             .in('restaurant_id', targetRestaurantIds)
             .neq('status', 'cancelled')
             .neq('payment_status', 'paid')
@@ -81,17 +85,28 @@ export async function GET(req: NextRequest) {
         console.log('[linked-orders API] Found orders matching sessionIds:', orders?.length, orders)
 
         // Flatten order items
+        const getRoomId = (sessionObj: any): string | null => {
+            if (!sessionObj) return null
+            const sess = Array.isArray(sessionObj) ? sessionObj[0] : sessionObj
+            if (!sess?.tables) return null
+            const tbl = Array.isArray(sess.tables) ? sess.tables[0] : sess.tables
+            return tbl?.room_id ?? null
+        }
+
         type LinkedOrderItem = { id: string; quantity: number; unit_price: number; menu_items: unknown }
-        type LinkedOrder = { id: string; session_id: string | null; order_items?: LinkedOrderItem[] }
-        const items = ((orders || []) as LinkedOrder[]).flatMap((o) =>
-            (o.order_items || []).map((item) => ({
+        type LinkedOrder = { id: string; session_id: string | null; sessions: any; order_items?: LinkedOrderItem[] }
+        const items = ((orders || []) as LinkedOrder[]).flatMap((o) => {
+            const roomId = getRoomId(o.sessions)
+            const isRoomOrder = roomId !== null
+            return (o.order_items || []).map((item) => ({
                 id: item.id,
                 quantity: item.quantity,
                 unit_price: item.unit_price,
                 menu_items: item.menu_items,
-                session_id: o.session_id
+                session_id: o.session_id,
+                is_room_order: isRoomOrder
             }))
-        )
+        })
 
         console.log('[linked-orders API] Flattened items to return:', items)
 
