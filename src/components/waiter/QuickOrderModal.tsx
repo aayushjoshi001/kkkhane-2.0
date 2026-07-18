@@ -384,7 +384,7 @@ export default function QuickOrderModal({
             )}
         </Modal>
         {/* Main POS workspace — hidden while the success card is showing. */}
-        <Modal open={isOpen && !orderConfirmation} onClose={onClose} size="full" ariaLabel="Quick POS Order" className="flex flex-col overflow-hidden">
+        <Modal open={isOpen && !orderConfirmation} onClose={onClose} size="full" ariaLabel="Quick POS Order" className="flex flex-col overflow-hidden" layer="top" backdropClassName="!z-[99999]">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
                     <div className="flex items-center gap-3">
