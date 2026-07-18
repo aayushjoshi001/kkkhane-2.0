@@ -28,6 +28,7 @@ const KITCHEN_ORDER_SELECT = `
   order_items (
     id, menu_item_id, quantity, unit_price, special_request, status, station, claimed_by, claimed_at,
     menu_items ( id, name, is_combo ),
+    menu_item_variations:menu_item_variation_id ( id, name ),
     order_item_modifiers ( modifier_name, price_adjustment )
   )
 ` as const

@@ -205,3 +205,33 @@ export function getKOTSourceLabel(order: {
     return 'Order'
 }
 
+/**
+ * Parses and returns the item name and note for KOT display/print.
+ * Displays variation names next to the item name, e.g. "Chowmein (Veg)",
+ * and removes them from the special request/note so they do not print twice.
+ */
+export function getItemKOTDisplay(item: {
+    menu_items?: { name: string } | null
+    menu_item_variations?: { name: string } | null
+    special_request?: string | null
+}): { name: string; note: string } {
+    let name = item.menu_items?.name || 'Item'
+    let variationName = item.menu_item_variations?.name
+    let note = item.special_request || ''
+
+    // Parse out variation name if formatted in brackets, e.g., "[Veg] note"
+    const match = note.match(/^\[(.*?)\]\s*(.*)$/)
+    if (match) {
+        if (!variationName) {
+            variationName = match[1]
+        }
+        note = match[2]
+    }
+
+    if (variationName) {
+        name = `${name} ${variationName}`
+    }
+
+    return { name, note }
+}
+

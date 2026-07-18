@@ -56,6 +56,7 @@ export default async function BarPage() {
                     station,
                     claimed_by, claimed_at,
                     menu_items ( name, is_combo ),
+                    menu_item_variations:menu_item_variation_id ( id, name ),
                     order_item_modifiers ( modifier_name, price_adjustment )
                 )
             `)

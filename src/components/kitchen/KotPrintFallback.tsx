@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import type { KitchenOrder } from './OrderQueue'
 import { STATION_META, type StationKind } from '@/lib/stations'
-import { getKOTSourceLabel } from '@/lib/utils'
+import { getKOTSourceLabel, getItemKOTDisplay } from '@/lib/utils'
 
 /**
  * Browser-print fallback for a station ticket (KOT or BOT) when QZ Tray isn't
@@ -50,15 +50,18 @@ export default function KotPrintFallback({ order, station = 'kitchen', onDone }:
             <div className="text-[10px]">Order: #{order.id.slice(0, 8).toUpperCase()}</div>
             <div className="text-[10px]">Time: {new Date(order.placed_at).toLocaleTimeString()}</div>
             <div className="border-t border-dashed border-black my-1" />
-            {(order.order_items || []).map((item) => (
-                <div key={item.id} className="mb-1">
-                    <div className="font-bold text-[11px]">{item.quantity} x {item.menu_items?.name || 'Item'}</div>
-                    {item.special_request && <div className="pl-3 text-[10px]">Note: {item.special_request}</div>}
-                    {(item.order_item_modifiers || []).map((mod, i) =>
-                        mod.modifier_name ? <div key={i} className="pl-3 text-[10px]">+ {mod.modifier_name}</div> : null
-                    )}
-                </div>
-            ))}
+            {(order.order_items || []).map((item) => {
+                const { name, note } = getItemKOTDisplay(item)
+                return (
+                    <div key={item.id} className="mb-1">
+                        <div className="font-bold text-[11px]">{item.quantity} x {name}</div>
+                        {note && <div className="pl-3 text-[10px]">Note: {note}</div>}
+                        {(item.order_item_modifiers || []).map((mod, i) =>
+                            mod.modifier_name ? <div key={i} className="pl-3 text-[10px]">+ {mod.modifier_name}</div> : null
+                        )}
+                    </div>
+                )
+            })}
             {order.customer_note && (
                 <>
                     <div className="border-t border-dashed border-black my-1" />

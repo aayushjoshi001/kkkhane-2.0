@@ -6,7 +6,7 @@
 import { EscPosBuilder } from '../escpos'
 import type { KitchenOrder, KitchenOrderItem } from '@/components/kitchen/OrderQueue'
 import { STATION_META, itemsForStation, type StationKind } from '@/lib/stations'
-import { getKOTSourceLabel } from '@/lib/utils'
+import { getKOTSourceLabel, getItemKOTDisplay } from '@/lib/utils'
 
 export function buildStationTicket(
     order: KitchenOrder,
@@ -33,10 +33,11 @@ export function buildStationTicket(
 
     const items = itemsForStation<KitchenOrderItem>(order.order_items, station)
     for (const item of items) {
+        const { name, note } = getItemKOTDisplay(item)
         b.bold(true)
-        b.line(`${item.quantity} x ${item.menu_items?.name || 'Item'}`)
+        b.line(`${item.quantity} x ${name}`)
         b.bold(false)
-        if (item.special_request) b.line(`   Note: ${item.special_request}`)
+        if (note) b.line(`   Note: ${note}`)
         for (const mod of item.order_item_modifiers || []) {
             if (mod.modifier_name) b.line(`   + ${mod.modifier_name}`)
         }
