@@ -23,11 +23,57 @@ type RestaurantSettings = {
     currency_symbol: string | null
     pan_number: string | null
     vat_registered: boolean
+    vat_number: string | null
+    ird_api_url: string | null
+    ird_api_user: string | null
+    ird_api_password: string | null
     allowed_ips: string | null
     business_type: string | null
 }
 
 type Features = Settings['features_v2']
+
+const CURRENCY_MAP: Record<string, string> = {
+    NPR: 'Rs.',
+    USD: '$',
+    EUR: '€',
+    INR: '₹',
+    GBP: '£',
+    JPY: '¥',
+    AUD: '$',
+    CAD: '$',
+    SGD: '$',
+    NZD: '$',
+    HKD: '$',
+    CNY: '¥',
+    AED: 'د.إ',
+    SAR: 'ر.س',
+    QAR: 'ر.ق',
+    KWD: 'د.ك',
+    BHD: '.د.ب',
+    OMR: 'ر.ع.',
+    MYR: 'RM',
+    THB: '฿',
+    KRW: '₩',
+    RUB: '₽',
+}
+
+const SYMBOL_MAP: Record<string, string> = {
+    'Rs.': 'NPR',
+    'Rs': 'NPR',
+    '$': 'USD',
+    '€': 'EUR',
+    '₹': 'INR',
+    '£': 'GBP',
+    '¥': 'JPY',
+    'د.إ': 'AED',
+    'ر.س': 'SAR',
+    'ر.ق': 'QAR',
+    'RM': 'MYR',
+    '฿': 'THB',
+    '₩': 'KRW',
+    '₽': 'RUB',
+}
 
 const WEEKDAYS: { key: string; label: string }[] = [
     { key: 'monday', label: 'Monday' },
@@ -63,25 +109,31 @@ export default function SettingsManager({
     canEdit: boolean
 }) {
     const [formData, setFormData] = useState<RestaurantSettings>(initialRestaurant)
-    const [features, setFeatures] = useState<Features>(initialFeatures || {
-        loyaltyEnabled: false,
-        promosEnabled: true,
-        takeoutEnabled: false,
-        multiLanguageEnabled: false,
-        serviceRequestsEnabled: true,
-        splitBillingEnabled: true,
-        dynamicPricingEnabled: false,
-        ingredientTrackingEnabled: false,
-        staffShiftsEnabled: false,
-        defaultTaxRate: 13.0,
-        currency: 'NPR',
-        currencySymbol: 'Rs.',
-        nepalPayEnabled: false,
-        vatEnabled: false,
-        phoneOtpEnabled: false,
-        bsDateEnabled: false,
-        feedbackEnabled: true,
-        dineInEnabled: true,
+    const [features, setFeatures] = useState<Features>(() => {
+        const base = initialFeatures || {}
+        return {
+            loyaltyEnabled: false,
+            promosEnabled: true,
+            takeoutEnabled: false,
+            multiLanguageEnabled: false,
+            serviceRequestsEnabled: true,
+            splitBillingEnabled: true,
+            dynamicPricingEnabled: false,
+            ingredientTrackingEnabled: false,
+            staffShiftsEnabled: false,
+            defaultTaxRate: 13.0,
+            currency: 'NPR',
+            currencySymbol: 'Rs.',
+            nepalPayEnabled: false,
+            vatEnabled: false,
+            phoneOtpEnabled: false,
+            bsDateEnabled: false,
+            feedbackEnabled: true,
+            dineInEnabled: true,
+            printInvoiceEnabled: true,
+            generateInvoiceEnabled: true,
+            ...base
+        }
     })
     const [taxRateStr, setTaxRateStr] = useState((initialRestaurant.tax_rate ?? 13).toString())
     const [businessHours, setBusinessHours] = useState<BusinessHours>(() => buildBusinessHours(initialBusinessHours))
@@ -499,7 +551,15 @@ export default function SettingsManager({
                                 value={features.currency || ''}
                                 onChange={e => {
                                     const value = e.target.value
-                                    setFeatures(prev => ({ ...prev, currency: value }))
+                                    setFeatures(prev => {
+                                        const code = value.toUpperCase()
+                                        const guessedSymbol = CURRENCY_MAP[code]
+                                        return {
+                                            ...prev,
+                                            currency: value,
+                                            ...(guessedSymbol ? { currencySymbol: guessedSymbol } : {})
+                                        }
+                                    })
                                 }}
                                 disabled={!canEdit || isSubmitting}
                                 maxLength={3}
@@ -520,7 +580,14 @@ export default function SettingsManager({
                                 value={features.currencySymbol || ''}
                                 onChange={e => {
                                     const value = e.target.value
-                                    setFeatures(prev => ({ ...prev, currencySymbol: value }))
+                                    setFeatures(prev => {
+                                        const guessedCode = SYMBOL_MAP[value]
+                                        return {
+                                            ...prev,
+                                            currencySymbol: value,
+                                            ...(guessedCode ? { currency: guessedCode } : {})
+                                        }
+                                    })
                                 }}
                                 disabled={!canEdit || isSubmitting}
                                 maxLength={5}
@@ -631,6 +698,72 @@ export default function SettingsManager({
                                 </div>
                             </label>
                         </div>
+
+                        {formData.vat_registered && (
+                            <div className="md:col-span-2 p-5 bg-amber-50/20 border border-amber-100 rounded-3xl mt-4 space-y-4 text-left">
+                                <div className="flex items-center gap-2">
+                                    <Shield size={16} className="text-amber-700 animate-pulse" />
+                                    <div>
+                                        <h4 className="font-extrabold text-sm text-amber-900">Inland Revenue Department (IRD) Synchronization Setup</h4>
+                                        <p className="text-[10px] text-amber-700 font-bold uppercase tracking-wider mt-0.5">Required credentials for CBMS direct API billing transmission</p>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">9-Digit VAT Number *</label>
+                                        <input
+                                            type="text"
+                                            name="vat_number"
+                                            value={formData.vat_number || ''}
+                                            onChange={handleChange}
+                                            disabled={!canEdit || isSubmitting}
+                                            maxLength={9}
+                                            placeholder="e.g. 301234567"
+                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink p-2.5 outline-none focus:border-brand-500 transition"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">IRD CBMS API URL (Production/Sandbox) *</label>
+                                        <input
+                                            type="text"
+                                            name="ird_api_url"
+                                            value={formData.ird_api_url || ''}
+                                            onChange={handleChange}
+                                            disabled={!canEdit || isSubmitting}
+                                            placeholder="https://cbms.ird.gov.np/api/billing"
+                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink p-2.5 outline-none focus:border-brand-500 transition"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">IRD API Username *</label>
+                                        <input
+                                            type="text"
+                                            name="ird_api_user"
+                                            value={formData.ird_api_user || ''}
+                                            onChange={handleChange}
+                                            disabled={!canEdit || isSubmitting}
+                                            placeholder="e.g. T1234567"
+                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink p-2.5 outline-none focus:border-brand-500 transition"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">IRD API Password / Dev Key *</label>
+                                        <input
+                                            type="password"
+                                            name="ird_api_password"
+                                            value={formData.ird_api_password || ''}
+                                            onChange={handleChange}
+                                            disabled={!canEdit || isSubmitting}
+                                            placeholder="••••••••"
+                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink p-2.5 outline-none focus:border-brand-500 transition"
+                                        />
+                                    </div>
+                                </div>
+                                <p className="text-[10px] text-ink-subtle leading-normal">
+                                    * Note: Configuring these credentials ensures compliance with IRD real-time sync regulations, enabling direct, secure synchronization of checkout receipts to Nepal tax servers.
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -699,6 +832,8 @@ export default function SettingsManager({
                         { key: 'phoneOtpEnabled' as const, label: 'Phone OTP Login', desc: 'Allow phone number login via SMS OTP' },
                         { key: 'multiLanguageEnabled' as const, label: 'Multi-Language', desc: 'Menu in multiple languages' },
                         { key: 'bsDateEnabled' as const, label: 'Bikram Sambat Date', desc: 'Show BS calendar dates' },
+                        { key: 'generateInvoiceEnabled' as const, label: 'Generate Invoice', desc: 'Allow cashier POS or room billing to settle checkouts and generate invoices' },
+                        { key: 'printInvoiceEnabled' as const, label: 'Print Invoice', desc: 'Allow printing invoices or previewing bills at checkout (disable to skip printing entirely)' },
                     ]).map(({ key, label, desc }) => (
                         <button
                             key={key}

@@ -55,6 +55,8 @@ export const TIER_FEATURES: Record<Tier, {
     // When true (low plans), placed dine-in orders wait for waiter confirmation
     // before reaching the kitchen. Premium tiers default to direct-to-kitchen.
     waiterOrderConfirmation: boolean
+    printInvoiceEnabled: boolean
+    generateInvoiceEnabled: boolean
 }> = {
     free: {
         loyaltyEnabled: false, promosEnabled: true, takeoutEnabled: false,
@@ -62,6 +64,7 @@ export const TIER_FEATURES: Record<Tier, {
         splitBillingEnabled: true, dynamicPricingEnabled: false,
         ingredientTrackingEnabled: false, staffShiftsEnabled: false,
         waiterSessionEnabled: false, waiterOrderConfirmation: true,
+        printInvoiceEnabled: true, generateInvoiceEnabled: true,
     },
     basic: {
         loyaltyEnabled: false, promosEnabled: true, takeoutEnabled: true,
@@ -69,6 +72,7 @@ export const TIER_FEATURES: Record<Tier, {
         splitBillingEnabled: true, dynamicPricingEnabled: false,
         ingredientTrackingEnabled: false, staffShiftsEnabled: false,
         waiterSessionEnabled: false, waiterOrderConfirmation: true,
+        printInvoiceEnabled: true, generateInvoiceEnabled: true,
     },
     premium: {
         loyaltyEnabled: true, promosEnabled: true, takeoutEnabled: true,
@@ -76,6 +80,7 @@ export const TIER_FEATURES: Record<Tier, {
         splitBillingEnabled: true, dynamicPricingEnabled: true,
         ingredientTrackingEnabled: true, staffShiftsEnabled: true,
         waiterSessionEnabled: false, waiterOrderConfirmation: false,
+        printInvoiceEnabled: true, generateInvoiceEnabled: true,
     },
     platinum: {
         loyaltyEnabled: true, promosEnabled: true, takeoutEnabled: true,
@@ -83,6 +88,7 @@ export const TIER_FEATURES: Record<Tier, {
         splitBillingEnabled: true, dynamicPricingEnabled: true,
         ingredientTrackingEnabled: true, staffShiftsEnabled: true,
         waiterSessionEnabled: false, waiterOrderConfirmation: false,
+        printInvoiceEnabled: true, generateInvoiceEnabled: true,
     },
     enterprise: {
         loyaltyEnabled: true, promosEnabled: true, takeoutEnabled: true,
@@ -90,6 +96,7 @@ export const TIER_FEATURES: Record<Tier, {
         splitBillingEnabled: true, dynamicPricingEnabled: true,
         ingredientTrackingEnabled: true, staffShiftsEnabled: true,
         waiterSessionEnabled: false, waiterOrderConfirmation: false,
+        printInvoiceEnabled: true, generateInvoiceEnabled: true,
     },
 }
 

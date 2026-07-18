@@ -28,6 +28,7 @@ export interface FolioCharge {
 export interface FolioBreakdown {
     nights: number
     stayCost: number
+    discountAmount: number
     chargesTotal: number
     ordersTotal: number
     vat: number
@@ -57,20 +58,107 @@ export async function computeFolioTotal(
         checkIn: string
         checkOut: string
         sessionId: string | null
+        // A staff-applied bargain rate, reducing the room stay cost
+        // specifically (so VAT below is computed on the net rate, not the
+        // standard one) — see bookings.discount_amount.
+        discountAmount?: number
     }
 ): Promise<FolioBreakdown> {
-    const { restaurantId, bookingId, roomId, checkIn, checkOut, sessionId } = opts
+    const { restaurantId, bookingId, roomId, checkIn, checkOut, sessionId, discountAmount: rawDiscount } = opts
 
-    // Room stay cost = nightly rate × nights.
-    const { data: room } = await supabase
-        .from('rooms')
-        .select('room_types:type_id(base_price)')
-        .eq('id', roomId)
-        .eq('restaurant_id', restaurantId)
+    // Fetch partner restaurant if linked
+    const { data: hotelData } = await supabase
+        .from('restaurants')
+        .select('linked_restaurant_id')
+        .eq('id', restaurantId)
         .maybeSingle()
-    const basePrice = Number((room?.room_types as { base_price?: number } | null)?.base_price) || 0
+    
+    let linkAllowFolioCharges = true
+    if (hotelData?.linked_restaurant_id) {
+        const { data: colCheck } = await supabase
+            .from('restaurants')
+            .select('link_allow_folio_charges')
+            .eq('id', restaurantId)
+            .maybeSingle()
+        if (colCheck && colCheck.link_allow_folio_charges === false) {
+            linkAllowFolioCharges = false
+        }
+    }
+    
+    const partnerRestaurantId = hotelData?.linked_restaurant_id
+    const targetRestaurantIds = [restaurantId]
+    if (partnerRestaurantId && linkAllowFolioCharges) {
+        targetRestaurantIds.push(partnerRestaurantId)
+    }
+
+    // Fetch dynamic pricing rules, total rooms, and checked-in bookings count
+    const [roomRes, bookingsCountRes, roomsCountRes, rulesRes] = await Promise.all([
+        supabase
+            .from('rooms')
+            .select('room_types:type_id(base_price)')
+            .eq('id', roomId)
+            .eq('restaurant_id', restaurantId)
+            .maybeSingle(),
+        supabase
+            .from('bookings')
+            .select('*', { count: 'exact', head: true })
+            .eq('restaurant_id', restaurantId)
+            .eq('status', 'checked_in'),
+        supabase
+            .from('rooms')
+            .select('*', { count: 'exact', head: true })
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true),
+        supabase
+            .from('dynamic_pricing_rules')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
+    ])
+
+    const basePrice = Number((roomRes.data?.room_types as { base_price?: number } | null)?.base_price) || 0
     const nights = calculateNights(checkIn, checkOut)
-    const stayCost = basePrice * nights
+    
+    // Calculate current occupancy rate
+    const totalRoomsCount = roomsCountRes.count || 1
+    const activeBookingsCount = bookingsCountRes.count || 0
+    const occupancyPct = (activeBookingsCount / totalRoomsCount) * 100
+
+    let stayCost = 0
+    const start = new Date(checkIn)
+    const pricingRules = rulesRes.data || []
+
+    if (nights > 0) {
+        for (let i = 0; i < nights; i++) {
+            const nightDate = new Date(start)
+            nightDate.setDate(start.getDate() + i)
+            
+            let nightMultiplier = 1.0
+            
+            // Apply weekend rules (Friday / Saturday nights)
+            const weekendRule = pricingRules.find(r => r.rule_type === 'weekend')
+            if (weekendRule && (nightDate.getDay() === 5 || nightDate.getDay() === 6)) {
+                nightMultiplier *= Number(weekendRule.multiplier)
+            }
+            
+            // Apply occupancy rules
+            const occupancyRule = pricingRules.find(r => 
+                r.rule_type === 'occupancy' && 
+                occupancyPct >= Number(r.occupancy_threshold_pct || 0)
+            )
+            if (occupancyRule) {
+                nightMultiplier *= Number(occupancyRule.multiplier)
+            }
+            
+            stayCost += basePrice * nightMultiplier
+        }
+    }
+
+    // Clamped so a stale/oversized discount can never push the room cost
+    // negative — the checkout route also rejects discount > stayCost
+    // up front, this is just the calculation's own floor.
+    const discountAmount = Math.min(Math.max(Number(rawDiscount) || 0, 0), stayCost)
+    const netStayCost = stayCost - discountAmount
 
     // Manual charges added during the stay (minibar, laundry, …).
     const { data: chargeRows } = await supabase
@@ -113,7 +201,7 @@ export async function computeFolioTotal(
     const { data: byBooking } = await supabase
         .from('orders')
         .select('id, placed_at, order_items(quantity, unit_price)')
-        .eq('restaurant_id', restaurantId)
+        .in('restaurant_id', targetRestaurantIds)
         .eq('booking_id', bookingId)
         .neq('status', 'cancelled')
         .neq('payment_status', 'paid')
@@ -123,7 +211,7 @@ export async function computeFolioTotal(
         const { data: bySession } = await supabase
             .from('orders')
             .select('id, placed_at, order_items(quantity, unit_price)')
-            .eq('restaurant_id', restaurantId)
+            .in('restaurant_id', targetRestaurantIds)
             .in('session_id', Array.from(sessionIds))
             .neq('status', 'cancelled')
             .neq('payment_status', 'paid')
@@ -138,12 +226,13 @@ export async function computeFolioTotal(
     const features = await getRestaurantFeatures(restaurantId)
     const vatEnabled = !!features?.vatEnabled
     const taxRate = Number(features?.defaultTaxRate) || 0
-    const vat = vatEnabled ? round2((stayCost + chargesTotal) * (taxRate / 100)) : 0
+    const vat = vatEnabled ? round2((netStayCost + chargesTotal) * (taxRate / 100)) : 0
 
-    const total = round2(stayCost + chargesTotal + ordersTotal + vat)
+    const total = round2(netStayCost + chargesTotal + ordersTotal + vat)
     return {
         nights,
         stayCost: round2(stayCost),
+        discountAmount: round2(discountAmount),
         chargesTotal: round2(chargesTotal),
         ordersTotal: round2(ordersTotal),
         vat,

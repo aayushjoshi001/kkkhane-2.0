@@ -4,6 +4,7 @@
 // lib/print/templates/invoiceTicket.ts mirrors this layout; keep both in sync.
 
 import type { ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
+import { advanceMethodLabel } from '@/lib/utils'
 
 export default function InvoiceReceipt({
     invoice,
@@ -160,7 +161,7 @@ export default function InvoiceReceipt({
                 </div>
                 {!!invoice.advancePaid && invoice.advancePaid > 0 && (
                     <div className="flex justify-between text-gray-600">
-                        <span>Advance Paid ({invoice.advanceMethod === 'qr_digital' ? 'QR/Digital' : 'Cash'})</span>
+                        <span>Advance Paid ({advanceMethodLabel(invoice.advanceMethod)})</span>
                         <span className="tabular-nums">- {money(invoice.advancePaid)}</span>
                     </div>
                 )}
@@ -179,6 +180,7 @@ export default function InvoiceReceipt({
                         <span className="font-bold uppercase">
                             {invoice.paymentMethod === 'cash' ? 'CASH'
                                 : invoice.paymentMethod === 'qr_digital' ? 'QR / DIGITAL'
+                                : invoice.paymentMethod === 'credit' ? 'CREDIT'
                                 : 'SPLIT'}
                         </span>
                     </div>
@@ -192,7 +194,19 @@ export default function InvoiceReceipt({
                                 <span>· QR / Digital</span>
                                 <span className="tabular-nums">{money(invoice.qrPaid ?? 0)}</span>
                             </div>
+                            {!!invoice.creditPaid && (
+                                <div className="flex justify-between text-gray-600">
+                                    <span>· On credit</span>
+                                    <span className="tabular-nums">{money(invoice.creditPaid)}</span>
+                                </div>
+                            )}
                         </>
+                    )}
+                    {invoice.paymentMethod === 'credit' && !!invoice.creditPaid && (
+                        <div className="flex justify-between text-gray-600">
+                            <span>· On credit</span>
+                            <span className="tabular-nums">{money(invoice.creditPaid)}</span>
+                        </div>
                     )}
                 </div>
             )}

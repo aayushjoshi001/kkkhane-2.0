@@ -329,7 +329,12 @@ export async function createVoucherAction(input: {
         category: dbCategory,
         bankName: input.payment_mode !== 'cash' ? input.bank_name : null,
         requireOpenSession: true,
-        selectClause: '*, day_book_sessions(date)'
+        selectClause: '*, day_book_sessions(date)',
+        referenceId: input.category === 'suppliers' ? input.supplier_id 
+                   : input.category === 'staff' ? input.staff_user_id 
+                   : input.category === 'expenses' ? input.expense_category_id 
+                   : input.category === 'stock' ? input.expense_category_id 
+                   : null
     })
 
     if (postResult.error || !postResult.entry) return { error: postResult.error || 'Failed to post voucher entry.' }
@@ -580,4 +585,52 @@ export async function openTodayDayBookSessionAction() {
     revalidatePath('/admin/bank-ledger')
 
     return { data: session }
+}
+
+export async function getSupplierOutstandingBalanceAction(supplierId: string) {
+    let user
+    try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
+
+    const supabase = await createAdminClient()
+
+    const { data: supplier, error: sError } = await supabase
+        .from('suppliers')
+        .select('name')
+        .eq('id', supplierId)
+        .eq('restaurant_id', user.restaurantId)
+        .single()
+
+    if (sError || !supplier) return { error: 'Supplier not found' }
+
+    const { data: expenses, error: expError } = await supabase
+        .from('expenses')
+        .select('amount, description')
+        .eq('restaurant_id', user.restaurantId)
+        .eq('vendor_name', supplier.name)
+
+    if (expError || !expenses) return { error: 'Failed to fetch expenses' }
+
+    const totalOwed = expenses.reduce((sum, e) => {
+        let paidAmt = Number(e.amount)
+        try {
+            if (e.description?.startsWith('{')) {
+                const parsed = JSON.parse(e.description)
+                paidAmt = Number(parsed.paid_amount ?? e.amount)
+            }
+        } catch {
+            // ignore
+        }
+        return sum + (Number(e.amount) - paidAmt)
+    }, 0)
+
+    return { data: totalOwed }
+}
+
+export async function getStaffCurrentDueAction(staffUserId: string) {
+    let user
+    try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
+
+    const supabase = await createAdminClient()
+    const currentDue = await fetchStaffCurrentDue(supabase, user.restaurantId, staffUserId)
+    return { data: currentDue }
 }

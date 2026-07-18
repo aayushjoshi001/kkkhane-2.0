@@ -188,6 +188,67 @@ export default function IncomeExpensesManager({
         }
     }
 
+    // Auto-categorize based on description input
+    const handleDescriptionBlur = () => {
+        if (!description.trim()) return
+
+        const query = description.toLowerCase().trim()
+        const entries = activeTab === 'income' ? incomeEntries : expenses
+        const categories = activeTab === 'income' ? incomeCategories : expenseCategories
+
+        let guessedCatId: string | null = null
+
+        // 1. Try to find a previous entry with the exact same description
+        const exactMatch = entries.find(e => e.description.toLowerCase().trim() === query)
+        if (exactMatch && exactMatch.category_id) {
+            guessedCatId = exactMatch.category_id
+        } else {
+            // 2. Try to find a previous entry with partial/fuzzy match
+            const partialMatch = entries.find(e => 
+                e.description.toLowerCase().includes(query) || 
+                query.includes(e.description.toLowerCase())
+            )
+            if (partialMatch && partialMatch.category_id) {
+                guessedCatId = partialMatch.category_id
+            }
+        }
+
+        // 3. Fall back to keyword mappings if no historical match is found
+        if (!guessedCatId) {
+            const keywords: Record<string, string[]> = {
+                'food': ['chicken', 'vegetable', 'rice', 'oil', 'fish', 'meat', 'paneer', 'mutton', 'flour', 'sugar', 'salt', 'spice', 'potato', 'onion', 'milk', 'cheese', 'butter', 'egg', 'grocery', 'sauce', 'cream', 'spices', 'bread', 'yeast', 'bakery', 'tea', 'coffee'],
+                'gas': ['gas', 'cylinder', 'lpg', 'fuel', 'petrol', 'diesel', 'kerosene'],
+                'supplies': ['soap', 'shampoo', 'towel', 'tissue', 'cleaner', 'detergent', 'toilet', 'napkin', 'broom', 'mop', 'harpic', 'sanitizer', 'disinfectant'],
+                'utilities': ['electricity', 'water', 'internet', 'wifi', 'phone', 'bill', 'electricity bill', 'water bill'],
+                'salaries': ['salary', 'wage', 'payroll', 'salary payment', 'bonus', 'staff', 'salary staff'],
+                'marketing': ['facebook', 'ads', 'marketing', 'poster', 'banner', 'flyer', 'ad'],
+            }
+
+            for (const [catName, words] of Object.entries(keywords)) {
+                if (words.some(w => query.includes(w))) {
+                    const matchedCat = categories.find(c => 
+                        c.name.toLowerCase().includes(catName.toLowerCase()) || 
+                        catName.toLowerCase().includes(c.name.toLowerCase())
+                    )
+                    if (matchedCat) {
+                        guessedCatId = matchedCat.id
+                        break
+                    }
+                }
+            }
+        }
+
+        if (guessedCatId && guessedCatId !== categoryId) {
+            const matchedCategory = categories.find(c => c.id === guessedCatId)
+            if (matchedCategory) {
+                setCategoryId(guessedCatId)
+                toast.success(`Auto-selected category: ${matchedCategory.name}`, {
+                    id: 'auto-category-toast'
+                })
+            }
+        }
+    }
+
     // Add entry handler
     const handleAddEntry = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -643,6 +704,7 @@ export default function IncomeExpensesManager({
                                 placeholder="Details of this transaction..."
                                 value={description}
                                 onChange={e => setDescription(e.target.value)}
+                                onBlur={handleDescriptionBlur}
                                 required
                                 rows={3}
                                 className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all resize-none"

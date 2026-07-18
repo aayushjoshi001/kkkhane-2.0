@@ -68,7 +68,9 @@ function timeStr(iso: string) {
 // on — show it next to the time so cash counting always reflects when the
 // money actually moved, not just what business day it's filed under.
 function entryDateStr(iso: string) {
-    return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kathmandu' })
+    const d = new Date(iso)
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    return `${d.getDate()} ${months[d.getMonth()]}`
 }
 
 function formatDescription(desc: string): string {
@@ -333,7 +335,13 @@ export default function CashBookClient({
     const bsEnabled = useFeatureEnabled('bsDateEnabled')
     const dateLabel = (() => {
         const d = new Date(todayDate + 'T00:00:00')
-        const ad = d.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+        const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+        const weekday = weekdays[d.getDay()]
+        const month = months[d.getMonth()]
+        const day = d.getDate()
+        const year = d.getFullYear()
+        const ad = `${weekday}, ${day} ${month} ${year}`
         if (!bsEnabled) return ad
         try {
             return `${ad} (${toNepaliDate(d, 'MMMM DD, YYYY', 'en')} BS)`

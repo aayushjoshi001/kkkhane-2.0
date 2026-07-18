@@ -25,7 +25,7 @@ export async function POST(req: Request) {
 
         const supabase = await createAdminClient()
 
-        // 1. Validate room and capacity
+        // 1. Validate room exists
         const { data: room, error: roomError } = await supabase
             .from('rooms')
             .select('*, room_types:type_id(*)')
@@ -35,11 +35,6 @@ export async function POST(req: Request) {
 
         if (roomError || !room) {
             return NextResponse.json({ error: 'Room not found' }, { status: 404 })
-        }
-
-        const maxCapacity = room.room_types?.capacity || 2
-        if (Number(guest_count) > maxCapacity) {
-            return NextResponse.json({ error: `Guest count (${guest_count}) exceeds room capacity (${maxCapacity})` }, { status: 400 })
         }
 
         // 2. Reject if this room already has an active stay - silently cancelling

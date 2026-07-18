@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import {
     FileText, Plus, Search, Trash2, Printer, X, Loader2, ArrowUpRight, ArrowDownRight, RefreshCw, Check, AlertCircle, Download
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
-import { createVoucherAction, deleteVoucherAction, approveChequeAction, rejectChequeAction, openTodayDayBookSessionAction } from './actions'
+import { createVoucherAction, deleteVoucherAction, approveChequeAction, rejectChequeAction, openTodayDayBookSessionAction, getSupplierOutstandingBalanceAction, getStaffCurrentDueAction } from './actions'
 import { toast } from 'react-hot-toast'
 import { downloadCsv } from '@/lib/exportCsv'
 import PrintableReport, { type PrintableReportHandle } from '@/components/admin/PrintableReport'
@@ -122,6 +122,38 @@ export default function VouchersManager({
     // Salary Payout is capped at the staff member's current due; Advance
     // Payment and Bonus are not (paid before due, or discretionary).
     const [staffEntryType, setStaffEntryType] = useState<'salary_payout' | 'advance_payment' | 'bonus'>('salary_payout')
+
+    const [supplierDue, setSupplierDue] = useState<number | null>(null)
+    const [staffDue, setStaffDue] = useState<number | null>(null)
+    const [loadingDue, setLoadingDue] = useState(false)
+
+    useEffect(() => {
+        if (!selectedSupplierId || payoutCategory !== 'suppliers') {
+            setSupplierDue(null)
+            return
+        }
+        setLoadingDue(true)
+        getSupplierOutstandingBalanceAction(selectedSupplierId)
+            .then(res => {
+                if (res.data !== undefined) setSupplierDue(res.data)
+            })
+            .catch(() => {})
+            .finally(() => setLoadingDue(false))
+    }, [selectedSupplierId, payoutCategory])
+
+    useEffect(() => {
+        if (!selectedStaffUserId || payoutCategory !== 'staff') {
+            setStaffDue(null)
+            return
+        }
+        setLoadingDue(true)
+        getStaffCurrentDueAction(selectedStaffUserId)
+            .then(res => {
+                if (res.data !== undefined) setStaffDue(res.data)
+            })
+            .catch(() => {})
+            .finally(() => setLoadingDue(false))
+    }, [selectedStaffUserId, payoutCategory])
 
     // Cheque specific form fields
     const [chequeWrittenName, setChequeWrittenName] = useState('')
@@ -854,6 +886,21 @@ export default function VouchersManager({
                                                 <option value="">Choose Supplier</option>
                                                 {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                             </select>
+
+                                            {selectedSupplierId && (
+                                                <div className="mt-2 p-2 rounded-lg bg-rose-50/50 border border-rose-100 flex items-center justify-between">
+                                                    <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider">Outstanding Due:</span>
+                                                    <span className="text-xs font-black text-rose-600 flex items-center gap-1">
+                                                        {loadingDue ? (
+                                                            <Loader2 className="animate-spin text-rose-500" size={12} />
+                                                        ) : supplierDue !== null ? (
+                                                            formatCurrency(supplierDue)
+                                                        ) : (
+                                                            '—'
+                                                        )}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
 
@@ -874,6 +921,21 @@ export default function VouchersManager({
                                                 <option value="">Choose Staff Profile</option>
                                                 {staffList.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
                                             </select>
+
+                                            {selectedStaffUserId && (
+                                                <div className="mt-2 p-2 rounded-lg bg-indigo-50/50 border border-indigo-100 flex items-center justify-between">
+                                                    <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider">Current Salary Due:</span>
+                                                    <span className="text-xs font-black text-indigo-600 flex items-center gap-1">
+                                                        {loadingDue ? (
+                                                            <Loader2 className="animate-spin text-indigo-500" size={12} />
+                                                        ) : staffDue !== null ? (
+                                                            formatCurrency(staffDue)
+                                                        ) : (
+                                                            '—'
+                                                        )}
+                                                    </span>
+                                                </div>
+                                            )}
 
                                             <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 mt-3">Pay Category *</label>
                                             <div className="grid grid-cols-3 gap-2">

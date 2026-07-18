@@ -96,6 +96,14 @@ export async function initTableSession(
         }
     }
 
+    if (sessionUUID && roomContext?.bookingId) {
+        await supabase
+            .from('sessions')
+            .update({ booking_id: roomContext.bookingId })
+            .eq('id', sessionUUID)
+            .is('booking_id', null)
+    }
+
     return {
         sessionToken,
         sessionUUID,
@@ -137,10 +145,19 @@ export async function linkInHouseGuest(sessionToken: string, phoneNumber: string
         return { error: 'Please enter a valid phone number.' }
     }
 
+    // Resolve linked hotel if any (since this might be a dining session at a partner restaurant)
+    const { data: restLink } = await supabase
+        .from('restaurants')
+        .select('linked_hotel_id')
+        .eq('id', session.restaurant_id)
+        .maybeSingle()
+
+    const targetRestaurantId = restLink?.linked_hotel_id || session.restaurant_id
+
     const { data: bookings } = await supabase
         .from('bookings')
         .select('id, guest_name, guest_phone')
-        .eq('restaurant_id', session.restaurant_id)
+        .eq('restaurant_id', targetRestaurantId)
         .eq('status', 'checked_in')
         .order('created_at', { ascending: false })
 

@@ -18,6 +18,17 @@ export async function markTableDirtyForSession(admin: SupabaseClient, sessionId:
             .eq('id', sessionId)
             .maybeSingle()
         if (!session?.table_id) return
+        // A split table (one active session per seat) only becomes dirty when its
+        // LAST seat settles — closing seat 4-1 while 4-2 is still dining must not
+        // flag the whole table for cleaning.
+        const { data: stillActive } = await admin
+            .from('sessions')
+            .select('id')
+            .eq('table_id', session.table_id)
+            .eq('status', 'active')
+            .neq('id', sessionId)
+            .limit(1)
+        if (stillActive && stillActive.length > 0) return
         await admin
             .from('tables')
             .update({ table_status: 'dirty', cleaning_claimed_by: null, cleaning_claimed_at: null })

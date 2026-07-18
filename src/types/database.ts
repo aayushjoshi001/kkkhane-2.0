@@ -240,7 +240,16 @@ export interface Session {
     expires_at: string
     guest_count: number | null
     max_seats: number
+    /** Which "cover" at the table this session belongs to (1-based). A table's
+     *  original single-session behavior is seat 1; a waiter can open additional
+     *  seats (2..capacity) so unrelated parties sharing one table each get their
+     *  own independent order and bill. */
+    seat_number: number
     notes: string | null
+    discount_amount: number
+    discount_reason: string | null
+    discount_applied_by: string | null
+    discount_applied_at: string | null
     // Joined fields
     tables?: Table
     seats?: SessionSeat[]
@@ -386,6 +395,8 @@ export interface Settings {
         roomServiceCallEnabled?: boolean
         // Reception / room-service phone the "Call for Service" button dials.
         receptionPhone?: string | null
+        printInvoiceEnabled?: boolean
+        generateInvoiceEnabled?: boolean
     }
     business_hours: BusinessHours | null
     updated_at: string
@@ -922,6 +933,7 @@ export interface Room {
     restaurant_id: string
     room_number: string
     floor: string | null
+    beds: number
     status: RoomStatus
     type_id: string | null
     notes: string | null
@@ -929,6 +941,10 @@ export interface Room {
     created_at: string
     room_types?: RoomType | null
 }
+
+// How a booking's advance was collected. Older rows predate the column and
+// carry null; the API writes 'none' when no advance was paid.
+export type AdvancePaymentMethod = 'cash' | 'qr_digital' | 'split' | 'none'
 
 export interface Booking {
     id: string
@@ -945,9 +961,13 @@ export interface Booking {
     total_amount: number
     paid_amount: number
     payment_status: 'unpaid' | 'partial' | 'paid' | 'refunded'
-    advance_payment_method: 'cash' | 'qr_digital' | 'split' | 'none' | null
+    advance_payment_method: AdvancePaymentMethod | null
     notes: string | null
     created_at: string
+    discount_amount: number
+    discount_reason: string | null
+    discount_applied_by: string | null
+    discount_applied_at: string | null
     rooms?: Room | null
 }
 

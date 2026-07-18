@@ -71,20 +71,33 @@ export default async function WaiterPage() {
             .order('label', { ascending: true }),
         adminSupabase
             .from('sessions')
-            .select('id, table_id, restaurant_id, opened_by, session_token, status, opened_at, closed_at, expires_at, guest_count, max_seats, notes')
+            .select('id, table_id, restaurant_id, opened_by, session_token, status, opened_at, closed_at, expires_at, guest_count, max_seats, seat_number, notes')
             .eq('restaurant_id', restaurantId)
             .eq('status', 'active')
-            .gt('expires_at', now),
+            .gt('expires_at', now)
+            .order('seat_number', { ascending: true }),
     ])
 
-    const activeSessionByTable = Object.fromEntries(
-        (activeSessions || []).map(s => [s.table_id, s])
-    )
+    // A table can now carry more than one concurrent session — one per "seat" —
+    // when a waiter splits it for a shared table where each party pays separately.
+    // Seat 1 stays the table's primary session (what QR self-ordering targets and
+    // what every pre-existing call site that expects a single `activeSession`
+    // continues to see); seats 2+ surface as `otherActiveSessions`.
+    const sessionsByTable: Record<string, typeof activeSessions extends (infer T)[] | null ? T[] : never> = {}
+    for (const s of activeSessions || []) {
+        (sessionsByTable[s.table_id] ??= []).push(s)
+    }
 
-    const mappedTables = (tables || []).map(table => ({
-        ...table,
-        activeSession: activeSessionByTable[table.id] || null,
-    }))
+    const mappedTables = (tables || []).map(table => {
+        const sessions = sessionsByTable[table.id] || []
+        const primary = sessions.find(s => s.seat_number === 1) || sessions[0] || null
+        const others = sessions.filter(s => s.id !== primary?.id)
+        return {
+            ...table,
+            activeSession: primary,
+            otherActiveSessions: others,
+        }
+    })
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 

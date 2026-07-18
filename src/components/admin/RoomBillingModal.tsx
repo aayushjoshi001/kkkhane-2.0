@@ -1,15 +1,17 @@
 'use client'
 
 import { useState, useEffect, useSyncExternalStore } from 'react'
-import { X, Loader2, CheckCircle2 } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { X, Loader2, CheckCircle2, Percent } from 'lucide-react'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
-import { formatDateTime, calculateNights } from '@/lib/utils'
+import { formatDateTime, calculateNights, advanceMethodLabel } from '@/lib/utils'
 import { usePrinter } from '@/lib/print/usePrinter'
 import { buildInvoiceTicket, type ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
+import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 
 /** Table shape the admin room pages pass in (with its active QR session, if any). */
 export interface BillingTable {
@@ -81,12 +83,31 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // Loading is derived: we're loading until charges have arrived for this booking
     const [chargesLoadedFor, setChargesLoadedFor] = useState<string | null>(null)
     const loadingDetails = booking ? chargesLoadedFor !== booking.id : false
-    const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qr_digital' | 'split'>('cash')
+    // Bargain rate: the cashier can charge less than the standard rate for
+    // this stay, with a mandatory reason as the audit trail. Blank means "no
+    // change" — the standard rate applies, same as before this existed.
+    const [bargainRate, setBargainRate] = useState('')
+    const [bargainReason, setBargainReason] = useState('')
+    const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qr_digital' | 'split' | 'credit'>('cash')
     const [splitCashAmount, setSplitCashAmount] = useState('')
     const [splitQrAmount, setSplitQrAmount] = useState('')
     const [qrCodeId, setQrCodeId] = useState('')
+    // Pre-filled from the booking's own guest details (still editable) rather
+    // than asking again — the guest is already identified at checkout. Same
+    // "blank means fall back" convention as bargainRate above, so no effect
+    // is needed to sync it once the booking loads.
+    const [creditCustomerNameInput, setCreditCustomerNameInput] = useState('')
+    const [creditCustomerPhoneInput, setCreditCustomerPhoneInput] = useState('')
+    const [guestEmailInput, setGuestEmailInput] = useState('')
+    // 'split' and 'credit' always go through this confirmation popup —
+    // 'split' because a typo in the amounts would otherwise silently
+    // mischarge the guest, 'credit' because it needs a name/phone to post
+    // against.
+    const [showSettlementConfirm, setShowSettlementConfirm] = useState(false)
     const qrCodes = useQrCodes()
     const [isSaving, setIsSaving] = useState(false)
+    const printInvoiceEnabled = useFeatureEnabled('printInvoiceEnabled')
+    const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     // True once the checkout API confirms the room is settled — printing
     // happens after this, so the manager sees "Settled" immediately instead
     // of waiting on a printer that may be slow or not configured.
@@ -95,6 +116,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
 
     useEffect(() => {
         if (!booking) return
+        setGuestEmailInput(booking.guest_email || '')
         let cancelled = false
         fetch(`/api/rooms/charges?bookingId=${booking.id}`)
             .then(r => r.json())
@@ -144,16 +166,39 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const stayCost = booking ? calculateStayCost(room, booking) : 0
     const qrOrdersTotal = allServiceOrderItems.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
     const manualChargesTotal = charges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
-    const grandTotal = stayCost + qrOrdersTotal + manualChargesTotal
+
+    // Pre-filled from the booking's own guest details (still editable) — the
+    // guest is already identified at checkout, no need to ask again unless
+    // it's actually a different person settling on credit.
+    const creditCustomerName = creditCustomerNameInput || booking?.guest_name || ''
+    const creditCustomerPhone = creditCustomerPhoneInput || booking?.guest_phone || ''
+
+    // Blank input = no bargain applied, standard rate stands.
+    const bargainRateEntered = bargainRate.trim() !== ''
+    const bargainRateValue = bargainRateEntered ? parseFloat(bargainRate) || 0 : stayCost
+    const discountAmount = bargainRateEntered ? Math.max(0, stayCost - bargainRateValue) : 0
+    const discountInvalid = bargainRateEntered && (bargainRateValue < 0 || bargainRateValue > stayCost)
+    const effectiveStayCost = stayCost - discountAmount
+
+    const grandTotal = effectiveStayCost + qrOrdersTotal + manualChargesTotal
     const advancePaid = Number(booking?.paid_amount) || 0
     const balanceDue = Math.max(0, grandTotal - advancePaid)
 
     const resolvedCash = paymentMethod === 'cash' ? balanceDue
-        : paymentMethod === 'qr_digital' ? 0
-        : parseFloat(splitCashAmount) || 0
+        : paymentMethod === 'split' ? (parseFloat(splitCashAmount) || 0)
+        : 0
     const resolvedQr = paymentMethod === 'qr_digital' ? balanceDue
-        : paymentMethod === 'cash' ? 0
-        : parseFloat(splitQrAmount) || 0
+        : paymentMethod === 'split' ? (parseFloat(splitQrAmount) || 0)
+        : 0
+    // 'split' no longer requires cash+qr to exactly equal the balance due —
+    // whatever's left over (if any) becomes credit, confirmed via the
+    // settlement popup below (guards against a typo, not just a deliberate
+    // part-credit sale).
+    const resolvedCredit = paymentMethod === 'credit' ? balanceDue
+        : paymentMethod === 'split' ? Math.max(0, balanceDue - resolvedCash - resolvedQr)
+        : 0
+    const overpaid = paymentMethod === 'split' && (resolvedCash + resolvedQr) > balanceDue + 0.01
+    const creditFieldsInvalid = resolvedCredit > 0.01 && (!creditCustomerName.trim() || !creditCustomerPhone.trim())
 
     // Same shape the Cashier POS invoice preview uses, so the printed receipt
     // is identical regardless of which screen settled the bill.
@@ -166,7 +211,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         guestPhone: booking.guest_phone,
         nights: calculateNights(booking.check_in, booking.check_out),
         basePrice: room.room_types?.base_price || 0,
-        stayCost,
+        stayCost: effectiveStayCost,
         qrOrders: allServiceOrderItems.map(item => ({
             name: item.menu_items?.name || 'Item',
             quantity: item.quantity,
@@ -182,11 +227,34 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         paymentMethod: paymentMethod === 'split' ? 'both' : paymentMethod,
         cashPaid: resolvedCash,
         qrPaid: resolvedQr,
+        creditPaid: resolvedCredit,
     } : null
+
+    // 'cash'/'qr_digital' are unambiguous — settle immediately. 'split' and
+    // 'credit' open the confirmation popup instead (see showSettlementConfirm
+    // above); its own Confirm button calls handleSettle directly once the
+    // breakdown (and, if needed, customer details) are confirmed.
+    const handleSettleClick = () => {
+        if (discountInvalid) {
+            toast.error('Bargained rate must be between 0 and the standard rate')
+            return
+        }
+        if (discountAmount > 0 && !bargainReason.trim()) {
+            toast.error('A reason is required to apply a bargain rate')
+            return
+        }
+        if (paymentMethod === 'split' || paymentMethod === 'credit') {
+            setShowSettlementConfirm(true)
+            return
+        }
+        handleSettle()
+    }
 
     const handleSettle = async () => {
         if (!booking) return
+        if (overpaid || creditFieldsInvalid) return
 
+        setShowSettlementConfirm(false)
         setIsSaving(true)
         try {
             const res = await fetch(`/api/bookings/checkout`, {
@@ -199,7 +267,12 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                     cash_paid: resolvedCash,
                     qr_paid: resolvedQr,
                     qr_code_id: resolvedQr > 0 ? (qrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined)) : undefined,
-                    session_id: sessionId
+                    session_id: sessionId,
+                    discount_amount: discountAmount,
+                    discount_reason: discountAmount > 0 ? bargainReason.trim() : undefined,
+                    credit_amount: resolvedCredit,
+                    customer_name: resolvedCredit > 0 ? creditCustomerName.trim() : undefined,
+                    customer_phone: resolvedCredit > 0 ? creditCustomerPhone.trim() : undefined,
                 })
             })
             const data = await res.json()
@@ -209,9 +282,31 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             setIsSaving(false)
             setInvoiceSettled(true)
 
+            // Trigger digital invoice email if provided
+            if (guestEmailInput.trim()) {
+                fetch(`/api/bookings/checkout/email`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        booking_id: booking.id,
+                        email: guestEmailInput.trim()
+                    })
+                }).then(async r => {
+                    if (r.ok) {
+                        toast.success('Digital invoice sent to guest!')
+                    } else {
+                        const err = await r.json()
+                        console.error('Failed to send digital invoice:', err.error)
+                        toast.error(`Could not email receipt: ${err.error}`)
+                    }
+                }).catch(err => {
+                    console.error('Email dispatch error:', err)
+                })
+            }
+
             // Printing runs after the bill is already settled in the database,
             // so a slow/unconfigured printer never blocks the checkout itself.
-            if (invoiceData) {
+            if (invoiceData && printInvoiceEnabled) {
                 const printResult = await printInvoice(buildInvoiceTicket(invoiceData, money))
                 if (!printResult.ok) {
                     toast.error(
@@ -293,6 +388,16 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         <span className="font-extrabold text-gray-600 tabular-nums">{money(stayCost)}</span>
                                     </div>
 
+                                    {discountAmount > 0 && (
+                                        <div className="flex justify-between items-center p-4 text-xs bg-rose-50/40">
+                                            <div>
+                                                <p className="font-extrabold text-rose-600">Bargain Discount</p>
+                                                <p className="text-[10px] text-gray-400 truncate max-w-[220px]">{bargainReason || 'Reason required'}</p>
+                                            </div>
+                                            <span className="font-extrabold text-rose-600 tabular-nums">− {money(discountAmount)}</span>
+                                        </div>
+                                    )}
+
                                     {allServiceOrderItems.length > 0 && (
                                         <div className="p-4 space-y-2">
                                             <p className="font-extrabold text-xs text-indigo-600">Service Orders (QR + Dining)</p>
@@ -323,10 +428,64 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                 </div>
                             </div>
 
+                            {/* Bargain rate */}
+                            <div className="border-2 border-amber-200 rounded-2xl p-4 space-y-3 bg-amber-50/60 shadow-sm">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                                            <Percent size={14} className="text-amber-700" />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-black text-amber-800 uppercase tracking-wider">Bargain Rate</p>
+                                            <p className="text-[10px] text-amber-700/70 font-semibold">Standard rate: {money(stayCost)}</p>
+                                        </div>
+                                    </div>
+                                    <div className="relative w-32">
+                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-700">Rs.</span>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            max={stayCost}
+                                            placeholder={stayCost.toFixed(2)}
+                                            value={bargainRate}
+                                            onChange={e => setBargainRate(e.target.value)}
+                                            className={`w-full pl-7 pr-2 py-2 border-2 rounded-xl text-xs font-bold bg-white focus:outline-none ${discountInvalid ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
+                                        />
+                                    </div>
+                                </div>
+                                {discountInvalid && (
+                                    <p className="text-[9px] text-rose-500 font-bold">Rate must be between Rs. 0 and the standard rate.</p>
+                                )}
+                                {discountAmount > 0 && (
+                                    <div>
+                                        <label className="block text-[9px] font-black text-amber-700 uppercase mb-1">Reason (required)</label>
+                                        <input
+                                            type="text"
+                                            value={bargainReason}
+                                            onChange={e => setBargainReason(e.target.value)}
+                                            placeholder="e.g. Repeat guest, manager approved"
+                                            className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-amber-500"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Send Digital Invoice */}
+                            <div className="mt-3 pt-3 border-t border-dashed border-gray-150">
+                                <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Send Digital Invoice</label>
+                                <input
+                                    type="email"
+                                    value={guestEmailInput}
+                                    onChange={e => setGuestEmailInput(e.target.value)}
+                                    placeholder="guest@example.com (optional)"
+                                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
+                                />
+                            </div>
+
                             {/* Payment Method Selector */}
                             <div className="pt-4">
                                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Payment Method</p>
-                                <div className="grid grid-cols-3 gap-2">
+                                <div className="grid grid-cols-4 gap-2">
                                     <button
                                         onClick={() => setPaymentMethod('cash')}
                                         className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
@@ -364,7 +523,24 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></svg>
                                         Both
                                     </button>
+                                    <button
+                                        onClick={() => setPaymentMethod('credit')}
+                                        className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                            paymentMethod === 'credit'
+                                                ? 'border-[#ff5a00] bg-orange-50/50 text-[#ff5a00]'
+                                                : 'border-gray-150 bg-white text-gray-500 hover:border-[#ff5a00]/50 hover:text-[#ff5a00]'
+                                        }`}
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 9V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M22 17v-1a2 2 0 0 0-2-2h-1"/><rect width="8" height="8" x="14" y="14" rx="2"/></svg>
+                                        Credit
+                                    </button>
                                 </div>
+
+                                {paymentMethod === 'credit' && (
+                                    <p className="mt-3 text-[10px] text-gray-500 font-semibold text-center">
+                                        You&apos;ll confirm the customer&apos;s name and phone in the next step.
+                                    </p>
+                                )}
 
                                 {/* Split amount inputs — shown only when Both is selected */}
                                 {paymentMethod === 'split' && (
@@ -379,12 +555,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                                     max={balanceDue}
                                                     placeholder="0.00"
                                                     value={splitCashAmount}
-                                                    onChange={e => {
-                                                        const v = e.target.value
-                                                        setSplitCashAmount(v)
-                                                        const cash = parseFloat(v) || 0
-                                                        setSplitQrAmount(Math.max(0, balanceDue - cash).toFixed(2))
-                                                    }}
+                                                    onChange={e => setSplitCashAmount(e.target.value)}
                                                     className="w-full pl-7 pr-2 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
                                                 />
                                             </div>
@@ -399,24 +570,25 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                                     max={balanceDue}
                                                     placeholder="0.00"
                                                     value={splitQrAmount}
-                                                    onChange={e => {
-                                                        const v = e.target.value
-                                                        setSplitQrAmount(v)
-                                                        const qr = parseFloat(v) || 0
-                                                        setSplitCashAmount(Math.max(0, balanceDue - qr).toFixed(2))
-                                                    }}
+                                                    onChange={e => setSplitQrAmount(e.target.value)}
                                                     className="w-full pl-7 pr-2 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
                                                 />
                                             </div>
                                         </div>
-                                        {/* Balance check */}
+                                        {/* Balance check — a shortfall is no longer an error: it becomes
+                                            credit, confirmed (with customer details) in the next step. */}
                                         {(() => {
                                             const cash = parseFloat(splitCashAmount) || 0
                                             const qr = parseFloat(splitQrAmount) || 0
-                                            const diff = Math.abs(cash + qr - balanceDue)
-                                            if (diff > 0.01) return (
+                                            const remainder = balanceDue - cash - qr
+                                            if (remainder > 0.01) return (
+                                                <p className="col-span-2 text-[9px] text-amber-600 font-bold text-center">
+                                                    Rs. {remainder.toFixed(2)} left over will go on customer credit
+                                                </p>
+                                            )
+                                            if (remainder < -0.01) return (
                                                 <p className="col-span-2 text-[9px] text-rose-500 font-bold text-center">
-                                                    ⚠ Cash + QR must equal {money(balanceDue)} (difference: {money(diff)})
+                                                    ⚠ Cash + QR exceeds the bill by {money(Math.abs(remainder))}
                                                 </p>
                                             )
                                             return (
@@ -452,7 +624,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                 <div className="flex items-center justify-between">
                                     <span className="text-[10px] font-bold text-emerald-600 uppercase flex items-center gap-1">
                                         <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                        Advance Paid ({booking.advance_payment_method === 'split' ? 'Split Cash+QR' : booking.advance_payment_method === 'qr_digital' ? 'QR/Digital' : 'Cash'})
+                                        Advance Paid ({advanceMethodLabel(booking.advance_payment_method)})
                                     </span>
                                     <span className="text-sm font-black text-emerald-600 tabular-nums">− {money(advancePaid)}</span>
                                 </div>
@@ -476,20 +648,28 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                             >
                                                 Close
                                             </button>
-                                            <button
-                                                onClick={() => window.print()}
-                                                className="px-4 py-2 border border-gray-200 rounded-xl text-xs font-semibold hover:bg-gray-50 transition"
-                                            >
-                                                Print Bill
-                                            </button>
-                                            <button
-                                                onClick={handleSettle}
-                                                disabled={isSaving}
-                                                className="px-6 py-2 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-[#ff5a00]/10 disabled:opacity-50 flex items-center gap-1.5"
-                                            >
-                                                {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
-                                                Settle & Checkout
-                                            </button>
+                                            {printInvoiceEnabled && (
+                                                <button
+                                                    onClick={() => window.print()}
+                                                    className="px-4 py-2 border border-gray-200 rounded-xl text-xs font-semibold hover:bg-gray-50 transition"
+                                                >
+                                                    Print Bill
+                                                </button>
+                                            )}
+                                            {!generateInvoiceEnabled ? (
+                                                <div className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-1.5 flex items-center">
+                                                    Invoice generation disabled
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={handleSettleClick}
+                                                    disabled={isSaving || discountInvalid || (discountAmount > 0 && !bargainReason.trim())}
+                                                    className="px-6 py-2 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-[#ff5a00]/10 disabled:opacity-50 flex items-center gap-1.5"
+                                                >
+                                                    {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
+                                                    Settle & Checkout
+                                                </button>
+                                            )}
                                         </>
                                     )}
                                 </div>
@@ -500,6 +680,104 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                     <div className="p-6 flex-1 flex items-center justify-center">
                         <p className="text-xs text-gray-400">No active stay found for this room.</p>
                     </div>
+                )}
+
+                {/* Settlement Confirmation popup — gates every 'split' or
+                    'credit' settlement behind one explicit confirm step: a
+                    typo in the split amounts, or a missing customer name/
+                    phone for the credit portion, surfaces here instead of
+                    silently mischarging the guest. Rendered above the Modal
+                    itself (z-[400] vs. its z-[200]). */}
+                {mounted && showSettlementConfirm && createPortal(
+                    <div
+                        className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[400] flex items-center justify-center p-4"
+                        onClick={() => setShowSettlementConfirm(false)}
+                    >
+                        <div
+                            className="bg-white w-full max-w-sm rounded-[28px] shadow-2xl border border-gray-100 p-6 space-y-4"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div>
+                                <h3 className="text-lg font-black text-gray-900">Confirm Settlement</h3>
+                                <p className="text-xs text-gray-500 mt-0.5">Room {room.room_number}</p>
+                            </div>
+
+                            <div className="border border-gray-100 rounded-2xl p-4 space-y-2 text-xs">
+                                {resolvedCash > 0 && (
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500 font-semibold">Cash</span>
+                                        <span className="font-bold text-gray-900 tabular-nums">{money(resolvedCash)}</span>
+                                    </div>
+                                )}
+                                {resolvedQr > 0 && (
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500 font-semibold">QR / Digital</span>
+                                        <span className="font-bold text-gray-900 tabular-nums">{money(resolvedQr)}</span>
+                                    </div>
+                                )}
+                                {resolvedCredit > 0.01 && (
+                                    <div className="flex justify-between">
+                                        <span className="text-amber-700 font-semibold">On Credit</span>
+                                        <span className="font-bold text-amber-700 tabular-nums">{money(resolvedCredit)}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between pt-2 border-t border-dashed border-gray-100">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase">Balance Due</span>
+                                    <span className="font-black text-gray-900 tabular-nums">{money(balanceDue)}</span>
+                                </div>
+                            </div>
+
+                            {overpaid ? (
+                                <p className="text-[11px] text-rose-500 font-bold text-center">
+                                    ⚠ Cash + QR exceeds the balance due — go back and fix the split before continuing.
+                                </p>
+                            ) : resolvedCredit > 0.01 && (
+                                <div className="space-y-3">
+                                    <p className="text-[11px] text-amber-700 font-semibold">
+                                        {money(resolvedCredit)} will be added to this customer&apos;s credit account — confirm their details:
+                                    </p>
+                                    <div>
+                                        <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Customer Name</label>
+                                        <input
+                                            type="text"
+                                            value={creditCustomerName}
+                                            onChange={e => setCreditCustomerNameInput(e.target.value)}
+                                            placeholder="Guest name"
+                                            className="w-full px-3 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Phone</label>
+                                        <input
+                                            type="tel"
+                                            value={creditCustomerPhone}
+                                            onChange={e => setCreditCustomerPhoneInput(e.target.value)}
+                                            placeholder="98XXXXXXXX"
+                                            className="w-full px-3 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex gap-2 pt-2">
+                                <button
+                                    onClick={() => setShowSettlementConfirm(false)}
+                                    className="flex-1 px-4 py-2 border border-gray-200 rounded-xl text-xs font-semibold hover:bg-gray-50 transition"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleSettle}
+                                    disabled={isSaving || overpaid || creditFieldsInvalid}
+                                    className="flex-1 px-4 py-2 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-bold rounded-xl text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                                >
+                                    {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
+                                    Confirm &amp; Continue
+                                </button>
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
                 )}
 
                 {/* Off-screen receipt — not part of the review UI above, only exists

@@ -100,6 +100,9 @@ export default function CashierTableManager({
     useRestaurantTable(restaurantId, 'sessions', (payload) => {
         if (payload.eventType === 'INSERT') {
             const s = payload.new as Session
+            // Seats 2+ of a split table are extra sessions on the same table —
+            // they must not replace the table's primary (seat 1) session here.
+            if ((s.seat_number ?? 1) !== 1) return
             setTables(prev => prev.map(t => t.id === s.table_id ? { ...t, activeSession: s } : t))
             setSelectedTable(prev => prev?.id === s.table_id ? { ...prev, activeSession: s } : prev)
         } else if (payload.eventType === 'UPDATE') {

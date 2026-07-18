@@ -1,12 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Loader2, Check } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
 import { formatCurrency } from '@/lib/utils'
 import { useConfirmStore } from '@/lib/stores/confirm'
-import { createVoucherAction, openTodayDayBookSessionAction } from '@/app/(admin)/admin/vouchers/actions'
+import { createVoucherAction, openTodayDayBookSessionAction, getSupplierOutstandingBalanceAction, getStaffCurrentDueAction } from '@/app/(admin)/admin/vouchers/actions'
 import VoucherPrintSlip, { type VoucherSlipData } from '@/components/admin/VoucherPrintSlip'
 
 export interface PayPartyResult {
@@ -54,6 +54,36 @@ export default function PayPartyModal({
     onSettled,
 }: PayPartyModalProps) {
     const { confirm } = useConfirmStore()
+
+    const [fetchedDue, setFetchedDue] = useState<number | null>(null)
+    const [loadingDue, setLoadingDue] = useState(false)
+
+    useEffect(() => {
+        if (currentDue !== undefined) {
+            setFetchedDue(currentDue)
+            return
+        }
+        if (!isOpen || !partyId) {
+            setFetchedDue(null)
+            return
+        }
+        setLoadingDue(true)
+        if (category === 'suppliers') {
+            getSupplierOutstandingBalanceAction(partyId)
+                .then(res => {
+                    if (res.data !== undefined) setFetchedDue(res.data)
+                })
+                .catch(() => {})
+                .finally(() => setLoadingDue(false))
+        } else {
+            getStaffCurrentDueAction(partyId)
+                .then(res => {
+                    if (res.data !== undefined) setFetchedDue(res.data)
+                })
+                .catch(() => {})
+                .finally(() => setLoadingDue(false))
+        }
+    }, [isOpen, partyId, category, currentDue])
 
     const [amount, setAmount] = useState('')
     const [paymentMode, setPaymentMode] = useState<'cash' | 'qr' | 'cheque'>('cash')
@@ -216,8 +246,19 @@ export default function PayPartyModal({
                 <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
                     <div>
                         <h3 className="font-extrabold text-gray-900">Pay {partyName}</h3>
-                        {currentDue !== undefined && (
-                            <p className="text-xs text-gray-500 mt-0.5">Outstanding: <span className="font-bold text-rose-600">{formatCurrency(currentDue)}</span></p>
+                        {(currentDue !== undefined || fetchedDue !== null || loadingDue) && (
+                            <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                                Outstanding:{' '}
+                                <span className="font-bold text-rose-600">
+                                    {loadingDue ? (
+                                        'Loading...'
+                                    ) : fetchedDue !== null ? (
+                                        formatCurrency(fetchedDue)
+                                    ) : (
+                                        '0.00'
+                                    )}
+                                </span>
+                            </p>
                         )}
                     </div>
                 </div>
