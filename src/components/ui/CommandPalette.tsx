@@ -55,17 +55,53 @@ export function CommandPalette({ role, theme = 'light' }: Props) {
     const t = THEMES[theme]
     
     const features = useFeatures()
+    const promosEnabled = features?.promosEnabled ?? true
+    const loyaltyEnabled = !!features?.loyaltyEnabled
+    const takeoutEnabled = !!features?.takeoutEnabled
+    const dynamicPricingEnabled = !!features?.dynamicPricingEnabled
+    const ingredientTrackingEnabled = !!features?.ingredientTrackingEnabled
+    const staffShiftsEnabled = !!features?.staffShiftsEnabled
+    const staffManagementEnabled = features?.staffManagementEnabled ?? true
+    const tableManagementEnabled = features?.tableManagementEnabled ?? true
     const financeEnabled = !!features?.financeEnabled
     
     const groups = getCommandsForRole(role)
     const filteredGroups = groups.map(group => {
+        let items = group.items
+
         if (group.heading === 'Finance') {
-            return {
-                ...group,
-                items: financeEnabled ? group.items : []
-            }
+            items = financeEnabled ? items : []
+        } else if (group.heading === 'Menu') {
+            items = items.filter(item => {
+                if (item.href === '/admin/pricing') return dynamicPricingEnabled
+                if (item.href === '/admin/promos') return promosEnabled
+                return true
+            })
+        } else if (group.heading === 'Sales & Service') {
+            items = items.filter(item => {
+                if (item.href === '/admin/takeout') return takeoutEnabled
+                if (item.href === '/admin/tables') return tableManagementEnabled
+                return true
+            })
+        } else if (group.heading === 'Revenue & Growth') {
+            items = items.filter(item => {
+                if (item.href === '/admin/loyalty') return loyaltyEnabled
+                if (item.href === '/admin/reports') return financeEnabled
+                return true
+            })
+        } else if (group.heading === 'Operations') {
+            items = items.filter(item => {
+                if (item.href === '/admin/ingredients') return ingredientTrackingEnabled
+                if (item.href === '/admin/staff') return staffManagementEnabled
+                if (item.href === '/admin/shifts') return staffShiftsEnabled
+                return true
+            })
         }
-        return group
+
+        return {
+            ...group,
+            items
+        }
     }).filter(group => group.items.length > 0)
 
     useEffect(() => {

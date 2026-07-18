@@ -3,14 +3,19 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import CustomersLedgerManager from './CustomersLedgerManager'
 
+import { getRestaurantFeatures } from '@/lib/features'
+
 export const dynamic = 'force-dynamic'
 
 export default async function CustomersLedgerPage() {
     const currentUser = await getCurrentUser()
     if (!currentUser || !currentUser.restaurantId) redirect('/login')
 
-    const supabase = await createAdminClient()
     const restaurantId = currentUser.restaurantId
+    const features = await getRestaurantFeatures(restaurantId)
+    if (!features?.financeEnabled) redirect('/admin/dashboard')
+
+    const supabase = await createAdminClient()
 
     const [{ data: accounts }, { data: transactions }] = await Promise.all([
         supabase

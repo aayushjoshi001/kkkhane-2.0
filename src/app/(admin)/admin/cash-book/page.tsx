@@ -6,14 +6,19 @@ import type { DayBookEntry, ExpenseCategory } from '@/types/database'
 import { getNstDateString } from '@/lib/timezone'
 import { resolveActiveDayBookSession } from '@/lib/ledger'
 
+import { getRestaurantFeatures } from '@/lib/features'
+
 export const dynamic = 'force-dynamic'
 
 export default async function CashBookPage() {
     const currentUser = await getCurrentUser()
     if (!currentUser || !currentUser.restaurantId) redirect('/login')
 
-    const supabase = await createAdminClient()
     const restaurantId = currentUser.restaurantId
+    const features = await getRestaurantFeatures(restaurantId)
+    if (!features?.financeEnabled) redirect('/admin/dashboard')
+
+    const supabase = await createAdminClient()
 
     const todayDate = getNstDateString()
 

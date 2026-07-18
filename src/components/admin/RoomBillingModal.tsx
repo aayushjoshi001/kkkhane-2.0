@@ -108,6 +108,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const [isSaving, setIsSaving] = useState(false)
     const printInvoiceEnabled = useFeatureEnabled('printInvoiceEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
+    const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
     // True once the checkout API confirms the room is settled — printing
     // happens after this, so the manager sees "Settled" immediately instead
     // of waiting on a printer that may be slow or not configured.
@@ -656,20 +657,14 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                                     Print Bill
                                                 </button>
                                             )}
-                                            {!generateInvoiceEnabled ? (
-                                                <div className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-1.5 flex items-center">
-                                                    Invoice generation disabled
-                                                </div>
-                                            ) : (
-                                                <button
-                                                    onClick={handleSettleClick}
-                                                    disabled={isSaving || discountInvalid || (discountAmount > 0 && !bargainReason.trim())}
-                                                    className="px-6 py-2 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-[#ff5a00]/10 disabled:opacity-50 flex items-center gap-1.5"
-                                                >
-                                                    {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
-                                                    Settle & Checkout
-                                                </button>
-                                            )}
+                                            <button
+                                                onClick={handleSettleClick}
+                                                disabled={isSaving || discountInvalid || (discountAmount > 0 && !bargainReason.trim())}
+                                                className="px-6 py-2 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-[#ff5a00]/10 disabled:opacity-50 flex items-center gap-1.5"
+                                            >
+                                                {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
+                                                {!irdSyncEnabled ? 'Close Guest' : 'Settle & Checkout'}
+                                            </button>
                                         </>
                                     )}
                                 </div>

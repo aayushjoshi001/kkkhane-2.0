@@ -105,6 +105,7 @@ export default function CashierClient({
     const money = useCurrency()
     const printInvoiceEnabled = useFeatureEnabled('printInvoiceEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
+    const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
     const { print: printInvoice } = usePrinter('invoice')
     const [active, setActive] = useState<ActiveOrder[]>(initialActive)
     const [processingId, setProcessingId] = useState<string | null>(null)
@@ -1794,21 +1795,30 @@ export default function CashierClient({
                                                         <p className="text-2xl font-black text-brand-600 tabular-nums">{money(balanceDue)}</p>
                                                     </div>
                                                     <div className="flex gap-2 items-center">
-                                                         <Button variant="secondary" onClick={() => setSelectedBillingRoom(null)}>Close</Button>
-                                                         {!generateInvoiceEnabled ? (
-                                                             <div className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-1.5 animate-pulse-once">
-                                                                 Invoice generation disabled
-                                                             </div>
-                                                         ) : (
-                                                             <Button
-                                                                 variant="primary"
-                                                                 onClick={() => compileInvoice('room', selectedBillingRoom)}
-                                                                 className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
-                                                             >
-                                                                 Generate Invoice
-                                                             </Button>
-                                                         )}
-                                                     </div>
+                                                        <Button variant="secondary" onClick={() => setSelectedBillingRoom(null)}>Close</Button>
+                                                        {!irdSyncEnabled ? (
+                                                            <Button
+                                                                variant="primary"
+                                                                onClick={() => {
+                                                                    const data = buildInvoiceData('room', selectedBillingRoom)
+                                                                    if (data) {
+                                                                        setActiveInvoice(data)
+                                                                    }
+                                                                }}
+                                                                className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                            >
+                                                                Close Guest
+                                                            </Button>
+                                                        ) : (
+                                                            <Button
+                                                                variant="primary"
+                                                                onClick={() => compileInvoice('room', selectedBillingRoom)}
+                                                                className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                            >
+                                                                Generate Invoice
+                                                            </Button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </>
                                         )
@@ -2068,10 +2078,19 @@ export default function CashierClient({
                                         </div>
                                         <div className="flex gap-2 items-center">
                                             <Button variant="secondary" onClick={() => setSelectedBillingTable(null)}>Close</Button>
-                                            {!generateInvoiceEnabled ? (
-                                                <div className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-1.5 animate-pulse-once">
-                                                    Invoice generation disabled
-                                                </div>
+                                            {!irdSyncEnabled ? (
+                                                <Button
+                                                    variant="primary"
+                                                    onClick={() => {
+                                                        const data = buildInvoiceData('table', selectedBillingTable)
+                                                        if (data) {
+                                                            setActiveInvoice(data)
+                                                        }
+                                                    }}
+                                                    className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                 >
+                                                     Close Guest
+                                                 </Button>
                                             ) : (
                                                 <Button
                                                     variant="primary"
@@ -2227,7 +2246,16 @@ export default function CashierClient({
                                             Print Bill
                                         </button>
                                     )}
-                                    {generateInvoiceEnabled && (
+                                    {!irdSyncEnabled ? (
+                                        <Button
+                                            variant="primary"
+                                            loading={isSettlingInvoice}
+                                            onClick={handleMarkPaid}
+                                            className="font-bold flex-1 bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 text-[10px] text-white py-1.5 min-w-[70px] animate-scale-in"
+                                        >
+                                            Close Guest
+                                        </Button>
+                                    ) : (
                                         <Button
                                             variant="primary"
                                             loading={isSettlingInvoice}

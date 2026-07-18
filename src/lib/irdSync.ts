@@ -19,6 +19,12 @@ interface SyncInvoicePayload {
  * checkout failures if SQL table migrations have not been applied.
  */
 export async function syncInvoiceToIrd(restaurantId: string, data: SyncInvoicePayload) {
+    const { getRestaurantFeatures } = await import('./features')
+    const features = await getRestaurantFeatures(restaurantId)
+    if (!features?.irdSyncEnabled) {
+        return { success: true, bypassed: true, reason: 'IRD Sync feature is disabled' }
+    }
+
     const supabase = await createAdminClient()
 
     // 1. Fetch restaurant settings to verify VAT registration and API credentials

@@ -198,6 +198,33 @@ export async function POST(req: Request) {
         }
         const authoritativeTotal = folio.total
 
+        const { getRestaurantFeatures } = await import('@/lib/features')
+        const features = await getRestaurantFeatures(booking.restaurant_id)
+        const isInvoiceEnabled = !!features?.generateInvoiceEnabled
+
+        if (!isInvoiceEnabled) {
+            // 1. Settle the session orders (if session_id is provided)
+            if (session_id) {
+                await settleAndCloseSession(supabase, booking.restaurant_id, session_id)
+            }
+
+            // 2. Mark the booking as checked out
+            const { error: bookingErr } = await supabase
+                .from('bookings')
+                .update({ status: 'checked_out', payment_status: 'paid' })
+                .eq('id', booking_id)
+            if (bookingErr) throw bookingErr
+
+            // 3. Mark the room as dirty (vacant)
+            const { error: roomErr } = await supabase
+                .from('rooms')
+                .update({ status: 'dirty' })
+                .eq('id', room_id)
+            if (roomErr) throw roomErr
+
+            return NextResponse.json({ success: true, total: authoritativeTotal, breakdown: folio })
+        }
+
         const clientMismatch = Number.isFinite(clientTotal)
             ? round2(Math.abs(clientTotal - authoritativeTotal))
             : null

@@ -30,13 +30,26 @@ const defaultFeatures: Features = {
     financeEnabled: false,
     printInvoiceEnabled: true,
     generateInvoiceEnabled: true,
+    staffManagementEnabled: true,
+    tableManagementEnabled: true,
+    irdSyncEnabled: false,
 }
 
 const FeatureContext = createContext<Features>(defaultFeatures)
 
 export function FeatureProvider({ features, children }: { features: Features | null; children: ReactNode }) {
+    const rawFeatures = features ?? defaultFeatures
+    const isIrd = !!rawFeatures.irdSyncEnabled
+    const resolvedFeatures: Features = {
+        ...rawFeatures,
+        financeEnabled: isIrd ? true : (rawFeatures.financeEnabled ?? false),
+        generateInvoiceEnabled: isIrd ? true : (rawFeatures.generateInvoiceEnabled ?? true),
+        printInvoiceEnabled: isIrd ? true : (rawFeatures.printInvoiceEnabled ?? true),
+        vatEnabled: isIrd ? rawFeatures.vatEnabled : false
+    }
+
     return (
-        <FeatureContext.Provider value={features ?? defaultFeatures}>
+        <FeatureContext.Provider value={resolvedFeatures}>
             {children}
         </FeatureContext.Provider>
     )
@@ -61,7 +74,9 @@ export function useFeatureEnabled(key: keyof Omit<Features, 'defaultTaxRate' | '
             'serviceRequestsEnabled',
             'splitBillingEnabled',
             'printInvoiceEnabled',
-            'generateInvoiceEnabled'
+            'generateInvoiceEnabled',
+            'staffManagementEnabled',
+            'tableManagementEnabled'
         ]
         return defaultTrueKeys.includes(key)
     }

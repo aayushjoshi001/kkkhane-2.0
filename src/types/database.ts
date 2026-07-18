@@ -397,6 +397,9 @@ export interface Settings {
         receptionPhone?: string | null
         printInvoiceEnabled?: boolean
         generateInvoiceEnabled?: boolean
+        staffManagementEnabled?: boolean
+        tableManagementEnabled?: boolean
+        irdSyncEnabled?: boolean
     }
     business_hours: BusinessHours | null
     updated_at: string

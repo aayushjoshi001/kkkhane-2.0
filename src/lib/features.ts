@@ -28,7 +28,17 @@ export async function getRestaurantFeatures(restaurantId: string): Promise<Setti
         [`features-${restaurantId}`],
         { tags: [`features-${restaurantId}`], revalidate: 3600 }
     )
-    return fetcher()
+    const features = await fetcher()
+    if (!features) return null
+
+    const isIrd = !!features.irdSyncEnabled
+    return {
+        ...features,
+        financeEnabled: isIrd ? true : (features.financeEnabled ?? false),
+        generateInvoiceEnabled: isIrd ? true : (features.generateInvoiceEnabled ?? true),
+        printInvoiceEnabled: isIrd ? true : (features.printInvoiceEnabled ?? true),
+        vatEnabled: isIrd ? features.vatEnabled : false
+    }
 }
 
 /**

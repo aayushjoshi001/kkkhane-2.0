@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react'
 import Image from 'next/image'
-import { Save, Store, Mail, Phone, MapPin, Building, Percent, Check, Loader2, Shield, ToggleLeft, ToggleRight, Upload, X, Bell, Play, Clock } from 'lucide-react'
+import { Save, Store, Mail, Phone, MapPin, Building, Percent, Check, Loader2, Shield, ToggleLeft, ToggleRight, Upload, X, Bell, Play, Clock, Crown } from 'lucide-react'
 import { updateRestaurantSettingsAction, updateBusinessHoursAction } from '@/app/(admin)/admin/settings/actions'
 import { updateFeaturesAction } from '@/lib/features'
 import { toast } from 'react-hot-toast'
@@ -807,8 +807,8 @@ export default function SettingsManager({
                     {isSavingFeatures ? <Loader2 size={20} className="animate-spin" /> : <ToggleRight size={20} />}
                 </div>
                 <div>
-                    <h3 className="text-h3 font-extrabold text-ink">Feature Flags</h3>
-                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Enable or disable features for your restaurant — changes apply instantly</p>
+                    <h3 className="text-h3 font-extrabold text-ink">Workspace Preferences</h3>
+                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Customize behavioral preferences for your dining and billing operations</p>
                 </div>
             </div>
 
@@ -821,21 +821,14 @@ export default function SettingsManager({
                         { key: 'selfOrderRequestEnabled' as const, label: 'Ring for Service', desc: 'When waiter-managed sessions are on, let customers ring to request the table be opened' },
                         { key: 'roomServiceCallEnabled' as const, label: 'In-Room Service Call', desc: 'Hotel room QR asks the guest to confirm their booking phone, then shows a Call-for-Service button to reception' },
                         { key: 'splitBillingEnabled' as const, label: 'Split Billing', desc: 'Allow customers to split bills at checkout' },
-                        { key: 'promosEnabled' as const, label: 'Promo Codes', desc: 'Allow promo/discount codes at checkout' },
-                        { key: 'loyaltyEnabled' as const, label: 'Loyalty Program', desc: 'Points-based loyalty rewards for repeat customers' },
-                        { key: 'takeoutEnabled' as const, label: 'Takeout Orders', desc: 'Accept orders for pickup' },
-                        { key: 'dynamicPricingEnabled' as const, label: 'Dynamic Pricing', desc: 'Time-based price adjustments' },
-                        { key: 'ingredientTrackingEnabled' as const, label: 'Ingredient Tracking', desc: 'Track stock levels for menu items' },
-                        { key: 'staffShiftsEnabled' as const, label: 'Staff Shifts', desc: 'Clock in/out for staff members' },
                         { key: 'nepalPayEnabled' as const, label: 'Nepal QR Pay', desc: 'eSewa/Khalti/Fonepay QR payment' },
                         { key: 'vatEnabled' as const, label: 'VAT on Invoices', desc: 'Show 13% VAT on printed invoices' },
                         { key: 'phoneOtpEnabled' as const, label: 'Phone OTP Login', desc: 'Allow phone number login via SMS OTP' },
                         { key: 'multiLanguageEnabled' as const, label: 'Multi-Language', desc: 'Menu in multiple languages' },
                         { key: 'bsDateEnabled' as const, label: 'Bikram Sambat Date', desc: 'Show BS calendar dates' },
-                        { key: 'generateInvoiceEnabled' as const, label: 'Generate Invoice', desc: 'Allow cashier POS or room billing to settle checkouts and generate invoices' },
-                        { key: 'printInvoiceEnabled' as const, label: 'Print Invoice', desc: 'Allow printing invoices or previewing bills at checkout (disable to skip printing entirely)' },
                     ]).map(({ key, label, desc }) => (
                         <button
+                            type="button"
                             key={key}
                             onClick={() => toggleFeature(key)}
                             disabled={!canEdit || isSavingFeatures}
@@ -855,6 +848,58 @@ export default function SettingsManager({
                                 <ToggleLeft size={28} className="text-ink-muted shrink-0 group-hover:text-ink-subtle transition-colors" />
                             )}
                         </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Read-Only Subscription Features */}
+            <div className="p-5 border-t border-hairline bg-surface-muted/10">
+                <div className="flex items-center gap-3 p-4 rounded-[var(--r-md)] bg-brand-50/30 border border-brand-500/10 text-ink-muted text-xs">
+                    <Crown size={16} className="text-brand-500 shrink-0" />
+                    <span>
+                        <strong>Subscription Features:</strong> The following features are controlled by your SaaS subscription plan. Please contact your platform administrator/support to enable or disable these modules.
+                    </span>
+                </div>
+            </div>
+
+            <div className="p-6 border-t border-hairline">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {([
+                        { key: 'financeEnabled' as const, label: 'Finance & Accounting', desc: 'General ledger, cash/bank books' },
+                        { key: 'staffManagementEnabled' as const, label: 'Staff Management', desc: 'Staff records and custom permission roles' },
+                        { key: 'staffShiftsEnabled' as const, label: 'Staff Shifts & Schedule', desc: 'Employee rosters and schedules' },
+                        { key: 'tableManagementEnabled' as const, label: 'Tables & Floor layout', desc: 'Design dining table maps and QR codes' },
+                        { key: 'ingredientTrackingEnabled' as const, label: 'Inventory (Ingredients)', desc: 'Track ingredient stock levels' },
+                        { key: 'loyaltyEnabled' as const, label: 'Loyalty Program', desc: 'Customer rewards and points system' },
+                        { key: 'promosEnabled' as const, label: 'Promo Coupons', desc: 'Discount and promo codes' },
+                        { key: 'dynamicPricingEnabled' as const, label: 'Dynamic Pricing', desc: 'Happy hour and surge pricing' },
+                        { key: 'takeoutEnabled' as const, label: 'Takeout Orders', desc: 'Takeout and delivery dispatching' },
+                        { key: 'generateInvoiceEnabled' as const, label: 'Generate Invoice', desc: 'Settle and record official invoice data' },
+                        { key: 'printInvoiceEnabled' as const, label: 'Print Invoice', desc: 'Auto spool print receipts at till checkout' },
+                        { key: 'irdSyncEnabled' as const, label: 'IRD Real-time Sync', desc: 'Sync billing receipts to Inland Revenue Department' },
+                    ]).map(({ key, label, desc }) => (
+                        <div
+                            key={key}
+                            className={`flex items-center justify-between p-4 rounded-[var(--r-md)] border select-none ${
+                                features[key]
+                                    ? 'bg-emerald-50/20 border-emerald-500/20 shadow-[inset_0_2px_4px_rgba(16,185,129,0.01)]'
+                                    : 'bg-surface border-hairline opacity-60 shadow-[0_2px_4px_rgba(0,0,0,0.02)]'
+                            }`}
+                        >
+                            <div className="pr-4">
+                                <span className={`text-sm font-extrabold ${features[key] ? 'text-emerald-700 dark:text-emerald-400' : 'text-ink-muted'}`}>{label}</span>
+                                <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-1">{desc}</p>
+                            </div>
+                            {features[key] ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                                    Active
+                                </span>
+                            ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-ink-subtle/10 text-ink-muted border border-hairline">
+                                    Disabled
+                                </span>
+                            )}
+                        </div>
                     ))}
                 </div>
             </div>
