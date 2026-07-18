@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import TableManager, { type TableWithSession } from '@/components/waiter/TableManager'
+import WaiterRoomManager from '@/components/waiter/WaiterRoomManager'
 import WaiterCustomerTabs, { type ServiceRequestWithTable } from '@/components/waiter/WaiterCustomerTabs'
 import PaymentVerificationFeed, { type PaymentClaim } from '@/components/waiter/PaymentVerificationFeed'
 import WaiterOrderFeed, { type WaiterOrder } from '@/components/waiter/WaiterOrderFeed'
@@ -109,6 +110,8 @@ export default async function WaiterPage() {
         { data: activeOrders },
         { data: readyTakeouts },
         { data: unpaidDelivered },
+        { data: rooms },
+        { data: bookings },
     ] = await Promise.all([
         getRestaurantFeatures(restaurantId),
         getRestaurantMode(restaurantId),
@@ -159,6 +162,17 @@ export default async function WaiterPage() {
             .eq('payment_status', 'unpaid')
             .order('delivered_at', { ascending: true })
             .limit(30),
+        adminSupabase
+            .from('rooms')
+            .select('*, room_types:type_id(*)')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
+            .order('room_number', { ascending: true }),
+        adminSupabase
+            .from('bookings')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('status', 'checked_in'),
     ])
 
     // Ready online-delivery orders awaiting a delivery person.
@@ -216,6 +230,19 @@ export default async function WaiterPage() {
             />
         </div>
     )
+
+    const roomsContent = businessMode === 'hotel' ? (
+        <div className="space-y-6 pt-1">
+            <WaiterRoomManager
+                rooms={rooms || []}
+                bookings={bookings || []}
+                restaurantId={restaurantId}
+                tables={mappedTables as unknown as TableWithSession[]}
+            />
+        </div>
+    ) : undefined
+
+    const tablesContent = spaceContent
 
     const dineInCount = (activeOrders || []).filter(o => o.status === 'ready').length + (ordersToConfirm?.length || 0)
     const takeawayCount = (readyTakeouts || []).length + readyDeliveries.length
@@ -284,10 +311,15 @@ export default async function WaiterPage() {
             <div className="flex-1 px-3 md:px-6 pb-3 md:pb-6">
                 <WaiterTabs
                     spaceContent={spaceContent}
+                    roomsContent={roomsContent}
+                    tablesContent={tablesContent}
                     ordersContent={ordersContent}
                     customerContent={customerContent}
+                    isHotel={businessMode === 'hotel'}
                     counts={{
                         space: spaceCount,
+                        rooms: (rooms || []).filter(r => r.status === 'occupied').length,
+                        tables: mappedTables.filter(t => t.table_status === 'occupied').length,
                         orders: ordersCount,
                         customer: customerCount,
                     }}

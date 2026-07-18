@@ -6,6 +6,7 @@
 import { EscPosBuilder } from '../escpos'
 import type { KitchenOrder, KitchenOrderItem } from '@/components/kitchen/OrderQueue'
 import { STATION_META, itemsForStation, type StationKind } from '@/lib/stations'
+import { getKOTSourceLabel } from '@/lib/utils'
 
 export function buildStationTicket(
     order: KitchenOrder,
@@ -19,10 +20,7 @@ export function buildStationTicket(
     b.line(meta.ticketTitle)
     b.divider()
 
-    const table = order.sessions?.tables?.label
-    const isTakeout = order.order_type === 'takeout'
-    const isDelivery = order.order_type === 'delivery'
-    const sourceLabel = isTakeout ? 'TAKEAWAY' : isDelivery ? 'DELIVERY' : table ? `TABLE ${table}` : 'ORDER'
+    const sourceLabel = getKOTSourceLabel(order).toUpperCase()
 
     b.size({ doubleHeight: true, doubleWidth: true }).bold(true)
     b.line(sourceLabel)

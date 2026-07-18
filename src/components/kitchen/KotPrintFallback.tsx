@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import type { KitchenOrder } from './OrderQueue'
 import { STATION_META, type StationKind } from '@/lib/stations'
+import { getKOTSourceLabel } from '@/lib/utils'
 
 /**
  * Browser-print fallback for a station ticket (KOT or BOT) when QZ Tray isn't
@@ -25,10 +26,7 @@ export default function KotPrintFallback({ order, station = 'kitchen', onDone }:
 
     if (!order) return null
 
-    const table = order.sessions?.tables?.label
-    const isTakeout = order.order_type === 'takeout'
-    const isDelivery = order.order_type === 'delivery'
-    const sourceLabel = isTakeout ? 'TAKEAWAY' : isDelivery ? 'DELIVERY' : table ? `TABLE ${table}` : 'ORDER'
+    const sourceLabel = getKOTSourceLabel(order).toUpperCase()
 
     return (
         <div className="kot-print-container fixed" style={{ left: -10000, top: 0 }}>

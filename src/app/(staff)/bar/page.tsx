@@ -29,7 +29,23 @@ export default async function BarPage() {
                 total_amount,
                 placed_at,
                 customer_note,
-                sessions ( tables ( label ) ),
+                booking_id,
+                bookings:booking_id (
+                  id,
+                  rooms:room_id ( id, room_number )
+                ),
+                sessions (
+                  id,
+                  seat_number,
+                  booking_id,
+                  tables:table_id (
+                    id,
+                    label,
+                    room_id,
+                    rooms:room_id ( id, room_number ),
+                    sessions ( id, seat_number, status )
+                  )
+                ),
                 order_items (
                     id,
                     menu_item_id,
