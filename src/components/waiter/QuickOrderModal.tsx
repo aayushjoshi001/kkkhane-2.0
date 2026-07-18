@@ -317,10 +317,21 @@ export default function QuickOrderModal({
         setShowConfirmDialog(false)
         setSubmitting(true)
         try {
+            const cartWithPacking = cart.map(item => {
+                if (orderType === 'takeout') {
+                    const cleanRequest = item.specialRequest ? item.specialRequest.replace('(Packing)', '').replace('[Packing]', '').trim() : ''
+                    return {
+                        ...item,
+                        specialRequest: cleanRequest ? `${cleanRequest} (Packing)` : '(Packing)'
+                    }
+                }
+                return item
+            })
+
             const res = bookingId && !selectedSession
-                ? await placeRoomOrderDirect(bookingId, cart, customerNote, orderType)
+                ? await placeRoomOrderDirect(bookingId, cartWithPacking, customerNote)
                 : selectedSession
-                    ? await placeStaffOrder(selectedSession.token, cart, customerNote, orderType)
+                    ? await placeStaffOrder(selectedSession.token, cartWithPacking, customerNote)
                     : { error: 'No active session found.' }
             if (res && res.success) {
                 if (res.orderId) {

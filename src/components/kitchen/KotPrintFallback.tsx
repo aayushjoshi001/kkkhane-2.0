@@ -51,7 +51,7 @@ export default function KotPrintFallback({ order, station = 'kitchen', onDone }:
             <div className="text-[10px]">Time: {new Date(order.placed_at).toLocaleTimeString()}</div>
             <div className="border-t border-dashed border-black my-1" />
             {(order.order_items || []).map((item) => {
-                const { name, note } = getItemKOTDisplay(item, order.order_type)
+                const { name, note } = getItemKOTDisplay(item, order.order_type === 'takeout' && !order.booking_id)
                 return (
                     <div key={item.id} className="mb-1">
                         <div className="font-bold text-[11px]">{item.quantity} x {name}</div>

@@ -33,7 +33,7 @@ export function buildStationTicket(
 
     const items = itemsForStation<KitchenOrderItem>(order.order_items, station)
     for (const item of items) {
-        const { name, note } = getItemKOTDisplay(item, order.order_type)
+        const { name, note } = getItemKOTDisplay(item, order.order_type === 'takeout' && !order.booking_id)
         b.bold(true)
         b.line(`${item.quantity} x ${name}`)
         b.bold(false)

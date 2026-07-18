@@ -216,7 +216,7 @@ export function getItemKOTDisplay(
         menu_item_variations?: { name: string } | null
         special_request?: string | null
     },
-    orderType?: string | null
+    isTakeout?: boolean
 ): { name: string; note: string } {
     let name = item.menu_items?.name || 'Item'
     let variationName = item.menu_item_variations?.name
@@ -235,7 +235,12 @@ export function getItemKOTDisplay(
         name = `${name} ${variationName}`
     }
 
-    if (orderType === 'takeout') {
+    const hasPackingLabel = note.includes('(Packing)') || note.includes('[Packing]')
+    if (hasPackingLabel) {
+        note = note.replace('(Packing)', '').replace('[Packing]', '').trim()
+    }
+
+    if (isTakeout || hasPackingLabel) {
         name = `${name} (Packing)`
     }
 

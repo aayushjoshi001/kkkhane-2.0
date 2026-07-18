@@ -348,8 +348,7 @@ export async function getStaffMenu(restaurantId: string) {
 export async function placeStaffOrder(
     sessionId: string,
     items: any[],
-    customerNote?: string,
-    orderType?: 'dine_in' | 'takeout' | 'delivery'
+    customerNote?: string
 ) {
     const supabase = await createServerClient()
     const adminSupabase = await createAdminClient()
@@ -430,9 +429,6 @@ export async function placeStaffOrder(
         if (roomContext?.bookingId) {
             updateFields.booking_id = roomContext.bookingId
         }
-        if (orderType) {
-            updateFields.order_type = orderType
-        }
 
         await adminSupabase
             .from('orders')
@@ -455,8 +451,7 @@ export async function placeStaffOrder(
 export async function placeRoomOrderDirect(
     bookingId: string,
     items: any[],
-    customerNote?: string,
-    orderType: 'dine_in' | 'takeout' = 'takeout'
+    customerNote?: string
 ) {
     const supabase = await createServerClient()
     const adminSupabase = await createAdminClient()
@@ -486,7 +481,7 @@ export async function placeRoomOrderDirect(
             status: 'confirmed',
             needs_confirmation: false,
             payment_status: 'unpaid',
-            order_type: orderType
+            order_type: 'takeout'
         })
         .select('id')
         .single()
