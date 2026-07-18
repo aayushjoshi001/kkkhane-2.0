@@ -6,7 +6,6 @@ import {
     Tablet,
     Smartphone,
     LayoutTemplate,
-    ExternalLink,
     Save,
     Image as ImageIcon,
     Star,
@@ -18,8 +17,6 @@ import {
     Palette,
     Type,
     Square,
-    PlayCircle,
-    Minus,
     Layers,
     Menu as MenuIcon,
     Search,
@@ -31,7 +28,6 @@ import {
     ChevronDown,
     Copy,
     QrCode,
-    X,
     Plus,
     GripVertical,
     FileText,
@@ -79,7 +75,7 @@ export default function BuilderClient() {
     const [expandedRightPanel, setExpandedRightPanel] = useState<string | null>('theme')
 
     const addSection = (sectionType: string, name: string) => {
-        const newSection = { id: Math.random().toString(36).substr(2, 9), type: sectionType, name }
+        const newSection = { id: Date.now().toString(36), type: sectionType, name }
         setActiveSections([...activeSections, newSection])
         setLeftTab('layout')
         setEditingSection(newSection.id)
