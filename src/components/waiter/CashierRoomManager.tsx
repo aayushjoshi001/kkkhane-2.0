@@ -71,6 +71,9 @@ export default function CashierRoomManager({
     // Manual charge addition states
     const [manualCharges, setManualCharges] = useState<any[]>([])
     const [linkedDiningOrders, setLinkedDiningOrders] = useState<any[]>([])
+    const filteredLinkedDiningOrders = (() => {
+        return linkedDiningOrders.filter(o => !o.is_room_order)
+    })()
     const [loadingCharges, setLoadingCharges] = useState(false)
     const [showAddChargeForm, setShowAddChargeForm] = useState(false)
     const [newCharge, setNewCharge] = useState({
@@ -297,9 +300,9 @@ export default function CashierRoomManager({
         const roomStayCost = stayPriceDetails.cost
         const qrOrdersTotal = qrOrdersDetails?.total || 0
         const manualChargesTotal = manualCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
-        const linkedDiningTotal = linkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+        const linkedDiningTotal = filteredLinkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
         return roomStayCost + qrOrdersTotal + manualChargesTotal + linkedDiningTotal
-    }, [stayPriceDetails, qrOrdersDetails, manualCharges, linkedDiningOrders])
+    }, [stayPriceDetails, qrOrdersDetails, manualCharges, filteredLinkedDiningOrders])
 
     // Change room status helper
     const handleStatusChange = async (roomId: string, newStatus: 'available' | 'dirty' | 'maintenance') => {
@@ -959,16 +962,16 @@ export default function CashierRoomManager({
                                         )}
 
                                         {/* Waiter Linked Restaurant Dining Row */}
-                                        {linkedDiningOrders.length > 0 && (
+                                        {filteredLinkedDiningOrders.length > 0 && (
                                             <div className="p-4 space-y-3">
                                                 <div className="flex justify-between items-center text-xs">
                                                     <p className="font-extrabold text-emerald-600">Restaurant Dining (Table Orders)</p>
                                                     <span className="font-extrabold text-emerald-600 tabular-nums">
-                                                        {money(linkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0))}
+                                                        {money(filteredLinkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0))}
                                                     </span>
                                                 </div>
                                                 <div className="space-y-1.5 pl-3 border-l-2 border-emerald-100 max-h-28 overflow-y-auto">
-                                                    {linkedDiningOrders.map((item, idx) => (
+                                                    {filteredLinkedDiningOrders.map((item, idx) => (
                                                         <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
                                                             <span>{item.menu_items?.name || 'Item'} <span className="text-[9px] text-brand-500">({item.quantity}×)</span></span>
                                                             <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>

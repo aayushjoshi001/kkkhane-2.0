@@ -182,6 +182,7 @@ export default function CashierClient({
     // amounts, and is where a credit portion's name/phone gets collected.
     const [showSettlementConfirm, setShowSettlementConfirm] = useState(false)
     const [pendingInvoice, setPendingInvoice] = useState<{ type: 'room' | 'table'; item: any; data: any } | null>(null)
+    const [isDirectCheckingOut, setIsDirectCheckingOut] = useState(false)
     const qrCodes = useQrCodes()
 
     const [mounted, setMounted] = useState(false)
@@ -581,6 +582,64 @@ export default function CashierClient({
     const cancelSettlementConfirm = () => {
         setShowSettlementConfirm(false)
         setPendingInvoice(null)
+    }
+
+    const handleCloseGuestDirectly = async (room: any) => {
+        if (!room || isDirectCheckingOut) return
+        setIsDirectCheckingOut(true)
+        try {
+            const booking = billingStayBooking ?? bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
+            if (!booking) return
+
+            const total = calculateGrandTotal(room, booking)
+            const advancePaid = Number(booking.paid_amount) || 0
+            const balanceDue = Math.max(0, total - advancePaid)
+            const matchingTable = tables.find(t => t.room_id === room.id)
+            const sessionId = matchingTable?.activeSession?.id
+
+            // Settle all unpaid orders associated with this booking's session
+            if (sessionId) {
+                const sessionOrders = active.filter(o => o.session_id === sessionId)
+                const sessionUnpaid = unpaid.filter(o => o.session_id === sessionId)
+                const allUnpaid = [...sessionOrders, ...sessionUnpaid].filter(o => o.payment_status === 'unpaid')
+                
+                await Promise.all(
+                    allUnpaid.map(order => markDeliveredAndCashPaid(order.id, 'cash'))
+                )
+            }
+
+            const res = await fetch(`/api/bookings/checkout`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    booking_id: booking.id,
+                    room_id: room.id,
+                    total_amount: total,
+                    cash_paid: balanceDue,
+                    qr_paid: 0,
+                    session_id: sessionId || null,
+                    credit_amount: 0,
+                })
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Failed to checkout booking')
+
+            setBookings(prev => prev.map(b =>
+                b.id === booking.id ? { ...b, status: 'checked_out' } : b
+            ))
+            setRoomsState(prev => prev.map(r =>
+                r.id === room.id ? { ...r, status: 'dirty' } : r
+            ))
+
+            toast.success('Room guest checked out successfully!')
+            setSelectedBillingRoom(null)
+            router.refresh()
+        } catch (err) {
+            console.error('Error during direct checkout:', err)
+            toast.error(err instanceof Error ? err.message : 'Checkout failed')
+        } finally {
+            setIsDirectCheckingOut(false)
+        }
     }
 
     const handleMarkPaid = async () => {
@@ -1360,7 +1419,8 @@ export default function CashierClient({
 
 
                         {/* Active Pipeline — read-only overview for cashier */}
-                        {activePipeline.length > 0 && (
+                        {/* Active Pipeline — read-only overview for cashier */}
+                        {!isHotel && activePipeline.length > 0 && (
                             <div>
                                 <h2 className="text-sm font-semibold text-ink-muted mb-3 flex items-center gap-2">
                                     <ChefHat size={14} className="text-orange-400" />
@@ -1403,7 +1463,7 @@ export default function CashierClient({
                             </div>
                         )}
 
-                        {unpaid.length === 0 && activePipeline.length === 0 && activeTakeoutDelivery.length === 0 && pendingClaims === 0 && (
+                        {unpaid.length === 0 && (isHotel ? true : activePipeline.length === 0) && activeTakeoutDelivery.length === 0 && pendingClaims === 0 && (
                             <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-12 text-center">
                                 <CreditCard size={36} className="mx-auto text-gray-200 mb-3" />
                                 <p className="text-base font-semibold text-ink-subtle">All quiet at the counter</p>
@@ -1804,12 +1864,8 @@ export default function CashierClient({
                                                         {!irdSyncEnabled ? (
                                                             <Button
                                                                 variant="primary"
-                                                                onClick={() => {
-                                                                    const data = buildInvoiceData('room', selectedBillingRoom)
-                                                                    if (data) {
-                                                                        setActiveInvoice(data)
-                                                                    }
-                                                                }}
+                                                                loading={isDirectCheckingOut}
+                                                                onClick={() => handleCloseGuestDirectly(selectedBillingRoom)}
                                                                 className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
                                                             >
                                                                 Close Guest
