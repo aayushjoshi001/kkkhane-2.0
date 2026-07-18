@@ -233,27 +233,66 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                 <div className="w-72 bg-surface border-r border-hairline flex flex-col shrink-0 shadow-[4px_0_15px_-3px_rgba(0,0,0,0.02)] z-10">
                     {!editingSection ? (
                         <>
-                            <div className="h-14 border-b border-hairline px-4 flex items-center justify-between shrink-0">
-                                <h2 className="text-sm font-semibold text-ink">Page Sections</h2>
+                            <div className="h-14 border-b border-hairline px-4 flex items-center justify-between shrink-0 bg-surface">
+                                <h2 className="text-sm font-semibold text-ink">Page Layout</h2>
                             </div>
-                            <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-hide">
-                                {LEFT_SECTIONS.map((section) => (
-                                    <div 
-                                        key={section.id} 
-                                        onClick={() => setEditingSection(section.id)}
-                                        className="group flex items-center justify-between p-3 bg-white border border-hairline hover:border-brand-300 rounded-lg cursor-pointer shadow-sm transition-all hover:shadow-md"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="text-ink bg-surface-muted p-1.5 rounded-md">
-                                                <section.icon className="w-4 h-4" />
+                            
+                            <div className="flex-1 overflow-y-auto scrollbar-hide">
+                                {/* Active / Hidden Tabs */}
+                                <div className="flex items-center border-b border-hairline bg-surface sticky top-0 z-10">
+                                    <button className="flex-1 py-2.5 text-xs font-semibold text-brand-700 border-b-2 border-brand-500 bg-brand-50/30">
+                                        Active
+                                    </button>
+                                    <button className="flex-1 py-2.5 text-xs font-medium text-ink-muted hover:text-ink transition-colors">
+                                        Hidden
+                                    </button>
+                                </div>
+
+                                <div className="p-3 space-y-2">
+                                    {LEFT_SECTIONS.map((section) => {
+                                        // Determine if section is considered "active"
+                                        let isActive = true
+                                        if (section.id === 'about') isActive = config.about?.enabled ?? true
+                                        if (section.id === 'cta') isActive = config.cta?.enabled ?? true
+                                        if (section.id === 'contact') isActive = config.contact?.enabled ?? true
+                                        if (section.id === 'features') isActive = (config.features?.length ?? 0) > 0
+                                        if (section.id === 'gallery') isActive = (config.gallery?.length ?? 0) > 0
+
+                                        return (
+                                            <div 
+                                                key={section.id} 
+                                                className="group flex items-center p-3 bg-white border border-hairline hover:border-brand-300 rounded-lg shadow-sm hover:shadow-md transition-all"
+                                            >
+                                                <div className="text-ink-muted/50 cursor-grab hover:text-ink mr-2">
+                                                    <MenuIcon className="w-4 h-4" />
+                                                </div>
+                                                <div 
+                                                    className="flex-1 flex items-center gap-3 cursor-pointer"
+                                                    onClick={() => setEditingSection(section.id)}
+                                                >
+                                                    <div className="text-ink bg-surface-muted p-1.5 rounded-md group-hover:bg-brand-50 group-hover:text-brand-600 transition-colors">
+                                                        <section.icon className="w-4 h-4" />
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-sm font-semibold text-ink group-hover:text-brand-700 transition-colors leading-none">{section.name}</div>
+                                                        <div className="text-[10px] text-ink-muted mt-1 leading-none">{section.desc}</div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        // Toggle logic
+                                                        if (section.id === 'about') patchAbout({ enabled: !isActive })
+                                                        else if (section.id === 'cta') patchCta({ enabled: !isActive })
+                                                        else if (section.id === 'contact') patchContact({ enabled: !isActive })
+                                                    }} className="p-1.5 text-ink-muted hover:text-brand-600 hover:bg-brand-50 rounded-md transition-colors" title={isActive ? "Hide Section" : "Show Section"}>
+                                                        {isActive ? <Eye className="w-4 h-4" /> : <Eye className="w-4 h-4 opacity-50" />}
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <div className="text-sm font-semibold text-ink group-hover:text-brand-700">{section.name}</div>
-                                                <div className="text-[10px] text-ink-muted leading-tight">{section.desc}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
+                                        )
+                                    })}
+                                </div>
                             </div>
                         </>
                     ) : (
@@ -277,15 +316,29 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                                         <div className="mt-4">
                                             <label className="block text-xs font-semibold text-ink mb-1.5">Background Image</label>
                                             {config.hero_image_url ? (
-                                                <div className="relative aspect-video rounded-xl overflow-hidden border border-hairline shadow-sm">
+                                                <div className="relative aspect-video rounded-xl overflow-hidden border border-hairline shadow-sm mb-4">
                                                     <Image src={config.hero_image_url} alt="Hero" fill className="object-cover" />
                                                     <button onClick={() => patchAndSave({ hero_image_url: null })} className="absolute top-2 right-2 p-1.5 bg-danger-bg text-danger-fg rounded-full hover:scale-110 transition-transform"><X size={14} /></button>
                                                 </div>
                                             ) : (
-                                                <label className="flex flex-col items-center justify-center aspect-video border-2 border-dashed border-hairline rounded-xl cursor-pointer hover:bg-surface-muted transition-colors">
+                                                <label className="flex flex-col items-center justify-center aspect-video border-2 border-dashed border-hairline rounded-xl cursor-pointer hover:bg-surface-muted transition-colors mb-4">
                                                     <Upload size={20} className="text-ink-muted mb-2" />
                                                     <span className="text-xs font-medium">Upload Image</span>
                                                     <input type="file" accept="image/*" onChange={async (e) => { if (e.target.files?.[0]) { const url = await uploadFile(e.target.files[0], 'image'); if (url) await patchAndSave({ hero_image_url: url }) } }} className="sr-only" />
+                                                </label>
+                                            )}
+
+                                            <label className="block text-xs font-semibold text-ink mb-1.5">Or Background Video (Overrides Image)</label>
+                                            {config.hero_video_url ? (
+                                                <div className="relative aspect-video rounded-xl overflow-hidden border border-hairline shadow-sm">
+                                                    <video src={config.hero_video_url} className="w-full h-full object-cover" autoPlay muted loop playsInline />
+                                                    <button onClick={() => patchAndSave({ hero_video_url: null })} className="absolute top-2 right-2 p-1.5 bg-danger-bg text-danger-fg rounded-full hover:scale-110 transition-transform"><X size={14} /></button>
+                                                </div>
+                                            ) : (
+                                                <label className="flex flex-col items-center justify-center aspect-video border-2 border-dashed border-hairline rounded-xl cursor-pointer hover:bg-surface-muted transition-colors bg-white">
+                                                    <Upload size={20} className="text-ink-muted mb-2" />
+                                                    <span className="text-xs font-medium">Upload Video</span>
+                                                    <input type="file" accept="video/*" onChange={async (e) => { if (e.target.files?.[0]) { const url = await uploadFile(e.target.files[0], 'video'); if (url) await patchAndSave({ hero_video_url: url }) } }} className="sr-only" />
                                                 </label>
                                             )}
                                         </div>
@@ -358,6 +411,8 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                                             <Input label="Phone Number" value={config.contact?.phone || ''} onChange={(v: string) => patchContact({ phone: v })} />
                                             <Input label="Email Address" value={config.contact?.email || ''} onChange={(v: string) => patchContact({ email: v })} />
                                             <Textarea label="Physical Address" value={config.contact?.address || ''} onChange={(v: string) => patchContact({ address: v })} />
+                                            <Input label="Google Maps Link" value={config.contact?.map_address || ''} onChange={(v: string) => patchContact({ map_address: v })} placeholder="https://maps.google.com/..." />
+                                            <Input label="Review Link (TripAdvisor/Google)" value={config.contact?.review_link || ''} onChange={(v: string) => patchContact({ review_link: v })} placeholder="https://..." />
                                         </div>
                                     </>
                                 )}
@@ -437,6 +492,19 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                     </div>
                     
                     <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        
+                        {/* Publish Status Toggle */}
+                        <div className="border border-hairline rounded-xl p-4 bg-white shadow-sm flex items-center justify-between cursor-pointer hover:bg-surface-muted transition-colors">
+                            <div>
+                                <h3 className="text-sm font-semibold text-ink">Site is public</h3>
+                                <p className="text-xs text-ink-muted">Anyone can view your site</p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" className="sr-only peer" defaultChecked />
+                                <div className="w-9 h-5 bg-ink-muted/30 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                            </label>
+                        </div>
+
                         {/* Branding / Logo */}
                         <div className="border border-hairline rounded-xl p-4 bg-white shadow-sm space-y-4">
                             <h3 className="text-xs font-semibold text-ink uppercase tracking-wider">Brand Logo</h3>
@@ -525,6 +593,7 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                                 <div className="p-4 border-t border-hairline bg-surface/50 space-y-3">
                                     <Input label="Instagram" value={config.social?.instagram || ''} onChange={(v: string) => patchSocial({ instagram: v })} placeholder="https://..." />
                                     <Input label="Facebook" value={config.social?.facebook || ''} onChange={(v: string) => patchSocial({ facebook: v })} placeholder="https://..." />
+                                    <Input label="TikTok" value={config.social?.tiktok || ''} onChange={(v: string) => patchSocial({ tiktok: v })} placeholder="https://..." />
                                     <Input label="WhatsApp" value={config.social?.whatsapp || ''} onChange={(v: string) => patchSocial({ whatsapp: v })} placeholder="+123..." />
                                 </div>
                             )}
