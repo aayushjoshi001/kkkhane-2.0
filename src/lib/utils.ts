@@ -210,11 +210,14 @@ export function getKOTSourceLabel(order: {
  * Displays variation names next to the item name, e.g. "Chowmein (Veg)",
  * and removes them from the special request/note so they do not print twice.
  */
-export function getItemKOTDisplay(item: {
-    menu_items?: { name: string } | null
-    menu_item_variations?: { name: string } | null
-    special_request?: string | null
-}): { name: string; note: string } {
+export function getItemKOTDisplay(
+    item: {
+        menu_items?: { name: string } | null
+        menu_item_variations?: { name: string } | null
+        special_request?: string | null
+    },
+    orderType?: string | null
+): { name: string; note: string } {
     let name = item.menu_items?.name || 'Item'
     let variationName = item.menu_item_variations?.name
     let note = item.special_request || ''
@@ -230,6 +233,10 @@ export function getItemKOTDisplay(item: {
 
     if (variationName) {
         name = `${name} ${variationName}`
+    }
+
+    if (orderType === 'takeout') {
+        name = `${name} (Packing)`
     }
 
     return { name, note }

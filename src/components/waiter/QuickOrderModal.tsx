@@ -91,6 +91,7 @@ export default function QuickOrderModal({
     const [customerNote, setCustomerNote] = useState('')
     const [selectedSession, setSelectedSession] = useState<{ id: string; token: string; label: string } | null>(null)
     const [showMobileCart, setShowMobileCart] = useState(false)
+    const [orderType, setOrderType] = useState<'dine_in' | 'takeout'>('dine_in')
 
     // Modifier/Variation Configuration State
     const [configuringItem, setConfiguringItem] = useState<MenuItem | null>(null)
@@ -317,9 +318,9 @@ export default function QuickOrderModal({
         setSubmitting(true)
         try {
             const res = bookingId && !selectedSession
-                ? await placeRoomOrderDirect(bookingId, cart, customerNote)
+                ? await placeRoomOrderDirect(bookingId, cart, customerNote, orderType)
                 : selectedSession
-                    ? await placeStaffOrder(selectedSession.token, cart, customerNote)
+                    ? await placeStaffOrder(selectedSession.token, cart, customerNote, orderType)
                     : { error: 'No active session found.' }
             if (res && res.success) {
                 if (res.orderId) {
@@ -523,6 +524,31 @@ export default function QuickOrderModal({
                                             <X size={14} />
                                         </button>
                                     )}
+                                </div>
+
+                                <div className="flex bg-surface-muted p-1 rounded-xl border border-hairline select-none">
+                                    <button
+                                        type="button"
+                                        onClick={() => setOrderType('dine_in')}
+                                        className={`flex-1 py-1.5 text-center text-caption font-bold rounded-lg transition-all ${
+                                            orderType === 'dine_in'
+                                                ? 'bg-surface text-brand-500 shadow-sm border border-hairline font-extrabold'
+                                                : 'text-ink-subtle hover:text-ink'
+                                        }`}
+                                    >
+                                        Dine In
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setOrderType('takeout')}
+                                        className={`flex-1 py-1.5 text-center text-caption font-bold rounded-lg transition-all ${
+                                            orderType === 'takeout'
+                                                ? 'bg-surface text-brand-500 shadow-sm border border-hairline font-extrabold'
+                                                : 'text-ink-subtle hover:text-ink'
+                                        }`}
+                                    >
+                                        Packing
+                                    </button>
                                 </div>
 
                                 {/* Horizontal Categories Selector (Mobile Only) */}
@@ -975,7 +1001,7 @@ export default function QuickOrderModal({
                 <div className="px-5 py-4 border-b border-hairline bg-surface-muted/50">
                     <h4 className="text-body font-black text-ink">Confirm order</h4>
                     <p className="text-[10px] text-ink-subtle mt-0.5">
-                        Sends to the kitchen and adds to {bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`}.
+                        Sends to the kitchen and adds to {bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`} ({orderType === 'takeout' ? 'Packing' : 'Dine In'}).
                     </p>
                 </div>
 

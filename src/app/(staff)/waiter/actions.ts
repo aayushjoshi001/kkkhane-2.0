@@ -348,7 +348,8 @@ export async function getStaffMenu(restaurantId: string) {
 export async function placeStaffOrder(
     sessionId: string,
     items: any[],
-    customerNote?: string
+    customerNote?: string,
+    orderType?: 'dine_in' | 'takeout' | 'delivery'
 ) {
     const supabase = await createServerClient()
     const adminSupabase = await createAdminClient()
@@ -422,21 +423,21 @@ export async function placeStaffOrder(
             ? await getRoomContextForTable(adminSupabase, session.table_id)
             : null
 
-        if (roomContext?.bookingId) {
-            await adminSupabase
-                .from('orders')
-                .update({ 
-                    booking_id: roomContext.bookingId, 
-                    status: 'confirmed', 
-                    needs_confirmation: false 
-                })
-                .eq('id', result.order_id)
-        } else {
-            await adminSupabase
-                .from('orders')
-                .update({ status: 'confirmed', needs_confirmation: false })
-                .eq('id', result.order_id)
+        const updateFields: any = {
+            status: 'confirmed',
+            needs_confirmation: false
         }
+        if (roomContext?.bookingId) {
+            updateFields.booking_id = roomContext.bookingId
+        }
+        if (orderType) {
+            updateFields.order_type = orderType
+        }
+
+        await adminSupabase
+            .from('orders')
+            .update(updateFields)
+            .eq('id', result.order_id)
 
         // place_order() already deducted stock/ingredients inline for every item —
         // do not call deduct_ingredients_for_order here, it would double-deduct.
@@ -454,7 +455,8 @@ export async function placeStaffOrder(
 export async function placeRoomOrderDirect(
     bookingId: string,
     items: any[],
-    customerNote?: string
+    customerNote?: string,
+    orderType: 'dine_in' | 'takeout' = 'takeout'
 ) {
     const supabase = await createServerClient()
     const adminSupabase = await createAdminClient()
@@ -484,7 +486,7 @@ export async function placeRoomOrderDirect(
             status: 'confirmed',
             needs_confirmation: false,
             payment_status: 'unpaid',
-            order_type: 'takeout'
+            order_type: orderType
         })
         .select('id')
         .single()
