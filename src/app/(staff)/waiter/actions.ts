@@ -255,6 +255,34 @@ export async function findBookingByPhone(phone: string, restaurantId: string) {
     return { success: true, booking }
 }
 
+export async function findBookingByRoom(roomNumber: string, restaurantId: string) {
+    const adminSupabase = await createAdminClient()
+    const cleanRoom = roomNumber.trim()
+
+    // Resolve linked hotel if any
+    const { data: restLink } = await adminSupabase
+        .from('restaurants')
+        .select('linked_hotel_id')
+        .eq('id', restaurantId)
+        .maybeSingle()
+
+    const targetRestaurantId = restLink?.linked_hotel_id || restaurantId
+
+    const { data: booking, error } = await adminSupabase
+        .from('bookings')
+        .select('id, guest_name, guest_phone, status, room_id, rooms!inner(room_number)')
+        .eq('restaurant_id', targetRestaurantId)
+        .eq('status', 'checked_in')
+        .eq('rooms.room_number', cleanRoom)
+        .maybeSingle()
+
+    if (error) {
+        console.error('[findBookingByRoom] Error:', error)
+        return { error: 'Failed to search booking' }
+    }
+    return { success: true, booking }
+}
+
 export async function getActiveBookings(restaurantId: string) {
     const adminSupabase = await createAdminClient()
 
