@@ -693,7 +693,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
                                     )}
                                     <div className="flex-1 min-w-0">
                                         {(() => {
-                                            const { name, note } = getItemKOTDisplay(item, order.order_type === 'takeout' && !order.booking_id)
+                                            const { name, note } = getItemKOTDisplay(item, order.order_type === 'takeout' && !order.bookings)
                                             return (
                                                 <>
                                                     <p className="font-semibold text-ink text-sm leading-tight truncate">{name}</p>
