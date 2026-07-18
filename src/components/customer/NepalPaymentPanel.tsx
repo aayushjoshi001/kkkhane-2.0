@@ -5,7 +5,7 @@ import { Upload, CheckCircle, Loader2, Banknote, ScanLine, Camera, X } from 'luc
 import { submitPaymentClaim } from '@/app/(public)/t/[tableSlug]/checkout/nepal-payment-actions'
 import Image from 'next/image'
 import { toast } from 'react-hot-toast'
-import { useCurrency } from '@/lib/contexts/FeatureContext'
+import { useCurrency, useFeatures } from '@/lib/contexts/FeatureContext'
 
 interface NepalPaymentPanelProps {
     restaurantId: string
@@ -38,7 +38,16 @@ export default function NepalPaymentPanel({
     provider,
     orderId,
 }: NepalPaymentPanelProps) {
+    const features = useFeatures()
+    const irdSyncEnabled = features?.irdSyncEnabled ?? false
     const [mode, setMode] = useState<PaymentMode>('qr')
+
+    useEffect(() => {
+        if (!irdSyncEnabled) {
+            setMode('cash')
+        }
+    }, [irdSyncEnabled])
+
     const money = useCurrency()
     const [phone, setPhone] = useState('')
     const [screenshot, setScreenshot] = useState<File | null>(null)
@@ -121,30 +130,32 @@ export default function NepalPaymentPanel({
     return (
         <div className="space-y-4">
             {/* Mode selector */}
-            <div className="grid grid-cols-2 gap-2">
-                <button
-                    onClick={() => { setMode('qr') }}
-                    className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 text-sm font-medium transition-colors ${
-                        mode === 'qr'
-                            ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-primary)]'
-                            : 'border-hairline-strong text-ink-subtle hover:border-hairline-strong'
-                    }`}
-                >
-                    <ScanLine size={16} />
-                    {providerLabel} QR
-                </button>
-                <button
-                    onClick={() => { setMode('cash') }}
-                    className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 text-sm font-medium transition-colors ${
-                        mode === 'cash'
-                            ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-primary)]'
-                            : 'border-hairline-strong text-ink-subtle hover:border-hairline-strong'
-                    }`}
-                >
-                    <Banknote size={16} />
-                    Cash
-                </button>
-            </div>
+            {irdSyncEnabled && (
+                <div className="grid grid-cols-2 gap-2">
+                    <button
+                        onClick={() => { setMode('qr') }}
+                        className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 text-sm font-medium transition-colors ${
+                            mode === 'qr'
+                                ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-primary)]'
+                                : 'border-hairline-strong text-ink-subtle hover:border-hairline-strong'
+                        }`}
+                    >
+                        <ScanLine size={16} />
+                        {providerLabel} QR
+                    </button>
+                    <button
+                        onClick={() => { setMode('cash') }}
+                        className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 text-sm font-medium transition-colors ${
+                            mode === 'cash'
+                                ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-primary)]'
+                                : 'border-hairline-strong text-ink-subtle hover:border-hairline-strong'
+                        }`}
+                    >
+                        <Banknote size={16} />
+                        Cash
+                    </button>
+                </div>
+            )}
 
             {mode === 'qr' && (
                 <div className="space-y-4">
