@@ -36,7 +36,8 @@ declare module 'qz-tray' {
             getDefault(): Promise<string>
         }
         configs: {
-            create(printer: string, options?: PrintConfigOptions): PrintConfig
+            // A printer name (USB/OS queue) or a raw network socket target.
+            create(printer: string | { host: string; port: number }, options?: PrintConfigOptions): PrintConfig
         }
         print(config: PrintConfig | PrintConfig[], data: (PrintData | string)[]): Promise<void>
         security: {

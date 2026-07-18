@@ -132,6 +132,31 @@ export interface Table {
     created_at: string
 }
 
+// Restaurant-level printer config (see the printers table migration). role maps
+// a printer to what it prints: 'kot' kitchen tickets, 'bot' bar tickets, 'bill'
+// the customer invoice. Network printers carry ip_address + port; usb printers
+// are still selected per-device (printerSettings.ts) and are the fallback.
+export type PrinterType = 'network' | 'usb'
+export type PrinterConfigRole = 'kot' | 'bot' | 'bill'
+export type PaperWidth = '58mm' | '80mm'
+
+export interface Printer {
+    id: string
+    restaurant_id: string
+    name: string
+    printer_type: PrinterType
+    ip_address: string | null
+    port: number
+    role: PrinterConfigRole
+    paper_width: PaperWidth
+    copies: number
+    is_active: boolean
+    is_default: boolean
+    created_by?: string | null
+    created_at: string
+    updated_at: string
+}
+
 export interface MenuCategory {
     id: string
     restaurant_id: string

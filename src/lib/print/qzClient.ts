@@ -16,6 +16,11 @@ import { bytesToBase64 } from './escpos'
 
 export type QzStatus = 'connected' | 'not-running' | 'not-trusted' | 'print-failed'
 
+// Where to send bytes: a named OS printer (USB, per-device) or a raw network
+// socket (host:port, restaurant-level config). QZ Tray still does the actual
+// send in both cases — the cloud server can't reach a LAN printer directly.
+export type PrinterTarget = string | { host: string; port: number }
+
 export interface QzResult {
     ok: boolean
     status: QzStatus
@@ -114,17 +119,26 @@ export async function listPrinters(): Promise<string[]> {
     return Array.isArray(found) ? found : [found]
 }
 
-/** Sends raw ESC/POS bytes to a named printer. */
-export async function printRawEscPos(printerName: string, bytes: Uint8Array): Promise<QzResult> {
+/**
+ * Sends raw ESC/POS bytes to a printer. `target` is either a named OS printer
+ * (USB) or a `{ host, port }` network printer — QZ Tray raw-sockets to the
+ * latter over TCP (port 9100 for most thermal printers). `copies` reprints the
+ * same bytes N times (a second KOT for the line, etc.).
+ */
+export async function printRawEscPos(target: PrinterTarget, bytes: Uint8Array, copies = 1): Promise<QzResult> {
     const connect = await ensureConnected()
     if (!connect.ok) return connect
 
     try {
         const qz = await getQz()
-        const config = qz.configs.create(printerName)
-        await qz.print(config, [
-            { type: 'raw', format: 'command', flavor: 'base64', data: bytesToBase64(bytes) },
-        ])
+        const config = typeof target === 'string'
+            ? qz.configs.create(target)
+            : qz.configs.create({ host: target.host, port: target.port })
+        const data = [{ type: 'raw' as const, format: 'command' as const, flavor: 'base64' as const, data: bytesToBase64(bytes) }]
+        const runs = Math.min(9, Math.max(1, Math.round(copies)))
+        for (let i = 0; i < runs; i++) {
+            await qz.print(config, data)
+        }
         return { ok: true, status: 'connected' }
     } catch (err) {
         const status = classifyError(err, 'print-failed')

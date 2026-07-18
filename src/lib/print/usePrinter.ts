@@ -4,8 +4,13 @@ import { useCallback, useState } from 'react'
 import { useHydratedStore } from '@/lib/stores/useHydratedStore'
 import { usePrinterSettingsStore } from '@/lib/stores/printerSettings'
 import { listPrinters, printRawEscPos, type QzResult, type QzStatus } from './qzClient'
+import { useNetworkPrinter } from './useNetworkPrinters'
+import type { PrinterConfigRole } from '@/types/database'
 
 export type PrinterRole = 'invoice' | 'kot' | 'bot'
+
+// The invoice slot prints the customer bill, which the printers table calls 'bill'.
+const CONFIG_ROLE: Record<PrinterRole, PrinterConfigRole> = { invoice: 'bill', kot: 'kot', bot: 'bot' }
 export type PrinterConnStatus = 'idle' | 'connecting' | 'connected' | 'not-running' | 'not-trusted'
 
 export interface PrintOutcome {
@@ -39,6 +44,10 @@ export function usePrinter(role: PrinterRole) {
     const setBotPrinter = usePrinterSettingsStore((s) => s.setBotPrinter)
     const selectPrinter = role === 'invoice' ? setInvoicePrinter : role === 'bot' ? setBotPrinter : setKotPrinter
 
+    // A restaurant-level network printer (Admin → Printers) wins over the
+    // per-device USB pick: it's the shared LAN target every screen prints to.
+    const networkPrinter = useNetworkPrinter(CONFIG_ROLE[role])
+
     const [printers, setPrinters] = useState<string[]>([])
     const [status, setStatus] = useState<PrinterConnStatus>('idle')
 
@@ -57,6 +66,11 @@ export function usePrinter(role: PrinterRole) {
 
     const print = useCallback(
         async (bytes: Uint8Array): Promise<PrintOutcome> => {
+            if (networkPrinter) {
+                const result = await printRawEscPos(networkPrinter.target, bytes, networkPrinter.copies)
+                setStatus(toConnStatus(result))
+                return result
+            }
             if (!selectedPrinter) {
                 return { ok: false, status: 'no-printer-selected', error: 'No printer selected for this station — open Printer Settings.' }
             }
@@ -64,8 +78,11 @@ export function usePrinter(role: PrinterRole) {
             setStatus(toConnStatus(result))
             return result
         },
-        [selectedPrinter]
+        [selectedPrinter, networkPrinter]
     )
 
-    return { status, printers, refreshPrinters, print, selectedPrinter, selectPrinter }
+    // True when auto-print has a destination — either a LAN printer or a USB pick.
+    const hasTarget = !!networkPrinter || !!selectedPrinter
+
+    return { status, printers, refreshPrinters, print, selectedPrinter, selectPrinter, hasTarget, networkPrinter }
 }
