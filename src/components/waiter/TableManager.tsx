@@ -80,6 +80,13 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
     const [phoneResult, setPhoneResult] = useState<any>(null)
     const [activeBookingsList, setActiveBookingsList] = useState<any[]>([])
     const [loadingBookings, setLoadingBookings] = useState(false)
+    const [roomSearchInput, setRoomSearchInput] = useState('')
+
+    useEffect(() => {
+        if (!showGuestPicker) {
+            setRoomSearchInput('')
+        }
+    }, [showGuestPicker])
 
     // Track order statuses per order ID → { session_id, status }
     const [orderStatuses, setOrderStatuses] = useState<Record<string, { session_id: string | null; status: string }>>(() => {
@@ -867,10 +874,16 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                         block
                                         variant="primary"
                                         icon={Hotel}
-                                        onClick={() => {
-                                            setGuestPickerStep('phone')
-                                            setPhoneInput('')
-                                            setPhoneResult(null)
+                                        onClick={async () => {
+                                            setGuestPickerStep('rooms')
+                                            setLoadingBookings(true)
+                                            const res = await getActiveBookings(restaurantId)
+                                            if (res.success && res.bookings) {
+                                                setActiveBookingsList(res.bookings)
+                                            } else {
+                                                toast.error(res.error || 'Failed to load bookings')
+                                            }
+                                            setLoadingBookings(false)
                                         }}
                                     >
                                         Hotel Guest (Link to Room)
@@ -893,121 +906,19 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                 </div>
                             )}
 
-                            {guestPickerStep === 'phone' && (
-                                <div className="space-y-4">
-                                    <p className="text-body text-ink-subtle text-center">Enter phone number to check if guest has a room booking</p>
+                            {guestPickerStep === 'rooms' && (
+                                <div className="space-y-3">
                                     <div className="relative">
-                                        <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
+                                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
                                         <input
-                                            type="tel"
-                                            value={phoneInput}
-                                            onChange={e => setPhoneInput(e.target.value)}
-                                            placeholder="e.g. 9841234567"
-                                            className="w-full pl-10 pr-4 py-3 rounded-xl border border-hairline bg-surface-muted text-ink text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+                                            type="text"
+                                            value={roomSearchInput}
+                                            onChange={e => setRoomSearchInput(e.target.value)}
+                                            placeholder="Search room number..."
+                                            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-hairline bg-surface-muted text-ink text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 font-semibold"
                                             autoFocus
                                         />
                                     </div>
-                                    <Button
-                                        block
-                                        variant="primary"
-                                        icon={phoneSearching ? Loader2 : Search}
-                                        loading={phoneSearching}
-                                        disabled={phoneInput.trim().length < 4}
-                                        onClick={async () => {
-                                            setPhoneSearching(true)
-                                            setPhoneResult(null)
-                                            const res = await findBookingByPhone(phoneInput, restaurantId)
-                                            if (res.success) {
-                                                setPhoneResult(res.booking)
-                                            } else {
-                                                toast.error(res.error || 'Search failed')
-                                            }
-                                            setPhoneSearching(false)
-                                        }}
-                                    >
-                                        Search Booking
-                                    </Button>
-
-                                    {phoneResult === null && !phoneSearching && phoneInput.trim().length >= 4 && (
-                                        <p className="text-caption text-ink-subtle text-center">Press Search to find guest</p>
-                                    )}
-
-                                    {phoneResult === undefined && (
-                                        <div className="bg-warning/10 border border-warning/20 rounded-xl p-4 text-center">
-                                            <p className="text-body font-semibold text-warning-fg">No booking found</p>
-                                            <p className="text-caption text-ink-subtle mt-1">Please make sure the phone number matches the one provided during room check-in.</p>
-                                        </div>
-                                    )}
-
-                                    {phoneResult && (
-                                        <div className="bg-success/10 border border-success/20 rounded-xl p-4">
-                                            <div className="flex items-center gap-3 mb-3">
-                                                <div className="w-10 h-10 rounded-full bg-success/20 flex items-center justify-center">
-                                                    <UserCheck size={20} className="text-success-fg" />
-                                                </div>
-                                                <div>
-                                                    <p className="text-body font-bold text-ink">{phoneResult.guest_name}</p>
-                                                    <p className="text-caption text-ink-subtle">
-                                                        Room {(phoneResult as any).rooms?.room_number || '?'} · {phoneResult.guest_phone}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <Button
-                                                block
-                                                variant="primary"
-                                                icon={ShoppingCart}
-                                                loading={isProcessing}
-                                                onClick={async () => {
-                                                    setIsProcessing(true)
-                                                    const linkRes = await linkSessionToBooking(selectedTable.activeSession!.id, phoneResult.id)
-                                                    if (linkRes.error) {
-                                                        toast.error(linkRes.error)
-                                                    } else {
-                                                        toast.success(`Linked to Room ${(phoneResult as any).rooms?.room_number}`)
-                                                    }
-                                                    setIsProcessing(false)
-                                                    setQuickOrderSession({
-                                                        sessionId: selectedTable.activeSession!.session_token,
-                                                        tableName: selectedTable.label
-                                                    })
-                                                    setSelectedTable(null)
-                                                    setShowGuestPicker(false)
-                                                }}
-                                            >
-                                                Link to Room &amp; Order
-                                            </Button>
-                                        </div>
-                                    )}
-
-                                    <div className="flex flex-col gap-2 mt-4 pt-2 border-t border-hairline">
-                                        <button
-                                            onClick={() => setGuestPickerStep('choose')}
-                                            className="w-full text-center text-caption text-ink-subtle hover:text-ink"
-                                        >
-                                            ← Back
-                                        </button>
-                                        <button
-                                            onClick={async () => {
-                                                setGuestPickerStep('rooms')
-                                                setLoadingBookings(true)
-                                                const res = await getActiveBookings(restaurantId)
-                                                if (res.success && res.bookings) {
-                                                    setActiveBookingsList(res.bookings)
-                                                } else {
-                                                    toast.error(res.error || 'Failed to load bookings')
-                                                }
-                                                setLoadingBookings(false)
-                                            }}
-                                            className="w-full text-center text-[11px] text-brand-500 hover:underline font-semibold mt-1"
-                                        >
-                                            Or browse checked-in guests list
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {guestPickerStep === 'rooms' && (
-                                <div className="space-y-3">
                                     {loadingBookings ? (
                                         <div className="flex flex-col items-center py-8 gap-3">
                                             <Loader2 size={32} className="animate-spin text-brand-500" />
@@ -1019,43 +930,64 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                             <p className="text-body font-semibold text-ink">No checked-in guests</p>
                                             <p className="text-caption text-ink-subtle mt-1">There are no active room bookings right now</p>
                                         </div>
-                                    ) : (
-                                        <div className="max-h-[50vh] overflow-y-auto space-y-2 -mx-2 px-2">
-                                            {activeBookingsList.map((booking: any) => (
-                                                <button
-                                                    key={booking.id}
-                                                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-hairline bg-surface hover:bg-surface-muted transition-all active:scale-[0.98]"
-                                                    onClick={async () => {
-                                                        setIsProcessing(true)
-                                                        const linkRes = await linkSessionToBooking(selectedTable.activeSession!.id, booking.id)
-                                                        if (linkRes.error) {
-                                                            toast.error(linkRes.error)
-                                                        } else {
-                                                            toast.success(`Linked to Room ${booking.rooms?.room_number || '?'}`)
-                                                        }
-                                                        setIsProcessing(false)
-                                                        setQuickOrderSession({
-                                                            sessionId: selectedTable.activeSession!.session_token,
-                                                            tableName: selectedTable.label
-                                                        })
-                                                        setSelectedTable(null)
-                                                        setShowGuestPicker(false)
-                                                    }}
-                                                >
-                                                    <div className="w-10 h-10 rounded-xl bg-brand-500/10 flex items-center justify-center shrink-0">
-                                                        <Bed size={18} className="text-brand-500" />
-                                                    </div>
-                                                    <div className="flex-1 text-left min-w-0">
-                                                        <p className="text-body font-bold text-ink truncate">{booking.guest_name}</p>
-                                                        <p className="text-caption text-ink-subtle">
-                                                            Room {booking.rooms?.room_number || '?'} · {booking.guest_phone}
-                                                        </p>
-                                                    </div>
-                                                    <ShoppingCart size={16} className="text-ink-subtle shrink-0" />
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
+                                    ) : (() => {
+                                        const filteredBookings = activeBookingsList.filter(booking => {
+                                            const roomNum = booking.rooms?.room_number || ''
+                                            const guestName = booking.guest_name || ''
+                                            const guestPhone = booking.guest_phone || ''
+                                            const query = roomSearchInput.toLowerCase()
+                                            return roomNum.toLowerCase().includes(query) ||
+                                                guestName.toLowerCase().includes(query) ||
+                                                guestPhone.toLowerCase().includes(query)
+                                        })
+
+                                        if (filteredBookings.length === 0) {
+                                            return (
+                                                <div className="text-center py-8">
+                                                    <p className="text-body font-semibold text-ink">No matching rooms</p>
+                                                    <p className="text-caption text-ink-subtle mt-1">Try another room number</p>
+                                                </div>
+                                            )
+                                        }
+
+                                        return (
+                                            <div className="max-h-[50vh] overflow-y-auto space-y-2 -mx-2 px-2">
+                                                {filteredBookings.map((booking: any) => (
+                                                    <button
+                                                        key={booking.id}
+                                                        className="w-full flex items-center gap-3 p-3 rounded-xl border border-hairline bg-surface hover:bg-surface-muted transition-all active:scale-[0.98]"
+                                                        onClick={async () => {
+                                                            setIsProcessing(true)
+                                                            const linkRes = await linkSessionToBooking(selectedTable.activeSession!.id, booking.id)
+                                                            if (linkRes.error) {
+                                                                toast.error(linkRes.error)
+                                                            } else {
+                                                                toast.success(`Linked to Room ${booking.rooms?.room_number || '?'}`)
+                                                            }
+                                                            setIsProcessing(false)
+                                                            setQuickOrderSession({
+                                                                sessionId: selectedTable.activeSession!.session_token,
+                                                                tableName: selectedTable.label
+                                                            })
+                                                            setSelectedTable(null)
+                                                            setShowGuestPicker(false)
+                                                        }}
+                                                    >
+                                                        <div className="w-10 h-10 rounded-xl bg-brand-500/10 flex items-center justify-center shrink-0">
+                                                            <Bed size={18} className="text-brand-500" />
+                                                        </div>
+                                                        <div className="flex-1 text-left min-w-0">
+                                                            <p className="text-body font-bold text-ink truncate">{booking.guest_name}</p>
+                                                            <p className="text-caption text-ink-subtle">
+                                                                Room {booking.rooms?.room_number || '?'} · {booking.guest_phone}
+                                                            </p>
+                                                        </div>
+                                                        <ShoppingCart size={16} className="text-ink-subtle shrink-0" />
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )
+                                    })()}
                                     <button
                                         onClick={() => setGuestPickerStep('choose')}
                                         className="w-full text-center text-caption text-ink-subtle hover:text-ink mt-2"
