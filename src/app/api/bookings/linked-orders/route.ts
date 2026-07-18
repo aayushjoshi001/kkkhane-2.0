@@ -82,13 +82,14 @@ export async function GET(req: NextRequest) {
 
         // Flatten order items
         type LinkedOrderItem = { id: string; quantity: number; unit_price: number; menu_items: unknown }
-        type LinkedOrder = { order_items?: LinkedOrderItem[] }
+        type LinkedOrder = { id: string; session_id: string | null; order_items?: LinkedOrderItem[] }
         const items = ((orders || []) as LinkedOrder[]).flatMap((o) =>
             (o.order_items || []).map((item) => ({
                 id: item.id,
                 quantity: item.quantity,
                 unit_price: item.unit_price,
-                menu_items: item.menu_items
+                menu_items: item.menu_items,
+                session_id: o.session_id
             }))
         )
 

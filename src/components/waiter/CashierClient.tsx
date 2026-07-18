@@ -159,6 +159,13 @@ export default function CashierClient({
     const [billingStayBooking, setBillingStayBooking] = useState<any | null>(null)
     const [billingRoomCharges, setBillingRoomCharges] = useState<any[]>([])
     const [billingLinkedOrders, setBillingLinkedOrders] = useState<any[]>([])
+    const filteredLinkedOrders = (() => {
+        if (!selectedBillingRoom) return []
+        const matchingTable = tables.find(t => t.room_id === selectedBillingRoom.id)
+        const roomSessionId = matchingTable?.activeSession?.id
+        if (!roomSessionId) return billingLinkedOrders
+        return billingLinkedOrders.filter(o => o.session_id !== roomSessionId)
+    })()
     const [billingPaymentMethod, setBillingPaymentMethod] = useState<'cash' | 'qr_digital' | 'both' | 'credit'>('cash')
     const [splitCashAmount, setSplitCashAmount] = useState<string>('')
     const [splitQrAmount, setSplitQrAmount] = useState<string>('')
@@ -387,7 +394,7 @@ export default function CashierClient({
     const calculateGrandTotal = (room: any, booking: any) => {
         const stayCost = calculateStayCost(room, booking)
         const qrOrdersTotal = getRoomQrOrders(room).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
-        const linkedOrdersTotal = billingLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+        const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
         const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
         return stayCost + qrOrdersTotal + linkedOrdersTotal + manualChargesTotal
     }
@@ -411,7 +418,7 @@ export default function CashierClient({
             const sessionOrders = getRoomQrOrders(room)
             const qrOrdersTotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
 
-            const linkedOrdersTotal = billingLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+            const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
             const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
             const total = stayCost + qrOrdersTotal + linkedOrdersTotal + manualChargesTotal
 
@@ -452,7 +459,7 @@ export default function CashierClient({
                 stayCost,
                 qrOrders: getRoomQrOrders(room),
                 qrOrdersTotal,
-                linkedOrders: billingLinkedOrders.map(item => ({
+                linkedOrders: filteredLinkedOrders.map(item => ({
                     name: item.menu_items?.name || 'Item',
                     quantity: item.quantity,
                     unitPrice: Number(item.unit_price)
@@ -1597,11 +1604,11 @@ export default function CashierClient({
                                             </div>
                                         )}
 
-                                        {billingLinkedOrders.length > 0 && (
+                                        {filteredLinkedOrders.length > 0 && (
                                             <div className="p-4 space-y-2">
                                                 <p className="font-extrabold text-xs text-emerald-650 font-semibold">Restaurant dining (table orders)</p>
                                                 <div className="space-y-1.5 pl-3 border-l-2 border-emerald-100">
-                                                    {billingLinkedOrders.map((item, idx) => (
+                                                    {filteredLinkedOrders.map((item, idx) => (
                                                         <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
                                                             <span>{item.menu_items?.name || 'Item'} ({item.quantity}×)</span>
                                                             <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
