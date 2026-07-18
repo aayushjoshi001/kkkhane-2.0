@@ -560,16 +560,43 @@ export async function placeRoomOrderDirect(
     const tax = Math.round((subtotal + serviceCharge) * (taxRate / 100) * 100) / 100
     const total = Math.max(0, subtotal + serviceCharge + tax)
 
-    // Update totals on order
-    await adminSupabase
-        .from('orders')
-        .update({
-            subtotal_amount: subtotal,
-            service_charge_amount: serviceCharge,
-            tax_amount: tax,
-            total_amount: total
-        })
-        .eq('id', orderId)
+    // Update totals on order with database schema fallback
+    try {
+        const { error: updateError } = await adminSupabase
+            .from('orders')
+            .update({
+                subtotal_amount: subtotal,
+                service_charge_amount: serviceCharge,
+                tax_amount: tax,
+                total_amount: total
+            })
+            .eq('id', orderId)
+        
+        if (updateError) {
+            if (updateError.message.includes('service_charge_amount') || updateError.code === 'PGRST204') {
+                await adminSupabase
+                    .from('orders')
+                    .update({
+                        subtotal_amount: subtotal,
+                        tax_amount: tax,
+                        total_amount: total
+                    })
+                    .eq('id', orderId)
+            } else {
+                console.error('[placeRoomOrderDirect] Update totals error:', updateError)
+            }
+        }
+    } catch (err) {
+        console.error('[placeRoomOrderDirect] Catch block update totals:', err)
+        await adminSupabase
+            .from('orders')
+            .update({
+                subtotal_amount: subtotal,
+                tax_amount: tax,
+                total_amount: total
+            })
+            .eq('id', orderId)
+    }
 
     // Apply pricing rules & deduct ingredients
     await Promise.allSettled([

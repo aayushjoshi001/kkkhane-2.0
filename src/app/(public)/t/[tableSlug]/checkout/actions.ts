@@ -365,16 +365,43 @@ export async function placeOrder(
             const finalTax = Math.round((calculatedSubtotal - discountAmount + finalServiceCharge) * (taxRate / 100) * 100) / 100
             const finalOrderTotal = Math.max(0, calculatedSubtotal - discountAmount + finalServiceCharge + finalTax)
 
-            // Update the order totals in the database
-            await supabase
-                .from('orders')
-                .update({
-                    subtotal_amount: calculatedSubtotal,
-                    service_charge_amount: finalServiceCharge,
-                    tax_amount: finalTax,
-                    total_amount: finalOrderTotal
-                })
-                .eq('id', result.order_id)
+            // Update the order totals in the database with schema fallback
+            try {
+                const { error: updateError } = await supabase
+                    .from('orders')
+                    .update({
+                        subtotal_amount: calculatedSubtotal,
+                        service_charge_amount: finalServiceCharge,
+                        tax_amount: finalTax,
+                        total_amount: finalOrderTotal
+                    })
+                    .eq('id', result.order_id)
+                
+                if (updateError) {
+                    if (updateError.message.includes('service_charge_amount') || updateError.code === 'PGRST204') {
+                        await supabase
+                            .from('orders')
+                            .update({
+                                subtotal_amount: calculatedSubtotal,
+                                tax_amount: finalTax,
+                                total_amount: finalOrderTotal
+                            })
+                            .eq('id', result.order_id)
+                    } else {
+                        console.error('[checkout] Update totals error:', updateError)
+                    }
+                }
+            } catch (err) {
+                console.error('[checkout] Catch block update totals:', err)
+                await supabase
+                    .from('orders')
+                    .update({
+                        subtotal_amount: calculatedSubtotal,
+                        tax_amount: finalTax,
+                        total_amount: finalOrderTotal
+                    })
+                    .eq('id', result.order_id)
+            }
 
             // Update local variables returned in action response
             result.subtotal = calculatedSubtotal
