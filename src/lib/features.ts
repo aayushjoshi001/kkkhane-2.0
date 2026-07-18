@@ -5,7 +5,7 @@ import { getCurrentUser } from '@/lib/auth'
 import type { Settings, Restaurant } from '@/types/database'
 import { getBusinessMode, type BusinessMode } from '@/lib/businessMode'
 import { fetchWithCache, invalidateCache } from '@/lib/redis'
-import { unstable_cache } from 'next/cache'
+import { unstable_cache, revalidateTag, revalidatePath } from 'next/cache'
 
 /**
  * Fetch features_v2 flags for a restaurant.
@@ -139,6 +139,9 @@ export async function updateFeaturesAction(restaurantId: string, features: Parti
     if (error) return { error: error.message }
     
     await invalidateCache(`features:${restaurantId}`)
+    revalidateTag(`features-${restaurantId}`, 'max')
+    revalidatePath('/waiter')
+    revalidatePath('/admin/settings')
     
     return { success: true }
 }

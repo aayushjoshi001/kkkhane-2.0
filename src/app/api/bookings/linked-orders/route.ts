@@ -60,27 +60,34 @@ export async function GET(req: NextRequest) {
 
         const sessionIds = diningSessions.map((s: { id: string }) => s.id)
 
-        // Resolve target restaurant IDs (current hotel + linked partner restaurant if any)
-        const { data: hotelData } = await supabase
+        // Resolve target restaurant IDs (current hotel/restaurant + partner if any)
+        const { data: currentRest } = await supabase
             .from('restaurants')
-            .select('linked_restaurant_id')
+            .select('linked_restaurant_id, linked_hotel_id')
             .eq('id', currentUser.restaurantId)
             .maybeSingle()
 
-        const partnerRestaurantId = hotelData?.linked_restaurant_id
+        const partnerRestaurantId = currentRest?.linked_restaurant_id || currentRest?.linked_hotel_id
         const targetRestaurantIds = [currentUser.restaurantId]
         if (partnerRestaurantId) {
             targetRestaurantIds.push(partnerRestaurantId)
         }
 
-        // Fetch all order items from these sessions
-        const { data: orders, error: ordErr } = await supabase
+        // Fetch all order items from these sessions or directly linked to the booking
+        let query = supabase
             .from('orders')
             .select('id, session_id, status, payment_status, order_items(id, quantity, unit_price, menu_items(name))')
-            .in('session_id', sessionIds)
             .in('restaurant_id', targetRestaurantIds)
             .neq('status', 'cancelled')
             .neq('payment_status', 'paid')
+
+        if (sessionIds.length > 0) {
+            query = query.or(`booking_id.eq.${bookingId},session_id.in.(${sessionIds.join(',')})`)
+        } else {
+            query = query.eq('booking_id', bookingId)
+        }
+
+        const { data: orders, error: ordErr } = await query
 
         if (ordErr) {
             console.error('[linked-orders] Error fetching orders:', ordErr)

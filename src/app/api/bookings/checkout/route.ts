@@ -153,13 +153,26 @@ export async function POST(req: Request) {
 
         const supabase = await createAdminClient()
 
+        // Resolve target restaurant IDs for fetching the booking
+        const { data: currentRest } = await supabase
+            .from('restaurants')
+            .select('linked_restaurant_id, linked_hotel_id')
+            .eq('id', currentUser.restaurantId)
+            .maybeSingle()
+
+        const partnerId = currentRest?.linked_restaurant_id || currentRest?.linked_hotel_id
+        const targetRestaurantIds = [currentUser.restaurantId]
+        if (partnerId) {
+            targetRestaurantIds.push(partnerId)
+        }
+
         // 0. Fetch the booking (with stay dates + room) to combine the settlement
         // with the advance already collected and to recompute its folio.
         const { data: booking, error: fetchError } = await supabase
             .from('bookings')
-            .select('id, paid_amount, status, check_in, check_out, room_id, guest_name, guest_phone, guest_email')
+            .select('id, paid_amount, status, check_in, check_out, room_id, guest_name, guest_phone, guest_email, restaurant_id')
             .eq('id', booking_id)
-            .eq('restaurant_id', currentUser.restaurantId)
+            .in('restaurant_id', targetRestaurantIds)
             .maybeSingle()
 
         if (fetchError) throw fetchError
@@ -172,7 +185,7 @@ export async function POST(req: Request) {
         // ever flipping the booking to checked_out (that claim can't be
         // cleanly undone once made).
         const folio = await computeFolioTotal(supabase, {
-            restaurantId: currentUser.restaurantId,
+            restaurantId: booking.restaurant_id,
             bookingId: booking_id,
             roomId: booking.room_id || room_id,
             checkIn: booking.check_in,
@@ -195,11 +208,11 @@ export async function POST(req: Request) {
                 : newPaidAmount > 0 ? 'partial'
                     : 'unpaid'
 
-        // 1. Fetch current restaurant linkage & split settings
+        // 1. Fetch current restaurant linkage & split settings (from the booking's hotel)
         const { data: restaurant } = await supabase
             .from('restaurants')
             .select('ledger_split_mode, billing_commission_rate, linked_restaurant_id, vat_registered, vat_number')
-            .eq('id', currentUser.restaurantId)
+            .eq('id', booking.restaurant_id)
             .single()
 
         const partnerRestaurantId = restaurant?.linked_restaurant_id
@@ -239,10 +252,10 @@ export async function POST(req: Request) {
             hotelCredit = round2(creditAmount - restCredit)
         }
 
-        // 4. Resolve customer credit account if credit is used
+        // 4. Resolve customer credit account if credit is used (under booking's hotel)
         let creditAccountId: string | null = null
         if (creditAmount > 0) {
-            const account = await findOrCreateCustomerCreditAccount(supabase, currentUser.restaurantId, currentUser.id, {
+            const account = await findOrCreateCustomerCreditAccount(supabase, booking.restaurant_id, currentUser.id, {
                 name: creditCustomerName,
                 phone: creditCustomerPhone,
             })
@@ -255,7 +268,7 @@ export async function POST(req: Request) {
         // 5. Invoke transaction-locked database RPC to settle checkout atomically
         const { data: rpcRes, error: rpcErr } = await supabase.rpc('settle_booking_checkout_v2', {
             p_booking_id: booking_id,
-            p_restaurant_id: currentUser.restaurantId,
+            p_restaurant_id: booking.restaurant_id,
             p_room_id: room_id,
             p_session_id: session_id || null,
             p_hotel_cash: hotelCash,
@@ -298,7 +311,7 @@ export async function POST(req: Request) {
         const taxableVal = totalAmount - vatVal
         const invoiceNumber = `INV-HOTEL-${booking_id.split('-')[0].toUpperCase()}`
 
-        void syncInvoiceToIrd(currentUser.restaurantId, {
+        void syncInvoiceToIrd(booking.restaurant_id, {
             invoiceNumber,
             buyerName: guestName,
             buyerPan: null,
@@ -310,7 +323,7 @@ export async function POST(req: Request) {
 
         // 6. Log audit event
         void logAudit({
-            restaurantId: currentUser.restaurantId,
+            restaurantId: booking.restaurant_id,
             userId: currentUser.id,
             action: 'booking_checked_out',
             entityType: 'booking',
@@ -338,16 +351,16 @@ export async function POST(req: Request) {
         const name = customer_name ? customer_name.trim() : (booking.guest_name ? booking.guest_name.trim() : 'Guest')
         if (phone && (cashPaid > 0 || qrPaid > 0 || rPoints > 0)) {
             const pointsToEarn = Math.round((cashPaid + qrPaid) * 0.05)
-            const account = await findOrCreateCustomerCreditAccount(supabase, currentUser.restaurantId, currentUser.id, {
+            const account = await findOrCreateCustomerCreditAccount(supabase, booking.restaurant_id, currentUser.id, {
                 name,
                 phone,
             })
             if (!('error' in account)) {
                 if (pointsToEarn > 0) {
-                    await postLoyaltyEarn(supabase, currentUser.restaurantId, account.id, pointsToEarn, `Earned from Room ${roomNumber} stay`)
+                    await postLoyaltyEarn(supabase, booking.restaurant_id, account.id, pointsToEarn, `Earned from Room ${roomNumber} stay`)
                 }
                 if (rPoints > 0) {
-                    await postLoyaltyRedeem(supabase, currentUser.restaurantId, account.id, rPoints, `Redeemed on Room ${roomNumber} stay`)
+                    await postLoyaltyRedeem(supabase, booking.restaurant_id, account.id, rPoints, `Redeemed on Room ${roomNumber} stay`)
                 }
             }
         }

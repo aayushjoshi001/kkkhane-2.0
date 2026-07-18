@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { X, Search, Plus, Minus, Trash2, Loader2, ShoppingCart, Utensils, MessageSquare, CheckCircle2 } from 'lucide-react'
+import { X, Search, Plus, Minus, Trash2, Loader2, ShoppingCart, Utensils, MessageSquare, CheckCircle2, ArrowLeft } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { getStaffMenu, placeStaffOrder, placeRoomOrderDirect } from '@/app/(staff)/waiter/actions'
 import { toast } from 'react-hot-toast'
@@ -90,6 +90,7 @@ export default function QuickOrderModal({
     const [cart, setCart] = useState<CartItem[]>([])
     const [customerNote, setCustomerNote] = useState('')
     const [selectedSession, setSelectedSession] = useState<{ id: string; token: string; label: string } | null>(null)
+    const [showMobileCart, setShowMobileCart] = useState(false)
 
     // Modifier/Variation Configuration State
     const [configuringItem, setConfiguringItem] = useState<MenuItem | null>(null)
@@ -272,13 +273,17 @@ export default function QuickOrderModal({
 
     const updateQuantity = (cartItemId: string, amount: number) => {
         setCart(prev => {
-            return prev.map(item => {
+            const updated = prev.map(item => {
                 if (item.id === cartItemId) {
                     const newQty = item.quantity + amount
                     return newQty > 0 ? { ...item, quantity: newQty } : null
                 }
                 return item
             }).filter(Boolean) as CartItem[]
+            if (updated.length === 0) {
+                setShowMobileCart(false)
+            }
+            return updated
         })
     }
 
@@ -312,6 +317,7 @@ export default function QuickOrderModal({
                 })
                 setCart([])
                 setCustomerNote('')
+                setShowMobileCart(false)
             } else {
                 const errMsg = res?.error || 'Failed to place order'
                 if (errMsg === 'Unauthorized') {
@@ -421,12 +427,27 @@ export default function QuickOrderModal({
                             )}
                         </div>
                     </div>
-                    <button 
-                        onClick={onClose}
-                        className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink-muted"
-                    >
-                        <X size={18} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {!showMobileCart && (
+                            <button
+                                onClick={() => setShowMobileCart(true)}
+                                className="md:hidden w-10 h-10 rounded-xl flex items-center justify-center bg-brand-500/10 text-brand-500 hover:bg-brand-500/20 transition relative"
+                            >
+                                <ShoppingCart size={18} />
+                                {cart.length > 0 && (
+                                    <span className="absolute -top-1.5 -right-1.5 bg-brand-500 text-white rounded-full text-[9px] font-black w-5 h-5 flex items-center justify-center shadow-md">
+                                        {cart.length}
+                                    </span>
+                                )}
+                            </button>
+                        )}
+                        <button 
+                            onClick={onClose}
+                            className="w-10 h-10 md:w-8 md:h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Main Content Area */}
@@ -438,7 +459,7 @@ export default function QuickOrderModal({
                 ) : (
                     <div className="flex-1 flex overflow-hidden">
                         {/* Categories Left Panel */}
-                        <div className="w-48 bg-surface-muted border-r border-hairline overflow-y-auto flex flex-col p-2 gap-1 select-none">
+                        <div className="w-48 bg-surface-muted border-r border-hairline overflow-y-auto hidden md:flex flex-col p-2 gap-1 select-none">
                             <button
                                 onClick={() => setSelectedCategoryId('all')}
                                 className={`px-4 py-3 text-left text-label font-bold rounded-xl transition-all ${
@@ -465,9 +486,9 @@ export default function QuickOrderModal({
                         </div>
 
                         {/* Items Middle Panel */}
-                        <div className="flex-1 flex flex-col bg-surface overflow-hidden">
+                        <div className={`flex-1 flex flex-col bg-surface overflow-hidden ${showMobileCart ? 'hidden md:flex' : ''}`}>
                             {/* Search Bar */}
-                            <div className="p-4 border-b border-hairline bg-surface-muted/20">
+                            <div className="p-4 border-b border-hairline bg-surface-muted/20 flex flex-col gap-3 shrink-0">
                                 <div className="relative">
                                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
                                     <input
@@ -486,6 +507,33 @@ export default function QuickOrderModal({
                                         </button>
                                     )}
                                 </div>
+
+                                {/* Horizontal Categories Selector (Mobile Only) */}
+                                <div className="md:hidden flex gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-0.5 select-none shrink-0">
+                                    <button
+                                        onClick={() => setSelectedCategoryId('all')}
+                                        className={`px-3 py-1.5 text-[11px] font-bold rounded-lg whitespace-nowrap transition-all ${
+                                            selectedCategoryId === 'all' 
+                                                ? 'bg-brand-500 text-white shadow-sm' 
+                                                : 'bg-surface text-ink-subtle border border-hairline'
+                                        }`}
+                                    >
+                                        All
+                                    </button>
+                                    {categories.map(cat => (
+                                        <button
+                                            key={cat.id}
+                                            onClick={() => setSelectedCategoryId(cat.id)}
+                                            className={`px-3 py-1.5 text-[11px] font-bold rounded-lg whitespace-nowrap transition-all ${
+                                                selectedCategoryId === cat.id 
+                                                    ? 'bg-brand-500 text-white shadow-sm' 
+                                                    : 'bg-surface text-ink-subtle border border-hairline'
+                                            }`}
+                                        >
+                                            {cat.name}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
 
                             {/* Dishes List */}
@@ -499,7 +547,7 @@ export default function QuickOrderModal({
                                     filteredItems.map(item => (
                                         <div 
                                             key={item.id}
-                                            className="flex items-center justify-between p-3 rounded-xl border border-transparent hover:border-hairline hover:bg-surface-muted/30 transition-all select-none"
+                                            className="flex items-center justify-between p-4 md:p-3 rounded-xl border border-transparent hover:border-hairline hover:bg-surface-muted/30 transition-all select-none"
                                         >
                                             <div className="flex-1 pr-4">
                                                 <h4 className="text-body font-bold text-ink">{item.name}</h4>
@@ -515,9 +563,9 @@ export default function QuickOrderModal({
                                                 </span>
                                                 <button
                                                     onClick={() => handleAddToCartClick(item)}
-                                                    className="w-8 h-8 rounded-lg bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition-all active:scale-95 shadow-sm"
+                                                    className="w-11 h-11 md:w-8 md:h-8 rounded-lg bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition-all active:scale-95 shadow-sm cursor-pointer"
                                                 >
-                                                    <Plus size={16} />
+                                                    <Plus className="w-5 h-5 md:w-4 md:h-4" />
                                                 </button>
                                             </div>
                                         </div>
@@ -527,8 +575,16 @@ export default function QuickOrderModal({
                         </div>
 
                         {/* Cart Right Panel */}
-                        <div className="w-80 border-l border-hairline bg-surface-muted/40 flex flex-col overflow-hidden">
-                            <div className="p-4 border-b border-hairline bg-surface-muted/65 flex items-center gap-2 text-ink font-bold">
+                        <div className={`w-full md:w-80 border-l border-hairline bg-surface-muted/40 flex flex-col overflow-hidden ${!showMobileCart ? 'hidden md:flex' : ''}`}>
+                            <div className="p-4 border-b border-hairline bg-surface-muted/65 flex items-center gap-2 text-ink font-bold shrink-0">
+                                {showMobileCart && (
+                                    <button
+                                        onClick={() => setShowMobileCart(false)}
+                                        className="md:hidden mr-1.5 p-1 rounded-lg hover:bg-surface-muted text-ink-subtle hover:text-ink transition active:scale-95"
+                                    >
+                                        <ArrowLeft size={18} />
+                                    </button>
+                                )}
                                 <ShoppingCart size={16} />
                                 <span>Order Basket</span>
                                 <span className="ml-auto bg-brand-500/10 text-brand-500 rounded-full px-2 py-0.5 text-xs font-black">
@@ -539,10 +595,18 @@ export default function QuickOrderModal({
                             {/* Cart Items List */}
                             <div className="flex-1 overflow-y-auto p-4 space-y-3">
                                 {cart.length === 0 ? (
-                                    <div className="h-full flex flex-col items-center justify-center text-center text-ink-subtle opacity-55">
-                                        <ShoppingCart size={32} className="mb-2" />
+                                    <div className="h-full flex flex-col items-center justify-center text-center text-ink-subtle opacity-75 px-4 py-8">
+                                        <ShoppingCart size={32} className="mb-2 text-ink-subtle/50" />
                                         <p className="text-caption font-bold">Cart is empty</p>
                                         <p className="text-[10px] mt-0.5">Click + next to a dish to add it</p>
+                                        {showMobileCart && (
+                                            <button
+                                                onClick={() => setShowMobileCart(false)}
+                                                className="md:hidden mt-4 px-4 py-2 rounded-xl bg-surface border border-hairline text-ink text-caption font-bold hover:bg-surface-muted transition active:scale-95 cursor-pointer"
+                                            >
+                                                Back to Menu
+                                            </button>
+                                        )}
                                     </div>
                                 ) : (
                                     cart.map(item => (
@@ -585,7 +649,13 @@ export default function QuickOrderModal({
                                                 </button>
                                                 <button 
                                                     onClick={() => {
-                                                        setCart(prev => prev.filter(i => i.id !== item.id))
+                                                        setCart(prev => {
+                                                            const updated = prev.filter(i => i.id !== item.id)
+                                                            if (updated.length === 0) {
+                                                                setShowMobileCart(false)
+                                                            }
+                                                            return updated
+                                                        })
                                                         toast.success('Removed item')
                                                     }}
                                                     className="w-6 h-6 rounded bg-danger/10 hover:bg-danger-bg text-danger-fg flex items-center justify-center transition"
@@ -600,7 +670,7 @@ export default function QuickOrderModal({
 
                             {/* Cart Summary & Action */}
                             {cart.length > 0 && (
-                                <div className="p-4 border-t border-hairline bg-surface shadow-md space-y-3">
+                                <div className="p-4 border-t border-hairline bg-surface shadow-md space-y-3 shrink-0">
                                     <div className="space-y-2">
                                         <div className="relative">
                                             <MessageSquare size={13} className="absolute left-2.5 top-3 text-ink-subtle" />
@@ -630,6 +700,36 @@ export default function QuickOrderModal({
                                 </div>
                             )}
                         </div>
+                    </div>
+                )}
+
+                {/* Mobile Floating Cart Summary Bar */}
+                {!loading && !orderConfirmation && cart.length > 0 && (
+                    <div className="md:hidden p-4 border-t border-hairline bg-surface shadow-[0_-4px_12px_rgba(0,0,0,0.05)] flex items-center justify-between gap-4 shrink-0">
+                        <button
+                            onClick={() => setShowMobileCart(true)}
+                            className="flex items-center gap-2.5 text-ink hover:opacity-90 active:scale-[0.98] transition text-left cursor-pointer"
+                        >
+                            <div className="relative w-11 h-11 rounded-xl bg-brand-500/10 flex items-center justify-center text-brand-500 shrink-0">
+                                <ShoppingCart size={20} />
+                                <span className="absolute -top-1.5 -right-1.5 bg-brand-500 text-white rounded-full text-[10px] font-black w-5 h-5 flex items-center justify-center shadow-md animate-scale-in">
+                                    {cart.reduce((sum, item) => sum + item.quantity, 0)}
+                                </span>
+                            </div>
+                            <div>
+                                <span className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider block">Basket Total</span>
+                                <span className="text-body font-black text-ink">Rs. {cartTotal}</span>
+                            </div>
+                        </button>
+                        <Button
+                            variant="primary"
+                            icon={submitting ? Loader2 : ShoppingCart}
+                            loading={submitting}
+                            onClick={() => setShowConfirmDialog(true)}
+                            className="py-3 px-6 font-bold flex-1 max-w-[160px]"
+                        >
+                            Place Order
+                        </Button>
                     </div>
                 )}
         </Modal>
