@@ -739,6 +739,8 @@ export default function QuickOrderModal({
                 open={!!configuringItem}
                 onClose={() => setConfiguringItem(null)}
                 size="md"
+                layer="top"
+                backdropClassName="!z-[999999]"
                 ariaLabel={configuringItem?.name ?? 'Customize item'}
                 className="flex flex-col overflow-hidden max-h-[80vh]"
             >
@@ -766,6 +768,7 @@ export default function QuickOrderModal({
                                         {configuringItem.variations.map(v => (
                                             <button
                                                 key={v.id}
+                                                type="button"
                                                 onClick={() => setSelectedVariation(v)}
                                                 className={`p-3 text-left rounded-xl border text-label transition-all ${
                                                     selectedVariation?.id === v.id
@@ -834,12 +837,14 @@ export default function QuickOrderModal({
 
                         <div className="p-4 border-t border-hairline bg-surface-muted/20 flex gap-2">
                             <button
+                                type="button"
                                 onClick={() => setConfiguringItem(null)}
                                 className="flex-1 py-2.5 rounded-xl border border-hairline bg-surface hover:bg-surface-muted text-ink text-label font-bold transition"
                             >
                                 Cancel
                             </button>
                             <button
+                                type="button"
                                 onClick={handleAddConfiguredItem}
                                 className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-label font-bold transition shadow-sm"
                             >
