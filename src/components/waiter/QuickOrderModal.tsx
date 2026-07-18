@@ -91,6 +91,7 @@ export default function QuickOrderModal({
     const [customerNote, setCustomerNote] = useState('')
     const [selectedSession, setSelectedSession] = useState<{ id: string; token: string; label: string } | null>(null)
     const [showMobileCart, setShowMobileCart] = useState(false)
+    const [orderType, setOrderType] = useState<'dine_in' | 'takeout'>('dine_in')
 
     // Modifier/Variation Configuration State
     const [configuringItem, setConfiguringItem] = useState<MenuItem | null>(null)
@@ -287,6 +288,21 @@ export default function QuickOrderModal({
         })
     }
 
+    const getCartItemQuantity = (menuItemId: string, variationId?: string) => {
+        const match = cart.find(ci => ci.menuItemId === menuItemId && ci.variationId === variationId)
+        return match ? match.quantity : 0
+    }
+
+    const handleQuantityChange = (menuItem: MenuItem, variation?: Variation | null, change: number = 1) => {
+        const variationId = variation ? variation.id : undefined
+        const existing = cart.find(ci => ci.menuItemId === menuItem.id && ci.variationId === variationId)
+        if (existing) {
+            updateQuantity(existing.id, change)
+        } else if (change > 0) {
+            addToCartDirectly(menuItem, variation)
+        }
+    }
+
     const handlePlaceOrder = async () => {
         if (cart.length === 0) {
             toast.error('Cart is empty')
@@ -301,10 +317,21 @@ export default function QuickOrderModal({
         setShowConfirmDialog(false)
         setSubmitting(true)
         try {
+            const cartWithPacking = cart.map(item => {
+                if (orderType === 'takeout') {
+                    const cleanRequest = item.specialRequest ? item.specialRequest.replace('(Packing)', '').replace('[Packing]', '').trim() : ''
+                    return {
+                        ...item,
+                        specialRequest: cleanRequest ? `${cleanRequest} (Packing)` : '(Packing)'
+                    }
+                }
+                return item
+            })
+
             const res = bookingId && !selectedSession
-                ? await placeRoomOrderDirect(bookingId, cart, customerNote)
+                ? await placeRoomOrderDirect(bookingId, cartWithPacking, customerNote)
                 : selectedSession
-                    ? await placeStaffOrder(selectedSession.token, cart, customerNote)
+                    ? await placeStaffOrder(selectedSession.token, cartWithPacking, customerNote)
                     : { error: 'No active session found.' }
             if (res && res.success) {
                 if (res.orderId) {
@@ -384,7 +411,7 @@ export default function QuickOrderModal({
             )}
         </Modal>
         {/* Main POS workspace — hidden while the success card is showing. */}
-        <Modal open={isOpen && !orderConfirmation} onClose={onClose} size="full" ariaLabel="Quick POS Order" className="flex flex-col overflow-hidden">
+        <Modal open={isOpen && !orderConfirmation} onClose={onClose} size="full" ariaLabel="Quick POS Order" className="flex flex-col overflow-hidden" layer="top" backdropClassName="!z-[99999]">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
                     <div className="flex items-center gap-3">
@@ -422,8 +449,10 @@ export default function QuickOrderModal({
                                 </div>
                             ) : selectedSession ? (
                                 <p className="text-caption text-ink-subtle mt-0.5">Table {selectedSession.label} · Active Session</p>
+                            ) : bookingId && tableName ? (
+                                <p className="text-caption text-brand-500 font-bold mt-0.5">🛎 {tableName} · Room Order</p>
                             ) : (
-                                <p className="text-caption text-ink-subtle mt-0.5">No active table sessions found</p>
+                                <p className="text-caption text-amber-500 font-semibold mt-0.5">No active table sessions found</p>
                             )}
                         </div>
                     </div>
@@ -508,6 +537,31 @@ export default function QuickOrderModal({
                                     )}
                                 </div>
 
+                                <div className="flex bg-surface-muted p-1 rounded-xl border border-hairline select-none">
+                                    <button
+                                        type="button"
+                                        onClick={() => setOrderType('dine_in')}
+                                        className={`flex-1 py-1.5 text-center text-caption font-bold rounded-lg transition-all ${
+                                            orderType === 'dine_in'
+                                                ? 'bg-surface text-brand-500 shadow-sm border border-hairline font-extrabold'
+                                                : 'text-ink-subtle hover:text-ink'
+                                        }`}
+                                    >
+                                        Dine In
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setOrderType('takeout')}
+                                        className={`flex-1 py-1.5 text-center text-caption font-bold rounded-lg transition-all ${
+                                            orderType === 'takeout'
+                                                ? 'bg-surface text-brand-500 shadow-sm border border-hairline font-extrabold'
+                                                : 'text-ink-subtle hover:text-ink'
+                                        }`}
+                                    >
+                                        Packing
+                                    </button>
+                                </div>
+
                                 {/* Horizontal Categories Selector (Mobile Only) */}
                                 <div className="md:hidden flex gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-0.5 select-none shrink-0">
                                     <button
@@ -544,32 +598,121 @@ export default function QuickOrderModal({
                                         <p className="text-body font-semibold">No items found</p>
                                     </div>
                                 ) : (
-                                    filteredItems.map(item => (
-                                        <div 
-                                            key={item.id}
-                                            className="flex items-center justify-between p-4 md:p-3 rounded-xl border border-transparent hover:border-hairline hover:bg-surface-muted/30 transition-all select-none"
-                                        >
-                                            <div className="flex-1 pr-4">
-                                                <h4 className="text-body font-bold text-ink">{item.name}</h4>
-                                                {(item.variations && item.variations.length > 0) ? (
-                                                    <span className="text-[10px] bg-brand-500/10 text-brand-500 font-bold px-1.5 py-0.5 rounded-md mt-1 inline-block">
-                                                        Multiple Sizes
-                                                    </span>
-                                                ) : null}
+                                    filteredItems.map(item => {
+                                        const hasVariations = item.variations && item.variations.length > 0
+                                        const hasModifiers = item.modifier_groups && item.modifier_groups.length > 0
+
+                                        return (
+                                            <div 
+                                                key={item.id}
+                                                className="p-4 md:p-3 rounded-xl border border-transparent hover:border-hairline hover:bg-surface-muted/30 transition-all select-none flex flex-col gap-1.5"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex-1 pr-4">
+                                                        <h4 className="text-body font-bold text-ink">{item.name}</h4>
+                                                    </div>
+                                                    {!hasVariations && (
+                                                        <div className="flex items-center gap-4">
+                                                            <span className="text-body font-extrabold text-ink-muted">
+                                                                Rs. {item.price}
+                                                            </span>
+                                                            {hasModifiers ? (
+                                                                <button
+                                                                    onClick={() => handleAddToCartClick(item)}
+                                                                    className="w-11 h-11 md:w-8 md:h-8 rounded-lg bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition-all active:scale-95 shadow-sm cursor-pointer"
+                                                                >
+                                                                    <Plus className="w-5 h-5 md:w-4 md:h-4" />
+                                                                </button>
+                                                            ) : (() => {
+                                                                const qty = getCartItemQuantity(item.id)
+                                                                if (qty > 0) {
+                                                                    return (
+                                                                        <div className="flex items-center gap-2">
+                                                                            <button
+                                                                                onClick={() => handleQuantityChange(item, null, -1)}
+                                                                                className="w-8 h-8 md:w-7 md:h-7 rounded-lg bg-surface border border-hairline flex items-center justify-center hover:bg-surface-muted transition"
+                                                                            >
+                                                                                <Minus size={14} className="text-ink-subtle" />
+                                                                            </button>
+                                                                            <span className="text-body font-black text-ink w-4 text-center">{qty}</span>
+                                                                            <button
+                                                                                onClick={() => handleQuantityChange(item, null, 1)}
+                                                                                className="w-8 h-8 md:w-7 md:h-7 rounded-lg bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition"
+                                                                            >
+                                                                                <Plus size={14} />
+                                                                            </button>
+                                                                        </div>
+                                                                    )
+                                                                }
+                                                                return (
+                                                                    <button
+                                                                        onClick={() => handleQuantityChange(item, null, 1)}
+                                                                        className="w-11 h-11 md:w-8 md:h-8 rounded-lg bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition-all active:scale-95 shadow-sm cursor-pointer"
+                                                                    >
+                                                                        <Plus className="w-5 h-5 md:w-4 md:h-4" />
+                                                                    </button>
+                                                                )
+                                                            })()}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {hasVariations && (
+                                                    <div className="pl-3 border-l-2 border-brand-500/20 space-y-2 mt-1">
+                                                        {item.variations.map((v: Variation) => {
+                                                            const qty = getCartItemQuantity(item.id, v.id)
+                                                            return (
+                                                                <div key={v.id} className="flex items-center justify-between py-1 border-b border-hairline last:border-0">
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <p className="text-caption font-bold text-ink-muted truncate">{v.name}</p>
+                                                                        <p className="text-[10px] text-ink-subtle font-semibold">Rs. {v.price}</p>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-3">
+                                                                        {hasModifiers ? (
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setConfiguringItem(item)
+                                                                                    setSelectedVariation(v)
+                                                                                    setSelectedModifiers({})
+                                                                                    setSpecialRequestInput('')
+                                                                                }}
+                                                                                className="w-8 h-8 rounded-lg bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition active:scale-95 cursor-pointer"
+                                                                            >
+                                                                                <Plus size={14} />
+                                                                            </button>
+                                                                        ) : qty > 0 ? (
+                                                                            <div className="flex items-center gap-2">
+                                                                                <button
+                                                                                    onClick={() => handleQuantityChange(item, v, -1)}
+                                                                                    className="w-7 h-7 rounded-lg bg-surface border border-hairline flex items-center justify-center hover:bg-surface-muted transition"
+                                                                                >
+                                                                                    <Minus size={12} className="text-ink-subtle" />
+                                                                                </button>
+                                                                                <span className="text-caption font-black text-ink w-4 text-center">{qty}</span>
+                                                                                <button
+                                                                                    onClick={() => handleQuantityChange(item, v, 1)}
+                                                                                    className="w-7 h-7 rounded-lg bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition"
+                                                                                >
+                                                                                    <Plus size={12} />
+                                                                                </button>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <button
+                                                                                onClick={() => handleQuantityChange(item, v, 1)}
+                                                                                className="w-8 h-8 rounded-lg bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition active:scale-95 cursor-pointer"
+                                                                            >
+                                                                                <Plus size={14} />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                )}
                                             </div>
-                                            <div className="flex items-center gap-4">
-                                                <span className="text-body font-extrabold text-ink-muted">
-                                                    Rs. {item.price}
-                                                </span>
-                                                <button
-                                                    onClick={() => handleAddToCartClick(item)}
-                                                    className="w-11 h-11 md:w-8 md:h-8 rounded-lg bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition-all active:scale-95 shadow-sm cursor-pointer"
-                                                >
-                                                    <Plus className="w-5 h-5 md:w-4 md:h-4" />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))
+                                        )
+                                    })
                                 )}
                             </div>
                         </div>
@@ -739,6 +882,8 @@ export default function QuickOrderModal({
                 open={!!configuringItem}
                 onClose={() => setConfiguringItem(null)}
                 size="md"
+                layer="top"
+                backdropClassName="!z-[999999]"
                 ariaLabel={configuringItem?.name ?? 'Customize item'}
                 className="flex flex-col overflow-hidden max-h-[80vh]"
             >
@@ -766,6 +911,7 @@ export default function QuickOrderModal({
                                         {configuringItem.variations.map(v => (
                                             <button
                                                 key={v.id}
+                                                type="button"
                                                 onClick={() => setSelectedVariation(v)}
                                                 className={`p-3 text-left rounded-xl border text-label transition-all ${
                                                     selectedVariation?.id === v.id
@@ -834,12 +980,14 @@ export default function QuickOrderModal({
 
                         <div className="p-4 border-t border-hairline bg-surface-muted/20 flex gap-2">
                             <button
+                                type="button"
                                 onClick={() => setConfiguringItem(null)}
                                 className="flex-1 py-2.5 rounded-xl border border-hairline bg-surface hover:bg-surface-muted text-ink text-label font-bold transition"
                             >
                                 Cancel
                             </button>
                             <button
+                                type="button"
                                 onClick={handleAddConfiguredItem}
                                 className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-label font-bold transition shadow-sm"
                             >
@@ -857,13 +1005,14 @@ export default function QuickOrderModal({
                 onClose={() => setShowConfirmDialog(false)}
                 size="md"
                 layer="top"
+                backdropClassName="!z-[9999999]"
                 ariaLabel="Confirm order"
                 className="flex flex-col overflow-hidden max-h-[80vh]"
             >
                 <div className="px-5 py-4 border-b border-hairline bg-surface-muted/50">
                     <h4 className="text-body font-black text-ink">Confirm order</h4>
                     <p className="text-[10px] text-ink-subtle mt-0.5">
-                        Sends to the kitchen and adds to {bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`}.
+                        Sends to the kitchen and adds to {bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`} ({orderType === 'takeout' ? 'Packing' : 'Dine In'}).
                     </p>
                 </div>
 
@@ -885,12 +1034,14 @@ export default function QuickOrderModal({
 
                 <div className="p-4 border-t border-hairline bg-surface-muted/20 flex gap-2">
                     <button
+                        type="button"
                         onClick={() => setShowConfirmDialog(false)}
                         className="flex-1 py-2.5 rounded-xl border border-hairline bg-surface hover:bg-surface-muted text-ink text-label font-bold transition"
                     >
                         Cancel
                     </button>
                     <button
+                        type="button"
                         onClick={handlePlaceOrder}
                         disabled={submitting}
                         className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-label font-bold transition shadow-sm disabled:opacity-50 flex items-center justify-center gap-1.5"

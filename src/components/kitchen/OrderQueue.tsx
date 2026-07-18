@@ -6,10 +6,10 @@ import { useVirtualizer, useWindowVirtualizer } from '@tanstack/react-virtual'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { playNewOrder } from '@/lib/audio'
 import { toast } from 'react-hot-toast'
-import { timeAgo } from '@/lib/utils'
+import { timeAgo, getKOTSourceLabel, getItemKOTDisplay } from '@/lib/utils'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { Bell, Hourglass, Flame, ChefHat, ChevronDown, CheckSquare, Square, Check, Clock, Printer } from 'lucide-react'
-import type { OrderStatus, OrderItemStatus, Order, OrderItem, OrderItemModifier, MenuItem, Session, Table } from '@/types/database'
+import type { OrderStatus, OrderItemStatus, Order, OrderItem, OrderItemModifier, MenuItem, Session, Table, Booking } from '@/types/database'
 import { setOrderItemsStatus, getKitchenOrders } from '@/app/(staff)/kitchen/actions'
 import { rollUpOrderStatus } from '@/lib/orderRollup'
 import EmptyState from '@/components/ui/EmptyState'
@@ -31,11 +31,21 @@ const QZ_HEALTH_POLL_MS = 15000
 export type KitchenOrderItem = OrderItem & {
     menu_item_id?: string
     menu_items?: Partial<MenuItem>
+    menu_item_variations?: { name: string } | null
     order_item_modifiers?: Partial<OrderItemModifier>[]
 }
 
 export type KitchenOrder = Order & {
-    sessions?: Session & { tables?: Partial<Table> }
+    sessions?: (Session & {
+        tables?: (Table & {
+            rooms?: { id: string; room_number: string } | null
+            sessions?: { id: string; seat_number: number; status: string }[] | null
+        }) | null
+    }) | null
+    bookings?: {
+        id: string
+        rooms?: { id: string; room_number: string } | null
+    } | null
     order_items?: KitchenOrderItem[]
     order_type?: 'dine_in' | 'takeout' | 'delivery'
 }
@@ -53,11 +63,27 @@ export type ComboItemRow = {
 const QUEUE_AFTER_MS = 2 * 60 * 1000
 
 const ORDER_SELECT = `
-  id, status, order_type, total_amount, placed_at, customer_note,
-  sessions ( tables ( label ) ),
+  id, status, order_type, total_amount, placed_at, customer_note, booking_id,
+  bookings:booking_id (
+    id,
+    rooms:room_id ( id, room_number )
+  ),
+  sessions (
+    id,
+    seat_number,
+    booking_id,
+    tables:table_id (
+      id,
+      label,
+      room_id,
+      rooms:room_id ( id, room_number ),
+      sessions ( id, seat_number, status )
+    )
+  ),
   order_items (
     id, menu_item_id, quantity, unit_price, special_request, status, station, claimed_by, claimed_at,
     menu_items ( id, name, is_combo ),
+    menu_item_variations:menu_item_variation_id ( id, name ),
     order_item_modifiers ( modifier_name, price_adjustment )
   )
 ` as const
@@ -229,10 +255,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             setTimeout(() => {
                 if (!ordersRef.current.some(o => o.id === order.id)) return // removed — false alarm
                 playNewOrder().catch(() => {})
-                const tbl = order.sessions?.tables?.label
-                const isTakeout = order.order_type === 'takeout'
-                const isDelivery = order.order_type === 'delivery'
-                const sourceLabel = isTakeout ? 'Takeaway' : isDelivery ? 'Delivery' : (tbl ? `Table ${tbl}` : 'Order')
+                const sourceLabel = getKOTSourceLabel(order)
                 toast.custom((t) => (
                     <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-surface shadow-xl rounded-2xl px-4 py-3 flex items-start gap-3 border-2 border-amber-300`}>
                         <span className="text-xl mt-0.5">🔔</span>
@@ -267,10 +290,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             setOrders(prev => prev.some(o => o.id === fresh.id) ? prev.map(o => o.id === fresh.id ? fresh : o) : [...prev, fresh])
             if (!wasPresent) {
                 playNewOrder().catch(() => {})
-                const tbl = fresh.sessions?.tables?.label
-                const isTakeout = fresh.order_type === 'takeout'
-                const isDelivery = fresh.order_type === 'delivery'
-                const sourceLabel = isTakeout ? 'Takeaway' : isDelivery ? 'Delivery' : (tbl ? `Table ${tbl}` : 'Order')
+                const sourceLabel = getKOTSourceLabel(fresh)
                 toast.custom((t) => (
                     <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-surface shadow-xl rounded-2xl px-4 py-3 flex items-start gap-3 border-2 border-amber-300`}>
                         <span className="text-xl mt-0.5">🔔</span>
@@ -569,10 +589,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
     const meta = TAB_META[tab]
     const isCooking = tab === 'cooking'
     
-    const tbl = order.sessions?.tables?.label
-    const isTakeout = order.order_type === 'takeout'
-    const isDelivery = order.order_type === 'delivery'
-    const space = isTakeout ? 'Takeaway' : isDelivery ? 'Delivery' : (tbl ? `Table ${tbl}` : 'Order')
+    const space = getKOTSourceLabel(order)
 
     // Selection: New/Queue → all dishes; Cooking → only dishes this chef owns.
     const ownItem = (it: KitchenOrderItem) => !it.claimed_by || it.claimed_by === userId
@@ -675,8 +692,15 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
                                         <span className="w-[18px] h-[18px] rounded border border-hairline-strong shrink-0" />
                                     )}
                                     <div className="flex-1 min-w-0">
-                                        <p className="font-semibold text-ink text-sm leading-tight truncate">{item.menu_items?.name}</p>
-                                        <p className="text-[11px] text-ink-subtle">×{item.quantity}{lineTotal > 0 ? ` · ${money(lineTotal)}` : ''}{item.special_request ? ` · ${item.special_request}` : ''}</p>
+                                        {(() => {
+                                            const { name, note } = getItemKOTDisplay(item, order.order_type === 'takeout' && !order.bookings)
+                                            return (
+                                                <>
+                                                    <p className="font-semibold text-ink text-sm leading-tight truncate">{name}</p>
+                                                    <p className="text-[11px] text-ink-subtle">×{item.quantity}{lineTotal > 0 ? ` · ${money(lineTotal)}` : ''}{note ? ` · ${note}` : ''}</p>
+                                                </>
+                                            )
+                                        })()}
                                         {item.menu_items?.is_combo && (
                                             <div className="mt-0.5 pl-2 border-l-2 border-hairline text-[10px] text-ink-subtle space-y-0.5">
                                                 {comboItems.filter(c => c.combo_id === item.menu_item_id).map(c => (

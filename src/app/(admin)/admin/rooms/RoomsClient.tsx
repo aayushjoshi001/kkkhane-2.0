@@ -14,6 +14,7 @@ import NextImage from 'next/image'
 import { renderQrCardPng, downloadDataUrl } from '@/lib/qrCardCanvas'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 import DownloadAllQrsButton from '@/components/admin/DownloadAllQrsButton'
+import { useFeatures } from '@/lib/contexts/FeatureContext'
 
 const QR_LOGO_SRC = '/icons/kkkhane.png'
 
@@ -35,6 +36,8 @@ export default function RoomsClient({
     tables = [],
     activeOrders = []
 }: RoomsClientProps) {
+    const features = useFeatures()
+    const irdSyncEnabled = features?.irdSyncEnabled ?? false
     const router = useRouter()
     const [rooms, setRooms] = useState<Room[]>(initialRooms)
     const [roomTypesList, setRoomTypesList] = useState<RoomType[]>(roomTypes)
@@ -358,11 +361,11 @@ export default function RoomsClient({
                     check_in: bookingForm.check_in,
                     check_out: bookingForm.check_out,
                     guest_count: count,
-                    advance_amount: isSplit ? splitCash + splitQr : (parseFloat(bookingForm.advance_amount) || 0),
-                    advance_payment_method: bookingForm.advance_payment_method,
-                    advance_cash_amount: isSplit ? splitCash : undefined,
-                    advance_qr_amount: isSplit ? splitQr : undefined,
-                    advance_qr_code_id: (bookingForm.advance_payment_method === 'qr_digital' || isSplit)
+                    advance_amount: (irdSyncEnabled && isSplit) ? splitCash + splitQr : (parseFloat(bookingForm.advance_amount) || 0),
+                    advance_payment_method: (parseFloat(bookingForm.advance_amount) || 0) > 0 ? (irdSyncEnabled ? bookingForm.advance_payment_method : 'cash') : 'none',
+                    advance_cash_amount: (irdSyncEnabled && isSplit) ? splitCash : undefined,
+                    advance_qr_amount: (irdSyncEnabled && isSplit) ? splitQr : undefined,
+                    advance_qr_code_id: (irdSyncEnabled && (bookingForm.advance_payment_method === 'qr_digital' || isSplit))
                         ? (bookingForm.advance_qr_code_id || (qrCodes.length === 1 ? qrCodes[0].id : undefined))
                         : undefined
                 })
@@ -961,40 +964,42 @@ export default function RoomsClient({
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-                                        Advance Payment (Rs.)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        placeholder="0.00"
-                                        disabled={bookingForm.advance_payment_method === 'split'}
-                                        value={bookingForm.advance_payment_method === 'split'
-                                            ? ((parseFloat(bookingForm.advance_cash_amount) || 0) + (parseFloat(bookingForm.advance_qr_amount) || 0)).toString()
-                                            : bookingForm.advance_amount}
-                                        onChange={e => setBookingForm(b => ({ ...b, advance_amount: e.target.value }))}
-                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00] disabled:opacity-60"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-                                        Payment Method
-                                    </label>
-                                    <select
-                                        value={bookingForm.advance_payment_method}
-                                        onChange={e => setBookingForm(b => ({ ...b, advance_payment_method: e.target.value }))}
-                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
-                                    >
-                                        <option value="cash">Cash</option>
-                                        <option value="qr_digital">QR / Digital</option>
-                                        <option value="split">Split (Cash + QR)</option>
-                                    </select>
-                                </div>
-                            </div>
+                             <div className={irdSyncEnabled ? "grid grid-cols-2 gap-4" : ""}>
+                                 <div>
+                                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                                         Advance Payment (Rs.)
+                                     </label>
+                                     <input
+                                         type="number"
+                                         min="0"
+                                         placeholder="0.00"
+                                         disabled={irdSyncEnabled && bookingForm.advance_payment_method === 'split'}
+                                         value={irdSyncEnabled && bookingForm.advance_payment_method === 'split'
+                                             ? ((parseFloat(bookingForm.advance_cash_amount) || 0) + (parseFloat(bookingForm.advance_qr_amount) || 0)).toString()
+                                             : bookingForm.advance_amount}
+                                         onChange={e => setBookingForm(b => ({ ...b, advance_amount: e.target.value }))}
+                                         className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00] disabled:opacity-60"
+                                     />
+                                 </div>
+                                 {irdSyncEnabled && (
+                                     <div>
+                                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                                             Payment Method
+                                         </label>
+                                         <select
+                                             value={bookingForm.advance_payment_method}
+                                             onChange={e => setBookingForm(b => ({ ...b, advance_payment_method: e.target.value }))}
+                                             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                         >
+                                             <option value="cash">Cash</option>
+                                             <option value="qr_digital">QR / Digital</option>
+                                             <option value="split">Split (Cash + QR)</option>
+                                         </select>
+                                     </div>
+                                 )}
+                             </div>
 
-                            {bookingForm.advance_payment_method === 'split' && (
+                            {irdSyncEnabled && bookingForm.advance_payment_method === 'split' && (
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
@@ -1025,7 +1030,7 @@ export default function RoomsClient({
                                 </div>
                             )}
 
-                            {(bookingForm.advance_payment_method === 'qr_digital' || bookingForm.advance_payment_method === 'split') && qrCodes.length > 1 && (
+                            {irdSyncEnabled && (bookingForm.advance_payment_method === 'qr_digital' || bookingForm.advance_payment_method === 'split') && qrCodes.length > 1 && (
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
                                         Which QR did the guest scan?

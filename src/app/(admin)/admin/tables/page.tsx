@@ -4,10 +4,17 @@ import TableManager from '@/components/admin/TableManager'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import { QrCode } from 'lucide-react'
 
+import { redirect } from 'next/navigation'
+import { getRestaurantFeatures } from '@/lib/features'
+
 export const dynamic = 'force-dynamic'
 
 export default async function TablesManagementPage() {
     const { restaurantId } = await getCurrentUser()
+    const features = await getRestaurantFeatures(restaurantId)
+    if (!features?.tableManagementEnabled) {
+        redirect('/admin/dashboard')
+    }
     const adminSupabase = await createAdminClient()
 
     const [{ data: tables }, { data: restaurant }] = await Promise.all([

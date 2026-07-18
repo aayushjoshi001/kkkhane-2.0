@@ -2,37 +2,50 @@
 
 import React, { ReactNode, useState, isValidElement, cloneElement } from 'react'
 
-type TabID = 'space' | 'orders' | 'customer'
+type TabID = 'rooms' | 'tables' | 'space' | 'orders' | 'customer'
 
 interface WaiterTabsProps {
     spaceContent: ReactNode
+    roomsContent?: ReactNode
+    tablesContent?: ReactNode
     ordersContent: ReactNode
     customerContent: ReactNode
     counts: {
         space: number
+        rooms?: number
+        tables?: number
         orders: number
         customer: number
     }
+    isHotel?: boolean
     floorStatsElement?: ReactNode
 }
 
 export default function WaiterTabs({
     spaceContent,
+    roomsContent,
+    tablesContent,
     ordersContent,
     customerContent,
     counts,
+    isHotel = false,
     floorStatsElement,
 }: WaiterTabsProps) {
-    const [activeTab, setActiveTab] = useState<TabID>('space')
+    const [activeTab, setActiveTab] = useState<TabID>(isHotel ? 'rooms' : 'space')
 
-    const tabs: { id: TabID; label: string; count: number }[] = [
+    const tabs: { id: TabID; label: string; count: number }[] = isHotel ? [
+        { id: 'rooms', label: 'Rooms', count: counts.rooms ?? 0 },
+        { id: 'tables', label: 'Tables', count: counts.tables ?? 0 },
+        { id: 'orders', label: 'Kitchen', count: counts.orders },
+        { id: 'customer', label: 'Customer', count: counts.customer },
+    ] : [
         { id: 'space', label: 'Space', count: counts.space },
         { id: 'orders', label: 'Kitchen', count: counts.orders },
         { id: 'customer', label: 'Customer', count: counts.customer },
     ]
 
     const handleStatClick = (key: string) => {
-        if (key === 'tables') setActiveTab('space')
+        if (key === 'tables') setActiveTab(isHotel ? 'tables' : 'space')
         else if (key === 'ready' || key === 'kitchen') setActiveTab('orders')
         else if (key === 'requests') setActiveTab('customer')
     }
@@ -45,7 +58,7 @@ export default function WaiterTabs({
         <div className="w-full">
             {topStats && <div className="mb-4">{topStats}</div>}
             {/* Tab Navigation */}
-            <div className="grid grid-cols-3 border-b border-hairline mb-4 bg-surface sticky top-14 z-20 -mx-3 px-3 md:mx-0 md:px-0">
+            <div className={`grid ${isHotel ? 'grid-cols-4' : 'grid-cols-3'} border-b border-hairline mb-4 bg-surface sticky top-14 z-20 -mx-3 px-3 md:mx-0 md:px-0`}>
                 {tabs.map((tab) => {
                     const isActive = activeTab === tab.id
                     return (
@@ -75,6 +88,8 @@ export default function WaiterTabs({
             {/* Tab Content */}
             <div>
                 {activeTab === 'space' && <div className="animate-fade-in">{spaceContent}</div>}
+                {activeTab === 'rooms' && roomsContent && <div className="animate-fade-in">{roomsContent}</div>}
+                {activeTab === 'tables' && tablesContent && <div className="animate-fade-in">{tablesContent}</div>}
                 {activeTab === 'orders' && <div className="animate-fade-in">{ordersContent}</div>}
                 {activeTab === 'customer' && <div className="animate-fade-in">{customerContent}</div>}
             </div>

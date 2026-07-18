@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useFeatures } from '@/lib/contexts/FeatureContext'
 import { AlertTriangle, Check, X, Loader2, Plus, ArrowRight, Coins, Bed, ShoppingBag, Landmark, ArrowUpRight } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { addStockMovementAction } from '@/app/(admin)/admin/ingredients/actions'
@@ -77,6 +78,7 @@ export default function CriticalClient({
     suppliers,
     categories
 }: CriticalClientProps) {
+    const { financeEnabled } = useFeatures()
     const [lowStockList, setLowStockList] = useState<Ingredient[]>(initialLowStock)
     const [vouchers, setVouchers] = useState<RawVoucherEntry[]>(initialVouchers)
     const [supplierBills, setSupplierBills] = useState<SupplierBill[]>(initialSupplierBills)
@@ -243,7 +245,7 @@ export default function CriticalClient({
             </div>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-3 gap-6">
+            <div className={`grid gap-6 ${financeEnabled ? 'grid-cols-3' : 'grid-cols-1'}`}>
                 <div 
                     onClick={() => setActiveTab('stock')}
                     className={`p-6 rounded-3xl border-2 cursor-pointer transition-all duration-200 ${
@@ -262,41 +264,45 @@ export default function CriticalClient({
                     <p className="text-[11px] text-gray-400 font-semibold mt-2">Requires stock purchase</p>
                 </div>
 
-                <div 
-                    onClick={() => setActiveTab('vouchers')}
-                    className={`p-6 rounded-3xl border-2 cursor-pointer transition-all duration-200 ${
-                        activeTab === 'vouchers' 
-                            ? 'border-amber-500 bg-amber-50/20 shadow-md shadow-amber-100' 
-                            : 'border-gray-100 bg-white hover:border-amber-200'
-                    }`}
-                >
-                    <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pending Vouchers</span>
-                        <div className={`p-2 rounded-xl ${vouchers.length > 0 ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'}`}>
-                            <Landmark size={18} />
+                {financeEnabled && (
+                    <>
+                        <div 
+                            onClick={() => setActiveTab('vouchers')}
+                            className={`p-6 rounded-3xl border-2 cursor-pointer transition-all duration-200 ${
+                                activeTab === 'vouchers' 
+                                    ? 'border-amber-500 bg-amber-50/20 shadow-md shadow-amber-100' 
+                                    : 'border-gray-100 bg-white hover:border-amber-200'
+                            }`}
+                        >
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pending Vouchers</span>
+                                <div className={`p-2 rounded-xl ${vouchers.length > 0 ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'}`}>
+                                    <Landmark size={18} />
+                                </div>
+                            </div>
+                            <p className="text-3xl font-black text-gray-900 mt-4">{vouchers.length}</p>
+                            <p className="text-[11px] text-gray-400 font-semibold mt-2">Awaiting supervisor approval</p>
                         </div>
-                    </div>
-                    <p className="text-3xl font-black text-gray-900 mt-4">{vouchers.length}</p>
-                    <p className="text-[11px] text-gray-400 font-semibold mt-2">Awaiting supervisor approval</p>
-                </div>
 
-                <div 
-                    onClick={() => setActiveTab('bills')}
-                    className={`p-6 rounded-3xl border-2 cursor-pointer transition-all duration-200 ${
-                        activeTab === 'bills' 
-                            ? 'border-indigo-500 bg-indigo-50/20 shadow-md shadow-indigo-100' 
-                            : 'border-gray-100 bg-white hover:border-indigo-200'
-                    }`}
-                >
-                    <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Supplier Unpaid Dues</span>
-                        <div className={`p-2 rounded-xl ${supplierBills.length > 0 ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-400'}`}>
-                            <Coins size={18} />
+                        <div 
+                            onClick={() => setActiveTab('bills')}
+                            className={`p-6 rounded-3xl border-2 cursor-pointer transition-all duration-200 ${
+                                activeTab === 'bills' 
+                                    ? 'border-indigo-500 bg-indigo-50/20 shadow-md shadow-indigo-100' 
+                                    : 'border-gray-100 bg-white hover:border-indigo-200'
+                            }`}
+                        >
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Supplier Unpaid Dues</span>
+                                <div className={`p-2 rounded-xl ${supplierBills.length > 0 ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-400'}`}>
+                                    <Coins size={18} />
+                                </div>
+                            </div>
+                            <p className="text-3xl font-black text-gray-900 mt-4">{supplierBills.length}</p>
+                            <p className="text-[11px] text-gray-400 font-semibold mt-2">Awaiting settlement payouts</p>
                         </div>
-                    </div>
-                    <p className="text-3xl font-black text-gray-900 mt-4">{supplierBills.length}</p>
-                    <p className="text-[11px] text-gray-400 font-semibold mt-2">Awaiting settlement payouts</p>
-                </div>
+                    </>
+                )}
             </div>
 
             {/* Central Worksheets */}

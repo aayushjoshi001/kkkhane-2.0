@@ -255,6 +255,34 @@ export async function findBookingByPhone(phone: string, restaurantId: string) {
     return { success: true, booking }
 }
 
+export async function findBookingByRoom(roomNumber: string, restaurantId: string) {
+    const adminSupabase = await createAdminClient()
+    const cleanRoom = roomNumber.trim()
+
+    // Resolve linked hotel if any
+    const { data: restLink } = await adminSupabase
+        .from('restaurants')
+        .select('linked_hotel_id')
+        .eq('id', restaurantId)
+        .maybeSingle()
+
+    const targetRestaurantId = restLink?.linked_hotel_id || restaurantId
+
+    const { data: booking, error } = await adminSupabase
+        .from('bookings')
+        .select('id, guest_name, guest_phone, status, room_id, rooms!inner(room_number)')
+        .eq('restaurant_id', targetRestaurantId)
+        .eq('status', 'checked_in')
+        .eq('rooms.room_number', cleanRoom)
+        .maybeSingle()
+
+    if (error) {
+        console.error('[findBookingByRoom] Error:', error)
+        return { error: 'Failed to search booking' }
+    }
+    return { success: true, booking }
+}
+
 export async function getActiveBookings(restaurantId: string) {
     const adminSupabase = await createAdminClient()
 
@@ -394,21 +422,18 @@ export async function placeStaffOrder(
             ? await getRoomContextForTable(adminSupabase, session.table_id)
             : null
 
-        if (roomContext?.bookingId) {
-            await adminSupabase
-                .from('orders')
-                .update({ 
-                    booking_id: roomContext.bookingId, 
-                    status: 'confirmed', 
-                    needs_confirmation: false 
-                })
-                .eq('id', result.order_id)
-        } else {
-            await adminSupabase
-                .from('orders')
-                .update({ status: 'confirmed', needs_confirmation: false })
-                .eq('id', result.order_id)
+        const updateFields: any = {
+            status: 'confirmed',
+            needs_confirmation: false
         }
+        if (roomContext?.bookingId) {
+            updateFields.booking_id = roomContext.bookingId
+        }
+
+        await adminSupabase
+            .from('orders')
+            .update(updateFields)
+            .eq('id', result.order_id)
 
         // place_order() already deducted stock/ingredients inline for every item —
         // do not call deduct_ingredients_for_order here, it would double-deduct.
@@ -560,16 +585,43 @@ export async function placeRoomOrderDirect(
     const tax = Math.round((subtotal + serviceCharge) * (taxRate / 100) * 100) / 100
     const total = Math.max(0, subtotal + serviceCharge + tax)
 
-    // Update totals on order
-    await adminSupabase
-        .from('orders')
-        .update({
-            subtotal_amount: subtotal,
-            service_charge_amount: serviceCharge,
-            tax_amount: tax,
-            total_amount: total
-        })
-        .eq('id', orderId)
+    // Update totals on order with database schema fallback
+    try {
+        const { error: updateError } = await adminSupabase
+            .from('orders')
+            .update({
+                subtotal_amount: subtotal,
+                service_charge_amount: serviceCharge,
+                tax_amount: tax,
+                total_amount: total
+            })
+            .eq('id', orderId)
+        
+        if (updateError) {
+            if (updateError.message.includes('service_charge_amount') || updateError.code === 'PGRST204') {
+                await adminSupabase
+                    .from('orders')
+                    .update({
+                        subtotal_amount: subtotal,
+                        tax_amount: tax,
+                        total_amount: total
+                    })
+                    .eq('id', orderId)
+            } else {
+                console.error('[placeRoomOrderDirect] Update totals error:', updateError)
+            }
+        }
+    } catch (err) {
+        console.error('[placeRoomOrderDirect] Catch block update totals:', err)
+        await adminSupabase
+            .from('orders')
+            .update({
+                subtotal_amount: subtotal,
+                tax_amount: tax,
+                total_amount: total
+            })
+            .eq('id', orderId)
+    }
 
     // Apply pricing rules & deduct ingredients
     await Promise.allSettled([

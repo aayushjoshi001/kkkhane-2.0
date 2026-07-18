@@ -105,6 +105,7 @@ export default function CashierClient({
     const money = useCurrency()
     const printInvoiceEnabled = useFeatureEnabled('printInvoiceEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
+    const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
     const { print: printInvoice } = usePrinter('invoice')
     const [active, setActive] = useState<ActiveOrder[]>(initialActive)
     const [processingId, setProcessingId] = useState<string | null>(null)
@@ -158,6 +159,9 @@ export default function CashierClient({
     const [billingStayBooking, setBillingStayBooking] = useState<any | null>(null)
     const [billingRoomCharges, setBillingRoomCharges] = useState<any[]>([])
     const [billingLinkedOrders, setBillingLinkedOrders] = useState<any[]>([])
+    const filteredLinkedOrders = (() => {
+        return billingLinkedOrders.filter(o => !o.is_room_order)
+    })()
     const [billingPaymentMethod, setBillingPaymentMethod] = useState<'cash' | 'qr_digital' | 'both' | 'credit'>('cash')
     const [splitCashAmount, setSplitCashAmount] = useState<string>('')
     const [splitQrAmount, setSplitQrAmount] = useState<string>('')
@@ -178,6 +182,7 @@ export default function CashierClient({
     // amounts, and is where a credit portion's name/phone gets collected.
     const [showSettlementConfirm, setShowSettlementConfirm] = useState(false)
     const [pendingInvoice, setPendingInvoice] = useState<{ type: 'room' | 'table'; item: any; data: any } | null>(null)
+    const [isDirectCheckingOut, setIsDirectCheckingOut] = useState(false)
     const qrCodes = useQrCodes()
 
     const [mounted, setMounted] = useState(false)
@@ -386,7 +391,7 @@ export default function CashierClient({
     const calculateGrandTotal = (room: any, booking: any) => {
         const stayCost = calculateStayCost(room, booking)
         const qrOrdersTotal = getRoomQrOrders(room).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
-        const linkedOrdersTotal = billingLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+        const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
         const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
         return stayCost + qrOrdersTotal + linkedOrdersTotal + manualChargesTotal
     }
@@ -410,7 +415,7 @@ export default function CashierClient({
             const sessionOrders = getRoomQrOrders(room)
             const qrOrdersTotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
 
-            const linkedOrdersTotal = billingLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+            const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
             const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
             const total = stayCost + qrOrdersTotal + linkedOrdersTotal + manualChargesTotal
 
@@ -451,7 +456,7 @@ export default function CashierClient({
                 stayCost,
                 qrOrders: getRoomQrOrders(room),
                 qrOrdersTotal,
-                linkedOrders: billingLinkedOrders.map(item => ({
+                linkedOrders: filteredLinkedOrders.map(item => ({
                     name: item.menu_items?.name || 'Item',
                     quantity: item.quantity,
                     unitPrice: Number(item.unit_price)
@@ -577,6 +582,64 @@ export default function CashierClient({
     const cancelSettlementConfirm = () => {
         setShowSettlementConfirm(false)
         setPendingInvoice(null)
+    }
+
+    const handleCloseGuestDirectly = async (room: any) => {
+        if (!room || isDirectCheckingOut) return
+        setIsDirectCheckingOut(true)
+        try {
+            const booking = billingStayBooking ?? bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
+            if (!booking) return
+
+            const total = calculateGrandTotal(room, booking)
+            const advancePaid = Number(booking.paid_amount) || 0
+            const balanceDue = Math.max(0, total - advancePaid)
+            const matchingTable = tables.find(t => t.room_id === room.id)
+            const sessionId = matchingTable?.activeSession?.id
+
+            // Settle all unpaid orders associated with this booking's session
+            if (sessionId) {
+                const sessionOrders = active.filter(o => o.session_id === sessionId)
+                const sessionUnpaid = unpaid.filter(o => o.session_id === sessionId)
+                const allUnpaid = [...sessionOrders, ...sessionUnpaid].filter(o => o.payment_status === 'unpaid')
+                
+                await Promise.all(
+                    allUnpaid.map(order => markDeliveredAndCashPaid(order.id, 'cash'))
+                )
+            }
+
+            const res = await fetch(`/api/bookings/checkout`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    booking_id: booking.id,
+                    room_id: room.id,
+                    total_amount: total,
+                    cash_paid: balanceDue,
+                    qr_paid: 0,
+                    session_id: sessionId || null,
+                    credit_amount: 0,
+                })
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Failed to checkout booking')
+
+            setBookings(prev => prev.map(b =>
+                b.id === booking.id ? { ...b, status: 'checked_out' } : b
+            ))
+            setRoomsState(prev => prev.map(r =>
+                r.id === room.id ? { ...r, status: 'dirty' } : r
+            ))
+
+            toast.success('Room guest checked out successfully!')
+            setSelectedBillingRoom(null)
+            router.refresh()
+        } catch (err) {
+            console.error('Error during direct checkout:', err)
+            toast.error(err instanceof Error ? err.message : 'Checkout failed')
+        } finally {
+            setIsDirectCheckingOut(false)
+        }
     }
 
     const handleMarkPaid = async () => {
@@ -1312,9 +1375,6 @@ export default function CashierClient({
                                                                 {booking.guest_name}
                                                             </span>
                                                         )}
-                                                        <span className="text-[11px] font-extrabold text-brand-650 mt-1">
-                                                            {money(total)}
-                                                        </span>
                                                         <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">
                                                             Awaiting Pay
                                                         </span>
@@ -1338,9 +1398,6 @@ export default function CashierClient({
                                                         <span className="text-lg font-black text-ink block leading-tight">
                                                             Table {table.label}
                                                         </span>
-                                                        <span className="text-[11px] font-extrabold text-brand-650 mt-1">
-                                                            {money(total)}
-                                                        </span>
                                                         <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">
                                                             {sessionItems.length} items unpaid
                                                         </span>
@@ -1356,7 +1413,8 @@ export default function CashierClient({
 
 
                         {/* Active Pipeline — read-only overview for cashier */}
-                        {activePipeline.length > 0 && (
+                        {/* Active Pipeline — read-only overview for cashier */}
+                        {!isHotel && activePipeline.length > 0 && (
                             <div>
                                 <h2 className="text-sm font-semibold text-ink-muted mb-3 flex items-center gap-2">
                                     <ChefHat size={14} className="text-orange-400" />
@@ -1399,7 +1457,7 @@ export default function CashierClient({
                             </div>
                         )}
 
-                        {unpaid.length === 0 && activePipeline.length === 0 && activeTakeoutDelivery.length === 0 && pendingClaims === 0 && (
+                        {unpaid.length === 0 && (isHotel ? true : activePipeline.length === 0) && activeTakeoutDelivery.length === 0 && pendingClaims === 0 && (
                             <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-12 text-center">
                                 <CreditCard size={36} className="mx-auto text-gray-200 mb-3" />
                                 <p className="text-base font-semibold text-ink-subtle">All quiet at the counter</p>
@@ -1596,11 +1654,11 @@ export default function CashierClient({
                                             </div>
                                         )}
 
-                                        {billingLinkedOrders.length > 0 && (
+                                        {filteredLinkedOrders.length > 0 && (
                                             <div className="p-4 space-y-2">
                                                 <p className="font-extrabold text-xs text-emerald-650 font-semibold">Restaurant dining (table orders)</p>
                                                 <div className="space-y-1.5 pl-3 border-l-2 border-emerald-100">
-                                                    {billingLinkedOrders.map((item, idx) => (
+                                                    {filteredLinkedOrders.map((item, idx) => (
                                                         <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
                                                             <span>{item.menu_items?.name || 'Item'} ({item.quantity}×)</span>
                                                             <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
@@ -1627,6 +1685,7 @@ export default function CashierClient({
                                 </div>
 
                                 {/* Payment Method Selector */}
+                                {irdSyncEnabled && (
                                 <div className="pt-4">
                                     <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Payment Method</p>
                                     <div className="grid grid-cols-4 gap-2">
@@ -1766,6 +1825,7 @@ export default function CashierClient({
                                         </div>
                                     )}
                                 </div>
+                                )}
                             </div>
                             <div className="border-t border-hairline px-6 py-4 flex-shrink-0 bg-surface">
                                     {/* Gross Total + Advance row */}
@@ -1794,21 +1854,26 @@ export default function CashierClient({
                                                         <p className="text-2xl font-black text-brand-600 tabular-nums">{money(balanceDue)}</p>
                                                     </div>
                                                     <div className="flex gap-2 items-center">
-                                                         <Button variant="secondary" onClick={() => setSelectedBillingRoom(null)}>Close</Button>
-                                                         {!generateInvoiceEnabled ? (
-                                                             <div className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-1.5 animate-pulse-once">
-                                                                 Invoice generation disabled
-                                                             </div>
-                                                         ) : (
-                                                             <Button
-                                                                 variant="primary"
-                                                                 onClick={() => compileInvoice('room', selectedBillingRoom)}
-                                                                 className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
-                                                             >
-                                                                 Generate Invoice
-                                                             </Button>
-                                                         )}
-                                                     </div>
+                                                        <Button variant="secondary" onClick={() => setSelectedBillingRoom(null)}>Close</Button>
+                                                        {!irdSyncEnabled ? (
+                                                            <Button
+                                                                variant="primary"
+                                                                loading={isDirectCheckingOut}
+                                                                onClick={() => handleCloseGuestDirectly(selectedBillingRoom)}
+                                                                className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                            >
+                                                                Close Guest
+                                                            </Button>
+                                                        ) : (
+                                                            <Button
+                                                                variant="primary"
+                                                                onClick={() => compileInvoice('room', selectedBillingRoom)}
+                                                                className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                            >
+                                                                Generate Invoice
+                                                            </Button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </>
                                         )
@@ -1932,6 +1997,7 @@ export default function CashierClient({
                                     </div>
 
                                     {/* Payment Method Selector */}
+                                    {irdSyncEnabled && (
                                     <div>
                                         <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Payment Method</p>
                                         <div className="grid grid-cols-4 gap-2">
@@ -2060,6 +2126,7 @@ export default function CashierClient({
                                             </p>
                                         )}
                                     </div>
+                                    )}
 
                                     <div className="border-t border-hairline pt-4 flex items-center justify-between mt-2">
                                         <div>
@@ -2068,10 +2135,19 @@ export default function CashierClient({
                                         </div>
                                         <div className="flex gap-2 items-center">
                                             <Button variant="secondary" onClick={() => setSelectedBillingTable(null)}>Close</Button>
-                                            {!generateInvoiceEnabled ? (
-                                                <div className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-1.5 animate-pulse-once">
-                                                    Invoice generation disabled
-                                                </div>
+                                            {!irdSyncEnabled ? (
+                                                <Button
+                                                    variant="primary"
+                                                    onClick={() => {
+                                                        const data = buildInvoiceData('table', selectedBillingTable)
+                                                        if (data) {
+                                                            setActiveInvoice(data)
+                                                        }
+                                                    }}
+                                                    className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                 >
+                                                     Close Guest
+                                                 </Button>
                                             ) : (
                                                 <Button
                                                     variant="primary"
@@ -2227,7 +2303,16 @@ export default function CashierClient({
                                             Print Bill
                                         </button>
                                     )}
-                                    {generateInvoiceEnabled && (
+                                    {!irdSyncEnabled ? (
+                                        <Button
+                                            variant="primary"
+                                            loading={isSettlingInvoice}
+                                            onClick={handleMarkPaid}
+                                            className="font-bold flex-1 bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 text-[10px] text-white py-1.5 min-w-[70px] animate-scale-in"
+                                        >
+                                            Close Guest
+                                        </Button>
+                                    ) : (
                                         <Button
                                             variant="primary"
                                             loading={isSettlingInvoice}

@@ -3,10 +3,17 @@ import { createAdminClient } from '@/lib/supabase/server'
 import TakeoutDashboard from './TakeoutDashboard'
 import { TAKEOUT_ORDER_SELECT, mapOrderRowToTakeout, type TakeoutOrderRow } from '@/lib/takeout'
 
+import { redirect } from 'next/navigation'
+import { getRestaurantFeatures } from '@/lib/features'
+
 export const revalidate = 0
 
 export default async function AdminTakeoutPage() {
     const { restaurantId: rid } = await getCurrentUser()
+    const features = await getRestaurantFeatures(rid)
+    if (!features?.takeoutEnabled) {
+        redirect('/admin/dashboard')
+    }
     const adminSupabase = await createAdminClient()
 
     const { data: restaurant } = await adminSupabase

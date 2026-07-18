@@ -6,6 +6,7 @@ import { Plus, Filter, Calendar } from 'lucide-react'
 import type { Booking, Room, BookingStatus } from '@/types/database'
 import EmptyState from '@/components/ui/EmptyState'
 import RoomBillingModal, { type BillingTable, type BillingOrder } from '@/components/admin/RoomBillingModal'
+import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 
 interface BookingsClientProps {
     initialBookings: Booking[]
@@ -21,6 +22,7 @@ export default function BookingsClient({ initialBookings, tables = [], activeOrd
     const [filterStatus, setFilterStatus] = useState<string>('all')
     // Booking being settled in the checkout/billing modal
     const [billingBooking, setBillingBooking] = useState<Booking | null>(null)
+    const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
 
     // Re-sync when the server sends fresh bookings (render-phase adjust,
     // see react.dev "You Might Not Need an Effect")
@@ -120,7 +122,9 @@ export default function BookingsClient({ initialBookings, tables = [], activeOrd
                                     <th className="px-6 py-4 border-b border-gray-100">Room</th>
                                     <th className="px-6 py-4 border-b border-gray-100">Dates</th>
                                     <th className="px-6 py-4 border-b border-gray-100">Status</th>
-                                    <th className="px-6 py-4 border-b border-gray-100">Charges</th>
+                                    {irdSyncEnabled && (
+                                        <th className="px-6 py-4 border-b border-gray-100">Charges</th>
+                                    )}
                                     <th className="px-6 py-4 border-b border-gray-100 text-right">Actions</th>
                                 </tr>
                             </thead>
@@ -151,14 +155,16 @@ export default function BookingsClient({ initialBookings, tables = [], activeOrd
                                                     {b.status}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4 font-semibold tabular">
-                                                <div className="text-gray-900 font-black">Rs. {total}</div>
-                                                {balance > 0 ? (
-                                                    <div className="text-xs text-rose-500 font-bold mt-0.5">Due: Rs. {balance}</div>
-                                                ) : (
-                                                    <div className="text-xs text-emerald-600 font-bold mt-0.5">Paid</div>
-                                                )}
-                                            </td>
+                                            {irdSyncEnabled && (
+                                                <td className="px-6 py-4 font-semibold tabular">
+                                                    <div className="text-gray-900 font-black">Rs. {total}</div>
+                                                    {balance > 0 ? (
+                                                        <div className="text-xs text-rose-500 font-bold mt-0.5">Due: Rs. {balance}</div>
+                                                    ) : (
+                                                        <div className="text-xs text-emerald-600 font-bold mt-0.5">Paid</div>
+                                                    )}
+                                                </td>
+                                            )}
                                             <td className="px-6 py-4 text-right">
                                                 <div className="flex items-center justify-end gap-2">
                                                     {b.status === 'pending' && (

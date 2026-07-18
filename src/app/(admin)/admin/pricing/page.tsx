@@ -2,10 +2,17 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import PricingRulesManager from './PricingRulesManager'
 
+import { redirect } from 'next/navigation'
+import { getRestaurantFeatures } from '@/lib/features'
+
 export const revalidate = 0
 
 export default async function AdminPricingPage() {
     const { restaurantId: rid } = await getCurrentUser()
+    const features = await getRestaurantFeatures(rid)
+    if (!features?.dynamicPricingEnabled) {
+        redirect('/admin/dashboard')
+    }
     const adminSupabase = await createAdminClient()
 
     const [{ data: rules }, { data: items }, { data: categories }] = await Promise.all([

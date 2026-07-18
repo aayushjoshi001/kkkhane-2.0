@@ -76,6 +76,10 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Missing session_id' }, { status: 400 })
         }
 
+        const { getRestaurantFeatures } = await import('@/lib/features')
+        const features = await getRestaurantFeatures(currentUser.restaurantId)
+        const isIrd = !!features?.irdSyncEnabled
+
         // A bargained table total — same audit-trail rule as the room checkout:
         // any staff can apply one, but a reason is mandatory.
         const discountAmount = Number(discount_amount) || 0
@@ -91,9 +95,14 @@ export async function POST(req: Request) {
         // Rs.100 QR on a Rs.500 bill, remaining Rs.100 on credit) — the client
         // already confirmed this exact breakdown with the cashier before
         // sending it (see CashierClient's settlement confirmation popup).
-        const cashPaid = round2(Number(cash_paid) || 0)
-        const qrPaid = round2(Number(qr_paid) || 0)
-        const creditAmount = round2(Number(credit_amount) || 0)
+        const rawCash = round2(Number(cash_paid) || 0)
+        const rawQr = round2(Number(qr_paid) || 0)
+        const rawCredit = round2(Number(credit_amount) || 0)
+
+        const cashPaid = isIrd ? rawCash : (rawCash + rawQr + rawCredit)
+        const qrPaid = isIrd ? rawQr : 0
+        const creditAmount = isIrd ? rawCredit : 0
+
         if (cashPaid < 0 || qrPaid < 0 || creditAmount < 0) {
             return NextResponse.json({ error: 'Payment amounts cannot be negative' }, { status: 400 })
         }
@@ -105,6 +114,7 @@ export async function POST(req: Request) {
         }
 
         const supabase = await createAdminClient()
+        const isInvoiceEnabled = !!features?.generateInvoiceEnabled
 
         const { data: restaurant } = await supabase
             .from('restaurants')
@@ -154,7 +164,7 @@ export async function POST(req: Request) {
         // A table settles in full, unlike a multi-day hotel stay — cash + QR +
         // credit must reconcile exactly to what's owed, catching a stale/
         // tampered request rather than silently over- or under-charging.
-        if (Math.abs(cashPaid + qrPaid + creditAmount - authoritativeTotal) > 0.01) {
+        if (isInvoiceEnabled && Math.abs(cashPaid + qrPaid + creditAmount - authoritativeTotal) > 0.01) {
             return NextResponse.json({ error: 'Cash + QR + Credit must add up to the total' }, { status: 400 })
         }
 
@@ -213,72 +223,74 @@ export async function POST(req: Request) {
         await settleOrders(supabase, currentUser.restaurantId, currentUser.id, orders || [], methodForOrder)
 
         // 2. Post the actual money collected / owed.
-        if (cashPaid > 0) {
-            await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
-                guestName: customerName || 'Table Guest',
-                amount: cashPaid,
-                paymentMethod: 'cash',
-                isAdvance: false,
-                incomeCategoryName: 'Restaurant Sales',
-                dayBookCategory: 'order_payment',
-                description: `Table ${tableLabel} bill settled (Cash)`,
-            })
-        }
-        if (qrPaid > 0) {
-            await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
-                guestName: customerName || 'Table Guest',
-                amount: qrPaid,
-                paymentMethod: 'qr_digital',
-                isAdvance: false,
-                qrCodeId: qr_code_id || null,
-                incomeCategoryName: 'Restaurant Sales',
-                dayBookCategory: 'order_payment',
-                description: `Table ${tableLabel} bill settled (QR/Digital)`,
-            })
-        }
-        if (creditAmount > 0) {
-            // The session is already claimed/closed and orders already settled
-            // above — a failure here is logged, not surfaced as a failed
-            // checkout, matching the cash/qr postings' best-effort treatment.
-            const account = await findOrCreateCustomerCreditAccount(supabase, currentUser.restaurantId, currentUser.id, {
-                name: customerName,
-                phone: customerPhone,
-            })
-            if ('error' in account) {
-                console.error('Failed to create/find customer credit account:', account.error)
-            } else {
-                await postCreditCharge(supabase, currentUser.restaurantId, currentUser.id, {
-                    customerCreditAccountId: account.id,
-                    amount: creditAmount,
-                    description: `Table ${tableLabel} bill on credit`,
+        if (isInvoiceEnabled) {
+            if (cashPaid > 0) {
+                await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                    guestName: customerName || 'Table Guest',
+                    amount: cashPaid,
+                    paymentMethod: 'cash',
+                    isAdvance: false,
+                    incomeCategoryName: 'Restaurant Sales',
+                    dayBookCategory: 'order_payment',
+                    description: `Table ${tableLabel} bill settled (Cash)`,
                 })
             }
-        }
-        if (discountAmount > 0) {
-            await postBargainDiscountExpense(supabase, currentUser.restaurantId, currentUser.id, {
-                guestName: customerName || 'Table Guest',
-                locationLabel: `Table ${tableLabel}`,
-                amount: discountAmount,
-                reason: discountReason,
-            })
-        }
-
-        // Handle loyalty points (5% earn on Cash/QR payments)
-        const rPoints = Number(redeemed_points) || 0
-        const phone = customerPhone ? customerPhone.trim() : ''
-        const name = customerName ? customerName.trim() : 'Table Guest'
-        if (phone && (cashPaid > 0 || qrPaid > 0 || rPoints > 0)) {
-            const pointsToEarn = Math.round((cashPaid + qrPaid) * 0.05)
-            const account = await findOrCreateCustomerCreditAccount(supabase, currentUser.restaurantId, currentUser.id, {
-                name,
-                phone,
-            })
-            if (!('error' in account)) {
-                if (pointsToEarn > 0) {
-                    await postLoyaltyEarn(supabase, currentUser.restaurantId, account.id, pointsToEarn, `Earned from Table ${tableLabel} bill`)
+            if (qrPaid > 0) {
+                await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                    guestName: customerName || 'Table Guest',
+                    amount: qrPaid,
+                    paymentMethod: 'qr_digital',
+                    isAdvance: false,
+                    qrCodeId: qr_code_id || null,
+                    incomeCategoryName: 'Restaurant Sales',
+                    dayBookCategory: 'order_payment',
+                    description: `Table ${tableLabel} bill settled (QR/Digital)`,
+                })
+            }
+            if (creditAmount > 0) {
+                // The session is already claimed/closed and orders already settled
+                // above — a failure here is logged, not surfaced as a failed
+                // checkout, matching the cash/qr postings' best-effort treatment.
+                const account = await findOrCreateCustomerCreditAccount(supabase, currentUser.restaurantId, currentUser.id, {
+                    name: customerName,
+                    phone: customerPhone,
+                })
+                if ('error' in account) {
+                    console.error('Failed to create/find customer credit account:', account.error)
+                } else {
+                    await postCreditCharge(supabase, currentUser.restaurantId, currentUser.id, {
+                        customerCreditAccountId: account.id,
+                        amount: creditAmount,
+                        description: `Table ${tableLabel} bill on credit`,
+                    })
                 }
-                if (rPoints > 0) {
-                    await postLoyaltyRedeem(supabase, currentUser.restaurantId, account.id, rPoints, `Redeemed on Table ${tableLabel} bill`)
+            }
+            if (discountAmount > 0) {
+                await postBargainDiscountExpense(supabase, currentUser.restaurantId, currentUser.id, {
+                    guestName: customerName || 'Table Guest',
+                    locationLabel: `Table ${tableLabel}`,
+                    amount: discountAmount,
+                    reason: discountReason,
+                })
+            }
+
+            // Handle loyalty points (5% earn on Cash/QR payments)
+            const rPoints = Number(redeemed_points) || 0
+            const phone = customerPhone ? customerPhone.trim() : ''
+            const name = customerName ? customerName.trim() : 'Table Guest'
+            if (phone && (cashPaid > 0 || qrPaid > 0 || rPoints > 0)) {
+                const pointsToEarn = Math.round((cashPaid + qrPaid) * 0.05)
+                const account = await findOrCreateCustomerCreditAccount(supabase, currentUser.restaurantId, currentUser.id, {
+                    name,
+                    phone,
+                })
+                if (!('error' in account)) {
+                    if (pointsToEarn > 0) {
+                        await postLoyaltyEarn(supabase, currentUser.restaurantId, account.id, pointsToEarn, `Earned from Table ${tableLabel} bill`)
+                    }
+                    if (rPoints > 0) {
+                        await postLoyaltyRedeem(supabase, currentUser.restaurantId, account.id, rPoints, `Redeemed on Table ${tableLabel} bill`)
+                    }
                 }
             }
         }

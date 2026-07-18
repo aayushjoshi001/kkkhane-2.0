@@ -128,7 +128,7 @@ export async function POST(req: Request) {
         // A stay can be settled cash + QR + credit in any combination — the
         // credit portion isn't collected now, it's charged to the guest's
         // customer_credit_accounts balance below (see findOrCreateCustomerCreditAccount).
-        const creditAmount = Number(credit_amount) || 0
+        let creditAmount = Number(credit_amount) || 0
         if (creditAmount < 0) {
             return NextResponse.json({ error: 'credit_amount cannot be negative' }, { status: 400 })
         }
@@ -198,6 +198,33 @@ export async function POST(req: Request) {
         }
         const authoritativeTotal = folio.total
 
+        const { getRestaurantFeatures } = await import('@/lib/features')
+        const features = await getRestaurantFeatures(booking.restaurant_id)
+        const isInvoiceEnabled = !!features?.generateInvoiceEnabled
+
+        if (!isInvoiceEnabled) {
+            // 1. Settle the session orders (if session_id is provided)
+            if (session_id) {
+                await settleAndCloseSession(supabase, booking.restaurant_id, session_id)
+            }
+
+            // 2. Mark the booking as checked out
+            const { error: bookingErr } = await supabase
+                .from('bookings')
+                .update({ status: 'checked_out', payment_status: 'paid' })
+                .eq('id', booking_id)
+            if (bookingErr) throw bookingErr
+
+            // 3. Mark the room as dirty (vacant)
+            const { error: roomErr } = await supabase
+                .from('rooms')
+                .update({ status: 'dirty' })
+                .eq('id', room_id)
+            if (roomErr) throw roomErr
+
+            return NextResponse.json({ success: true, total: authoritativeTotal, breakdown: folio })
+        }
+
         const clientMismatch = Number.isFinite(clientTotal)
             ? round2(Math.abs(clientTotal - authoritativeTotal))
             : null
@@ -228,8 +255,12 @@ export async function POST(req: Request) {
         const guestName = booking.guest_name || 'Guest'
 
         // 3. Resolve cash, qr, and credit splits
-        const cashPaid = Number(cash_paid) || 0
-        const qrPaid = Number(qr_paid) || 0
+        const isIrd = features?.irdSyncEnabled === true
+        const cashPaid = isIrd ? (Number(cash_paid) || 0) : settledNow
+        const qrPaid = isIrd ? (Number(qr_paid) || 0) : 0
+        if (!isIrd) {
+            creditAmount = 0
+        }
 
         let hotelCash = cashPaid
         let hotelQr = qrPaid

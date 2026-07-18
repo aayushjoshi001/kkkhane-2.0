@@ -47,6 +47,7 @@ export async function getAllRestaurants() {
             const features = settingsObj?.features_v2 || {}
             return {
                 ...r,
+                features,
                 financeEnabled: !!features.financeEnabled
             }
         })
@@ -797,5 +798,41 @@ export async function toggleRestaurantFinance(restaurantId: string, enabled: boo
     if (result.error) return { error: result.error }
 
     revalidatePath('/admin/super-admin')
+    return { success: true }
+}
+
+export async function updateRestaurantFeatures(restaurantId: string, features: any) {
+    await requireRole('super_admin')
+
+    const supabase = await createAdminClient()
+
+    const { data: settingsRow } = await supabase
+        .from('settings')
+        .select('features_v2')
+        .eq('restaurant_id', restaurantId)
+        .maybeSingle()
+
+    const currentFeatures = settingsRow?.features_v2 || {}
+    const mergedFeatures = { ...currentFeatures, ...features }
+
+    const { error } = await supabase
+        .from('settings')
+        .update({ features_v2: mergedFeatures })
+        .eq('restaurant_id', restaurantId)
+
+    if (error) {
+        console.error('updateRestaurantFeatures error:', error)
+        return { error: error.message }
+    }
+
+    try {
+        const { invalidateCache } = await import('@/lib/redis')
+        await invalidateCache(`features:${restaurantId}`)
+    } catch (err) {
+        console.error('Failed to invalidate Redis cache:', err)
+    }
+
+    revalidatePath('/admin/super-admin')
+    revalidatePath('/admin/settings')
     return { success: true }
 }

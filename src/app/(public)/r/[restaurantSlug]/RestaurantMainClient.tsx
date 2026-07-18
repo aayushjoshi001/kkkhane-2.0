@@ -25,9 +25,10 @@ interface RestaurantMainClientProps {
     }[]
     restaurantSlug: string
     dineInEnabled: boolean
+    receptionPhone?: string | null
 }
 
-export default function RestaurantMainClient({ restaurant, tables, restaurantSlug, dineInEnabled }: RestaurantMainClientProps) {
+export default function RestaurantMainClient({ restaurant, tables, restaurantSlug, dineInEnabled, receptionPhone }: RestaurantMainClientProps) {
     const [selectedTableId, setSelectedTableId] = useState('')
     const [loading, setLoading] = useState(false)
     const router = useRouter()
@@ -253,22 +254,40 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
 
                             {/* Service and Menu Selection Cards */}
                             <div className="grid grid-cols-1 gap-4">
-                                {/* Service Card */}
-                                <button
-                                    onClick={() => setShowServiceMessage(true)}
-                                    className="w-full bg-surface p-5 rounded-2xl border border-hairline hover:border-brand-500/50 hover:shadow-md transition text-left flex items-start gap-4 focus-ring shadow-sm select-none group"
-                                >
-                                    <div className="w-12 h-12 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 group-hover:scale-105 transition-transform">
-                                        <Bell size={22} />
-                                    </div>
-                                    <div className="flex-1 min-w-0 pr-2">
-                                        <h3 className="font-extrabold text-ink text-base">Service Requests</h3>
-                                        <p className="text-xs text-ink-subtle font-medium mt-1 leading-normal">
-                                            Request room cleaning, housekeeping, toiletries, or assistance.
-                                        </p>
-                                    </div>
-                                    <ArrowRight size={18} className="text-ink-subtle shrink-0 mt-3 group-hover:translate-x-0.5 transition-transform" />
-                                </button>
+                                {/* Call for Service Card */}
+                                {receptionPhone ? (
+                                    <a
+                                        href={`tel:${receptionPhone}`}
+                                        className="w-full bg-surface p-5 rounded-2xl border border-hairline hover:border-brand-500/50 hover:shadow-md transition text-left flex items-start gap-4 focus-ring shadow-sm select-none group"
+                                    >
+                                        <div className="w-12 h-12 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 group-hover:scale-105 transition-transform">
+                                            <Phone size={22} className="text-brand-600" />
+                                        </div>
+                                        <div className="flex-1 min-w-0 pr-2">
+                                            <h3 className="font-extrabold text-ink text-base">Call for Service</h3>
+                                            <p className="text-xs text-ink-subtle font-medium mt-1 leading-normal">
+                                                Call reception at {receptionPhone} for immediate assistance.
+                                            </p>
+                                        </div>
+                                        <ArrowRight size={18} className="text-ink-subtle shrink-0 mt-3 group-hover:translate-x-0.5 transition-transform" />
+                                    </a>
+                                ) : (
+                                    <button
+                                        onClick={() => setShowServiceMessage(true)}
+                                        className="w-full bg-surface p-5 rounded-2xl border border-hairline hover:border-brand-500/50 hover:shadow-md transition text-left flex items-start gap-4 focus-ring shadow-sm select-none group"
+                                    >
+                                        <div className="w-12 h-12 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 group-hover:scale-105 transition-transform">
+                                            <Phone size={22} className="text-brand-600" />
+                                        </div>
+                                        <div className="flex-1 min-w-0 pr-2">
+                                            <h3 className="font-extrabold text-ink text-base">Call for Service</h3>
+                                            <p className="text-xs text-ink-subtle font-medium mt-1 leading-normal">
+                                                Call reception for room service, toiletries, or assistance.
+                                            </p>
+                                        </div>
+                                        <ArrowRight size={18} className="text-ink-subtle shrink-0 mt-3 group-hover:translate-x-0.5 transition-transform" />
+                                    </button>
+                                )}
 
                                 {/* Menu Card */}
                                 <button

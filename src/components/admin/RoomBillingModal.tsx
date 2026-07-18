@@ -108,6 +108,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const [isSaving, setIsSaving] = useState(false)
     const printInvoiceEnabled = useFeatureEnabled('printInvoiceEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
+    const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
     // True once the checkout API confirms the room is settled — printing
     // happens after this, so the manager sees "Settled" immediately instead
     // of waiting on a printer that may be slow or not configured.
@@ -117,6 +118,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     useEffect(() => {
         if (!booking) return
         setGuestEmailInput(booking.guest_email || '')
+        setPaymentMethod('cash')
         let cancelled = false
         fetch(`/api/rooms/charges?bookingId=${booking.id}`)
             .then(r => r.json())
@@ -483,137 +485,139 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                             </div>
 
                             {/* Payment Method Selector */}
-                            <div className="pt-4">
-                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Payment Method</p>
-                                <div className="grid grid-cols-4 gap-2">
-                                    <button
-                                        onClick={() => setPaymentMethod('cash')}
-                                        className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
-                                            paymentMethod === 'cash'
-                                                ? 'border-[#ff5a00] bg-orange-50/50 text-[#ff5a00]'
-                                                : 'border-gray-150 bg-white text-gray-500 hover:border-[#ff5a00]/50 hover:text-[#ff5a00]'
-                                        }`}
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
-                                        Cash
-                                    </button>
-                                    <button
-                                        onClick={() => setPaymentMethod('qr_digital')}
-                                        className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
-                                            paymentMethod === 'qr_digital'
-                                                ? 'border-[#ff5a00] bg-orange-50/50 text-[#ff5a00]'
-                                                : 'border-gray-150 bg-white text-gray-500 hover:border-[#ff5a00]/50 hover:text-[#ff5a00]'
-                                        }`}
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
-                                        QR / Digital
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            setPaymentMethod('split')
-                                            setSplitCashAmount('')
-                                            setSplitQrAmount('')
-                                        }}
-                                        className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
-                                            paymentMethod === 'split'
-                                                ? 'border-[#ff5a00] bg-orange-50/50 text-[#ff5a00]'
-                                                : 'border-gray-150 bg-white text-gray-500 hover:border-[#ff5a00]/50 hover:text-[#ff5a00]'
-                                        }`}
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></svg>
-                                        Both
-                                    </button>
-                                    <button
-                                        onClick={() => setPaymentMethod('credit')}
-                                        className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
-                                            paymentMethod === 'credit'
-                                                ? 'border-[#ff5a00] bg-orange-50/50 text-[#ff5a00]'
-                                                : 'border-gray-150 bg-white text-gray-500 hover:border-[#ff5a00]/50 hover:text-[#ff5a00]'
-                                        }`}
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 9V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M22 17v-1a2 2 0 0 0-2-2h-1"/><rect width="8" height="8" x="14" y="14" rx="2"/></svg>
-                                        Credit
-                                    </button>
-                                </div>
-
-                                {paymentMethod === 'credit' && (
-                                    <p className="mt-3 text-[10px] text-gray-500 font-semibold text-center">
-                                        You&apos;ll confirm the customer&apos;s name and phone in the next step.
-                                    </p>
-                                )}
-
-                                {/* Split amount inputs — shown only when Both is selected */}
-                                {paymentMethod === 'split' && (
-                                    <div className="mt-3 grid grid-cols-2 gap-3 p-3 bg-gray-50/50 border border-gray-100 rounded-2xl">
-                                        <div>
-                                            <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Cash Amount</label>
-                                            <div className="relative">
-                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400">Rs.</span>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    max={balanceDue}
-                                                    placeholder="0.00"
-                                                    value={splitCashAmount}
-                                                    onChange={e => setSplitCashAmount(e.target.value)}
-                                                    className="w-full pl-7 pr-2 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">QR / Digital Amount</label>
-                                            <div className="relative">
-                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400">Rs.</span>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    max={balanceDue}
-                                                    placeholder="0.00"
-                                                    value={splitQrAmount}
-                                                    onChange={e => setSplitQrAmount(e.target.value)}
-                                                    className="w-full pl-7 pr-2 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
-                                                />
-                                            </div>
-                                        </div>
-                                        {/* Balance check — a shortfall is no longer an error: it becomes
-                                            credit, confirmed (with customer details) in the next step. */}
-                                        {(() => {
-                                            const cash = parseFloat(splitCashAmount) || 0
-                                            const qr = parseFloat(splitQrAmount) || 0
-                                            const remainder = balanceDue - cash - qr
-                                            if (remainder > 0.01) return (
-                                                <p className="col-span-2 text-[9px] text-amber-600 font-bold text-center">
-                                                    Rs. {remainder.toFixed(2)} left over will go on customer credit
-                                                </p>
-                                            )
-                                            if (remainder < -0.01) return (
-                                                <p className="col-span-2 text-[9px] text-rose-500 font-bold text-center">
-                                                    ⚠ Cash + QR exceeds the bill by {money(Math.abs(remainder))}
-                                                </p>
-                                            )
-                                            return (
-                                                <p className="col-span-2 text-[9px] text-emerald-600 font-bold text-center">✓ Amounts balanced</p>
-                                            )
-                                        })()}
-                                    </div>
-                                )}
-
-                                {(paymentMethod === 'qr_digital' || paymentMethod === 'split') && qrCodes.length > 1 && (
-                                    <div className="mt-3">
-                                        <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Which QR did the guest scan?</label>
-                                        <select
-                                            value={qrCodeId}
-                                            onChange={e => setQrCodeId(e.target.value)}
-                                            className="w-full px-3 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
+                            {irdSyncEnabled && (
+                                <div className="pt-4">
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Payment Method</p>
+                                    <div className="grid grid-cols-4 gap-2">
+                                        <button
+                                            onClick={() => setPaymentMethod('cash')}
+                                            className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                paymentMethod === 'cash'
+                                                    ? 'border-[#ff5a00] bg-orange-50/50 text-[#ff5a00]'
+                                                    : 'border-gray-150 bg-white text-gray-500 hover:border-[#ff5a00]/50 hover:text-[#ff5a00]'
+                                            }`}
                                         >
-                                            <option value="">Select QR code…</option>
-                                            {qrCodes.map(qr => (
-                                                <option key={qr.id} value={qr.id}>{qr.label}</option>
-                                            ))}
-                                        </select>
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+                                            Cash
+                                        </button>
+                                        <button
+                                            onClick={() => setPaymentMethod('qr_digital')}
+                                            className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                paymentMethod === 'qr_digital'
+                                                    ? 'border-[#ff5a00] bg-orange-50/50 text-[#ff5a00]'
+                                                    : 'border-gray-150 bg-white text-gray-500 hover:border-[#ff5a00]/50 hover:text-[#ff5a00]'
+                                            }`}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
+                                            QR / Digital
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setPaymentMethod('split')
+                                                setSplitCashAmount('')
+                                                setSplitQrAmount('')
+                                            }}
+                                            className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                paymentMethod === 'split'
+                                                    ? 'border-[#ff5a00] bg-orange-50/50 text-[#ff5a00]'
+                                                    : 'border-gray-150 bg-white text-gray-500 hover:border-[#ff5a00]/50 hover:text-[#ff5a00]'
+                                            }`}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></svg>
+                                            Both
+                                        </button>
+                                        <button
+                                            onClick={() => setPaymentMethod('credit')}
+                                            className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                paymentMethod === 'credit'
+                                                    ? 'border-[#ff5a00] bg-orange-50/50 text-[#ff5a00]'
+                                                    : 'border-gray-150 bg-white text-gray-500 hover:border-[#ff5a00]/50 hover:text-[#ff5a00]'
+                                            }`}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 9V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M22 17v-1a2 2 0 0 0-2-2h-1"/><rect width="8" height="8" x="14" y="14" rx="2"/></svg>
+                                            Credit
+                                        </button>
                                     </div>
-                                )}
-                            </div>
+
+                                    {paymentMethod === 'credit' && (
+                                        <p className="mt-3 text-[10px] text-gray-500 font-semibold text-center">
+                                            You&apos;ll confirm the customer&apos;s name and phone in the next step.
+                                        </p>
+                                    )}
+
+                                    {/* Split amount inputs — shown only when Both is selected */}
+                                    {paymentMethod === 'split' && (
+                                        <div className="mt-3 grid grid-cols-2 gap-3 p-3 bg-gray-50/50 border border-gray-100 rounded-2xl">
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Cash Amount</label>
+                                                <div className="relative">
+                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400">Rs.</span>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        max={balanceDue}
+                                                        placeholder="0.00"
+                                                        value={splitCashAmount}
+                                                        onChange={e => setSplitCashAmount(e.target.value)}
+                                                        className="w-full pl-7 pr-2 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">QR / Digital Amount</label>
+                                                <div className="relative">
+                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400">Rs.</span>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        max={balanceDue}
+                                                        placeholder="0.00"
+                                                        value={splitQrAmount}
+                                                        onChange={e => setSplitQrAmount(e.target.value)}
+                                                        className="w-full pl-7 pr-2 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
+                                                    />
+                                                </div>
+                                            </div>
+                                            {/* Balance check — a shortfall is no longer an error: it becomes
+                                                credit, confirmed (with customer details) in the next step. */}
+                                            {(() => {
+                                                const cash = parseFloat(splitCashAmount) || 0
+                                                const qr = parseFloat(splitQrAmount) || 0
+                                                const remainder = balanceDue - cash - qr
+                                                if (remainder > 0.01) return (
+                                                    <p className="col-span-2 text-[9px] text-amber-600 font-bold text-center">
+                                                        Rs. {remainder.toFixed(2)} left over will go on customer credit
+                                                    </p>
+                                                )
+                                                if (remainder < -0.01) return (
+                                                    <p className="col-span-2 text-[9px] text-rose-500 font-bold text-center">
+                                                        ⚠ Cash + QR exceeds the bill by {money(Math.abs(remainder))}
+                                                    </p>
+                                                )
+                                                return (
+                                                    <p className="col-span-2 text-[9px] text-emerald-600 font-bold text-center">✓ Amounts balanced</p>
+                                                )
+                                            })()}
+                                        </div>
+                                    )}
+
+                                    {(paymentMethod === 'qr_digital' || paymentMethod === 'split') && qrCodes.length > 1 && (
+                                        <div className="mt-3">
+                                            <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Which QR did the guest scan?</label>
+                                            <select
+                                                value={qrCodeId}
+                                                onChange={e => setQrCodeId(e.target.value)}
+                                                className="w-full px-3 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
+                                            >
+                                                <option value="">Select QR code…</option>
+                                                {qrCodes.map(qr => (
+                                                    <option key={qr.id} value={qr.id}>{qr.label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                         <div className="border-t border-gray-100 px-6 py-4 flex-shrink-0 bg-white">
                             <div className="flex items-center justify-between">
@@ -656,20 +660,14 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                                     Print Bill
                                                 </button>
                                             )}
-                                            {!generateInvoiceEnabled ? (
-                                                <div className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-1.5 flex items-center">
-                                                    Invoice generation disabled
-                                                </div>
-                                            ) : (
-                                                <button
-                                                    onClick={handleSettleClick}
-                                                    disabled={isSaving || discountInvalid || (discountAmount > 0 && !bargainReason.trim())}
-                                                    className="px-6 py-2 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-[#ff5a00]/10 disabled:opacity-50 flex items-center gap-1.5"
-                                                >
-                                                    {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
-                                                    Settle & Checkout
-                                                </button>
-                                            )}
+                                            <button
+                                                onClick={handleSettleClick}
+                                                disabled={isSaving || discountInvalid || (discountAmount > 0 && !bargainReason.trim())}
+                                                className="px-6 py-2 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-[#ff5a00]/10 disabled:opacity-50 flex items-center gap-1.5"
+                                            >
+                                                {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
+                                                {!irdSyncEnabled ? 'Close Guest' : 'Settle & Checkout'}
+                                            </button>
                                         </>
                                     )}
                                 </div>

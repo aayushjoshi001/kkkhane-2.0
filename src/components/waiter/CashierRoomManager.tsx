@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Users, X, Check, Bed, ClipboardList, Loader2, CreditCard, RefreshCw, Calendar, FileText, Plus, Landmark, Utensils } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
-import { useCurrency } from '@/lib/contexts/FeatureContext'
+import { useCurrency, useFeatures } from '@/lib/contexts/FeatureContext'
 import { type TableWithSession } from './CashierTableManager'
 import { formatDateTime, calculateNights, advanceMethodLabel } from '@/lib/utils'
 import QuickOrderModal from './QuickOrderModal'
@@ -60,6 +60,8 @@ export default function CashierRoomManager({
     const [loadingBooking, setLoadingBooking] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
     const [mounted, setMounted] = useState(false)
+    const features = useFeatures()
+    const irdSyncEnabled = features?.irdSyncEnabled ?? false
     const money = useCurrency()
     const supabaseRef = useRef(createClient())
 
@@ -71,6 +73,9 @@ export default function CashierRoomManager({
     // Manual charge addition states
     const [manualCharges, setManualCharges] = useState<any[]>([])
     const [linkedDiningOrders, setLinkedDiningOrders] = useState<any[]>([])
+    const filteredLinkedDiningOrders = (() => {
+        return linkedDiningOrders.filter(o => !o.is_room_order)
+    })()
     const [loadingCharges, setLoadingCharges] = useState(false)
     const [showAddChargeForm, setShowAddChargeForm] = useState(false)
     const [newCharge, setNewCharge] = useState({
@@ -297,9 +302,9 @@ export default function CashierRoomManager({
         const roomStayCost = stayPriceDetails.cost
         const qrOrdersTotal = qrOrdersDetails?.total || 0
         const manualChargesTotal = manualCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
-        const linkedDiningTotal = linkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+        const linkedDiningTotal = filteredLinkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
         return roomStayCost + qrOrdersTotal + manualChargesTotal + linkedDiningTotal
-    }, [stayPriceDetails, qrOrdersDetails, manualCharges, linkedDiningOrders])
+    }, [stayPriceDetails, qrOrdersDetails, manualCharges, filteredLinkedDiningOrders])
 
     // Change room status helper
     const handleStatusChange = async (roomId: string, newStatus: 'available' | 'dirty' | 'maintenance') => {
@@ -411,10 +416,10 @@ export default function CashierRoomManager({
                     check_out: bookingForm.check_out,
                     guest_count: bookingForm.guest_count,
                     advance_amount: resolvedAdvance,
-                    advance_payment_method: resolvedAdvance > 0 ? advancePayMethod : 'none',
-                    advance_cash_amount: isSplit ? splitCash : undefined,
-                    advance_qr_amount: isSplit ? splitQr : undefined,
-                    advance_qr_code_id: (resolvedAdvance > 0 && (advancePayMethod === 'qr_digital' || isSplit))
+                    advance_payment_method: resolvedAdvance > 0 ? (irdSyncEnabled ? advancePayMethod : 'cash') : 'none',
+                    advance_cash_amount: (irdSyncEnabled && isSplit) ? splitCash : undefined,
+                    advance_qr_amount: (irdSyncEnabled && isSplit) ? splitQr : undefined,
+                    advance_qr_code_id: (irdSyncEnabled && resolvedAdvance > 0 && (advancePayMethod === 'qr_digital' || isSplit))
                         ? (advanceQrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined))
                         : undefined,
                 }),
@@ -660,7 +665,7 @@ export default function CashierRoomManager({
                                                         </div>
                                                     )}
 
-                                                    {advanceType !== 'none' && (
+                                                    {irdSyncEnabled && advanceType !== 'none' && (
                                                         <div>
                                                             <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Payment Method</label>
                                                             <div className="grid grid-cols-3 gap-2">
@@ -682,7 +687,7 @@ export default function CashierRoomManager({
                                                         </div>
                                                     )}
 
-                                                    {advanceType !== 'none' && advancePayMethod === 'split' && (
+                                                    {irdSyncEnabled && advanceType !== 'none' && advancePayMethod === 'split' && (
                                                         <div className="grid grid-cols-2 gap-2">
                                                             <div>
                                                                 <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash</label>
@@ -715,7 +720,7 @@ export default function CashierRoomManager({
                                                         </div>
                                                     )}
 
-                                                    {advanceType !== 'none' && (advancePayMethod === 'qr_digital' || advancePayMethod === 'split') && qrCodes.length > 1 && (
+                                                    {irdSyncEnabled && advanceType !== 'none' && (advancePayMethod === 'qr_digital' || advancePayMethod === 'split') && qrCodes.length > 1 && (
                                                         <div>
                                                             <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
                                                             <select
@@ -959,16 +964,16 @@ export default function CashierRoomManager({
                                         )}
 
                                         {/* Waiter Linked Restaurant Dining Row */}
-                                        {linkedDiningOrders.length > 0 && (
+                                        {filteredLinkedDiningOrders.length > 0 && (
                                             <div className="p-4 space-y-3">
                                                 <div className="flex justify-between items-center text-xs">
                                                     <p className="font-extrabold text-emerald-600">Restaurant Dining (Table Orders)</p>
                                                     <span className="font-extrabold text-emerald-600 tabular-nums">
-                                                        {money(linkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0))}
+                                                        {money(filteredLinkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0))}
                                                     </span>
                                                 </div>
                                                 <div className="space-y-1.5 pl-3 border-l-2 border-emerald-100 max-h-28 overflow-y-auto">
-                                                    {linkedDiningOrders.map((item, idx) => (
+                                                    {filteredLinkedDiningOrders.map((item, idx) => (
                                                         <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
                                                             <span>{item.menu_items?.name || 'Item'} <span className="text-[9px] text-brand-500">({item.quantity}×)</span></span>
                                                             <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>

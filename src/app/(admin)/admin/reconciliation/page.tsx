@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import ReconciliationClient from './ReconciliationClient'
+import { getRestaurantFeatures } from '@/lib/features'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,8 +10,13 @@ export default async function ReconciliationPage() {
     const currentUser = await getCurrentUser()
     if (!currentUser || !currentUser.restaurantId) redirect('/login')
 
-    const supabase = await createAdminClient()
     const myId = currentUser.restaurantId
+    const features = await getRestaurantFeatures(myId)
+    if (!features?.irdSyncEnabled) {
+        redirect('/admin/dashboard')
+    }
+
+    const supabase = await createAdminClient()
 
     // 1. Parallel Stage 1: Fetch restaurant settings, categories, and audit logs
     const [

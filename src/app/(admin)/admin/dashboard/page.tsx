@@ -13,6 +13,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import { StatusBadge } from '@/components/ui/Badge'
 import { StatCardSkeleton, RowSkeleton } from '@/components/ui/Skeleton'
 import { getBusinessMode } from '@/lib/businessMode'
+import { getRestaurantFeatures } from '@/lib/features'
 
 export const revalidate = 0
 
@@ -22,6 +23,7 @@ export default async function AdminDashboardPage() {
     const currentUser = await getCurrentUser()
     if (currentUser.role === 'super_admin') redirect('/admin/super-admin/dashboard')
     const { restaurantId } = currentUser
+    const features = await getRestaurantFeatures(restaurantId)
 
     // One fast, single-row query gates the whole shell — everything else below
     // streams in independently instead of blocking on 13 queries up front.
@@ -150,7 +152,9 @@ export default async function AdminDashboardPage() {
                                 <>
                                     <QuickAction href="/admin/rooms" icon={Bed} label="Edit Rooms" />
                                     <QuickAction href="/admin/bookings" icon={CalendarRange} label="Bookings" />
-                                    <QuickAction href="/admin/payments" icon={Receipt} label="Room Billing" />
+                                    {features?.irdSyncEnabled && (
+                                        <QuickAction href="/admin/payments" icon={Receipt} label="Room Billing" />
+                                    )}
                                     <QuickAction href="/admin/staff" icon={Users} label="Manage Staff" />
                                     <QuickAction href="/admin/reports" icon={BarChart3} label="Reports" />
                                     <QuickAction href="/admin/settings" icon={Settings} label="Settings" />

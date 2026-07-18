@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
         // so the room's own session would survive the filter and double-count.
         const { data: linkedSessions, error: sessErr } = await supabase
             .from('sessions')
-            .select('id, status, table_id, tables:table_id(room_id)')
+            .select('id')
             .eq('booking_id', bookingId)
 
         if (sessErr) {
@@ -42,23 +42,7 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'Failed to fetch sessions' }, { status: 500 })
         }
 
-        // Exclude the room's own in-room QR session: those orders are already shown
-        // as room service on the folio, so returning them here too would double-count.
-        // The embedded `tables` relation may come back as an object or a single-row
-        // array depending on how PostgREST types the join, so normalize both.
-        const roomIdOf = (t: unknown): string | null => {
-            const rel = Array.isArray(t) ? t[0] : t
-            return (rel as { room_id?: string | null } | null)?.room_id ?? null
-        }
-        const diningSessions = (linkedSessions || []).filter(
-            (s: { tables?: unknown }) => !roomIdOf(s.tables)
-        )
-
-        if (diningSessions.length === 0) {
-            return NextResponse.json({ success: true, items: [] })
-        }
-
-        const sessionIds = diningSessions.map((s: { id: string }) => s.id)
+        const sessionIds = (linkedSessions || []).map((s: { id: string }) => s.id)
 
         // Resolve target restaurant IDs (current hotel/restaurant + partner if any)
         const { data: currentRest } = await supabase
@@ -76,7 +60,11 @@ export async function GET(req: NextRequest) {
         // Fetch all order items from these sessions or directly linked to the booking
         let query = supabase
             .from('orders')
-            .select('id, session_id, status, payment_status, order_items(id, quantity, unit_price, menu_items(name))')
+            .select(`
+                id, session_id, status, payment_status, 
+                order_items(id, quantity, unit_price, menu_items(name)),
+                sessions(id, table_id, tables:table_id(room_id))
+            `)
             .in('restaurant_id', targetRestaurantIds)
             .neq('status', 'cancelled')
             .neq('payment_status', 'paid')
@@ -97,16 +85,28 @@ export async function GET(req: NextRequest) {
         console.log('[linked-orders API] Found orders matching sessionIds:', orders?.length, orders)
 
         // Flatten order items
+        const getRoomId = (sessionObj: any): string | null => {
+            if (!sessionObj) return null
+            const sess = Array.isArray(sessionObj) ? sessionObj[0] : sessionObj
+            if (!sess?.tables) return null
+            const tbl = Array.isArray(sess.tables) ? sess.tables[0] : sess.tables
+            return tbl?.room_id ?? null
+        }
+
         type LinkedOrderItem = { id: string; quantity: number; unit_price: number; menu_items: unknown }
-        type LinkedOrder = { order_items?: LinkedOrderItem[] }
-        const items = ((orders || []) as LinkedOrder[]).flatMap((o) =>
-            (o.order_items || []).map((item) => ({
+        type LinkedOrder = { id: string; session_id: string | null; sessions: any; order_items?: LinkedOrderItem[] }
+        const items = ((orders || []) as LinkedOrder[]).flatMap((o) => {
+            const roomId = getRoomId(o.sessions)
+            const isRoomOrder = roomId !== null
+            return (o.order_items || []).map((item) => ({
                 id: item.id,
                 quantity: item.quantity,
                 unit_price: item.unit_price,
-                menu_items: item.menu_items
+                menu_items: item.menu_items,
+                session_id: o.session_id,
+                is_room_order: isRoomOrder
             }))
-        )
+        })
 
         console.log('[linked-orders API] Flattened items to return:', items)
 

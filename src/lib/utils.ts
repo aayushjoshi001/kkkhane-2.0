@@ -151,3 +151,99 @@ export function parseExpenseDescription(description: string): SupplierBillDetail
         return fallback
     }
 }
+
+/**
+ * Helper to determine the correct source label for a Kitchen Order Ticket (KOT).
+ */
+export function getKOTSourceLabel(order: {
+    order_type?: string | null
+    session_id?: string | null
+    booking_id?: string | null
+    bookings?: {
+        rooms?: { room_number: string } | null
+    } | null
+    sessions?: {
+        seat_number?: number
+        tables?: {
+            label?: string
+            room_id?: string | null
+            rooms?: { room_number: string } | null
+            sessions?: { seat_number?: number; status?: string }[] | null
+        } | null
+    } | null
+}): string {
+    const isRoomQR = order.sessions?.tables?.room_id
+    const isManualRoom = !order.session_id && order.booking_id
+
+    if (isRoomQR) {
+        const roomNum = order.sessions?.tables?.rooms?.room_number
+        return roomNum ? `Room ${roomNum}` : 'Room Service'
+    }
+    if (isManualRoom) {
+        const roomNum = order.bookings?.rooms?.room_number
+        return roomNum ? `Room ${roomNum}` : 'Room Service'
+    }
+
+    const isTakeout = order.order_type === 'takeout'
+    const isDelivery = order.order_type === 'delivery'
+
+    if (isTakeout) return 'Takeaway'
+    if (isDelivery) return 'Delivery'
+
+    const tbl = order.sessions?.tables?.label
+    if (tbl) {
+        const tableSessions = order.sessions?.tables?.sessions || []
+        const activeSessions = tableSessions.filter(s => s.status === 'active')
+        const isSplit = activeSessions.length > 1 || (order.sessions?.seat_number ?? 1) >= 2
+
+        if (isSplit) {
+            return `Table ${tbl}-${order.sessions?.seat_number ?? 1}`
+        }
+        return `Table ${tbl}`
+    }
+
+    return 'Order'
+}
+
+/**
+ * Parses and returns the item name and note for KOT display/print.
+ * Displays variation names next to the item name, e.g. "Chowmein (Veg)",
+ * and removes them from the special request/note so they do not print twice.
+ */
+export function getItemKOTDisplay(
+    item: {
+        menu_items?: { name: string } | null
+        menu_item_variations?: { name: string } | null
+        special_request?: string | null
+    },
+    isTakeout?: boolean
+): { name: string; note: string } {
+    let name = item.menu_items?.name || 'Item'
+    let variationName = item.menu_item_variations?.name
+    let note = item.special_request || ''
+
+    // Parse out variation name if formatted in brackets, e.g., "[Veg] note"
+    const match = note.match(/^\[(.*?)\]\s*(.*)$/)
+    if (match) {
+        if (!variationName) {
+            variationName = match[1]
+        }
+        note = match[2]
+    }
+
+    if (variationName) {
+        name = `${name} ${variationName}`
+    }
+
+    const hasPackingLabel = note.includes('(Packing)') || note.includes('[Packing]')
+    if (hasPackingLabel) {
+        note = note.replace('(Packing)', '').replace('[Packing]', '').trim()
+    }
+
+    if (isTakeout || hasPackingLabel) {
+        name = `${name} (Packing)`
+    }
+
+    return { name, note }
+}
+

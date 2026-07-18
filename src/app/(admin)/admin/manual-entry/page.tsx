@@ -10,6 +10,12 @@ export default async function ManualEntryPage() {
     const currentUser = await getCurrentUser()
     if (!currentUser || !currentUser.restaurantId) redirect('/login')
 
+    const { getRestaurantFeatures } = await import('@/lib/features')
+    const features = await getRestaurantFeatures(currentUser.restaurantId)
+    if (!features?.financeEnabled) {
+        redirect('/admin/dashboard')
+    }
+
     const supabase = await createAdminClient()
     const restaurantId = currentUser.restaurantId
 

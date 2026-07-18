@@ -3,14 +3,19 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import IncomeExpensesManager from './IncomeExpensesManager'
 
+import { getRestaurantFeatures } from '@/lib/features'
+
 export const dynamic = 'force-dynamic'
 
 export default async function IncomeExpensesPage() {
     const currentUser = await getCurrentUser()
     if (!currentUser || !currentUser.restaurantId) redirect('/login')
 
-    const supabase = await createAdminClient()
     const restaurantId = currentUser.restaurantId
+    const features = await getRestaurantFeatures(restaurantId)
+    if (!features?.financeEnabled) redirect('/admin/dashboard')
+
+    const supabase = await createAdminClient()
 
     // Fetch categories, entries, suppliers, and bank accounts in parallel
     const [

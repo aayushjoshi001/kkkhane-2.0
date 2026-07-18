@@ -2,8 +2,8 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Building2, ShoppingBag, Crown, Ban, CheckCircle, Loader2, ChevronDown, Plus, X, Store, UserRound, Mail, KeyRound, Phone, MapPin, Check, CreditCard, AlertTriangle, Search, Filter, Wallet } from 'lucide-react'
-import { createTenantWithOwner, suspendRestaurant, updateSubscriptionTier, sendPasswordResetEmail, updateOwnerContact, recordSubscriptionPayment, toggleRestaurantFinance } from './actions'
+import { Building2, ShoppingBag, Crown, Ban, CheckCircle, Loader2, ChevronDown, Plus, X, Store, UserRound, Mail, KeyRound, Phone, MapPin, Check, CreditCard, AlertTriangle, Search, Filter, Wallet, Settings } from 'lucide-react'
+import { createTenantWithOwner, suspendRestaurant, updateSubscriptionTier, sendPasswordResetEmail, updateOwnerContact, recordSubscriptionPayment, toggleRestaurantFinance, updateRestaurantFeatures } from './actions'
 import { TIER_LIMITS, TIERS, TIER_LABELS, FINANCE_TIERS, isUnlimited, type Tier } from '@/lib/tiers'
 import { toast } from 'react-hot-toast'
 
@@ -21,6 +21,7 @@ interface Restaurant {
     created_at: string
     users?: { email: string } | null
     financeEnabled?: boolean
+    features?: any
     business_type?: string | null
 }
 
@@ -204,18 +205,21 @@ export default function SuperAdminDashboard({
         setLoading(null)
     }
 
-    const handleFinanceToggle = async (id: string, enabled: boolean) => {
+    const handleIrdToggle = async (id: string, enabled: boolean) => {
         setLoading(id)
-        const res = await toggleRestaurantFinance(id, enabled)
+        const res = await updateRestaurantFeatures(id, { irdSyncEnabled: enabled })
         if (res.success) {
             setItems(prev =>
                 prev.map(r =>
                     r.id === id
-                        ? { ...r, financeEnabled: enabled }
+                        ? { 
+                            ...r, 
+                            features: { ...(r.features || {}), irdSyncEnabled: enabled }
+                          }
                         : r
                 )
             )
-            toast.success(enabled ? 'Finance feature activated' : 'Finance feature deactivated')
+            toast.success(enabled ? 'IRD Certification & Finance enabled' : 'IRD Certification & Finance disabled')
         } else {
             toast.error(res.error || 'Failed')
         }
@@ -473,31 +477,25 @@ export default function SuperAdminDashboard({
                                     </select>
                                     <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" />
                                 </div>
-
-                                {/* Finance Toggle */}
-                                <div
-                                    className={`flex items-center gap-2 px-3 py-2 border rounded-lg bg-surface transition-all ${
-                                        (FINANCE_TIERS as readonly string[]).includes(restaurant.subscription_tier)
-                                            ? 'border-hairline-strong'
-                                            : 'border-hairline opacity-50 bg-surface-muted/30'
-                                    }`}
-                                    title={!(FINANCE_TIERS as readonly string[]).includes(restaurant.subscription_tier) ? "Available on Premium tier and above" : "Toggle Finance Feature"}
-                                >
-                                    <Wallet size={14} className={restaurant.financeEnabled ? "text-amber-500" : "text-ink-subtle"} />
-                                    <span className="text-xs font-semibold text-ink-muted hidden sm:inline">Finance</span>
-                                    <label className={`relative inline-flex items-center group ${
-                                        (FINANCE_TIERS as readonly string[]).includes(restaurant.subscription_tier) ? 'cursor-pointer' : 'cursor-not-allowed'
-                                    }`}>
-                                        <input
-                                            type="checkbox"
-                                            className="sr-only peer"
-                                            checked={restaurant.financeEnabled || false}
-                                            disabled={loading === restaurant.id || !(FINANCE_TIERS as readonly string[]).includes(restaurant.subscription_tier)}
-                                            onChange={(e) => handleFinanceToggle(restaurant.id, e.target.checked)}
-                                        />
-                                        <div className="w-9 h-5 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500 peer-checked:border-amber-500 shadow-inner group-hover:shadow-md transition-all peer-disabled:opacity-40"></div>
-                                    </label>
-                                </div>
+                                
+                                {/* IRD Sync Toggle */}
+                                 <div
+                                     className="flex items-center gap-2 px-3 py-2 border border-hairline-strong rounded-lg bg-surface transition-all select-none"
+                                     title="Toggle IRD Certification & Financial Suite"
+                                 >
+                                     <Crown size={14} className={restaurant.features?.irdSyncEnabled ? "text-brand-500" : "text-ink-subtle"} />
+                                     <span className="text-xs font-semibold text-ink-muted hidden sm:inline">IRD Sync</span>
+                                     <label className="relative inline-flex items-center cursor-pointer group">
+                                         <input
+                                             type="checkbox"
+                                             className="sr-only peer"
+                                             checked={!!restaurant.features?.irdSyncEnabled}
+                                             disabled={loading === restaurant.id}
+                                             onChange={(e) => handleIrdToggle(restaurant.id, e.target.checked)}
+                                         />
+                                         <div className="w-9 h-5 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-all peer-disabled:opacity-40"></div>
+                                     </label>
+                                 </div>
 
                                 {/* Suspend/Reactivate */}
                                 <button
