@@ -1365,7 +1365,7 @@ export default function CashierClient({
                                                     <button
                                                         key={room.id}
                                                         onClick={() => setSelectedBillingRoom(room)}
-                                                        className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
+                                                        className="w-full min-h-[135px] py-5 px-3 rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
                                                     >
                                                         <span className="text-lg font-black text-ink block leading-tight">
                                                             Room {room.room_number}
@@ -1396,7 +1396,7 @@ export default function CashierClient({
                                                     <button
                                                         key={table.uiKey}
                                                         onClick={() => setSelectedBillingTable(table)}
-                                                        className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
+                                                        className="w-full min-h-[135px] py-5 px-3 rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
                                                     >
                                                         <span className="text-lg font-black text-ink block leading-tight">
                                                             Table {table.label}
