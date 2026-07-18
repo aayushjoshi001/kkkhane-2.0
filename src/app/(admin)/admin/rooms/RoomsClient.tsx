@@ -13,6 +13,7 @@ import RoomBillingModal, { type BillingTable, type BillingOrder } from '@/compon
 import NextImage from 'next/image'
 import { renderQrCardPng, downloadDataUrl } from '@/lib/qrCardCanvas'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
+import DownloadAllQrsButton from '@/components/admin/DownloadAllQrsButton'
 
 const QR_LOGO_SRC = '/icons/kkkhane.png'
 
@@ -388,9 +389,9 @@ export default function RoomsClient({
     }
 
     // Download QR Code card handler
-    const handleDownloadQR = (roomNumber: string) => {
-        const roomUrl = getRoomUrl(roomNumber)
-        setQrToDownload({ url: roomUrl, label: `Room ${roomNumber}` })
+    const handleDownloadQR = (room: { id: string; room_number: string }) => {
+        const roomUrl = getRoomUrl(room.id)
+        setQrToDownload({ url: roomUrl, label: `Room ${room.room_number}` })
     }
 
     // High-resolution Room QR Card Downloader Effect
@@ -433,11 +434,14 @@ export default function RoomsClient({
         }
     }, [qrToDownload, restaurantName])
 
-    const getRoomUrl = (roomNumber: string) => {
+    // Encode the room's immutable id, NOT its number: the QR must stay valid
+    // after the room is renamed/edited. The guest resolver (/api/rooms/verify)
+    // accepts an id or a number, so older number-based QRs still work.
+    const getRoomUrl = (roomId: string) => {
         if (typeof window !== 'undefined') {
-            return `${window.location.origin}/r/${restaurantSlug}?room=${encodeURIComponent(roomNumber)}`
+            return `${window.location.origin}/r/${restaurantSlug}?room=${encodeURIComponent(roomId)}`
         }
-        return `https://kkkhane.com/r/${restaurantSlug}?room=${encodeURIComponent(roomNumber)}`
+        return `https://kkkhane.com/r/${restaurantSlug}?room=${encodeURIComponent(roomId)}`
     }
 
     const formatDateTime = (dateStr: string) => {
@@ -460,6 +464,7 @@ export default function RoomsClient({
                     <p className="text-sm text-gray-500 mt-1">Manage hotel rooms, occupancy status, and housekeeping.</p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
+                    <DownloadAllQrsButton className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 hover:bg-gray-100 text-gray-700 font-semibold rounded-xl border border-gray-200 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed" />
                     <button
                         onClick={() => { setTypeModalView('list'); setIsAddTypeOpen(true) }}
                         className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 hover:bg-gray-100 text-gray-700 font-semibold rounded-xl border border-gray-200 text-sm transition-colors"
@@ -811,7 +816,7 @@ export default function RoomsClient({
                                     <div className="hidden">
                                         <QRCodeCanvas
                                             id={`qr-canvas-${selectedRoom.room_number}`}
-                                            value={getRoomUrl(selectedRoom.room_number)}
+                                            value={getRoomUrl(selectedRoom.id)}
                                             size={200}
                                             level="H"
                                             includeMargin={false}
@@ -820,7 +825,7 @@ export default function RoomsClient({
                                         />
                                     </div>
                                     <QRCodeCanvas
-                                        value={getRoomUrl(selectedRoom.room_number)}
+                                        value={getRoomUrl(selectedRoom.id)}
                                         size={105}
                                         level="H"
                                         includeMargin={false}
@@ -864,7 +869,7 @@ export default function RoomsClient({
                             </div>
 
                             <button
-                                onClick={() => handleDownloadQR(selectedRoom.room_number)}
+                                onClick={() => handleDownloadQR(selectedRoom)}
                                 className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-extrabold rounded-xl text-xs transition-colors"
                             >
                                 <Download size={13} /> Download QR Card
