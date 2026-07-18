@@ -864,6 +864,7 @@ export default function QuickOrderModal({
                 onClose={() => setShowConfirmDialog(false)}
                 size="md"
                 layer="top"
+                backdropClassName="!z-[9999999]"
                 ariaLabel="Confirm order"
                 className="flex flex-col overflow-hidden max-h-[80vh]"
             >
@@ -892,12 +893,14 @@ export default function QuickOrderModal({
 
                 <div className="p-4 border-t border-hairline bg-surface-muted/20 flex gap-2">
                     <button
+                        type="button"
                         onClick={() => setShowConfirmDialog(false)}
                         className="flex-1 py-2.5 rounded-xl border border-hairline bg-surface hover:bg-surface-muted text-ink text-label font-bold transition"
                     >
                         Cancel
                     </button>
                     <button
+                        type="button"
                         onClick={handlePlaceOrder}
                         disabled={submitting}
                         className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-label font-bold transition shadow-sm disabled:opacity-50 flex items-center justify-center gap-1.5"

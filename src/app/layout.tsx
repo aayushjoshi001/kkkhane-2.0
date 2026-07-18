@@ -186,6 +186,7 @@ export default async function RootLayout({
         {/* Global Overlays */}
         <Toaster
           position="top-center"
+          containerStyle={{ zIndex: 99999999 }}
           toastOptions={{
             duration: 3000,
             style: {
