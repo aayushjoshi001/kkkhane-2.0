@@ -128,7 +128,7 @@ export async function POST(req: Request) {
         // A stay can be settled cash + QR + credit in any combination — the
         // credit portion isn't collected now, it's charged to the guest's
         // customer_credit_accounts balance below (see findOrCreateCustomerCreditAccount).
-        const creditAmount = Number(credit_amount) || 0
+        let creditAmount = Number(credit_amount) || 0
         if (creditAmount < 0) {
             return NextResponse.json({ error: 'credit_amount cannot be negative' }, { status: 400 })
         }
@@ -255,8 +255,12 @@ export async function POST(req: Request) {
         const guestName = booking.guest_name || 'Guest'
 
         // 3. Resolve cash, qr, and credit splits
-        const cashPaid = Number(cash_paid) || 0
-        const qrPaid = Number(qr_paid) || 0
+        const isIrd = features?.irdSyncEnabled === true
+        const cashPaid = isIrd ? (Number(cash_paid) || 0) : settledNow
+        const qrPaid = isIrd ? (Number(qr_paid) || 0) : 0
+        if (!isIrd) {
+            creditAmount = 0
+        }
 
         let hotelCash = cashPaid
         let hotelQr = qrPaid

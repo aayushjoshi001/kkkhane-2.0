@@ -79,6 +79,7 @@ export default async function RestaurantMainPage(props: {
                 tables={tables || []}
                 restaurantSlug={params.restaurantSlug}
                 dineInEnabled={features?.dineInEnabled ?? true}
+                receptionPhone={features?.receptionPhone ?? null}
             />
         </Suspense>
     )

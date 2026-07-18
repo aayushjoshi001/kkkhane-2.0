@@ -1628,6 +1628,7 @@ export default function CashierClient({
                                 </div>
 
                                 {/* Payment Method Selector */}
+                                {irdSyncEnabled && (
                                 <div className="pt-4">
                                     <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Payment Method</p>
                                     <div className="grid grid-cols-4 gap-2">
@@ -1767,6 +1768,7 @@ export default function CashierClient({
                                         </div>
                                     )}
                                 </div>
+                                )}
                             </div>
                             <div className="border-t border-hairline px-6 py-4 flex-shrink-0 bg-surface">
                                     {/* Gross Total + Advance row */}
@@ -1942,6 +1944,7 @@ export default function CashierClient({
                                     </div>
 
                                     {/* Payment Method Selector */}
+                                    {irdSyncEnabled && (
                                     <div>
                                         <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Payment Method</p>
                                         <div className="grid grid-cols-4 gap-2">
@@ -2070,6 +2073,7 @@ export default function CashierClient({
                                             </p>
                                         )}
                                     </div>
+                                    )}
 
                                     <div className="border-t border-hairline pt-4 flex items-center justify-between mt-2">
                                         <div>
