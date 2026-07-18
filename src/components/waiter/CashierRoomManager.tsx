@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Users, X, Check, Bed, ClipboardList, Loader2, CreditCard, RefreshCw, Calendar, FileText, Plus, Landmark, Utensils } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
-import { useCurrency } from '@/lib/contexts/FeatureContext'
+import { useCurrency, useFeatures } from '@/lib/contexts/FeatureContext'
 import { type TableWithSession } from './CashierTableManager'
 import { formatDateTime, calculateNights, advanceMethodLabel } from '@/lib/utils'
 import QuickOrderModal from './QuickOrderModal'
@@ -60,6 +60,8 @@ export default function CashierRoomManager({
     const [loadingBooking, setLoadingBooking] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
     const [mounted, setMounted] = useState(false)
+    const features = useFeatures()
+    const irdSyncEnabled = features?.irdSyncEnabled ?? false
     const money = useCurrency()
     const supabaseRef = useRef(createClient())
 
@@ -414,10 +416,10 @@ export default function CashierRoomManager({
                     check_out: bookingForm.check_out,
                     guest_count: bookingForm.guest_count,
                     advance_amount: resolvedAdvance,
-                    advance_payment_method: resolvedAdvance > 0 ? advancePayMethod : 'none',
-                    advance_cash_amount: isSplit ? splitCash : undefined,
-                    advance_qr_amount: isSplit ? splitQr : undefined,
-                    advance_qr_code_id: (resolvedAdvance > 0 && (advancePayMethod === 'qr_digital' || isSplit))
+                    advance_payment_method: resolvedAdvance > 0 ? (irdSyncEnabled ? advancePayMethod : 'cash') : 'none',
+                    advance_cash_amount: (irdSyncEnabled && isSplit) ? splitCash : undefined,
+                    advance_qr_amount: (irdSyncEnabled && isSplit) ? splitQr : undefined,
+                    advance_qr_code_id: (irdSyncEnabled && resolvedAdvance > 0 && (advancePayMethod === 'qr_digital' || isSplit))
                         ? (advanceQrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined))
                         : undefined,
                 }),
@@ -663,7 +665,7 @@ export default function CashierRoomManager({
                                                         </div>
                                                     )}
 
-                                                    {advanceType !== 'none' && (
+                                                    {irdSyncEnabled && advanceType !== 'none' && (
                                                         <div>
                                                             <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Payment Method</label>
                                                             <div className="grid grid-cols-3 gap-2">
@@ -685,7 +687,7 @@ export default function CashierRoomManager({
                                                         </div>
                                                     )}
 
-                                                    {advanceType !== 'none' && advancePayMethod === 'split' && (
+                                                    {irdSyncEnabled && advanceType !== 'none' && advancePayMethod === 'split' && (
                                                         <div className="grid grid-cols-2 gap-2">
                                                             <div>
                                                                 <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash</label>
@@ -718,7 +720,7 @@ export default function CashierRoomManager({
                                                         </div>
                                                     )}
 
-                                                    {advanceType !== 'none' && (advancePayMethod === 'qr_digital' || advancePayMethod === 'split') && qrCodes.length > 1 && (
+                                                    {irdSyncEnabled && advanceType !== 'none' && (advancePayMethod === 'qr_digital' || advancePayMethod === 'split') && qrCodes.length > 1 && (
                                                         <div>
                                                             <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
                                                             <select
