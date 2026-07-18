@@ -422,8 +422,10 @@ export default function QuickOrderModal({
                                 </div>
                             ) : selectedSession ? (
                                 <p className="text-caption text-ink-subtle mt-0.5">Table {selectedSession.label} · Active Session</p>
+                            ) : bookingId && tableName ? (
+                                <p className="text-caption text-brand-500 font-bold mt-0.5">🛎 {tableName} · Room Order</p>
                             ) : (
-                                <p className="text-caption text-ink-subtle mt-0.5">No active table sessions found</p>
+                                <p className="text-caption text-amber-500 font-semibold mt-0.5">No active table sessions found</p>
                             )}
                         </div>
                     </div>
