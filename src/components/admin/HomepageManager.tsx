@@ -3,12 +3,23 @@
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { HomepageConfig, HomepageTemplate, HOMEPAGE_TEMPLATES } from '@/types/database'
-import { Eye, Loader2, AlertCircle, Upload, X, Plus, Trash2, ChevronRight, ChevronLeft, CheckCircle2, ImageIcon } from 'lucide-react'
+import { 
+    Monitor, Tablet, Smartphone, Save, ImageIcon,
+    MapPin, Megaphone, Palette,
+    MenuIcon, Globe, Layout, Sparkles, 
+    ChevronDown, X, Plus, 
+    ArrowLeft, Trash2, Eye, Upload, Loader2, AlertCircle
+} from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { uploadMedia } from '@/lib/uploadMedia'
 import HomepageRenderer from '@/components/customer/homepage/HomepageRenderer'
 import { useHomepageConfig } from '@/lib/hooks/useHomepageConfig'
-import { motion, AnimatePresence } from 'framer-motion'
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+
+function cn(...inputs: ClassValue[]) {
+    return twMerge(clsx(inputs))
+}
 
 interface HomepageManagerProps {
     restaurantId: string
@@ -39,95 +50,47 @@ const DEFAULT_CONFIG: HomepageConfig = {
     footer: { enabled: true, copyright: `© ${new Date().getFullYear()} Your Restaurant`, social_links: [] },
 }
 
-type Tab = 'template' | 'branding' | 'theme' | 'hero' | 'about' | 'features' | 'cta' | 'gallery' | 'contact' | 'footer'
-
-const STEPS: { id: Tab; label: string; desc: string }[] = [
-    { id: 'template', label: 'Template', desc: 'Choose layout' },
-    { id: 'branding', label: 'Branding', desc: 'Logo & Identity' },
-    { id: 'theme', label: 'Theme Colors', desc: 'Brand palette' },
-    { id: 'hero', label: 'Hero Banner', desc: 'First impression' },
-    { id: 'about', label: 'About Us', desc: 'Your story' },
-    { id: 'features', label: 'Highlights', desc: 'Why choose us' },
-    { id: 'cta', label: 'Action Banner', desc: 'Drive orders' },
-    { id: 'gallery', label: 'Gallery', desc: 'Visual showcase' },
-    { id: 'contact', label: 'Location', desc: 'Map & Phone' },
-    { id: 'footer', label: 'Footer & Social', desc: 'Final details' },
+const LEFT_SECTIONS = [
+    { id: 'hero', name: 'Hero Banner', desc: 'First impression', icon: Layout },
+    { id: 'about', name: 'About Us', desc: 'Your story', icon: MenuIcon },
+    { id: 'features', name: 'Highlights', desc: 'Why choose us', icon: Sparkles },
+    { id: 'cta', name: 'Action Banner', desc: 'Drive orders', icon: Megaphone },
+    { id: 'gallery', name: 'Gallery', desc: 'Visual showcase', icon: ImageIcon },
+    { id: 'contact', name: 'Location', desc: 'Map & Phone', icon: MapPin },
 ]
 
-// ---- Shared UI Primitives ----
-const inputCls =
-    'w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3'
-
-function TextField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
-    return (
-        <div>
-            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">{label}</label>
-            <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className={inputCls} />
-        </div>
-    )
+// Helper UI for text inputs
+interface InputProps {
+    label: string
+    value: string
+    onChange: (value: string) => void
+    placeholder?: string
 }
 
-function TextArea({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-    return (
-        <div>
-            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">{label}</label>
-            <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={3} className={inputCls} />
-        </div>
-    )
-}
+const Input = ({ label, value, onChange, placeholder }: InputProps) => (
+    <div className="mb-4">
+        <label className="block text-xs font-semibold text-ink mb-1.5">{label}</label>
+        <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full px-3 py-2 text-sm border border-hairline rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+    </div>
+)
 
-function UrlField({ label, value, placeholder, onSave }: { label: string; value: string; placeholder?: string; onSave: (v: string) => void }) {
-    const [draft, setDraft] = useState(value)
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    useEffect(() => { setDraft(value) }, [value])
-    const dirty = draft.trim() !== (value || '').trim()
-    return (
-        <div className="mt-4">
-            <label className="block text-[11px] font-bold text-ink-muted uppercase tracking-wider mb-2">{label}</label>
-            <div className="flex gap-3">
-                <input
-                    type="url"
-                    value={draft}
-                    placeholder={placeholder}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') onSave(draft.trim()) }}
-                    className={`flex-1 ${inputCls}`}
-                />
-                <button
-                    type="button"
-                    onClick={() => onSave(draft.trim())}
-                    disabled={!dirty}
-                    className="px-5 py-2.5 text-sm font-bold bg-surface border border-hairline text-ink rounded-[var(--r-md)] disabled:opacity-40 hover:bg-surface-muted transition-colors shadow-sm focus-ring"
-                >
-                    Set
-                </button>
-            </div>
-        </div>
-    )
-}
+const Textarea = ({ label, value, onChange, placeholder }: InputProps) => (
+    <div className="mb-4">
+        <label className="block text-xs font-semibold text-ink mb-1.5">{label}</label>
+        <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={3} className="w-full px-3 py-2 text-sm border border-hairline rounded-lg focus:ring-2 focus:ring-brand-500 outline-none resize-none" />
+    </div>
+)
 
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
-    return (
-        <label className="flex items-center justify-between cursor-pointer py-3 px-4 border border-hairline rounded-[var(--r-md)] bg-surface-muted/30 hover:bg-surface-muted/50 transition-colors">
-            <span className="text-[12px] font-extrabold text-ink tracking-wide">{label}</span>
-            <button
-                type="button"
-                onClick={() => onChange(!checked)}
-                className={`relative w-12 h-6 rounded-full transition-colors border ${checked ? 'bg-brand-500 border-brand-500' : 'bg-surface-muted border-hairline'}`}
-            >
-                <span className={`absolute top-[1px] left-[1px] w-[20px] h-[20px] bg-surface rounded-full shadow-[0_2px_4px_rgba(0,0,0,0.1)] transition-transform ${checked ? 'translate-x-6' : ''}`} />
-            </button>
-        </label>
-    )
-}
-
-// ---- Main Component ----
 export default function HomepageManager({ restaurantId }: HomepageManagerProps) {
     const { config: fetchedConfig, isLoading, error } = useHomepageConfig(restaurantId)
     const [config, setConfig] = useState<HomepageConfig>(DEFAULT_CONFIG)
     const [isSaving, setIsSaving] = useState(false)
     const [isPreviewOpen, setIsPreviewOpen] = useState(false)
-    const [currentStepIndex, setCurrentStepIndex] = useState(0)
+    
+    // UI State
+    const [deviceMode, setDeviceMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
+    const [expandedRightPanel, setExpandedRightPanel] = useState<string | null>('theme')
+    const [editingSection, setEditingSection] = useState<string | null>(null)
 
     useEffect(() => {
         if (fetchedConfig) {
@@ -139,9 +102,6 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
         }
     }, [fetchedConfig, restaurantId])
 
-    const activeTab = STEPS[currentStepIndex]?.id || 'template'
-
-    // generic merge helpers
     const patch = (p: Partial<HomepageConfig>) => setConfig((c) => ({ ...c, ...p }))
     const patchAbout = (p: Partial<NonNullable<HomepageConfig['about']>>) =>
         setConfig((c) => ({ ...c, about: { ...DEFAULT_CONFIG.about!, ...c.about, ...p } }))
@@ -156,10 +116,10 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
 
     const uploadFile = async (file: File, type: 'image' | 'video'): Promise<string | null> => {
         const toastId = toast.loading(type === 'video' ? 'Uploading video…' : 'Uploading image…')
-        const { url, error } = await uploadMedia(file, type, 'homepage')
+        const { url, error: uploadErr } = await uploadMedia(file, type, 'homepage')
         toast.dismiss(toastId)
-        if (error || !url) {
-            toast.error(error || 'Upload failed')
+        if (uploadErr || !url) {
+            toast.error(uploadErr || 'Upload failed')
             return null
         }
         return url
@@ -195,17 +155,8 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
         await saveConfig(next, true)
     }
 
-    const handleNext = async () => {
-        await saveConfig(config, true)
-        if (currentStepIndex < STEPS.length - 1) {
-            setCurrentStepIndex(currentStepIndex + 1)
-        } else {
-            toast.success('All steps completed & saved!')
-        }
-    }
-
-    const handlePrev = () => {
-        if (currentStepIndex > 0) setCurrentStepIndex(currentStepIndex - 1)
+    const toggleRightPanel = (panel: string) => {
+        setExpandedRightPanel(expandedRightPanel === panel ? null : panel)
     }
 
     if (isLoading) {
@@ -223,7 +174,7 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                 <AlertCircle size={48} className="mx-auto mb-4 text-danger-fg" />
                 <p className="text-danger-fg font-extrabold text-lg mb-2">Failed to load builder</p>
                 <p className="text-danger-fg/80 text-sm mb-6">{error}</p>
-                <button onClick={() => window.location.reload()} className="px-6 py-2.5 bg-danger-fg text-white font-bold rounded-[var(--r-md)] hover:opacity-90">
+                <button onClick={() => window.location.reload()} className="px-6 py-2.5 bg-danger-fg text-white font-bold rounded-lg hover:opacity-90">
                     Retry Connection
                 </button>
             </div>
@@ -233,322 +184,242 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
     const features = Array.isArray(config.features) ? config.features : []
     const gallery = Array.isArray(config.gallery) ? config.gallery : []
 
-    const progressPercentage = ((currentStepIndex + 1) / STEPS.length) * 100
-
     return (
-        <div className="flex flex-col lg:flex-row gap-8 min-h-[80vh]">
-            
-            {/* LEFT: Builder Panel */}
-            <div className="flex-1 flex flex-col min-w-0 max-w-3xl">
-                
-                {/* Progress Header */}
-                <div className="bg-surface rounded-[var(--r-xl)] border border-hairline shadow-sm p-5 mb-6">
-                    <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-col h-[calc(100vh-64px)] -mx-5 md:-mx-8 -my-5 md:-my-8 bg-canvas overflow-hidden font-sans">
+            {/* Builder Top Bar */}
+            <div className="h-14 border-b border-hairline bg-surface flex items-center justify-between px-4 shrink-0">
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-brand-500 text-white rounded-full flex items-center justify-center shrink-0 shadow-sm">
+                            <Globe className="w-4 h-4" />
+                        </div>
                         <div>
-                            <p className="text-brand-500 font-extrabold text-[11px] uppercase tracking-widest mb-1">Step {currentStepIndex + 1} of {STEPS.length}</p>
-                            <h2 className="text-xl font-black text-ink">{STEPS[currentStepIndex].label}</h2>
+                            <h1 className="text-sm font-semibold text-ink leading-tight">Website Builder</h1>
+                            <p className="text-xs text-ink-muted leading-tight">Editing: {restaurantId}</p>
                         </div>
-                        <div className="text-right hidden sm:block">
-                            <p className="text-ink-subtle text-sm font-medium">{STEPS[currentStepIndex].desc}</p>
-                        </div>
-                    </div>
-                    {/* Progress bar line */}
-                    <div className="h-2 w-full bg-surface-muted rounded-full overflow-hidden flex">
-                        <motion.div 
-                            className="h-full bg-brand-500"
-                            initial={{ width: 0 }}
-                            animate={{ width: `${progressPercentage}%` }}
-                            transition={{ duration: 0.4, ease: "easeInOut" }}
-                        />
                     </div>
                 </div>
 
-                {/* Step Content Area */}
-                <div className="bg-surface rounded-[var(--r-xl)] border border-hairline shadow-[0_12px_40px_rgba(0,0,0,0.04)] p-6 sm:p-8 flex-1 relative flex flex-col">
-                    <AnimatePresence mode="wait">
-                        <motion.div
-                            key={activeTab}
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -20 }}
-                            transition={{ duration: 0.2 }}
-                            className="flex-1 space-y-6"
-                        >
-                            {/* --- 1. Template --- */}
-                            {activeTab === 'template' && (
-                                <div className="space-y-6">
-                                    <div>
-                                        <h3 className="text-h3 font-black text-ink mb-2">Select Architecture</h3>
-                                        <p className="text-sm font-medium text-ink-subtle">Choose the foundational layout for your website. You can change this at any time without losing content.</p>
-                                    </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                        {(Object.keys(HOMEPAGE_TEMPLATES) as HomepageTemplate[]).map((template) => (
-                                            <button
-                                                type="button"
-                                                key={template}
-                                                onClick={() => {
-                                                    patchAndSave({ template })
-                                                }}
-                                                className={`p-6 rounded-[var(--r-lg)] border-2 text-left transition-all focus-ring relative overflow-hidden ${
-                                                    config.template === template 
-                                                    ? 'border-brand-500 bg-brand-50/50 shadow-[0_8px_24px_rgba(251,99,3,0.12)] -translate-y-1' 
-                                                    : 'border-hairline bg-surface hover:border-brand-300 hover:shadow-md'
-                                                }`}
+                <div className="flex items-center bg-surface border border-hairline rounded-full p-1 gap-1 hidden lg:flex shadow-sm">
+                    <button onClick={() => setDeviceMode('desktop')} className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200", deviceMode === 'desktop' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-ink-muted hover:text-ink')}>
+                        <Monitor className="w-3.5 h-3.5" /> Desktop
+                    </button>
+                    <button onClick={() => setDeviceMode('tablet')} className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200", deviceMode === 'tablet' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-ink-muted hover:text-ink')}>
+                        <Tablet className="w-3.5 h-3.5" /> Tablet
+                    </button>
+                    <button onClick={() => setDeviceMode('mobile')} className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200", deviceMode === 'mobile' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-ink-muted hover:text-ink')}>
+                        <Smartphone className="w-3.5 h-3.5" /> Mobile
+                    </button>
+                </div>
+
+                <div className="flex items-center gap-2 md:gap-3">
+                    {isSaving && (
+                        <span className="hidden md:flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Saving...
+                        </span>
+                    )}
+                    <button onClick={() => setIsPreviewOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-ink bg-surface border border-hairline hover:bg-surface-muted rounded-full transition-colors">
+                        <Eye className="w-3.5 h-3.5" /> Full Preview
+                    </button>
+                    <button onClick={save} className="flex items-center gap-1.5 px-5 py-1.5 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-full transition-colors shadow-sm">
+                        <Save className="w-4 h-4" /> Save
+                    </button>
+                </div>
+            </div>
+
+            {/* Main Builder Area */}
+            <div className="flex flex-1 overflow-hidden relative">
+                {/* Left Sidebar */}
+                <div className="w-72 bg-surface border-r border-hairline flex flex-col shrink-0 shadow-[4px_0_15px_-3px_rgba(0,0,0,0.02)] z-10">
+                    {!editingSection ? (
+                        <>
+                            <div className="h-14 border-b border-hairline px-4 flex items-center justify-between shrink-0 bg-surface">
+                                <h2 className="text-sm font-semibold text-ink">Page Layout</h2>
+                            </div>
+                            
+                            <div className="flex-1 overflow-y-auto scrollbar-hide">
+                                {/* Active / Hidden Tabs */}
+                                <div className="flex items-center border-b border-hairline bg-surface sticky top-0 z-10">
+                                    <button className="flex-1 py-2.5 text-xs font-semibold text-brand-700 border-b-2 border-brand-500 bg-brand-50/30">
+                                        Active
+                                    </button>
+                                    <button className="flex-1 py-2.5 text-xs font-medium text-ink-muted hover:text-ink transition-colors">
+                                        Hidden
+                                    </button>
+                                </div>
+
+                                <div className="p-3 space-y-2">
+                                    {LEFT_SECTIONS.map((section) => {
+                                        // Determine if section is considered "active"
+                                        let isActive = true
+                                        if (section.id === 'about') isActive = config.about?.enabled ?? true
+                                        if (section.id === 'cta') isActive = config.cta?.enabled ?? true
+                                        if (section.id === 'contact') isActive = config.contact?.enabled ?? true
+                                        if (section.id === 'features') isActive = (config.features?.length ?? 0) > 0
+                                        if (section.id === 'gallery') isActive = (config.gallery?.length ?? 0) > 0
+
+                                        return (
+                                            <div 
+                                                key={section.id} 
+                                                className="group flex items-center p-3 bg-white border border-hairline hover:border-brand-300 rounded-lg shadow-sm hover:shadow-md transition-all"
                                             >
-                                                {config.template === template && (
-                                                    <div className="absolute top-4 right-4 text-brand-500">
-                                                        <CheckCircle2 size={24} className="fill-brand-100" />
+                                                <div className="text-ink-muted/50 cursor-grab hover:text-ink mr-2">
+                                                    <MenuIcon className="w-4 h-4" />
+                                                </div>
+                                                <div 
+                                                    className="flex-1 flex items-center gap-3 cursor-pointer"
+                                                    onClick={() => setEditingSection(section.id)}
+                                                >
+                                                    <div className="text-ink bg-surface-muted p-1.5 rounded-md group-hover:bg-brand-50 group-hover:text-brand-600 transition-colors">
+                                                        <section.icon className="w-4 h-4" />
                                                     </div>
-                                                )}
-                                                <div className="text-4xl mb-4 text-brand-500 drop-shadow-sm">{HOMEPAGE_TEMPLATES[template].icon}</div>
-                                                <div className="font-extrabold text-ink text-lg">{HOMEPAGE_TEMPLATES[template].name}</div>
-                                                <div className="text-xs font-bold text-ink-subtle uppercase tracking-wider mt-2 leading-relaxed">{HOMEPAGE_TEMPLATES[template].description}</div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* --- 2. Branding --- */}
-                            {activeTab === 'branding' && (
-                                <div className="space-y-6">
-                                    <div>
-                                        <h3 className="text-h3 font-black text-ink mb-2">Brand Logo</h3>
-                                        <p className="text-sm font-medium text-ink-subtle">Upload a high-resolution logo (PNG with transparent background recommended).</p>
-                                    </div>
-                                    
-                                    <div className="bg-surface-muted/20 border border-hairline p-8 rounded-[var(--r-lg)] flex flex-col items-center justify-center border-dashed relative">
-                                        {config.logo_url ? (
-                                            <div className="flex flex-col items-center">
-                                                <div className="relative group">
-                                                    <Image src={config.logo_url} alt="Logo" width={240} height={100} className="h-28 w-auto object-contain drop-shadow-md bg-surface p-4 rounded-xl border border-hairline" style={{ width: 'auto' }} />
-                                                    <button onClick={() => patchAndSave({ logo_url: null })} className="absolute -top-3 -right-3 w-8 h-8 bg-danger-bg text-danger-fg rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-md border-2 border-white">
-                                                        <X size={14} />
+                                                    <div>
+                                                        <div className="text-sm font-semibold text-ink group-hover:text-brand-700 transition-colors leading-none">{section.name}</div>
+                                                        <div className="text-[10px] text-ink-muted mt-1 leading-none">{section.desc}</div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        // Toggle logic
+                                                        if (section.id === 'about') patchAbout({ enabled: !isActive })
+                                                        else if (section.id === 'cta') patchCta({ enabled: !isActive })
+                                                        else if (section.id === 'contact') patchContact({ enabled: !isActive })
+                                                    }} className="p-1.5 text-ink-muted hover:text-brand-600 hover:bg-brand-50 rounded-md transition-colors" title={isActive ? "Hide Section" : "Show Section"}>
+                                                        {isActive ? <Eye className="w-4 h-4" /> : <Eye className="w-4 h-4 opacity-50" />}
                                                     </button>
                                                 </div>
-                                                <label className="mt-6 text-sm font-bold text-brand-500 hover:text-brand-600 cursor-pointer flex items-center gap-2 px-4 py-2 bg-brand-50 rounded-full">
-                                                    <Upload size={16} /> Replace Logo
-                                                    <input type="file" accept="image/*" onChange={async (e) => { if (e.target.files?.[0]) { const url = await uploadFile(e.target.files[0], 'image'); if (url) await patchAndSave({ logo_url: url }) } }} className="sr-only" />
-                                                </label>
                                             </div>
-                                        ) : (
-                                            <label className="flex flex-col items-center cursor-pointer group p-8">
-                                                <div className="w-16 h-16 rounded-full bg-brand-50 text-brand-500 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
-                                                    <Upload size={24} />
-                                                </div>
-                                                <span className="text-lg font-extrabold text-ink group-hover:text-brand-500 transition-colors">Click to upload logo</span>
-                                                <span className="text-sm font-medium text-ink-subtle mt-2">SVG, PNG, or JPG (max. 5MB)</span>
-                                                <input type="file" accept="image/*" onChange={async (e) => { if (e.target.files?.[0]) { const url = await uploadFile(e.target.files[0], 'image'); if (url) await patchAndSave({ logo_url: url }) } }} className="sr-only" />
-                                            </label>
-                                        )}
-                                    </div>
+                                        )
+                                    })}
                                 </div>
-                            )}
-
-                            {/* --- 3. Theme --- */}
-                            {activeTab === 'theme' && (
-                                <div className="space-y-6">
-                                    <div>
-                                        <h3 className="text-h3 font-black text-ink mb-2">Color Palette</h3>
-                                        <p className="text-sm font-medium text-ink-subtle">Define the primary colors that represent your restaurant. These will style buttons, accents, and backgrounds.</p>
-                                    </div>
-                                    
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                                        {([
-                                            { key: 'theme_primary' as const, label: 'Primary Action', desc: 'Main buttons & highlights', default: '#FB6303' },
-                                            { key: 'theme_secondary' as const, label: 'Secondary', desc: 'Backgrounds & footers', default: '#1B263B' },
-                                            { key: 'theme_accent' as const, label: 'Accent', desc: 'Tags & small details', default: '#EC4899' },
-                                        ]).map(({ key, label, desc, default: def }) => {
-                                            const val = config[key] || def
-                                            return (
-                                                <div key={key} className="bg-surface-muted/30 p-5 rounded-[var(--r-lg)] border border-hairline flex flex-col items-center text-center">
-                                                    <label className="relative w-20 h-20 rounded-full border-4 border-white shadow-lg cursor-pointer mb-4 hover:scale-105 transition-transform overflow-hidden" style={{ backgroundColor: val }} title="Click to pick color">
-                                                        <input type="color" value={val} onChange={(e) => patch({ [key]: e.target.value })} className="absolute -inset-10 opacity-0 cursor-pointer w-[200%] h-[200%]" />
-                                                    </label>
-                                                    <p className="font-extrabold text-ink mb-1">{label}</p>
-                                                    <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-3 h-6">{desc}</p>
-                                                    <input
-                                                        type="text"
-                                                        value={val}
-                                                        maxLength={7}
-                                                        onChange={(e) => { const v = e.target.value; if (/^#[0-9a-fA-F]{0,6}$/.test(v)) patch({ [key]: v }) }}
-                                                        className="w-full text-center px-3 py-2 text-sm font-bold text-ink font-mono bg-surface border border-hairline rounded-[var(--r-md)] focus-ring uppercase shadow-inner"
-                                                    />
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="flex flex-col h-full animate-fade-in">
+                            <div className="h-14 border-b border-hairline px-4 flex items-center gap-3 shrink-0 bg-surface">
+                                <button onClick={() => setEditingSection(null)} className="p-1.5 hover:bg-surface-muted rounded-md text-ink-muted hover:text-ink transition-colors">
+                                    <ArrowLeft className="w-4 h-4" />
+                                </button>
+                                <div>
+                                    <h2 className="text-sm font-semibold text-ink leading-tight">Edit Section</h2>
+                                    <p className="text-xs text-ink-muted">{LEFT_SECTIONS.find(s => s.id === editingSection)?.name}</p>
                                 </div>
-                            )}
-
-                            {/* --- 4. Hero --- */}
-                            {activeTab === 'hero' && (
-                                <div className="space-y-6">
-                                    <div>
-                                        <h3 className="text-h3 font-black text-ink mb-2">Welcome Banner</h3>
-                                        <p className="text-sm font-medium text-ink-subtle">The very first thing customers see. Make it appetizing and welcoming.</p>
-                                    </div>
-                                    
-                                    <div className="space-y-5">
-                                        <TextField label="Headline (H1)" value={config.hero_title || ''} onChange={(v) => patch({ hero_title: v })} placeholder="E.g. Authentic Italian Cuisine" />
-                                        <TextField label="Subtitle" value={config.hero_subtitle || ''} onChange={(v) => patch({ hero_subtitle: v })} placeholder="E.g. Experience the taste of Rome in the heart of the city." />
-                                        <TextField label="Main Button Text" value={config.hero_cta_text || ''} onChange={(v) => patch({ hero_cta_text: v })} placeholder="E.g. View Menu & Order" />
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-6 border-t border-hairline">
-                                        {/* Image */}
-                                        <div className="space-y-3">
-                                            <label className="block text-[11px] font-bold text-ink uppercase tracking-wider">Background Image</label>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                {editingSection === 'hero' && (
+                                    <>
+                                        <Input label="Headline (H1)" value={config.hero_title || ''} onChange={(v: string) => patch({ hero_title: v })} placeholder="E.g. Authentic Italian Cuisine" />
+                                        <Input label="Subtitle" value={config.hero_subtitle || ''} onChange={(v: string) => patch({ hero_subtitle: v })} placeholder="Experience the taste..." />
+                                        <Input label="Button Text" value={config.hero_cta_text || ''} onChange={(v: string) => patch({ hero_cta_text: v })} placeholder="View Menu" />
+                                        
+                                        <div className="mt-4">
+                                            <label className="block text-xs font-semibold text-ink mb-1.5">Background Image</label>
                                             {config.hero_image_url ? (
-                                                <div className="relative aspect-video rounded-xl overflow-hidden border border-hairline group shadow-sm">
+                                                <div className="relative aspect-video rounded-xl overflow-hidden border border-hairline shadow-sm mb-4">
                                                     <Image src={config.hero_image_url} alt="Hero" fill className="object-cover" />
-                                                    <button onClick={() => patchAndSave({ hero_image_url: null })} className="absolute top-2 right-2 w-8 h-8 bg-danger-bg text-danger-fg rounded-full flex items-center justify-center hover:scale-110 transition-transform">
-                                                        <X size={14} />
-                                                    </button>
+                                                    <button onClick={() => patchAndSave({ hero_image_url: null })} className="absolute top-2 right-2 p-1.5 bg-danger-bg text-danger-fg rounded-full hover:scale-110 transition-transform"><X size={14} /></button>
                                                 </div>
                                             ) : (
-                                                <label className="flex flex-col items-center justify-center aspect-video border-2 border-dashed border-brand-500/30 bg-brand-50/30 rounded-xl cursor-pointer hover:bg-brand-50 transition-colors">
-                                                    <Upload size={20} className="text-brand-500 mb-2" />
-                                                    <span className="text-xs font-bold text-brand-600">Upload Image</span>
+                                                <label className="flex flex-col items-center justify-center aspect-video border-2 border-dashed border-hairline rounded-xl cursor-pointer hover:bg-surface-muted transition-colors mb-4">
+                                                    <Upload size={20} className="text-ink-muted mb-2" />
+                                                    <span className="text-xs font-medium">Upload Image</span>
                                                     <input type="file" accept="image/*" onChange={async (e) => { if (e.target.files?.[0]) { const url = await uploadFile(e.target.files[0], 'image'); if (url) await patchAndSave({ hero_image_url: url }) } }} className="sr-only" />
                                                 </label>
                                             )}
-                                        </div>
 
-                                        {/* Video */}
-                                        <div className="space-y-3">
-                                            <label className="block text-[11px] font-bold text-ink uppercase tracking-wider flex items-center justify-between">Background Video <span className="text-ink-muted lowercase normal-case font-medium">(optional overlay)</span></label>
+                                            <label className="block text-xs font-semibold text-ink mb-1.5">Or Background Video (Overrides Image)</label>
                                             {config.hero_video_url ? (
-                                                <div className="relative aspect-video rounded-xl overflow-hidden border border-hairline group shadow-sm">
-                                                    <video src={config.hero_video_url} className="w-full h-full object-cover" controls={false} autoPlay muted loop />
-                                                    <button onClick={() => patchAndSave({ hero_video_url: null })} className="absolute top-2 right-2 w-8 h-8 bg-danger-bg text-danger-fg rounded-full flex items-center justify-center hover:scale-110 transition-transform">
-                                                        <X size={14} />
-                                                    </button>
+                                                <div className="relative aspect-video rounded-xl overflow-hidden border border-hairline shadow-sm">
+                                                    <video src={config.hero_video_url} className="w-full h-full object-cover" autoPlay muted loop playsInline />
+                                                    <button onClick={() => patchAndSave({ hero_video_url: null })} className="absolute top-2 right-2 p-1.5 bg-danger-bg text-danger-fg rounded-full hover:scale-110 transition-transform"><X size={14} /></button>
                                                 </div>
                                             ) : (
-                                                <label className="flex flex-col items-center justify-center aspect-video border-2 border-dashed border-indigo-500/30 bg-indigo-50/30 rounded-xl cursor-pointer hover:bg-indigo-50 transition-colors">
-                                                    <Upload size={20} className="text-indigo-500 mb-2" />
-                                                    <span className="text-xs font-bold text-indigo-600">Upload Video (MP4)</span>
+                                                <label className="flex flex-col items-center justify-center aspect-video border-2 border-dashed border-hairline rounded-xl cursor-pointer hover:bg-surface-muted transition-colors bg-white">
+                                                    <Upload size={20} className="text-ink-muted mb-2" />
+                                                    <span className="text-xs font-medium">Upload Video</span>
                                                     <input type="file" accept="video/*" onChange={async (e) => { if (e.target.files?.[0]) { const url = await uploadFile(e.target.files[0], 'video'); if (url) await patchAndSave({ hero_video_url: url }) } }} className="sr-only" />
                                                 </label>
                                             )}
                                         </div>
-                                    </div>
-                                    <UrlField label="Have external media links? Paste URL here:" value="" placeholder="https://..." onSave={(v) => {
-                                        if (v) {
-                                            const isVid = v.match(/\.(mp4|webm|mov)(\?.*)?$/i);
-                                            patchAndSave(isVid ? { hero_video_url: v } : { hero_image_url: v });
-                                        }
-                                    }} />
-                                </div>
-                            )}
+                                    </>
+                                )}
 
-                            {/* --- 5. About --- */}
-                            {activeTab === 'about' && (
-                                <div className="space-y-6">
-                                    <div>
-                                        <h3 className="text-h3 font-black text-ink mb-2">About Us</h3>
-                                        <p className="text-sm font-medium text-ink-subtle">Tell your story to build a connection with your guests.</p>
-                                    </div>
-                                    
-                                    <Toggle label="Enable About Section" checked={config.about?.enabled ?? true} onChange={(v) => patchAbout({ enabled: v })} />
-                                    
-                                    <div className={`space-y-5 transition-opacity ${!config.about?.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
-                                        <TextField label="Section Title" value={config.about?.title || ''} onChange={(v) => patchAbout({ title: v })} />
-                                        <TextArea label="Our Story (Description)" value={config.about?.description || ''} onChange={(v) => patchAbout({ description: v })} />
-                                        
-                                        <div className="pt-4">
-                                            <label className="block text-[11px] font-bold text-ink uppercase tracking-wider mb-3">Chef / Restaurant Image</label>
-                                            {config.about?.image_url ? (
-                                                <div className="relative group inline-block">
-                                                    <Image src={config.about.image_url} alt="About" width={320} height={200} className="h-48 w-auto object-cover rounded-xl border border-hairline shadow-sm" style={{ width: 'auto' }} />
-                                                    <button onClick={() => patchAndSave({ about: { ...DEFAULT_CONFIG.about!, ...config.about, image_url: '' } })} className="absolute -top-3 -right-3 w-8 h-8 bg-danger-bg text-danger-fg rounded-full flex items-center justify-center shadow-md border-2 border-white hover:scale-110 transition-transform">
-                                                        <X size={14} />
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <label className="flex items-center gap-3 px-6 py-4 border-2 border-dashed border-brand-500/30 bg-brand-50/30 rounded-xl cursor-pointer hover:bg-brand-50 transition-all w-fit">
-                                                    <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-brand-600">
-                                                        <Upload size={18} />
+                                {editingSection === 'about' && (
+                                    <>
+                                        <label className="flex items-center gap-2 mb-4 cursor-pointer">
+                                            <input type="checkbox" checked={config.about?.enabled ?? true} onChange={(e) => patchAbout({ enabled: e.target.checked })} className="rounded border-hairline text-brand-500 focus:ring-brand-500" />
+                                            <span className="text-sm font-medium">Enable About Section</span>
+                                        </label>
+                                        <div className={!config.about?.enabled ? 'opacity-50 pointer-events-none' : ''}>
+                                            <Input label="Section Title" value={config.about?.title || ''} onChange={(v: string) => patchAbout({ title: v })} />
+                                            <Textarea label="Our Story" value={config.about?.description || ''} onChange={(v: string) => patchAbout({ description: v })} />
+                                            <div className="mt-4">
+                                                <label className="block text-xs font-semibold text-ink mb-1.5">Section Image</label>
+                                                {config.about?.image_url ? (
+                                                    <div className="relative aspect-video rounded-xl overflow-hidden border border-hairline shadow-sm">
+                                                        <Image src={config.about.image_url} alt="About" fill className="object-cover" />
+                                                        <button onClick={() => patchAndSave({ about: { ...DEFAULT_CONFIG.about!, ...config.about, image_url: '' } })} className="absolute top-2 right-2 p-1.5 bg-danger-bg text-danger-fg rounded-full"><X size={14} /></button>
                                                     </div>
-                                                    <span className="text-sm font-bold text-brand-700">Upload Image</span>
-                                                    <input type="file" accept="image/*" onChange={async (e) => { if (e.target.files?.[0]) { const url = await uploadFile(e.target.files[0], 'image'); if (url) await patchAndSave({ about: { ...DEFAULT_CONFIG.about!, ...config.about, image_url: url } }) } }} className="sr-only" />
-                                                </label>
-                                            )}
+                                                ) : (
+                                                    <label className="flex items-center justify-center py-6 border-2 border-dashed border-hairline rounded-xl cursor-pointer hover:bg-surface-muted transition-colors">
+                                                        <Upload size={16} className="mr-2" /> Upload Image
+                                                        <input type="file" accept="image/*" onChange={async (e) => { if (e.target.files?.[0]) { const url = await uploadFile(e.target.files[0], 'image'); if (url) await patchAndSave({ about: { ...DEFAULT_CONFIG.about!, ...config.about, image_url: url } }) } }} className="sr-only" />
+                                                    </label>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                </div>
-                            )}
+                                    </>
+                                )}
 
-                            {/* --- 6. Features --- */}
-                            {activeTab === 'features' && (
-                                <div className="space-y-6">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <h3 className="text-h3 font-black text-ink mb-1">Highlights</h3>
-                                            <p className="text-sm font-medium text-ink-subtle">List key selling points (e.g. Free Wi-Fi, Vegan Options, Live Music).</p>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => patch({ features: [...features, { title: 'New Highlight', description: 'Description here' }] })}
-                                            className="flex items-center gap-2 text-sm font-bold text-white bg-ink hover:bg-ink/90 py-2.5 px-4 rounded-full transition-colors shadow-md active:scale-95"
-                                        >
-                                            <Plus size={16} /> Add Item
+                                {editingSection === 'features' && (
+                                    <>
+                                        <button onClick={() => patch({ features: [...features, { title: 'New Feature', description: 'Description' }] })} className="w-full flex items-center justify-center gap-2 py-2 border border-hairline rounded-lg text-sm font-medium hover:bg-surface-muted mb-4">
+                                            <Plus size={16} /> Add Highlight
                                         </button>
-                                    </div>
-                                    
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         {features.map((f, idx) => (
-                                            <div key={idx} className="p-5 border border-hairline bg-surface-muted/30 rounded-[var(--r-lg)] space-y-4 relative group hover:border-brand-200 transition-colors shadow-sm">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => patch({ features: features.filter((_, i) => i !== idx) })}
-                                                    className="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center bg-surface border border-hairline text-ink-subtle hover:text-danger-fg hover:border-danger-fg/30 shadow-sm transition-all"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                                <div className="pr-8 space-y-3">
-                                                    <TextField label={`Highlight ${idx + 1}`} value={f.title} onChange={(v) => patch({ features: features.map((it, i) => (i === idx ? { ...it, title: v } : it)) })} />
-                                                    <TextArea label="Short Description" value={f.description} onChange={(v) => patch({ features: features.map((it, i) => (i === idx ? { ...it, description: v } : it)) })} />
-                                                </div>
+                                            <div key={idx} className="p-3 bg-surface-muted rounded-lg border border-hairline relative">
+                                                <button onClick={() => patch({ features: features.filter((_, i) => i !== idx) })} className="absolute top-2 right-2 text-danger-fg p-1 hover:bg-white rounded"><Trash2 size={14} /></button>
+                                                <Input label={`Highlight ${idx + 1}`} value={f.title} onChange={(v: string) => patch({ features: features.map((it, i) => (i === idx ? { ...it, title: v } : it)) })} />
+                                                <Textarea label="Description" value={f.description} onChange={(v: string) => patch({ features: features.map((it, i) => (i === idx ? { ...it, description: v } : it)) })} />
                                             </div>
                                         ))}
-                                    </div>
-                                    {features.length === 0 && (
-                                        <div className="p-12 text-center border-2 border-dashed border-hairline rounded-[var(--r-lg)] text-ink-subtle">
-                                            No highlights added yet. Click &quot;Add Item&quot; to start.
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                                    </>
+                                )}
 
-                            {/* --- 7. CTA --- */}
-                            {activeTab === 'cta' && (
-                                <div className="space-y-6">
-                                    <div>
-                                        <h3 className="text-h3 font-black text-ink mb-2">Action Banner</h3>
-                                        <p className="text-sm font-medium text-ink-subtle">A prominent banner placed mid-page to drive conversions (ordering or booking).</p>
-                                    </div>
-                                    
-                                    <Toggle label="Enable Action Banner" checked={config.cta?.enabled ?? true} onChange={(v) => patchCta({ enabled: v })} />
-                                    
-                                    <div className={`p-6 bg-brand-50/30 border border-brand-100 rounded-[var(--r-lg)] space-y-5 transition-opacity ${!config.cta?.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
-                                        <TextField label="Headline" value={config.cta?.headline || ''} onChange={(v) => patchCta({ headline: v })} placeholder="Ready to order?" />
-                                        <TextField label="Subtext" value={config.cta?.description || ''} onChange={(v) => patchCta({ description: v })} placeholder="Fresh food delivered fast." />
-                                        <TextField label="Button Text" value={config.cta?.button_text || ''} onChange={(v) => patchCta({ button_text: v })} placeholder="Order Now" />
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* --- 8. Gallery --- */}
-                            {activeTab === 'gallery' && (
-                                <div className="space-y-6">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <h3 className="text-h3 font-black text-ink mb-1">Visual Gallery</h3>
-                                            <p className="text-sm font-medium text-ink-subtle">Show off your best dishes and interior.</p>
+                                {editingSection === 'cta' && (
+                                    <>
+                                        <label className="flex items-center gap-2 mb-4 cursor-pointer">
+                                            <input type="checkbox" checked={config.cta?.enabled ?? true} onChange={(e) => patchCta({ enabled: e.target.checked })} className="rounded border-hairline text-brand-500 focus:ring-brand-500" />
+                                            <span className="text-sm font-medium">Enable CTA Banner</span>
+                                        </label>
+                                        <div className={!config.cta?.enabled ? 'opacity-50 pointer-events-none' : ''}>
+                                            <Input label="Headline" value={config.cta?.headline || ''} onChange={(v: string) => patchCta({ headline: v })} />
+                                            <Input label="Subtext" value={config.cta?.description || ''} onChange={(v: string) => patchCta({ description: v })} />
+                                            <Input label="Button Text" value={config.cta?.button_text || ''} onChange={(v: string) => patchCta({ button_text: v })} />
                                         </div>
-                                        <label className="flex items-center gap-2 text-sm font-bold text-white bg-ink hover:bg-ink/90 py-2.5 px-4 rounded-full cursor-pointer transition-colors shadow-md active:scale-95">
+                                    </>
+                                )}
+                                
+                                {editingSection === 'contact' && (
+                                    <>
+                                        <label className="flex items-center gap-2 mb-4 cursor-pointer">
+                                            <input type="checkbox" checked={config.contact?.enabled ?? true} onChange={(e) => patchContact({ enabled: e.target.checked })} className="rounded border-hairline text-brand-500 focus:ring-brand-500" />
+                                            <span className="text-sm font-medium">Enable Contact Section</span>
+                                        </label>
+                                        <div className={!config.contact?.enabled ? 'opacity-50 pointer-events-none' : ''}>
+                                            <Input label="Phone Number" value={config.contact?.phone || ''} onChange={(v: string) => patchContact({ phone: v })} />
+                                            <Input label="Email Address" value={config.contact?.email || ''} onChange={(v: string) => patchContact({ email: v })} />
+                                            <Textarea label="Physical Address" value={config.contact?.address || ''} onChange={(v: string) => patchContact({ address: v })} />
+                                            <Input label="Google Maps Link" value={config.contact?.map_address || ''} onChange={(v: string) => patchContact({ map_address: v })} placeholder="https://maps.google.com/..." />
+                                            <Input label="Review Link (TripAdvisor/Google)" value={config.contact?.review_link || ''} onChange={(v: string) => patchContact({ review_link: v })} placeholder="https://..." />
+                                        </div>
+                                    </>
+                                )}
+
+                                {editingSection === 'gallery' && (
+                                    <>
+                                        <label className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-hairline rounded-lg text-sm font-medium cursor-pointer hover:bg-surface-muted mb-4">
                                             <Upload size={16} /> Upload Media
                                             <input type="file" accept="image/*,video/*" multiple onChange={async (e) => { 
                                                 if (e.target.files && e.target.files.length > 0) { 
@@ -558,154 +429,174 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                                                         const url = await uploadFile(file, type);
                                                         return url ? { image_url: url, caption: '', media_type: type as 'image' | 'video' } : null;
                                                     });
-                                                    const newItems = (await Promise.all(uploadPromises)).filter((item) => item !== null);
+                                                    const newItems = (await Promise.all(uploadPromises)).filter((item) => item !== null) as { image_url: string, caption: string, media_type: 'image' | 'video' }[];
                                                     if (newItems.length > 0) {
                                                         await patchAndSave({ gallery: [...gallery, ...newItems] });
                                                     }
                                                 } 
                                             }} className="sr-only" />
                                         </label>
-                                    </div>
-                                    
-                                    {gallery.length > 0 ? (
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                        <div className="grid grid-cols-2 gap-2">
                                             {gallery.map((g, idx) => (
-                                                <div key={idx} className="bg-surface p-2 rounded-xl border border-hairline shadow-sm group">
-                                                    <div className="relative aspect-square rounded-lg overflow-hidden mb-2 bg-surface-muted">
-                                                        {g.media_type === 'video' || g.image_url.match(/\.(mp4|webm|mov)(\?.*)?$/i) ? (
-                                                            <video src={g.image_url} className="w-full h-full object-cover" autoPlay muted loop playsInline />
-                                                        ) : (
-                                                            <Image src={g.image_url} alt={g.caption || ''} fill sizes="200px" className="object-cover" />
-                                                        )}
-                                                        <button type="button" onClick={() => patchAndSave({ gallery: gallery.filter((_, i) => i !== idx) })} className="absolute top-2 right-2 w-7 h-7 bg-danger-bg text-danger-fg rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-md">
-                                                            <X size={12} />
-                                                        </button>
-                                                    </div>
-                                                    <input
-                                                        type="text"
-                                                        value={g.caption || ''}
-                                                        placeholder="Add caption..."
-                                                        onChange={(e) => patch({ gallery: gallery.map((it, i) => (i === idx ? { ...it, caption: e.target.value } : it)) })}
-                                                        className="w-full px-2 py-1.5 text-xs font-bold text-ink bg-transparent border-none focus:ring-2 focus:ring-brand-500/20 rounded placeholder:text-ink-muted/50"
-                                                    />
+                                                <div key={idx} className="relative aspect-square rounded-lg overflow-hidden group border border-hairline">
+                                                    {g.media_type === 'video' || g.image_url.match(/\.(mp4|webm|mov)(\?.*)?$/i) ? (
+                                                        <video src={g.image_url} className="w-full h-full object-cover" autoPlay muted loop playsInline />
+                                                    ) : (
+                                                        <Image src={g.image_url} alt="" fill sizes="200px" className="object-cover" />
+                                                    )}
+                                                    <button onClick={() => patchAndSave({ gallery: gallery.filter((_, i) => i !== idx) })} className="absolute top-1 right-1 w-6 h-6 bg-danger-bg text-danger-fg rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"><X size={12} /></button>
                                                 </div>
                                             ))}
                                         </div>
-                                    ) : (
-                                        <div className="p-16 text-center border-2 border-dashed border-hairline rounded-[var(--r-lg)] flex flex-col items-center justify-center">
-                                            <div className="w-16 h-16 bg-surface-muted rounded-full flex items-center justify-center text-ink-subtle mb-4">
-                                                <ImageIcon size={32} className="opacity-50" />
-                                            </div>
-                                            <p className="text-ink-subtle font-medium">Your gallery is empty. Upload some delicious photos!</p>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                                    </>
+                                )}
 
-                            {/* --- 9. Contact --- */}
-                            {activeTab === 'contact' && (
-                                <div className="space-y-6">
-                                    <div>
-                                        <h3 className="text-h3 font-black text-ink mb-2">Location & Contact</h3>
-                                        <p className="text-sm font-medium text-ink-subtle">Help customers find and reach you easily.</p>
-                                    </div>
-                                    
-                                    <Toggle label="Enable Contact Section" checked={config.contact?.enabled ?? true} onChange={(v) => patchContact({ enabled: v })} />
-                                    
-                                    <div className={`space-y-5 transition-opacity ${!config.contact?.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                            <TextField label="Phone Number" value={config.contact?.phone || ''} onChange={(v) => patchContact({ phone: v })} placeholder="+1 234 567 890" />
-                                            <TextField label="Email Address" value={config.contact?.email || ''} onChange={(v) => patchContact({ email: v })} placeholder="hello@restaurant.com" />
+                                {editingSection === 'footer' && (
+                                    <>
+                                        <label className="flex items-center gap-2 mb-4 cursor-pointer">
+                                            <input type="checkbox" checked={config.footer?.enabled ?? true} onChange={(e) => patchFooter({ enabled: e.target.checked })} className="rounded border-hairline text-brand-500 focus:ring-brand-500" />
+                                            <span className="text-sm font-medium">Enable Footer Section</span>
+                                        </label>
+                                        <div className={!config.footer?.enabled ? 'opacity-50 pointer-events-none' : ''}>
+                                            <Input label="Copyright Text" value={config.footer?.copyright || ''} onChange={(v: string) => patchFooter({ copyright: v })} />
                                         </div>
-                                        <TextField label="Physical Address" value={config.contact?.map_address || ''} onChange={(v) => patchContact({ map_address: v })} placeholder="123 Culinary Ave, Food City" />
-                                        <p className="text-xs text-ink-subtle -mt-2">A map is generated automatically from this address — no embed code needed.</p>
-
-                                        <TextField label="Google Reviews Link" value={config.contact?.review_link || ''} onChange={(v) => patchContact({ review_link: v })} placeholder="https://g.page/r/..." />
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* --- 10. Footer & Social --- */}
-                            {activeTab === 'footer' && (
-                                <div className="space-y-6">
-                                    <div>
-                                        <h3 className="text-h3 font-black text-ink mb-2">Footer & Social Media</h3>
-                                        <p className="text-sm font-medium text-ink-subtle">Connect your socials and configure the page footer.</p>
-                                    </div>
-                                    
-                                    <div className="p-6 bg-surface-muted/30 border border-hairline rounded-[var(--r-lg)] space-y-5">
-                                        <h4 className="text-sm font-extrabold text-ink uppercase tracking-wider mb-2">Social Links</h4>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                            <TextField label="Instagram URL" value={config.social?.instagram || ''} onChange={(v) => patchSocial({ instagram: v })} placeholder="https://instagram.com/..." />
-                                            <TextField label="Facebook URL" value={config.social?.facebook || ''} onChange={(v) => patchSocial({ facebook: v })} placeholder="https://facebook.com/..." />
-                                            <TextField label="TikTok URL" value={config.social?.tiktok || ''} onChange={(v) => patchSocial({ tiktok: v })} placeholder="https://tiktok.com/@..." />
-                                            <TextField label="WhatsApp Number" value={config.social?.whatsapp || ''} onChange={(v) => patchSocial({ whatsapp: v })} placeholder="+1234567890" />
-                                        </div>
-                                    </div>
-
-                                    <div className="p-6 border border-hairline rounded-[var(--r-lg)] space-y-5">
-                                        <Toggle label="Enable Footer" checked={config.footer?.enabled ?? true} onChange={(v) => patchFooter({ enabled: v })} />
-                                        <div className={`transition-opacity ${!config.footer?.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
-                                            <TextField label="Copyright Text" value={config.footer?.copyright || ''} onChange={(v) => patchFooter({ copyright: v })} />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </motion.div>
-                    </AnimatePresence>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
-                {/* Footer Navigation Controls */}
-                <div className="mt-6 flex items-center justify-between bg-surface p-4 rounded-xl border border-hairline shadow-sm">
-                    <button
-                        type="button"
-                        onClick={handlePrev}
-                        disabled={currentStepIndex === 0}
-                        className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink disabled:opacity-30 transition-colors focus-ring rounded-lg"
+                {/* Preview Canvas */}
+                <div className="flex-1 bg-surface-muted overflow-y-auto relative p-4 md:p-8 flex items-start justify-center transition-all duration-300">
+                    <div 
+                        className={cn(
+                            "bg-canvas rounded-xl shadow-2xl transition-all duration-500 ease-in-out relative overflow-y-auto overflow-x-hidden ring-1 ring-black/10 origin-top",
+                            deviceMode === 'desktop' ? 'w-full max-w-5xl min-h-full' :
+                            deviceMode === 'tablet' ? 'w-[768px] min-h-[1024px]' :
+                            'w-[375px] min-h-[812px]'
+                        )}
                     >
-                        <ChevronLeft size={16} /> Previous
-                    </button>
-                    
-                    <div className="flex items-center gap-3">
-                        <span className="text-xs font-medium text-ink-muted">
-                            {isSaving ? <span className="flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Saving...</span> : 'Saved'}
-                        </span>
-                        <button
-                            type="button"
-                            onClick={handleNext}
-                            className="flex items-center gap-2 px-6 py-2.5 bg-brand-500 text-white text-sm font-bold rounded-lg hover:bg-brand-600 transition-all shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:-translate-y-0.5 active:translate-y-0 focus-ring"
-                        >
-                            {currentStepIndex === STEPS.length - 1 ? 'Finish' : 'Next Step'} <ChevronRight size={16} />
-                        </button>
+                        {/* Render actual website */}
+                        <div className="w-full min-h-full pointer-events-none">
+                            <HomepageRenderer config={config} onMenuClick={() => {}} />
+                        </div>
                     </div>
                 </div>
 
-            </div>
-
-            {/* RIGHT: Live Preview Panel */}
-            <div className="w-full lg:w-[400px] xl:w-[450px] shrink-0">
-                <div className="sticky top-6 bg-surface rounded-[2rem] border-8 border-ink/5 overflow-hidden shadow-2xl flex flex-col" style={{ height: 'calc(100vh - 48px)', maxHeight: 850 }}>
-                    {/* Fake Browser/Phone Header */}
-                    <div className="px-4 py-3 bg-surface-muted/80 backdrop-blur-md flex items-center gap-4 shrink-0 border-b border-hairline z-10">
-                        <div className="flex gap-1.5">
-                            <div className="w-3 h-3 rounded-full bg-rose-400"></div>
-                            <div className="w-3 h-3 rounded-full bg-amber-400"></div>
-                            <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
-                        </div>
-                        <div className="flex-1 bg-surface/50 border border-hairline rounded-full h-7 flex items-center justify-center text-[10px] font-bold text-ink-subtle tracking-wide font-mono">
-                            Preview
-                        </div>
-                        <button onClick={() => setIsPreviewOpen(true)} className="text-brand-500 hover:text-brand-600 transition-colors p-1" title="Full Screen">
-                            <Eye size={16} />
-                        </button>
+                {/* Right Sidebar */}
+                <div className="w-80 bg-surface border-l border-hairline flex flex-col shrink-0 z-10 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.02)]">
+                    <div className="h-16 border-b border-hairline px-5 flex flex-col justify-center shrink-0">
+                        <h2 className="text-sm font-semibold text-ink">Design & Branding</h2>
+                        <p className="text-xs text-ink-muted">Global styles applied across site</p>
                     </div>
                     
-                    {/* Scaled Preview Frame */}
-                    <div className="flex-1 relative bg-canvas overflow-y-auto overflow-x-hidden w-full custom-scrollbar pointer-events-none select-none">
-                        {/* We use scale to fit a 375px mobile view into whatever width is available, 
-                            or we just let it be responsive. Since the container is ~400px, responsive is actually perfect for mobile preview! */}
-                        <div className="w-full min-h-full">
-                            <HomepageRenderer config={config} onMenuClick={() => {}} />
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        
+                        {/* Publish Status Toggle */}
+                        <div className="border border-hairline rounded-xl p-4 bg-white shadow-sm flex items-center justify-between cursor-pointer hover:bg-surface-muted transition-colors">
+                            <div>
+                                <h3 className="text-sm font-semibold text-ink">Site is public</h3>
+                                <p className="text-xs text-ink-muted">Anyone can view your site</p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" className="sr-only peer" defaultChecked />
+                                <div className="w-9 h-5 bg-ink-muted/30 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                            </label>
+                        </div>
+
+                        {/* Branding / Logo */}
+                        <div className="border border-hairline rounded-xl p-4 bg-white shadow-sm space-y-4">
+                            <h3 className="text-xs font-semibold text-ink uppercase tracking-wider">Brand Logo</h3>
+                            {config.logo_url ? (
+                                <div className="relative group p-2 border border-hairline rounded-lg flex justify-center bg-surface-muted">
+                                    <Image src={config.logo_url} alt="Logo" width={160} height={80} className="object-contain h-16 w-auto" />
+                                    <button onClick={() => patchAndSave({ logo_url: null })} className="absolute -top-2 -right-2 p-1.5 bg-danger-bg text-danger-fg rounded-full shadow-md"><X size={12} /></button>
+                                </div>
+                            ) : (
+                                <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-hairline rounded-lg cursor-pointer hover:bg-surface-muted transition-colors">
+                                    <Upload size={16} className="mb-2 text-ink-muted" />
+                                    <span className="text-xs font-medium">Upload Logo</span>
+                                    <input type="file" accept="image/*" onChange={async (e) => { if (e.target.files?.[0]) { const url = await uploadFile(e.target.files[0], 'image'); if (url) await patchAndSave({ logo_url: url }) } }} className="sr-only" />
+                                </label>
+                            )}
+                        </div>
+
+                        {/* Template Accordion */}
+                        <div className="border border-hairline rounded-xl overflow-hidden bg-white shadow-sm">
+                            <button onClick={() => toggleRightPanel('template')} className="w-full flex items-center justify-between p-4 bg-white hover:bg-surface-muted transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-1.5 bg-brand-50 text-brand-600 rounded-md"><Layout className="w-4 h-4" /></div>
+                                    <span className="text-sm font-semibold text-ink">Layout Template</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-brand-600 bg-brand-50 px-2 py-1 rounded-full">{config.template}</span>
+                                    <ChevronDown className={cn("w-4 h-4 text-ink-muted transition-transform", expandedRightPanel === 'template' ? "rotate-180" : "")} />
+                                </div>
+                            </button>
+                            {expandedRightPanel === 'template' && (
+                                <div className="p-4 border-t border-hairline bg-surface/50 grid grid-cols-1 gap-2">
+                                    {(Object.keys(HOMEPAGE_TEMPLATES) as HomepageTemplate[]).map((template) => (
+                                        <button 
+                                            key={template}
+                                            onClick={() => patchAndSave({ template })}
+                                            className={cn("flex items-center gap-3 p-3 rounded-lg border-2 text-left transition-all", config.template === template ? 'border-brand-500 bg-brand-50/50' : 'border-hairline hover:border-brand-200 bg-white')}
+                                        >
+                                            <span className="text-2xl">{HOMEPAGE_TEMPLATES[template].icon}</span>
+                                            <div>
+                                                <div className="text-sm font-bold text-ink">{HOMEPAGE_TEMPLATES[template].name}</div>
+                                                <div className="text-[10px] text-ink-muted">{HOMEPAGE_TEMPLATES[template].description}</div>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Theme Colors Accordion */}
+                        <div className="border border-hairline rounded-xl overflow-hidden bg-white shadow-sm">
+                            <button onClick={() => toggleRightPanel('colors')} className="w-full flex items-center justify-between p-4 bg-white hover:bg-surface-muted transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-1.5 bg-blue-50 text-blue-600 rounded-md"><Palette className="w-4 h-4" /></div>
+                                    <span className="text-sm font-semibold text-ink">Theme Colors</span>
+                                </div>
+                                <ChevronDown className={cn("w-4 h-4 text-ink-muted transition-transform", expandedRightPanel === 'colors' ? "rotate-180" : "")} />
+                            </button>
+                            {expandedRightPanel === 'colors' && (
+                                <div className="p-4 border-t border-hairline bg-surface/50 space-y-4">
+                                    {[
+                                        { key: 'theme_primary' as const, label: 'Primary (Buttons)' },
+                                        { key: 'theme_secondary' as const, label: 'Secondary (Bg)' },
+                                        { key: 'theme_accent' as const, label: 'Accent (Tags)' },
+                                    ].map(({ key, label }) => (
+                                        <div key={key} className="flex items-center justify-between">
+                                            <span className="text-xs font-semibold text-ink">{label}</span>
+                                            <label className="relative w-8 h-8 rounded-full shadow-sm cursor-pointer border border-hairline overflow-hidden" style={{ backgroundColor: config[key] || '#000' }}>
+                                                <input type="color" value={config[key] || '#000'} onChange={(e) => patch({ [key]: e.target.value })} className="absolute -inset-10 opacity-0 cursor-pointer w-[200%] h-[200%]" />
+                                            </label>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Social Links Accordion */}
+                        <div className="border border-hairline rounded-xl overflow-hidden bg-white shadow-sm">
+                            <button onClick={() => toggleRightPanel('social')} className="w-full flex items-center justify-between p-4 bg-white hover:bg-surface-muted transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-md"><Globe className="w-4 h-4" /></div>
+                                    <span className="text-sm font-semibold text-ink">Social Links</span>
+                                </div>
+                                <ChevronDown className={cn("w-4 h-4 text-ink-muted transition-transform", expandedRightPanel === 'social' ? "rotate-180" : "")} />
+                            </button>
+                            {expandedRightPanel === 'social' && (
+                                <div className="p-4 border-t border-hairline bg-surface/50 space-y-3">
+                                    <Input label="Instagram" value={config.social?.instagram || ''} onChange={(v: string) => patchSocial({ instagram: v })} placeholder="https://..." />
+                                    <Input label="Facebook" value={config.social?.facebook || ''} onChange={(v: string) => patchSocial({ facebook: v })} placeholder="https://..." />
+                                    <Input label="TikTok" value={config.social?.tiktok || ''} onChange={(v: string) => patchSocial({ tiktok: v })} placeholder="https://..." />
+                                    <Input label="WhatsApp" value={config.social?.whatsapp || ''} onChange={(v: string) => patchSocial({ whatsapp: v })} placeholder="+123..." />
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

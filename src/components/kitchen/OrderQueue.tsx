@@ -14,9 +14,19 @@ import { setOrderItemsStatus, getKitchenOrders } from '@/app/(staff)/kitchen/act
 import { rollUpOrderStatus } from '@/lib/orderRollup'
 import EmptyState from '@/components/ui/EmptyState'
 import { usePrinter } from '@/lib/print/usePrinter'
+import { ensureConnected } from '@/lib/print/qzClient'
 import { buildStationTicket } from '@/lib/print/templates/stationTicket'
 import { STATION_META, itemsForStation, type StationKind } from '@/lib/stations'
 import KotPrintFallback from './KotPrintFallback'
+
+// A network (LAN) KOT printer lives in the kitchen, so the browser-print
+// fallback would come out of THIS desktop (typically the counter) — the wrong
+// station. Before falling back, retry a transient network failure (QZ Tray
+// restarting, printer momentarily unreachable) a few times.
+const KOT_PRINT_MAX_RETRIES = 2
+const KOT_PRINT_RETRY_MS = 2500
+// How often the headless print screen re-checks the QZ Tray connection.
+const QZ_HEALTH_POLL_MS = 15000
 
 export type KitchenOrderItem = OrderItem & {
     menu_item_id?: string
@@ -93,12 +103,31 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     })
     const money = useCurrency()
     const supabaseRef = useRef(createClient())
-    const { print: printKot } = usePrinter(stationMeta.printerRole)
+    const { print: printKot, networkPrinter } = usePrinter(stationMeta.printerRole)
     // Queued, not a single slot — QZ Tray being down for the whole shift means
     // every order fails to print at once, and a single slot would silently
     // drop all but the most recent order's fallback ticket.
     const [kotFallbackQueue, setKotFallbackQueue] = useState<KitchenOrder[]>([])
     const dequeueKotFallback = useCallback(() => setKotFallbackQueue(q => q.slice(1)), [])
+
+    // Pending retry timers, cleared on unmount so a queued retry can't fire
+    // (and setState) after the screen is gone.
+    const retryTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
+    useEffect(() => () => { retryTimers.current.forEach(clearTimeout); retryTimers.current.clear() }, [])
+
+    // Live QZ Tray connection status for the headless print screen. A dead agent
+    // is the #1 silent cause of "orders aren't printing" — surfacing it stops
+    // tickets from quietly diverting to the browser fallback unnoticed. Only
+    // polls while in print-only mode.
+    const [qzConnected, setQzConnected] = useState<boolean | null>(null)
+    useEffect(() => {
+        if (!printOnlyMode) return
+        let cancelled = false
+        const check = () => { void ensureConnected().then((r) => { if (!cancelled) setQzConnected(r.ok) }) }
+        check()
+        const id = setInterval(check, QZ_HEALTH_POLL_MS)
+        return () => { cancelled = true; clearInterval(id) }
+    }, [printOnlyMode])
 
     // Latest committed board, readable synchronously from realtime callbacks. A
     // setState updater's local flag is NOT reliably set by the time you read it
@@ -122,16 +151,36 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
         // `order` is already projected to this station's lines, so an all-food
         // order reaching the bar board has an empty item list — nothing to print.
         if (!(order.order_items || []).length) return
-        void printKot(buildStationTicket(order, station)).then((result) => {
-            if (result.ok) return
-            setKotFallbackQueue(q => [...q, order])
-            toast.error(
-                result.status === 'no-printer-selected'
-                    ? `No ${stationMeta.ticketAbbr} printer set — printed via browser instead. Set one in Printer Settings.`
-                    : `${stationMeta.ticketAbbr} printer not connected — printed via browser instead.`
-            )
-        })
-    }, [printKot, station, stationMeta.ticketAbbr])
+        // Hoisted function declaration so it can recurse for retries without a
+        // use-before-declared reference to the surrounding useCallback.
+        function attemptPrint(attempt: number) {
+            void printKot(buildStationTicket(order, station)).then((result) => {
+                if (result.ok) return
+                // Retry transient failures on a LAN printer before falling back to
+                // the local browser print (which prints at this desktop, not the
+                // kitchen). Don't retry no-printer-selected or a trust block —
+                // those need a human, not another attempt.
+                const transient = result.status === 'not-running' || result.status === 'print-failed'
+                if (networkPrinter && transient && attempt < KOT_PRINT_MAX_RETRIES) {
+                    const t = setTimeout(() => {
+                        retryTimers.current.delete(t)
+                        attemptPrint(attempt + 1)
+                    }, KOT_PRINT_RETRY_MS)
+                    retryTimers.current.add(t)
+                    return
+                }
+                setKotFallbackQueue(q => [...q, order])
+                toast.error(
+                    result.status === 'no-printer-selected'
+                        ? `No ${stationMeta.ticketAbbr} printer set — printed via browser instead. Set one in Printer Settings.`
+                        : networkPrinter
+                            ? `${stationMeta.ticketAbbr} printer unreachable after ${KOT_PRINT_MAX_RETRIES + 1} tries — printed on this device instead.`
+                            : `${stationMeta.ticketAbbr} printer not connected — printed via browser instead.`
+                )
+            })
+        }
+        attemptPrint(0)
+    }, [printKot, station, stationMeta.ticketAbbr, networkPrinter])
 
     // Print a KOT exactly once per order id, regardless of whether the INSERT
     // event or a later confirming UPDATE surfaced it first.
@@ -345,13 +394,36 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
 
             {printOnlyMode ? (
                 <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-surface m-6 rounded-3xl border border-hairline shadow-sm max-w-2xl mx-auto my-auto h-[400px]">
-                    <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-500 mb-4 animate-pulse">
+                    <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${qzConnected === false ? 'bg-red-50 text-red-500' : 'bg-emerald-50 text-emerald-500 animate-pulse'}`}>
                         <Printer size={32} />
                     </div>
                     <h3 className="text-lg font-black text-ink">KOT Auto-Print Service Active</h3>
                     <p className="text-sm text-ink-subtle mt-2 max-w-sm">
                         This tab is running in headless printer mode. Incoming orders will print automatically. Order cards are hidden to maximize browser performance.
                     </p>
+
+                    {/* Live health — a dead QZ Tray silently diverts every ticket to
+                        the browser fallback, so make its status impossible to miss. */}
+                    <div className="mt-5 flex flex-col items-center gap-2">
+                        <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border ${
+                            qzConnected === false ? 'text-red-600 bg-red-50 border-red-200'
+                            : qzConnected ? 'text-emerald-600 bg-emerald-50 border-emerald-200'
+                            : 'text-ink-subtle bg-surface-muted border-hairline'
+                        }`}>
+                            <span className={`w-2 h-2 rounded-full ${qzConnected === false ? 'bg-red-500' : qzConnected ? 'bg-emerald-500' : 'bg-ink-subtle'}`} />
+                            {qzConnected === false ? 'QZ Tray not running — tickets will print on THIS device'
+                                : qzConnected ? 'QZ Tray connected' : 'Checking QZ Tray…'}
+                        </span>
+                        {networkPrinter ? (
+                            <span className="text-[11px] text-ink-subtle">
+                                Sending {stationMeta.ticketAbbr} to {networkPrinter.target.host}:{networkPrinter.target.port}
+                            </span>
+                        ) : (
+                            <span className="text-[11px] text-amber-600">
+                                No network printer configured — using this device’s local printer
+                            </span>
+                        )}
+                    </div>
                 </div>
             ) : (
                 <>
