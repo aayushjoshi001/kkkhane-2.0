@@ -6,7 +6,7 @@ import {
     Users, UtensilsCrossed, Settings, LogOut, BarChart3, Palette, Grid3X3,
     TrendingUp, ShoppingBag, Tag, Heart, DollarSign, Package,
     FileText, Truck, Clock, CreditCard, Sparkles, Sun, Moon, X,
-    Bed, CalendarRange, Hotel, BookOpen, Wallet, Landmark
+    Bed, CalendarRange, Hotel, BookOpen, Wallet, Landmark, Printer
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -169,6 +169,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                 <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Settings</SectionLabel>
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/homepage"    icon={Palette}         label="Homepage Setup"  path={pathname} />
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/theme"       icon={Palette}         label="Brand & Theme"   path={pathname} />
+                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/printers"    icon={Printer}         label="Printers"        path={pathname} />
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/settings"    icon={Settings}        label="Settings"        path={pathname} />
                 
                 <div className="h-4" /> {/* Bottom padding */}
