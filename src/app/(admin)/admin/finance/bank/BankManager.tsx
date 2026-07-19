@@ -95,13 +95,9 @@ function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAc
         setAccounts((prev) => prev.map((a) => (a.id === account.id ? { ...a, is_active: !a.is_active } : a)))
     }
 
-    async function handleDelete(id: string) {
-        if (!confirm('Delete this bank account?')) return
-        const result = await deleteBankAccountAction(id)
-        if (result.error) { toast.error(result.error); return }
-        setAccounts((prev) => prev.filter((a) => a.id !== id))
-        toast.success('Bank account deleted')
-    }
+    const [deactivateId, setDeactivateId] = useState<string | null>(null)
+    const [deactivateReason, setDeactivateReason] = useState('')
+    const [deactivating, setDeactivating] = useState(false)
 
     return (
         <div className="space-y-3">
@@ -141,7 +137,7 @@ function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAc
                 renderActions={(a) => (
                     <div className="flex items-center justify-end gap-1.5">
                         <Button size="sm" variant="ghost" onClick={() => toggleActive(a)}>{a.is_active ? 'Deactivate' : 'Activate'}</Button>
-                        <Button size="sm" variant="ghost" icon={Trash2} onClick={() => handleDelete(a.id)} />
+                        <Button size="sm" variant="ghost" icon={Trash2} onClick={() => setDeactivateId(a.id)} />
                     </div>
                 )}
             />
@@ -168,6 +164,51 @@ function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAc
                     </>
                 )}
                 <FormInput label="Opening Balance" type="number" min="0" step="0.01" value={form.opening_balance} onChange={(e) => setForm((f) => ({ ...f, opening_balance: e.target.value }))} />
+            </FormModal>
+
+            <FormModal 
+                open={!!deactivateId} 
+                onClose={() => { setDeactivateId(null); setDeactivateReason(''); }} 
+                title="Delete Bank Account" 
+                onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!deactivateReason.trim()) {
+                        toast.error('Please enter a reason/description for deletion.');
+                        return;
+                    }
+                    setDeactivating(true);
+                    const result = await deleteBankAccountAction(deactivateId!, deactivateReason);
+                    setDeactivating(false);
+                    if (result.error) {
+                        toast.error(result.error);
+                        return;
+                    }
+                    setAccounts((prev) => prev.map((a) => {
+                        if (a.id === deactivateId) {
+                            const newBankName = result.updatedBankName || a.bank_name;
+                            return { ...a, is_active: false, deactivation_reason: deactivateReason, bank_name: newBankName };
+                        }
+                        return a;
+                    }));
+                    toast.success('Bank account deleted and marked as inactive');
+                    setDeactivateId(null);
+                    setDeactivateReason('');
+                }}
+                submitting={deactivating}
+            >
+                <div className="space-y-4">
+                    <p className="text-sm text-ink-subtle leading-relaxed">
+                        Are you sure you want to delete this bank account? 
+                        Historical transactions will remain saved in the system, but no further transactions can be made.
+                    </p>
+                    <FormInput 
+                        label="Reason / Description for Deactivation" 
+                        required 
+                        value={deactivateReason} 
+                        onChange={(e) => setDeactivateReason(e.target.value)} 
+                        placeholder="e.g. Account closed at the bank branch / switched to a new QR provider" 
+                    />
+                </div>
             </FormModal>
         </div>
     )

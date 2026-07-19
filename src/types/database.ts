@@ -1103,6 +1103,7 @@ export interface BankAccount {
     account_number: string | null
     opening_balance: number
     is_active: boolean
+    deactivation_reason: string | null
     created_by: string | null
     created_at: string
     updated_at: string
