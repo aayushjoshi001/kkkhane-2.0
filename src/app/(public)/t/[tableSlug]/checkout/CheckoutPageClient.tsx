@@ -7,6 +7,7 @@ import { placeOrder } from './actions'
 import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, Trash2, Plus, Minus, Loader2 } from 'lucide-react'
 import BottomNavbar from '@/components/customer/BottomNavbar'
+import StickyBottomBar from '@/components/customer/StickyBottomBar'
 import PromoCodeInput from '@/components/customer/PromoCodeInput'
 import LoyaltyPanel from '@/components/customer/LoyaltyPanel'
 import SplitBillModal from '@/components/customer/SplitBillModal'
@@ -14,6 +15,10 @@ import { useFeatures, useCurrency } from '@/lib/contexts/FeatureContext'
 import { useParams } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import { playVoice } from '@/lib/voice'
+
+// Both bottom bars on this page sit above the fixed BottomNavbar (bottom-[88px])
+// and carry the same upward shadow — kept here so the two don't repeat it.
+const CHECKOUT_BAR_CLASS = 'bottom-[88px] z-30 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]'
 
 interface StayBillingData {
     isHotelRoom: boolean
@@ -259,24 +264,22 @@ export default function CheckoutPageClient({ isHotelRoom = true }: { isHotelRoom
                 </div>
 
                 {/* Persistent Bottom Totals & Balance Bar */}
-                <div className="fixed bottom-[88px] left-0 right-0 p-4 z-30 bg-surface border-t border-hairline-strong shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
-                    <div className="max-w-xl mx-auto space-y-1.5">
-                        <div className="flex justify-between text-xs text-ink-subtle">
-                            <span>Subtotal</span>
-                            <span className="font-semibold">{money(stayBilling.grandTotal)}</span>
-                        </div>
-                        {stayBilling.advancePaid > 0 && (
-                            <div className="flex justify-between text-xs text-green-600">
-                                <span>Advance Paid</span>
-                                <span className="font-semibold">-{money(stayBilling.advancePaid)}</span>
-                            </div>
-                        )}
-                        <div className="flex justify-between items-center pt-2 border-t border-hairline">
-                            <span className="text-ink font-bold">Balance Due</span>
-                            <span className="text-2xl font-black text-[var(--color-primary)] tabular-nums">{money(stayBilling.balanceDue)}</span>
-                        </div>
+                <StickyBottomBar className={CHECKOUT_BAR_CLASS} innerClassName="max-w-xl space-y-1.5">
+                    <div className="flex justify-between text-xs text-ink-subtle">
+                        <span>Subtotal</span>
+                        <span className="font-semibold">{money(stayBilling.grandTotal)}</span>
                     </div>
-                </div>
+                    {stayBilling.advancePaid > 0 && (
+                        <div className="flex justify-between text-xs text-green-600">
+                            <span>Advance Paid</span>
+                            <span className="font-semibold">-{money(stayBilling.advancePaid)}</span>
+                        </div>
+                    )}
+                    <div className="flex justify-between items-center pt-2 border-t border-hairline">
+                        <span className="text-ink font-bold">Balance Due</span>
+                        <span className="text-2xl font-black text-[var(--color-primary)] tabular-nums">{money(stayBilling.balanceDue)}</span>
+                    </div>
+                </StickyBottomBar>
 
                 <BottomNavbar activeTab="pay" />
             </div>
@@ -445,56 +448,54 @@ export default function CheckoutPageClient({ isHotelRoom = true }: { isHotelRoom
             </main>
 
             {/* Persistent Bottom Checkout Bar */}
-            <div className="fixed bottom-[88px] left-0 right-0 p-4 z-30 bg-surface border-t border-hairline-strong shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
-                <div className="max-w-xl mx-auto">
-                    <div className="space-y-1 mb-4">
-                        <div className="flex justify-between text-sm text-ink-subtle">
-                            <span>Subtotal</span>
-                            <span>{money(totalAmount())}</span>
-                        </div>
-                        {promoDiscount > 0 && (
-                            <div className="flex justify-between text-sm text-green-600">
-                                <span>Promo ({promoCode?.code})</span>
-                                <span>-{money(promoDiscount)}</span>
-                            </div>
-                        )}
-                        {loyaltyDiscount > 0 && (
-                            <div className="flex justify-between text-sm text-indigo-600">
-                                <span>Loyalty Reward</span>
-                                <span>-{money(loyaltyDiscount)}</span>
-                            </div>
-                        )}
-                        <div className="flex justify-between items-center pt-1 border-t border-hairline">
-                            <span className="text-ink-muted font-medium">Total to pay</span>
-                            <span className="text-2xl font-bold text-ink">{money(finalTotal())}</span>
-                        </div>
+            <StickyBottomBar className={CHECKOUT_BAR_CLASS}>
+                <div className="space-y-1 mb-4">
+                    <div className="flex justify-between text-sm text-ink-subtle">
+                        <span>Subtotal</span>
+                        <span>{money(totalAmount())}</span>
                     </div>
-
-                    <div className="flex gap-2 mb-3">
-                        {features.splitBillingEnabled && (
-                            <button
-                                onClick={() => setShowSplit(true)}
-                                disabled={!sessionId}
-                                className="flex-1 border border-hairline-strong text-ink-muted font-medium rounded-xl py-3 text-sm hover:bg-surface-muted disabled:opacity-50"
-                            >
-                                Split Bill
-                            </button>
-                        )}
+                    {promoDiscount > 0 && (
+                        <div className="flex justify-between text-sm text-green-600">
+                            <span>Promo ({promoCode?.code})</span>
+                            <span>-{money(promoDiscount)}</span>
+                        </div>
+                    )}
+                    {loyaltyDiscount > 0 && (
+                        <div className="flex justify-between text-sm text-indigo-600">
+                            <span>Loyalty Reward</span>
+                            <span>-{money(loyaltyDiscount)}</span>
+                        </div>
+                    )}
+                    <div className="flex justify-between items-center pt-1 border-t border-hairline">
+                        <span className="text-ink-muted font-medium">Total to pay</span>
+                        <span className="text-2xl font-bold text-ink">{money(finalTotal())}</span>
                     </div>
-
-                    <button
-                        onClick={handleCheckout}
-                        disabled={isSubmitting}
-                        className="w-full bg-[var(--color-primary)] text-white font-medium rounded-xl py-4 flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:opacity-70 disabled:active:scale-100 shadow-lg shadow-[var(--color-primary)]/20"
-                    >
-                        {isSubmitting ? (
-                            <><Loader2 className="animate-spin" size={20} /> Sending to Kitchen...</>
-                        ) : (
-                            'Place Order'
-                        )}
-                    </button>
                 </div>
-            </div>
+
+                <div className="flex gap-2 mb-3">
+                    {features.splitBillingEnabled && (
+                        <button
+                            onClick={() => setShowSplit(true)}
+                            disabled={!sessionId}
+                            className="flex-1 border border-hairline-strong text-ink-muted font-medium rounded-xl py-3 text-sm hover:bg-surface-muted disabled:opacity-50"
+                        >
+                            Split Bill
+                        </button>
+                    )}
+                </div>
+
+                <button
+                    onClick={handleCheckout}
+                    disabled={isSubmitting}
+                    className="w-full bg-[var(--color-primary)] text-white font-medium rounded-xl py-4 flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:opacity-70 disabled:active:scale-100 shadow-lg shadow-[var(--color-primary)]/20"
+                >
+                    {isSubmitting ? (
+                        <><Loader2 className="animate-spin" size={20} /> Sending to Kitchen...</>
+                    ) : (
+                        'Place Order'
+                    )}
+                </button>
+            </StickyBottomBar>
             {showSplit && sessionId && (
                 <SplitBillModal
                     sessionId={sessionId}
