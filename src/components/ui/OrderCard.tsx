@@ -64,7 +64,7 @@ export default function OrderCard({
             <div className="min-w-0 flex-1">
                 <div className="text-[17px] font-bold text-ink truncate tracking-tight">{title}</div>
                 {meta && (
-                    <div className="mt-1 flex items-center gap-2 text-[13px] font-medium text-ink-subtle">{meta}</div>
+                    <div className="mt-1 flex items-center gap-2 text-[13px] font-medium text-ink-subtle flex-wrap">{meta}</div>
                 )}
             </div>
             {trailing && <div className="shrink-0 text-right">{trailing}</div>}

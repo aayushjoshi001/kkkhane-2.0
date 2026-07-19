@@ -1387,7 +1387,7 @@ export default function CashierClient({
                                                         onClick={() => setSelectedBillingRoom(room)}
                                                         className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
                                                     >
-                                                        <span className="text-lg font-black text-ink block leading-tight">
+                                                        <span className="text-lg font-black text-ink block leading-tight truncate max-w-full px-1">
                                                             Room {room.room_number}
                                                         </span>
                                                         {booking && (
@@ -1415,7 +1415,7 @@ export default function CashierClient({
                                                         onClick={() => setSelectedBillingTable(table)}
                                                         className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
                                                     >
-                                                        <span className="text-lg font-black text-ink block leading-tight">
+                                                        <span className="text-lg font-black text-ink block leading-tight truncate max-w-full px-1">
                                                             Table {table.label}
                                                         </span>
                                                         <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">

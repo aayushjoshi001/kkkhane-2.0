@@ -639,7 +639,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
             <button onClick={onToggle} className="w-full text-left px-4 pt-3.5 pb-3">
                 <div className="flex items-center gap-2 flex-wrap pr-6 relative">
                     <span className="font-extrabold text-ink">#{order.id.slice(0, 4).toUpperCase()}</span>
-                    <span className="text-[11px] font-bold text-white px-2 py-0.5 rounded-full" style={{ background: stationAccent }}>{space}</span>
+                    <span className="text-[11px] font-bold text-white px-2 py-0.5 rounded-full truncate max-w-[140px]" style={{ background: stationAccent }}>{space}</span>
                     <span className="text-[11px] font-semibold text-ink-subtle bg-surface-muted px-2 py-0.5 rounded-full">{items.length} dish{items.length > 1 ? 'es' : ''}</span>
                     {chefLabel && (
                         <span className="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full inline-flex items-center gap-1">

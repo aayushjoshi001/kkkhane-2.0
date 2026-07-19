@@ -200,11 +200,11 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
                     {/* Top part: Name & description */}
                     <div className="space-y-1">
                         {/* Title and Veg/Non-Veg logo */}
-                        <div className="flex items-center gap-1.5 text-left">
+                        <div className="flex items-center gap-1.5 text-left min-w-0">
                             <div className={`w-3.5 h-3.5 border-[1.5px] ${isVeg ? 'border-emerald-600 bg-emerald-50' : 'border-red-600 bg-red-50'} flex items-center justify-center p-0.5 shrink-0 rounded-sm`}>
                                 <div className={`w-1.5 h-1.5 rounded-full ${isVeg ? 'bg-emerald-600' : 'bg-red-600'}`} />
                             </div>
-                            <h3 className="font-extrabold text-[14px] text-ink leading-tight uppercase truncate">
+                            <h3 className="font-extrabold text-[14px] text-ink leading-tight uppercase truncate min-w-0">
                                 {displayName}
                             </h3>
                         </div>
@@ -264,11 +264,11 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
                 className={`group relative bg-surface border border-hairline rounded-[28px] hover:border-brand-500/30 hover:shadow-[0_8px_30px_rgba(255,122,46,0.12)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 ease-out flex flex-col w-full p-3 pt-3.5 pb-3 gap-2.5 ${!item.is_available ? 'opacity-70' : ''}`}
             >
                 {/* Top: Dish name with Veg/Non-Veg Logo (Starts from Left Corner) */}
-                <div className="flex items-center gap-1.5 px-1 w-full justify-start text-left">
+                <div className="flex items-center gap-1.5 px-1 w-full justify-start text-left min-w-0">
                     <div className={`w-3.5 h-3.5 border-[1.5px] ${isVeg ? 'border-emerald-600 bg-emerald-50' : 'border-red-600 bg-red-50'} flex items-center justify-center p-0.5 shrink-0 rounded-sm`}>
                         <div className={`w-1.5 h-1.5 rounded-full ${isVeg ? 'bg-emerald-600' : 'bg-red-600'}`} />
                     </div>
-                    <h3 className="font-extrabold text-[12px] text-ink leading-tight uppercase line-clamp-1 truncate text-left">
+                    <h3 className="font-extrabold text-[12px] text-ink leading-tight uppercase line-clamp-1 truncate text-left min-w-0">
                         {displayName}
                     </h3>
                 </div>
