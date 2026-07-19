@@ -457,7 +457,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className={qrOrdersTotal > 0 ? "grid grid-cols-2 gap-4" : "space-y-1"}>
                                     <div className="space-y-1">
                                         <label className="block text-[9px] font-black text-amber-800 uppercase">Room Discount</label>
                                         <div className="relative">
@@ -475,22 +475,24 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         <span className="text-[9px] text-amber-700/60 font-semibold">Max: {money(stayCost)}</span>
                                     </div>
 
-                                    <div className="space-y-1">
-                                        <label className="block text-[9px] font-black text-amber-800 uppercase">Food Discount</label>
-                                        <div className="relative">
-                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-700">Rs.</span>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                max={qrOrdersTotal}
-                                                placeholder="0.00"
-                                                value={orderDiscount}
-                                                onChange={e => setOrderDiscount(e.target.value)}
-                                                className={`w-full pl-7 pr-2 py-2 border-2 rounded-xl text-xs font-bold bg-white focus:outline-none ${orderDiscountVal < 0 || orderDiscountVal > qrOrdersTotal ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
-                                            />
+                                    {qrOrdersTotal > 0 && (
+                                        <div className="space-y-1">
+                                            <label className="block text-[9px] font-black text-amber-800 uppercase">Food Discount</label>
+                                            <div className="relative">
+                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-700">Rs.</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max={qrOrdersTotal}
+                                                    placeholder="0.00"
+                                                    value={orderDiscount}
+                                                    onChange={e => setOrderDiscount(e.target.value)}
+                                                    className={`w-full pl-7 pr-2 py-2 border-2 rounded-xl text-xs font-bold bg-white focus:outline-none ${orderDiscountVal < 0 || orderDiscountVal > qrOrdersTotal ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
+                                                />
+                                            </div>
+                                            <span className="text-[9px] text-amber-700/60 font-semibold">Max: {money(qrOrdersTotal)}</span>
                                         </div>
-                                        <span className="text-[9px] text-amber-700/60 font-semibold">Max: {money(qrOrdersTotal)}</span>
-                                    </div>
+                                    )}
                                 </div>
 
                                 {totalDiscountAmount > 0 && (
