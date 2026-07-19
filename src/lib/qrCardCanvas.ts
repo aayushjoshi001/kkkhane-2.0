@@ -13,10 +13,22 @@ export interface QrCardOptions {
     sourceCanvas: HTMLCanvasElement
     /** Path to the footer logo image. */
     logoSrc: string
+    /**
+     * Output image format. Defaults to 'png' (transparent rounded corners) for
+     * the single-download button. The bulk-PDF export passes 'jpeg' because
+     * jsPDF concatenates every embedded image into a single string, and PNG
+     * data is large enough that many cards overflow V8's max string length
+     * ("Invalid string length"). JPEG is far smaller and prints identically on
+     * white paper. When 'jpeg', the whole canvas is filled white first (JPEG
+     * has no alpha, so the transparent corners would otherwise turn black).
+     */
+    format?: 'png' | 'jpeg'
+    /** JPEG quality (0–1). Only used when format is 'jpeg'. Defaults to 0.92 — high enough to keep QR codes crisp. */
+    quality?: number
 }
 
-/** Renders the branded QR card and returns a PNG data URL. */
-export async function renderQrCardPng({ label, restaurantName, sourceCanvas, logoSrc }: QrCardOptions): Promise<string> {
+/** Renders the branded QR card and returns a PNG (or JPEG) data URL. */
+export async function renderQrCardPng({ label, restaurantName, sourceCanvas, logoSrc, format = 'png', quality = 0.92 }: QrCardOptions): Promise<string> {
     // Preload logo image
     const logoImg = new Image()
     logoImg.src = logoSrc
@@ -62,8 +74,14 @@ export async function renderQrCardPng({ label, restaurantName, sourceCanvas, log
         }
     }
 
-    // Transparent outside the card so the rounded corners stay clean.
-    ctx.clearRect(0, 0, exportCanvas.width, exportCanvas.height)
+    // Transparent outside the card so the rounded corners stay clean. For JPEG
+    // (no alpha) fill white instead, otherwise the corners render black.
+    if (format === 'jpeg') {
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height)
+    } else {
+        ctx.clearRect(0, 0, exportCanvas.width, exportCanvas.height)
+    }
     traceCardPath()
     ctx.save()
     ctx.fillStyle = '#ffffff'
@@ -208,7 +226,9 @@ export async function renderQrCardPng({ label, restaurantName, sourceCanvas, log
     ctx.lineWidth = 2 * scale
     ctx.stroke()
 
-    return exportCanvas.toDataURL('image/png')
+    return format === 'jpeg'
+        ? exportCanvas.toDataURL('image/jpeg', quality)
+        : exportCanvas.toDataURL('image/png')
 }
 
 /** Triggers a browser download of a data URL under the given filename. */

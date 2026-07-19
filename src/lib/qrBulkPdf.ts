@@ -98,13 +98,18 @@ export async function buildQrCardsPdf(
         const y = cellY + (rowH - cardH) / 2
 
         const sourceCanvas = await makeQrCanvas(items[i].url, opts.logoSrc)
-        const png = await renderQrCardPng({
+        // JPEG (not PNG): jsPDF concatenates every embedded image into one
+        // string, and full-res PNGs overflow V8's max string length once a
+        // venue has enough QRs ("Invalid string length"). JPEG stays crisp
+        // enough for the QR to scan while keeping the document small.
+        const jpeg = await renderQrCardPng({
             label: items[i].label,
             restaurantName: opts.restaurantName,
             sourceCanvas,
             logoSrc: opts.logoSrc,
+            format: 'jpeg',
         })
-        pdf.addImage(png, 'PNG', x, y, cardW, cardH)
+        pdf.addImage(jpeg, 'JPEG', x, y, cardW, cardH, undefined, 'FAST')
     }
 
     pdf.save(opts.fileName)
