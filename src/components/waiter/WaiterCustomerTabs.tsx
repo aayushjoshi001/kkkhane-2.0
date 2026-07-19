@@ -98,9 +98,9 @@ export default function WaiterCustomerTabs({
                 toast.custom((t) => (
                     <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-ink text-white shadow-2xl rounded-xl px-4 py-3 flex items-start gap-3 ${isOpenSession ? 'border border-violet-500/40' : 'border border-amber-500/30'}`}>
                         <span className="text-xl mt-0.5">{isOpenSession ? '🪑' : '🔔'}</span>
-                        <div>
-                            <p className={`font-bold text-sm ${isOpenSession ? 'text-violet-400' : 'text-amber-400'}`}>{label}</p>
-                            <p className="text-xs text-ink-subtle mt-0.5">Table {tblLabel}{req.message ? ` — ${req.message}` : ''}</p>
+                        <div className="flex-1 min-w-0">
+                            <p className={`font-bold text-sm truncate ${isOpenSession ? 'text-violet-400' : 'text-amber-400'}`}>{label}</p>
+                            <p className="text-xs text-ink-subtle mt-0.5 line-clamp-2">Table {tblLabel}{req.message ? ` — ${req.message}` : ''}</p>
                         </div>
                     </div>
                 ), { duration: 7000, position: 'top-right' })
@@ -168,9 +168,9 @@ export default function WaiterCustomerTabs({
     const titleFor = (req: ServiceRequestWithTable) => {
         const Icon = ICON_MAP[req.request_type as ServiceRequestType]
         return (
-            <span className="flex items-center gap-1.5">
+            <span className="flex items-center gap-1.5 min-w-0">
                 <Icon size={15} className="text-ink-subtle shrink-0" />
-                {LABEL_MAP[req.request_type as ServiceRequestType]}
+                <span className="truncate">{LABEL_MAP[req.request_type as ServiceRequestType]}</span>
             </span>
         )
     }
@@ -230,7 +230,7 @@ export default function WaiterCustomerTabs({
                                 <>
                                     <span>{timeAgo(req.created_at)}</span>
                                     {req.acknowledged_by && (
-                                        <span className="text-ink-muted">
+                                        <span className="text-ink-muted truncate min-w-0 max-w-full">
                                             — {req.acknowledged_by === userId ? 'You are' : `${staffNames[req.acknowledged_by] || 'A colleague'} is`} on it
                                         </span>
                                     )}
@@ -263,14 +263,14 @@ export default function WaiterCustomerTabs({
                     {/* Food Tab */}
                     <button
                         onClick={() => setActiveTab('food')}
-                        className={`relative flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-extrabold transition-all active:scale-95 w-full ${
+                        className={`relative flex items-center justify-center gap-1.5 py-2 px-2 sm:px-3 rounded-xl text-[11px] sm:text-xs font-extrabold transition-all active:scale-95 w-full min-w-0 ${
                             activeTab === 'food'
                                 ? 'bg-[var(--color-primary)] text-white shadow-sm'
                                 : 'bg-surface border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink-muted shadow-sm'
                         }`}
                     >
-                        <Utensils size={13} />
-                        FOOD
+                        <Utensils size={13} className="shrink-0" />
+                        <span className="truncate">FOOD</span>
                         {foodCount > 0 && (
                             <div className="absolute -top-2.5 -right-2.5 w-6 h-6 flex items-center justify-center pointer-events-none">
                                 <Flame 
@@ -287,14 +287,14 @@ export default function WaiterCustomerTabs({
                     {/* Service Tab */}
                     <button
                         onClick={() => setActiveTab('service')}
-                        className={`relative flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-extrabold transition-all active:scale-95 w-full ${
+                        className={`relative flex items-center justify-center gap-1.5 py-2 px-2 sm:px-3 rounded-xl text-[11px] sm:text-xs font-extrabold transition-all active:scale-95 w-full min-w-0 ${
                             activeTab === 'service'
                                 ? 'bg-[var(--color-primary)] text-white shadow-sm'
                                 : 'bg-surface border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink-muted shadow-sm'
                         }`}
                     >
-                        <HandHelping size={13} />
-                        SERVICE
+                        <HandHelping size={13} className="shrink-0" />
+                        <span className="truncate">SERVICE</span>
                         {serviceCount > 0 && (
                             <div className="absolute -top-2.5 -right-2.5 w-6 h-6 flex items-center justify-center pointer-events-none">
                                 <Flame 
@@ -311,21 +311,21 @@ export default function WaiterCustomerTabs({
                     {/* Billing Tab */}
                     <button
                         onClick={() => setActiveTab('billing')}
-                        className={`relative flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-extrabold transition-all active:scale-95 w-full ${
+                        className={`relative flex items-center justify-center gap-1.5 py-2 px-2 sm:px-3 rounded-xl text-[11px] sm:text-xs font-extrabold transition-all active:scale-95 w-full min-w-0 ${
                             activeTab === 'billing'
                                 ? 'bg-[var(--color-primary)] text-white shadow-sm'
                                 : 'bg-surface border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink-muted shadow-sm'
                         }`}
                     >
-                        <Banknote size={13} />
+                        <Banknote size={13} className="shrink-0" />
                         {billingCount > 0 && (
-                            <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md min-w-[18px] text-center ${
+                            <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md min-w-[18px] text-center shrink-0 ${
                                 activeTab === 'billing' ? 'bg-surface/20 text-white' : 'bg-red-100 text-red-700'
                             }`}>
                                 {billingCount}
                             </span>
                         )}
-                        BILLING
+                        <span className="truncate">BILLING</span>
                     </button>
                 </div>
             </div>

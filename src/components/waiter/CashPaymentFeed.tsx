@@ -77,10 +77,10 @@ export default function CashPaymentFeed({
                         title={tableLabel ? `Table ${tableLabel}` : 'Takeout'}
                         meta={order.delivered_at ? <span>Delivered {timeAgo(order.delivered_at)}</span> : undefined}
                         trailing={
-                            <div className="flex flex-col items-end gap-2">
-                                <span className="text-h3 text-ink tabular">{money(order.total_amount)}</span>
+                            <div className="flex flex-col items-end gap-2 max-w-[160px]">
+                                <span className="text-h3 text-ink tabular truncate max-w-full">{money(order.total_amount)}</span>
                                 <Button variant="primary" size="sm" icon={CheckCircle} loading={isProcessing} onClick={() => handleCashPaid(order.id)}>
-                                    I'm Going to Collect
+                                    Collect
                                 </Button>
                             </div>
                         }
