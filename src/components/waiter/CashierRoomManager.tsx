@@ -65,6 +65,7 @@ export default function CashierRoomManager({
     const money = useCurrency()
     const supabaseRef = useRef(createClient())
     const manualEntryEnabled = useFeatureEnabled('manualEntryEnabled')
+    const bsEnabled = useFeatureEnabled('bsDateEnabled')
 
     // Sub-modal and drawer states
     const [bookingFormOpen, setBookingFormOpen] = useState(false)
@@ -916,8 +917,8 @@ export default function CashierRoomManager({
                                     </div>
                                     <div className="space-y-2 text-right border-l border-hairline pl-4">
                                         <p className="text-[10px] font-bold text-ink-subtle uppercase text-right">Stay Schedule</p>
-                                        <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">In:</span> {formatDateTime(activeBooking.check_in)}</p>
-                                        <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">Out:</span> {formatDateTime(activeBooking.check_out)}</p>
+                                        <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">In:</span> {formatDateTime(activeBooking.check_in, bsEnabled)}</p>
+                                        <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">Out:</span> {formatDateTime(activeBooking.check_out, bsEnabled)}</p>
                                         <p className="text-[10px] text-brand-500 font-extrabold">{activeBooking.adults} Guest(s)</p>
                                     </div>
                                 </div>

@@ -14,6 +14,7 @@ import { StatusBadge } from '@/components/ui/Badge'
 import { StatCardSkeleton, RowSkeleton } from '@/components/ui/Skeleton'
 import { getBusinessMode } from '@/lib/businessMode'
 import { getRestaurantFeatures } from '@/lib/features'
+import { toNepaliDate } from '@/lib/nepaliDate'
 
 export const revalidate = 0
 
@@ -304,8 +305,15 @@ async function PipelineTableSection({ restaurantId, money, isHotel = false }: { 
                         <tbody className="divide-y divide-gray-50">
                             {recentBookings.map(booking => {
                                 const roomNumber = (booking.rooms as unknown as { room_number: string } | null)?.room_number || '—'
-                                const checkInDate = new Date(booking.check_in).toLocaleDateString([], { month: 'short', day: 'numeric' })
-                                const checkOutDate = new Date(booking.check_out).toLocaleDateString([], { month: 'short', day: 'numeric' })
+                                const bsDateEnabled = !!features?.bsDateEnabled
+                                const chIn = new Date(booking.check_in)
+                                const chOut = new Date(booking.check_out)
+                                const checkInDate = bsDateEnabled
+                                    ? toNepaliDate(chIn, 'MMMM DD', 'en')
+                                    : chIn.toLocaleDateString([], { month: 'short', day: 'numeric' })
+                                const checkOutDate = bsDateEnabled
+                                    ? toNepaliDate(chOut, 'MMMM DD', 'en')
+                                    : chOut.toLocaleDateString([], { month: 'short', day: 'numeric' })
                                 return (
                                     <tr key={booking.id} className="group hover:bg-gray-50/50 transition-colors cursor-pointer">
                                         <td className="px-6 py-4">

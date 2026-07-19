@@ -14,7 +14,8 @@ import NextImage from 'next/image'
 import { renderQrCardPng, downloadDataUrl } from '@/lib/qrCardCanvas'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 import DownloadAllQrsButton from '@/components/admin/DownloadAllQrsButton'
-import { useFeatures } from '@/lib/contexts/FeatureContext'
+import { useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
+import { toNepaliDate } from '@/lib/nepaliDate'
 
 const QR_LOGO_SRC = '/icons/kkkhane.png'
 
@@ -457,15 +458,23 @@ export default function RoomsClient({
         return `https://kkkhane.com/r/${restaurantSlug}?room=${encodeURIComponent(roomId)}`
     }
 
+    const bsEnabled = useFeatureEnabled('bsDateEnabled')
     const formatDateTime = (dateStr: string) => {
         if (!dateStr) return '-'
-        return new Date(dateStr).toLocaleString('en-US', {
+        const date = new Date(dateStr)
+        const ad = date.toLocaleString('en-US', {
             month: 'short',
             day: 'numeric',
             hour: '2-digit',
             minute: '2-digit',
             hour12: true
         })
+        if (!bsEnabled) return ad
+        try {
+            return `${ad} (${toNepaliDate(date, 'MMMM DD, YYYY', 'en')} BS)`
+        } catch {
+            return ad
+        }
     }
 
     return (

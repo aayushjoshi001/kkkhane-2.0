@@ -110,6 +110,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const printBillEnabled = useFeatureEnabled('printBillEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
+    const bsEnabled = useFeatureEnabled('bsDateEnabled')
     // True once the checkout API confirms the room is settled — printing
     // happens after this, so the manager sees "Settled" immediately instead
     // of waiting on a printer that may be slow or not configured.
@@ -391,8 +392,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                 </div>
                                 <div className="space-y-1 text-right border-l border-gray-100 pl-4">
                                     <p className="text-[10px] font-bold text-gray-400 uppercase">Stay schedule</p>
-                                    <p className="font-semibold text-gray-600">In: {formatDateTime(booking.check_in)}</p>
-                                    <p className="font-semibold text-gray-600">Out: {formatDateTime(booking.check_out)}</p>
+                                    <p className="font-semibold text-gray-600">In: {formatDateTime(booking.check_in, bsEnabled)}</p>
+                                    <p className="font-semibold text-gray-600">Out: {formatDateTime(booking.check_out, bsEnabled)}</p>
                                     {isExceeded && (
                                         <p className="text-[9px] text-rose-600 font-bold mt-1">⚠ Exceeded by {extraHours} hr(s)</p>
                                     )}

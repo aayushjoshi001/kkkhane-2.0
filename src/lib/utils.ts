@@ -4,6 +4,7 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import type { AdvancePaymentMethod } from '@/types/database'
+import { toNepaliDate } from './nepaliDate'
 
 /**
  * Merge class names with Tailwind-aware deduplication.
@@ -86,10 +87,10 @@ export function timeAgo(timestamp: string): string {
 /**
  * Format ISO datetime string into human readable locale string.
  */
-export function formatDateTime(dateStr: string | Date | null | undefined): string {
+export function formatDateTime(dateStr: string | Date | null | undefined, bsEnabled = false): string {
     if (!dateStr) return '-'
     const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr
-    return date.toLocaleString('en-US', {
+    const ad = date.toLocaleString('en-US', {
         timeZone: 'Asia/Kathmandu',
         month: 'short',
         day: 'numeric',
@@ -97,6 +98,12 @@ export function formatDateTime(dateStr: string | Date | null | undefined): strin
         minute: '2-digit',
         hour12: true
     })
+    if (!bsEnabled) return ad
+    try {
+        return `${ad} (${toNepaliDate(date, 'MMMM DD, YYYY', 'en')} BS)`
+    } catch {
+        return ad
+    }
 }
 
 /**

@@ -108,6 +108,7 @@ export default function CashierClient({
     const showInvoiceEnabled = useFeatureEnabled('showInvoiceEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
+    const bsEnabled = useFeatureEnabled('bsDateEnabled')
     const { print: printInvoice } = usePrinter('invoice')
     const [active, setActive] = useState<ActiveOrder[]>(initialActive)
     const [processingId, setProcessingId] = useState<string | null>(null)
@@ -1698,8 +1699,8 @@ export default function CashierClient({
                                     </div>
                                     <div className="space-y-1 text-right border-l border-hairline pl-4">
                                         <p className="text-[10px] font-bold text-ink-subtle uppercase">Stay schedule</p>
-                                        <p className="font-semibold text-ink-muted">In: {formatDateTime(billingStayBooking.check_in)}</p>
-                                        <p className="font-semibold text-ink-muted">Out: {formatDateTime(billingStayBooking.check_out)}</p>
+                                        <p className="font-semibold text-ink-muted">In: {formatDateTime(billingStayBooking.check_in, bsEnabled)}</p>
+                                        <p className="font-semibold text-ink-muted">Out: {formatDateTime(billingStayBooking.check_out, bsEnabled)}</p>
                                         {isExceeded && (
                                             <p className="text-[9px] text-rose-600 font-bold mt-1">⚠ Exceeded by {extraHours} hr(s)</p>
                                         )}
