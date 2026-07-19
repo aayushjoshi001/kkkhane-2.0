@@ -266,7 +266,9 @@ export default function CashierRoomManager({
         for (const o of combinedOrders) {
             uniqueOrdersMap.set(o.id, o)
         }
-        const uniqueOrders = Array.from(uniqueOrdersMap.values())
+        const uniqueOrders = Array.from(uniqueOrdersMap.values()).filter(o => {
+            return o.sessions?.tables?.room_id !== null && o.sessions?.tables?.room_id !== undefined
+        })
 
         const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
         let total = 0

@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
         type LinkedOrder = { id: string; session_id: string | null; sessions: any; order_items?: LinkedOrderItem[] }
         const items = ((orders || []) as LinkedOrder[]).flatMap((o) => {
             const roomId = getRoomId(o.sessions)
-            const isRoomOrder = roomId !== null
+            const isRoomOrder = roomId !== null || o.session_id === null
             return (o.order_items || []).map((item) => ({
                 id: item.id,
                 quantity: item.quantity,

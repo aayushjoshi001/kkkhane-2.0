@@ -27,7 +27,7 @@ type OrderItem = {
     unit_price?: number
     menu_items: { name: string } | null 
 }
-type TableRef = { label?: string } | null
+type TableRef = { id?: string; label?: string; room_id?: string | null } | null
 
 export type UnpaidOrder = {
     id: string
@@ -333,7 +333,9 @@ export default function CashierClient({
         for (const o of combinedOrders) {
             uniqueOrdersMap.set(o.id, o)
         }
-        const uniqueOrders = Array.from(uniqueOrdersMap.values())
+        const uniqueOrders = Array.from(uniqueOrdersMap.values()).filter(o => {
+            return o.sessions?.tables?.room_id !== null && o.sessions?.tables?.room_id !== undefined
+        })
 
         const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
         for (const order of uniqueOrders) {
@@ -832,7 +834,8 @@ export default function CashierClient({
         let occupied = 0
         let dirty = 0
         for (const t of tables) {
-            const status = t.activeSession ? 'active' : (t.table_status || 'available')
+            const rawStatus = t.activeSession ? 'active' : (t.table_status || 'available')
+            const status = (isHotel && rawStatus === 'dirty') ? 'available' : rawStatus
             if (status === 'active') occupied++
             else if (status === 'dirty') dirty++
             else if (status === 'reserved') reserved++
@@ -875,7 +878,7 @@ export default function CashierClient({
         if (payload.eventType === 'INSERT') {
             const { data } = await supabase
                 .from('orders')
-                .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, seat_number, tables ( label ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
+                .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, seat_number, tables ( id, label, room_id ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
                 .eq('id', payload.new.id)
                 .single()
             if (data) setActive(prev => [...prev, data as unknown as ActiveOrder])
@@ -885,7 +888,7 @@ export default function CashierClient({
                 // Fetch full record to show in unpaid list
                 const { data } = await supabase
                     .from('orders')
-                    .select(`id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id, sessions ( id, seat_number, tables ( label ) ), order_items ( quantity, unit_price, menu_items ( name ) )`)
+                    .select(`id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id, sessions ( id, seat_number, tables ( id, label, room_id ) ), order_items ( quantity, unit_price, menu_items ( name ) )`)
                     .eq('id', id)
                     .single()
                 if (data) {
@@ -1125,7 +1128,7 @@ export default function CashierClient({
                                 const supabase = supabaseRef.current
                                 const { data } = await supabase
                                     .from('orders')
-                                    .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, seat_number, tables ( label ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
+                                    .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, seat_number, tables ( id, label, room_id ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
                                     .eq('id', orderId)
                                     .single()
                                 if (data) {
@@ -1145,14 +1148,16 @@ export default function CashierClient({
                     <div className="flex flex-col gap-4 w-full">
                         {/* Sticky Sub-tabs / Filters */}
                         <div className="sticky top-28 z-20 bg-canvas -mx-3 px-3 md:mx-0 md:px-0 py-2 border-b border-hairline flex items-center w-full justify-center">
-                            <div className="grid grid-cols-5 gap-1.5 sm:gap-2.5 w-full">
+                            <div className={`grid ${isHotel ? 'grid-cols-4' : 'grid-cols-5'} gap-1.5 sm:gap-2.5 w-full`}>
                                 {([
                                     { key: 'all', label: 'ALL', count: spaceCounts.all },
                                     { key: 'available', label: 'Available', count: spaceCounts.available },
                                     { key: 'reserved', label: 'Reserved', count: spaceCounts.reserved },
                                     { key: 'dirty', label: 'Dirty', count: spaceCounts.dirty },
                                     { key: 'occupied', label: 'Occupied', count: spaceCounts.occupied }
-                                ] as const).map(({ key, label, count }) => {
+                                ] as const)
+                                .filter(({ key }) => !(isHotel && key === 'dirty'))
+                                .map(({ key, label, count }) => {
                                     const isActive = spaceFilter === key
                                     const activeColors = {
                                         all: 'bg-[var(--color-primary)] text-white',
@@ -1640,25 +1645,11 @@ export default function CashierClient({
                                             <span className="font-extrabold text-ink-muted tabular-nums">{money(calculateStayCost(selectedBillingRoom, billingStayBooking))}</span>
                                         </div>
 
-                                        {getRoomQrOrders(selectedBillingRoom).length > 0 && (
+                                        {billingLinkedOrders.length > 0 && (
                                             <div className="p-4 space-y-2">
-                                                <p className="font-extrabold text-xs text-indigo-650 font-semibold">QR Room service orders</p>
+                                                <p className="font-extrabold text-xs text-indigo-650 font-semibold">Service Orders (QR + Dining)</p>
                                                 <div className="space-y-1.5 pl-3 border-l-2 border-indigo-100">
-                                                    {getRoomQrOrders(selectedBillingRoom).map((item, idx) => (
-                                                        <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
-                                                            <span>{item.name} ({item.quantity}×)</span>
-                                                            <span className="tabular-nums font-semibold">{money(item.unitPrice * item.quantity)}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {filteredLinkedOrders.length > 0 && (
-                                            <div className="p-4 space-y-2">
-                                                <p className="font-extrabold text-xs text-emerald-650 font-semibold">Restaurant dining (table orders)</p>
-                                                <div className="space-y-1.5 pl-3 border-l-2 border-emerald-100">
-                                                    {filteredLinkedOrders.map((item, idx) => (
+                                                    {billingLinkedOrders.map((item, idx) => (
                                                         <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
                                                             <span>{item.menu_items?.name || 'Item'} ({item.quantity}×)</span>
                                                             <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>

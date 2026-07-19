@@ -250,6 +250,7 @@ export interface Session {
     discount_reason: string | null
     discount_applied_by: string | null
     discount_applied_at: string | null
+    booking_id: string | null
     // Joined fields
     tables?: Table
     seats?: SessionSeat[]
@@ -865,6 +866,7 @@ export interface HomepageConfig {
         enabled?: boolean
         review_link?: string
         map_address?: string
+        address?: string
         phone?: string
         email?: string
     }

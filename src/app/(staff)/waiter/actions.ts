@@ -360,7 +360,7 @@ export async function placeStaffOrder(
     // Resolve session (UUID vs token) safely to avoid UUID casting errors in Postgres
     let query = adminSupabase
         .from('sessions')
-        .select('id, restaurant_id, status, table_id')
+        .select('id, restaurant_id, status, table_id, booking_id')
         .eq('status', 'active')
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)
@@ -434,6 +434,29 @@ export async function placeStaffOrder(
             .from('orders')
             .update(updateFields)
             .eq('id', result.order_id)
+
+        // Automatically close the table session if linked to a room bill (either on session or table-linked)
+        const bookingIdToLink = session.booking_id || roomContext?.bookingId
+        if (bookingIdToLink) {
+            await adminSupabase
+                .from('sessions')
+                .update({
+                    status: 'closed',
+                    closed_at: new Date().toISOString()
+                })
+                .eq('id', session.id)
+
+            await markTableDirtyForSession(adminSupabase, session.id)
+
+            void logAudit({
+                restaurantId: session.restaurant_id,
+                userId: user.id,
+                action: 'session_closed',
+                entityType: 'session',
+                entityId: session.id,
+                newValue: { reason: 'auto_room_linked_order' },
+            })
+        }
 
         // place_order() already deducted stock/ingredients inline for every item —
         // do not call deduct_ingredients_for_order here, it would double-deduct.
