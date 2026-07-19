@@ -44,6 +44,8 @@ export interface ActiveInvoice {
     cashPaid?: number
     qrPaid?: number
     creditPaid?: number
+    discountAmount?: number
+    discountReason?: string
 }
 
 const COL = { desc: 18, qty: 4, rate: 9, amt: 11 }
@@ -117,6 +119,9 @@ export function buildInvoiceTicket(
     }
 
     b.divider()
+    if (invoice.discountAmount && invoice.discountAmount > 0) {
+        b.columns([{ text: 'TOTAL DISCOUNT', width: LINE_WIDTH - 14 }, { text: `-${money(invoice.discountAmount)}`, width: 14, align: 'right' }])
+    }
     b.bold(true)
     b.columns([{ text: 'GRAND TOTAL', width: LINE_WIDTH - 14 }, { text: money(invoice.total), width: 14, align: 'right' }])
     b.bold(false)
