@@ -51,6 +51,11 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
 
     const [showModifiers, setShowModifiers] = useState(false)
     const [selectedMods, setSelectedMods] = useState<Record<string, string[]>>({})
+    // A failed image load (bad URL, offline PWA, optimizer/network hiccup) must
+    // degrade to the placeholder below — never leave next/image showing the raw
+    // broken-image glyph. Keyed to the current src so a different item retries.
+    const [failedImageSrc, setFailedImageSrc] = useState<string | null>(null)
+    const showImage = !!item.image_url && failedImageSrc !== item.image_url
 
     // Close the modifier sheet on Escape for keyboard/accessibility users.
     useEffect(() => {
@@ -158,13 +163,14 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
             >
                 {/* Left: Square Image Container */}
                 <div className="relative w-20 h-20 rounded-2xl bg-surface-muted overflow-hidden shrink-0 border border-hairline z-10">
-                    {item.image_url ? (
+                    {showImage ? (
                         <Image
-                            src={item.image_url}
+                            src={item.image_url!}
                             alt={displayName}
                             fill
                             className="object-cover group-hover:scale-[1.04] transition-transform duration-500"
                             sizes="80px"
+                            onError={() => setFailedImageSrc(item.image_url!)}
                         />
                     ) : (
                         <div className="absolute inset-0 flex items-center justify-center bg-surface-muted">
@@ -269,13 +275,14 @@ export default function MenuItemCard({ item, comboItems = [], menuItems = [], se
 
                 {/* Middle: Centered Wide Image Container */}
                 <div className="relative w-full aspect-[16/10] rounded-[20px] bg-surface-muted overflow-hidden shrink-0 shadow-sm border border-hairline z-10">
-                    {item.image_url ? (
+                    {showImage ? (
                         <Image
-                            src={item.image_url}
+                            src={item.image_url!}
                             alt={displayName}
                             fill
                             className="object-cover group-hover:scale-[1.04] transition-transform duration-500"
                             sizes="200px"
+                            onError={() => setFailedImageSrc(item.image_url!)}
                         />
                     ) : (
                         <div className="absolute inset-0 flex items-center justify-center bg-surface-muted">

@@ -34,6 +34,15 @@ export default function UserAvatarMenu({ user }: { user: NavUser }) {
 
     const name = user.fullName || user.email
 
+    // A stored avatar_url (typically a Google OAuth photo) can 403 when the
+    // optimizer fetches it server-side, or fail offline — either way next/image
+    // would render the broken-image glyph. On error, fall back to the generated
+    // DiceBear avatar, which is served unoptimized and reliably resolves.
+    const [avatarFailed, setAvatarFailed] = useState(false)
+    const avatarSrc = avatarFailed
+        ? generatedAvatar(user.fullName || user.email || 'user')
+        : avatarFor(user)
+
     // Close on outside click / Escape.
     useEffect(() => {
         if (!open) return
@@ -66,11 +75,12 @@ export default function UserAvatarMenu({ user }: { user: NavUser }) {
                 aria-label="Account menu"
             >
                 <Image
-                    src={avatarFor(user)}
+                    src={avatarSrc}
                     alt={name}
                     width={32}
                     height={32}
-                    unoptimized={isGeneratedAvatar(avatarFor(user))}
+                    unoptimized={isGeneratedAvatar(avatarSrc)}
+                    onError={() => { if (!isGeneratedAvatar(avatarSrc)) setAvatarFailed(true) }}
                     className="h-8 w-8 rounded-full object-cover"
                 />
                 <ChevronDown
