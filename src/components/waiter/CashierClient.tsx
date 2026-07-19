@@ -173,6 +173,21 @@ export default function CashierClient({
     // not the discount amount itself.
     const [tableBargainRate, setTableBargainRate] = useState<string>('')
     const [tableBargainReason, setTableBargainReason] = useState<string>('')
+    const [roomDiscount, setRoomDiscount] = useState<string>('')
+    const [foodDiscount, setFoodDiscount] = useState<string>('')
+    const [discountReason, setDiscountReason] = useState<string>('')
+
+    useEffect(() => {
+        setRoomDiscount('')
+        setFoodDiscount('')
+        setDiscountReason('')
+        setBillingPaymentMethod('cash')
+        setSplitCashAmount('')
+        setSplitQrAmount('')
+        setBillingQrCodeId('')
+        setCreditCustomerName('')
+        setCreditCustomerPhone('')
+    }, [selectedBillingRoom?.id])
     // Shared by both the room and table billing panels below — only one is
     // ever open at a time, so one pair of fields is enough. Only ever read
     // from the settlement confirmation popup now (see showSettlementConfirm) —
@@ -396,8 +411,15 @@ export default function CashierClient({
         const stayCost = calculateStayCost(room, booking)
         const qrOrdersTotal = getRoomQrOrders(room).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
         const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+        const totalFoodOrders = qrOrdersTotal + linkedOrdersTotal
+        
+        const roomDiscountVal = roomDiscount.trim() !== '' ? parseFloat(roomDiscount) || 0 : 0
+        const foodDiscountVal = foodDiscount.trim() !== '' ? parseFloat(foodDiscount) || 0 : 0
+        
+        const effectiveStayCost = Math.max(0, stayCost - roomDiscountVal)
+        const effectiveFoodOrders = Math.max(0, totalFoodOrders - foodDiscountVal)
         const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
-        return stayCost + qrOrdersTotal + linkedOrdersTotal + manualChargesTotal
+        return effectiveStayCost + effectiveFoodOrders + manualChargesTotal
     }
 
     // Pure computation — no side effects — so compileInvoice below can inspect
@@ -421,7 +443,7 @@ export default function CashierClient({
 
             const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
             const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
-            const total = stayCost + qrOrdersTotal + linkedOrdersTotal + manualChargesTotal
+            const total = calculateGrandTotal(room, booking)
 
             // Advance already paid at booking
             const advancePaid = Number(booking.paid_amount) || 0
@@ -467,7 +489,6 @@ export default function CashierClient({
                 })),
                 linkedOrdersTotal,
                 manualCharges: billingRoomCharges,
-                manualChargesTotal,
                 total,
                 advancePaid,
                 advanceMethod: booking.advance_payment_method || 'none',
@@ -482,6 +503,8 @@ export default function CashierClient({
                 qrCodeId: (resolvedQr > 0) ? (billingQrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined)) : undefined,
                 customerName: booking.guest_name,
                 customerPhone: booking.guest_phone,
+                discountAmount: (parseFloat(roomDiscount) || 0) + (parseFloat(foodDiscount) || 0),
+                discountReason: discountReason,
             }
         } else {
             const table = item
@@ -723,6 +746,8 @@ export default function CashierClient({
                         qr_paid: invoice.qrPaid,
                         qr_code_id: invoice.qrCodeId,
                         session_id: sessionId || null,
+                        discount_amount: invoice.discountAmount || 0,
+                        discount_reason: invoice.discountReason,
                         credit_amount: invoice.creditPaid || 0,
                         customer_name: invoice.customerName,
                         customer_phone: invoice.customerPhone,
@@ -1635,7 +1660,20 @@ export default function CashierClient({
                             </div>
                         ) : billingStayBooking ? (
                             <>
-                                <div className="space-y-6 p-6 overflow-y-auto flex-1">
+                                {(() => {
+                                    const stayCost = calculateStayCost(selectedBillingRoom, billingStayBooking)
+                                    const qrOrdersTotal = getRoomQrOrders(selectedBillingRoom).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
+                                    const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+                                    const totalFoodOrders = qrOrdersTotal + linkedOrdersTotal
+
+                                    const roomDiscountVal = roomDiscount.trim() !== '' ? parseFloat(roomDiscount) || 0 : 0
+                                    const foodDiscountVal = foodDiscount.trim() !== '' ? parseFloat(foodDiscount) || 0 : 0
+                                    const totalDiscountAmount = roomDiscountVal + foodDiscountVal
+
+                                    const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost || foodDiscountVal < 0 || foodDiscountVal > totalFoodOrders
+
+                                    return (
+                                        <div className="space-y-6 p-6 overflow-y-auto flex-1">
                                 <div className="grid grid-cols-2 gap-4 bg-surface-muted/50 border border-hairline rounded-2xl p-4 text-xs">
                                     <div className="space-y-1.5">
                                         <p className="text-[10px] font-bold text-ink-subtle uppercase">Guest</p>
@@ -1657,8 +1695,28 @@ export default function CashierClient({
                                                 <p className="font-extrabold text-ink">Room Stay Cost</p>
                                                 <p className="text-[10px] text-ink-subtle">{money(selectedBillingRoom.room_types?.base_price || 0)} / Night</p>
                                             </div>
-                                            <span className="font-extrabold text-ink-muted tabular-nums">{money(calculateStayCost(selectedBillingRoom, billingStayBooking))}</span>
+                                            <span className="font-extrabold text-ink-muted tabular-nums">{money(stayCost)}</span>
                                         </div>
+
+                                        {roomDiscountVal > 0 && (
+                                            <div className="flex justify-between items-center p-4 text-xs bg-rose-50/40">
+                                                <div>
+                                                    <p className="font-extrabold text-rose-600">Room Stay Discount</p>
+                                                    <p className="text-[10px] text-gray-400 truncate max-w-[220px]">{discountReason || 'Reason required'}</p>
+                                                </div>
+                                                <span className="font-extrabold text-rose-600 tabular-nums">− {money(roomDiscountVal)}</span>
+                                            </div>
+                                        )}
+
+                                        {foodDiscountVal > 0 && (
+                                            <div className="flex justify-between items-center p-4 text-xs bg-rose-50/40">
+                                                <div>
+                                                    <p className="font-extrabold text-rose-600">Order/Food Discount</p>
+                                                    <p className="text-[10px] text-gray-400 truncate max-w-[220px]">{discountReason || 'Reason required'}</p>
+                                                </div>
+                                                <span className="font-extrabold text-rose-600 tabular-nums">− {money(foodDiscountVal)}</span>
+                                            </div>
+                                        )}
 
                                         {billingLinkedOrders.length > 0 && (
                                             <div className="p-4 space-y-2">
@@ -1688,6 +1746,70 @@ export default function CashierClient({
                                             </div>
                                         )}
                                     </div>
+                                </div>
+
+                                {/* Discounts section */}
+                                <div className="border border-hairline rounded-2xl p-4 space-y-4 bg-surface-muted/30">
+                                    <div className="flex items-center gap-2 pb-2 border-b border-hairline">
+                                        <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                                            <Percent size={14} className="text-amber-700" />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-black text-amber-800 uppercase tracking-wider">Discounts</p>
+                                            <p className="text-[10px] text-amber-700/70 font-semibold">Apply discounts to Room rent and/or Food orders</p>
+                                        </div>
+                                    </div>
+
+                                    <div className={totalFoodOrders > 0 ? "grid grid-cols-2 gap-4" : "space-y-1"}>
+                                        <div className="space-y-1">
+                                            <label className="block text-[9px] font-black text-amber-800 uppercase">Room Discount</label>
+                                            <div className="relative">
+                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-700">Rs.</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max={stayCost}
+                                                    placeholder="0.00"
+                                                    value={roomDiscount}
+                                                    onChange={e => setRoomDiscount(e.target.value)}
+                                                    className={`w-full pl-7 pr-2 py-2 border rounded-xl text-xs font-bold bg-surface focus:outline-none ${roomDiscountVal < 0 || roomDiscountVal > stayCost ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
+                                                />
+                                            </div>
+                                            <span className="text-[9px] text-amber-700/60 font-semibold">Max: {money(stayCost)}</span>
+                                        </div>
+
+                                        {totalFoodOrders > 0 && (
+                                            <div className="space-y-1">
+                                                <label className="block text-[9px] font-black text-amber-800 uppercase">Food Discount</label>
+                                                <div className="relative">
+                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-700">Rs.</span>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        max={totalFoodOrders}
+                                                        placeholder="0.00"
+                                                        value={foodDiscount}
+                                                        onChange={e => setFoodDiscount(e.target.value)}
+                                                        className={`w-full pl-7 pr-2 py-2 border rounded-xl text-xs font-bold bg-surface focus:outline-none ${foodDiscountVal < 0 || foodDiscountVal > totalFoodOrders ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
+                                                    />
+                                                </div>
+                                                <span className="text-[9px] text-amber-700/60 font-semibold">Max: {money(totalFoodOrders)}</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {totalDiscountAmount > 0 && (
+                                        <div className="space-y-1">
+                                            <label className="block text-[9px] font-black text-amber-800 uppercase">Discount Reason (required)</label>
+                                            <input
+                                                type="text"
+                                                value={discountReason}
+                                                onChange={e => setDiscountReason(e.target.value)}
+                                                placeholder="e.g. Regular guest / service delay compensation"
+                                                className="w-full px-3 py-2 border rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-amber-500"
+                                            />
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Payment Method Selector */}
@@ -1865,6 +1987,7 @@ export default function CashierClient({
                                                             <Button
                                                                 variant="primary"
                                                                 loading={isDirectCheckingOut}
+                                                                disabled={discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
                                                                 onClick={() => handleCloseGuestDirectly(selectedBillingRoom)}
                                                                 className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
                                                             >
@@ -1873,6 +1996,7 @@ export default function CashierClient({
                                                         ) : (
                                                             <Button
                                                                 variant="primary"
+                                                                disabled={discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
                                                                 onClick={() => compileInvoice('room', selectedBillingRoom)}
                                                                 className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
                                                             >
