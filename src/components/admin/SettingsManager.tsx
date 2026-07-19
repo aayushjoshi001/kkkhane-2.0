@@ -99,14 +99,16 @@ export default function SettingsManager({
     initialBusinessHours,
     bankAccounts,
     initialQrCodes,
-    canEdit
+    canEdit,
+    isSuperAdmin = false,
 }: {
     initialRestaurant: RestaurantSettings
     initialFeatures: Features | null
     initialBusinessHours: BusinessHours | null
-    bankAccounts: { id: string; name: string }[]
+    bankAccounts: any[]
     initialQrCodes: QrCodeEntry[]
     canEdit: boolean
+    isSuperAdmin?: boolean
 }) {
     const [formData, setFormData] = useState<RestaurantSettings>(initialRestaurant)
     const [features, setFeatures] = useState<Features>(() => {
@@ -135,8 +137,8 @@ export default function SettingsManager({
             manualEntryEnabled: true,
             printBillEnabled: true,
             showInvoiceEnabled: true,
-            ...base
-        }
+            ...(base as any)
+        } as Features
     })
     const [taxRateStr, setTaxRateStr] = useState((initialRestaurant.tax_rate ?? 13).toString())
     const [businessHours, setBusinessHours] = useState<BusinessHours>(() => buildBusinessHours(initialBusinessHours))
@@ -891,30 +893,58 @@ export default function SettingsManager({
                         { key: 'generateInvoiceEnabled' as const, label: 'Generate Invoice', desc: 'Settle and record official invoice data' },
                         { key: 'printInvoiceEnabled' as const, label: 'Print Invoice', desc: 'Auto spool print receipts at till checkout' },
                         { key: 'irdSyncEnabled' as const, label: 'IRD Real-time Sync', desc: 'Sync billing receipts to Inland Revenue Department' },
-                    ]).map(({ key, label, desc }) => (
-                        <div
-                            key={key}
-                            className={`flex items-center justify-between p-4 rounded-[var(--r-md)] border select-none ${
-                                features[key]
-                                    ? 'bg-emerald-50/20 border-emerald-500/20 shadow-[inset_0_2px_4px_rgba(16,185,129,0.01)]'
-                                    : 'bg-surface border-hairline opacity-60 shadow-[0_2px_4px_rgba(0,0,0,0.02)]'
-                            }`}
-                        >
-                            <div className="pr-4">
-                                <span className={`text-sm font-extrabold ${features[key] ? 'text-emerald-700 dark:text-emerald-400' : 'text-ink-muted'}`}>{label}</span>
-                                <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-1">{desc}</p>
+                    ]).map(({ key, label, desc }) => {
+                        if (isSuperAdmin) {
+                            return (
+                                <button
+                                    type="button"
+                                    key={key}
+                                    onClick={() => toggleFeature(key)}
+                                    disabled={isSavingFeatures}
+                                    className={`flex items-center justify-between p-4 rounded-[var(--r-md)] border transition-all text-left group focus-ring ${
+                                        features[key]
+                                            ? 'bg-emerald-50/20 border-emerald-500/20 shadow-[inset_0_2px_4px_rgba(16,185,129,0.01)]'
+                                            : 'bg-surface border-hairline hover:bg-surface-muted/50 hover:border-ink-subtle/30 shadow-[0_2px_4px_rgba(0,0,0,0.02)]'
+                                    } disabled:opacity-50`}
+                                >
+                                    <div className="pr-4">
+                                        <span className={`text-sm font-extrabold ${features[key] ? 'text-emerald-700 dark:text-emerald-400' : 'text-ink-muted'}`}>{label}</span>
+                                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-1">{desc}</p>
+                                    </div>
+                                    {features[key] ? (
+                                        <ToggleRight size={28} className="text-emerald-500 shrink-0 drop-shadow-sm" />
+                                    ) : (
+                                        <ToggleLeft size={28} className="text-ink-muted shrink-0 group-hover:text-ink-subtle transition-colors" />
+                                    )}
+                                </button>
+                            )
+                        }
+
+                        return (
+                            <div
+                                key={key}
+                                className={`flex items-center justify-between p-4 rounded-[var(--r-md)] border select-none ${
+                                    features[key]
+                                        ? 'bg-emerald-50/20 border-emerald-500/20 shadow-[inset_0_2px_4px_rgba(16,185,129,0.01)]'
+                                        : 'bg-surface border-hairline opacity-60 shadow-[0_2px_4px_rgba(0,0,0,0.02)]'
+                                }`}
+                            >
+                                <div className="pr-4">
+                                    <span className={`text-sm font-extrabold ${features[key] ? 'text-emerald-700 dark:text-emerald-400' : 'text-ink-muted'}`}>{label}</span>
+                                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-1">{desc}</p>
+                                </div>
+                                {features[key] ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                                        Active
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-ink-subtle/10 text-ink-muted border border-hairline">
+                                        Disabled
+                                    </span>
+                                )}
                             </div>
-                            {features[key] ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                                    Active
-                                </span>
-                            ) : (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-ink-subtle/10 text-ink-muted border border-hairline">
-                                    Disabled
-                                </span>
-                            )}
-                        </div>
-                    ))}
+                        )
+                    })}
                 </div>
             </div>
         </div>

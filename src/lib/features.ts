@@ -124,10 +124,18 @@ export async function updateFeaturesAction(restaurantId: string, features: Parti
     if (!isSuperAdmin && !(currentUser.role === 'manager' && currentUser.restaurantId === restaurantId)) {
         return { error: 'Unauthorized' }
     }
-    // financeEnabled gates the accounting module (Premium and above); only super
-    // admins may flip it.
-    if (!isSuperAdmin && 'financeEnabled' in features) {
-        return { error: 'Unauthorized' }
+    const SUBSCRIPTION_FEATURES = [
+        'financeEnabled', 'staffManagementEnabled', 'staffShiftsEnabled',
+        'tableManagementEnabled', 'ingredientTrackingEnabled', 'loyaltyEnabled',
+        'promosEnabled', 'dynamicPricingEnabled', 'takeoutEnabled',
+        'generateInvoiceEnabled', 'printInvoiceEnabled', 'irdSyncEnabled'
+    ]
+    
+    // Subscription features gate major modules (Premium and above); only super
+    // admins may flip them.
+    const tryingToEditSubFeature = Object.keys(features).some(k => SUBSCRIPTION_FEATURES.includes(k))
+    if (!isSuperAdmin && tryingToEditSubFeature) {
+        return { error: 'Unauthorized to change subscription-level features' }
     }
 
     const supabase = await createAdminClient()

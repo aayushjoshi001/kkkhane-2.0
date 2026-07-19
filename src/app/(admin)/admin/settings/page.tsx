@@ -67,6 +67,7 @@ export default async function SettingsPage() {
                     bankAccounts={bankAccounts ?? []}
                     initialQrCodes={qrCodes ?? []}
                     canEdit={role === 'super_admin' || role === 'manager'}
+                    isSuperAdmin={role === 'super_admin'}
                 />
             </div>
         </div>
