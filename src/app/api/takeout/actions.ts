@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { sendOrderReadySms } from '@/lib/sms'
 import type { CartItem, TakeoutOrder } from '@/types/database'
 import { checkAndAlertLowStock } from '@/app/(admin)/admin/ingredients/actions'
-import { requireRole } from '@/lib/auth'
+import { requireRole, getOptionalUser } from '@/lib/auth'
 import {
     TAKEOUT_ORDER_SELECT,
     TAKEOUT_STATUS_TO_ORDER,
@@ -21,6 +21,31 @@ import {
  * name is prefixed onto special_request as `[Half]` so it shows on the kitchen
  * ticket and receipt exactly like a dine-in order.
  */
+const STAFF_ROLES = ['cashier', 'waiter', 'manager', 'admin', 'super_admin']
+
+/**
+ * A staff member ringing up a walk-in takeaway/delivery has already decided to
+ * make it, so send it straight to the kitchen (status 'confirmed') instead of
+ * parking it in 'pending' — the review step a public online order still goes
+ * through before the cashier accepts it. Kitchen queues exclude pending
+ * takeout/delivery, so without this a walk-in would never reach the line.
+ * The staff session is verified server-side, so a customer can't self-confirm.
+ */
+async function autoConfirmIfStaff(
+    supabase: Awaited<ReturnType<typeof createAdminClient>>,
+    orderId: string,
+    restaurantId: string,
+): Promise<void> {
+    const user = await getOptionalUser()
+    if (!user || !STAFF_ROLES.includes(user.role)) return
+    if (user.role !== 'super_admin' && user.restaurantId !== restaurantId) return
+    await supabase
+        .from('orders')
+        .update({ status: 'confirmed', confirmed_at: new Date().toISOString() })
+        .eq('id', orderId)
+        .eq('status', 'pending')
+}
+
 function buildOrderItemsPayload(items: CartItem[]) {
     return items.map((i) => {
         let specialRequest = i.specialRequest || ''
@@ -117,7 +142,10 @@ export async function createDeliveryOrder(
     }
 
     const result = data as { order_id: string; total: number; code: string }
-    if (result.order_id) void checkAndAlertLowStock(input.restaurantId)
+    if (result.order_id) {
+        void checkAndAlertLowStock(input.restaurantId)
+        await autoConfirmIfStaff(supabase, result.order_id, input.restaurantId)
+    }
 
     revalidatePath('/kitchen')
     revalidatePath('/waiter')
@@ -180,7 +208,10 @@ export async function createTakeoutOrder(
     const result = data as { order_id: string; total: number }
 
     // Low-stock check in the background (never blocks the order).
-    if (result.order_id) void checkAndAlertLowStock(input.restaurantId)
+    if (result.order_id) {
+        void checkAndAlertLowStock(input.restaurantId)
+        await autoConfirmIfStaff(supabase, result.order_id, input.restaurantId)
+    }
 
     revalidatePath('/takeout')
     revalidatePath('/kitchen')
