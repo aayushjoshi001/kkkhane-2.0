@@ -517,7 +517,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
         <div className="flex flex-col gap-4 w-full">
             {/* Sticky Sub-tabs / Filters */}
             <div className="sticky top-28 z-20 bg-canvas -mx-3 px-3 md:mx-0 md:px-0 py-2 border-b border-hairline flex items-center w-full justify-center">
-                <div className={`grid ${isHotel ? 'grid-cols-4' : 'grid-cols-5'} gap-1.5 sm:gap-2.5 w-full`}>
+                <div className={`flex overflow-x-auto no-scrollbar gap-1.5 sm:gap-2.5 w-full py-1 sm:grid ${isHotel ? 'sm:grid-cols-4' : 'sm:grid-cols-5'}`}>
                     {(['all', 'available', 'reserved', 'dirty', 'occupied'] as const)
                         .filter(key => !(isHotel && key === 'dirty'))
                         .map((key) => {
@@ -538,7 +538,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                             <button
                                 key={key}
                                 onClick={() => setFilter(key)}
-                                className={`relative flex items-center justify-center gap-1.5 py-2 px-1 sm:py-2.5 sm:px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 w-full whitespace-nowrap ${
+                                className={`relative flex items-center justify-center gap-1.5 py-2 px-3 sm:py-2.5 sm:px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 shrink-0 w-auto sm:w-full whitespace-nowrap ${
                                     isActive 
                                         ? activeColors[key] 
                                         : 'bg-surface border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink-muted shadow-sm'
