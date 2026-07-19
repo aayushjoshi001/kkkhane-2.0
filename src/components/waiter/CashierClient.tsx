@@ -656,19 +656,18 @@ export default function CashierClient({
     }
 
     const handleMarkPaid = async (directInvoice?: any) => {
-        const localInvoice = directInvoice || activeInvoice
-        if (!localInvoice || isSettlingRef.current) return
-        const activeInvoice = localInvoice // shadows outer state variable
+        const invoice = directInvoice || activeInvoice
+        if (!invoice || isSettlingRef.current) return
         isSettlingRef.current = true
         setIsSettlingInvoice(true)
         try {
-            if (activeInvoice.type === 'room') {
+            if (invoice.type === 'room') {
                 // Settle all unpaid orders associated with this room's session
                 // client-side first — /api/bookings/checkout also settles
                 // idempotently, but doing it here records exactly what the
                 // cashier selected (Cash / QR / Both) per order for the EOD
                 // report's cash-vs-digital breakdown.
-                const sessionId = tables.find(t => t.room_id === activeInvoice.roomId)?.activeSession?.id
+                const sessionId = tables.find(t => t.room_id === invoice.roomId)?.activeSession?.id
 
                 if (sessionId) {
                     const sessionOrders = active.filter(o => o.session_id === sessionId)
@@ -717,16 +716,16 @@ export default function CashierClient({
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        booking_id: activeInvoice.bookingId,
-                        room_id: activeInvoice.roomId,
-                        total_amount: activeInvoice.total,
-                        cash_paid: activeInvoice.cashPaid,
-                        qr_paid: activeInvoice.qrPaid,
-                        qr_code_id: activeInvoice.qrCodeId,
+                        booking_id: invoice.bookingId,
+                        room_id: invoice.roomId,
+                        total_amount: invoice.total,
+                        cash_paid: invoice.cashPaid,
+                        qr_paid: invoice.qrPaid,
+                        qr_code_id: invoice.qrCodeId,
                         session_id: sessionId || null,
-                        credit_amount: activeInvoice.creditPaid || 0,
-                        customer_name: activeInvoice.customerName,
-                        customer_phone: activeInvoice.customerPhone,
+                        credit_amount: invoice.creditPaid || 0,
+                        customer_name: invoice.customerName,
+                        customer_phone: invoice.customerPhone,
                     })
                 })
                 const data = await res.json()
@@ -734,10 +733,10 @@ export default function CashierClient({
 
                 // Immediately update local state so UI reflects changes without refresh
                 setBookings(prev => prev.map(b =>
-                    b.id === activeInvoice.bookingId ? { ...b, status: 'checked_out' } : b
+                    b.id === invoice.bookingId ? { ...b, status: 'checked_out' } : b
                 ))
                 setRoomsState(prev => prev.map(r =>
-                    r.id === activeInvoice.roomId ? { ...r, status: 'dirty' } : r
+                    r.id === invoice.roomId ? { ...r, status: 'dirty' } : r
                 ))
 
                 toast.success('Room billing settled and guest checked out successfully!')
@@ -755,15 +754,15 @@ export default function CashierClient({
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        session_id: activeInvoice.sessionId,
-                        cash_paid: activeInvoice.cashPaid,
-                        qr_paid: activeInvoice.qrPaid,
-                        credit_amount: activeInvoice.creditPaid || 0,
-                        qr_code_id: activeInvoice.qrCodeId,
-                        discount_amount: activeInvoice.discountAmount || 0,
-                        discount_reason: activeInvoice.discountReason,
-                        customer_name: activeInvoice.customerName,
-                        customer_phone: activeInvoice.customerPhone,
+                        session_id: invoice.sessionId,
+                        cash_paid: invoice.cashPaid,
+                        qr_paid: invoice.qrPaid,
+                        credit_amount: invoice.creditPaid || 0,
+                        qr_code_id: invoice.qrCodeId,
+                        discount_amount: invoice.discountAmount || 0,
+                        discount_reason: invoice.discountReason,
+                        customer_name: invoice.customerName,
+                        customer_phone: invoice.customerPhone,
                     })
                 })
                 const data = await res.json()
@@ -786,8 +785,8 @@ export default function CashierClient({
             // since a thermal roll on a driverless raw queue can't be rasterized
             // by the browser anyway, and that just surfaced a confusing
             // "printer not available" dialog after a bill was already settled.
-            if (printInvoiceEnabled) {
-                const printResult = await printInvoice(buildInvoiceTicket(activeInvoice, money))
+            if (printInvoiceEnabled && printBillEnabled) {
+                const printResult = await printInvoice(buildInvoiceTicket(invoice, money))
                 if (!printResult.ok) {
                     toast.error(
                         printResult.status === 'no-printer-selected'
