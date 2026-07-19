@@ -172,7 +172,7 @@ export function CommandPalette({ role, theme = 'light' }: Props) {
                                         className={`group flex items-center gap-3 px-3 h-10 my-0.5 text-sm rounded-[var(--r-md)] cursor-pointer select-none transition-colors duration-100 ${t.item}`}
                                     >
                                         <Icon size={17} className={`shrink-0 transition-colors ${t.itemIcon}`} />
-                                        <span className="flex-1 truncate font-medium">{item.label}</span>
+                                        <span className="flex-1 truncate min-w-0 font-medium">{item.label}</span>
                                         <CornerDownLeft
                                             size={14}
                                             className={`shrink-0 opacity-0 transition-opacity group-aria-selected:opacity-100 ${t.enterHint}`}
