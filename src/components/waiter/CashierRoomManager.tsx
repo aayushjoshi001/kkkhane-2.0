@@ -994,14 +994,12 @@ export default function CashierRoomManager({
                                 <div className="sticky bottom-0 z-10 border border-dashed border-hairline-strong rounded-2xl p-4 bg-surface shadow-lg">
                                     {!showAddChargeForm ? (
                                         <div className="flex flex-col sm:flex-row gap-2 md:gap-2.5 items-center justify-center">
-                                            {manualEntryEnabled && (
-                                                <button 
-                                                    onClick={() => setShowAddChargeForm(true)}
-                                                    className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-brand-500 font-extrabold hover:text-brand-600 hover:scale-[1.01] transition-all border border-brand-500/10 hover:border-brand-500/30 rounded-xl bg-surface"
-                                                >
-                                                    <Plus size={14} /> Add Manual Purchase (Minibar, Laundry, etc.)
-                                                </button>
-                                            )}
+                                            <button 
+                                                onClick={() => setShowAddChargeForm(true)}
+                                                className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-brand-500 font-extrabold hover:text-brand-600 hover:scale-[1.01] transition-all border border-brand-500/10 hover:border-brand-500/30 rounded-xl bg-surface"
+                                            >
+                                                <Plus size={14} /> Add Manual Purchase (Minibar, Laundry, etc.)
+                                            </button>
                                             <button 
                                                 onClick={handleOpenFoodOrder}
                                                 className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-emerald-600 font-extrabold hover:text-emerald-700 hover:scale-[1.01] transition-all border border-emerald-500/10 hover:border-emerald-500/30 rounded-xl bg-surface"
