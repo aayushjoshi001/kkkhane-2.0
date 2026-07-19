@@ -60,6 +60,8 @@ const devSupabaseImagePatterns = devSupabaseUrl
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   images: {
+    dangerouslyAllowSVG: true,
+    contentDispositionType: 'attachment',
     // Negotiate modern formats — AVIF/WebP are typically 30-50% smaller than the
     // original JPEG/PNG. next/image already serves these responsively per `sizes`.
     formats: ['image/avif', 'image/webp'],
