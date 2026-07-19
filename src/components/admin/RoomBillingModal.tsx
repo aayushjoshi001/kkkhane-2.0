@@ -107,6 +107,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const qrCodes = useQrCodes()
     const [isSaving, setIsSaving] = useState(false)
     const printInvoiceEnabled = useFeatureEnabled('printInvoiceEnabled')
+    const printBillEnabled = useFeatureEnabled('printBillEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
     // True once the checkout API confirms the room is settled — printing
@@ -308,7 +309,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
 
             // Printing runs after the bill is already settled in the database,
             // so a slow/unconfigured printer never blocks the checkout itself.
-            if (invoiceData && printInvoiceEnabled) {
+            if (invoiceData && printInvoiceEnabled && printBillEnabled) {
                 const printResult = await printInvoice(buildInvoiceTicket(invoiceData, money))
                 if (!printResult.ok) {
                     toast.error(
@@ -652,7 +653,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                             >
                                                 Close
                                             </button>
-                                            {printInvoiceEnabled && (
+                                            {printInvoiceEnabled && printBillEnabled && (
                                                 <button
                                                     onClick={() => window.print()}
                                                     className="px-4 py-2 border border-gray-200 rounded-xl text-xs font-semibold hover:bg-gray-50 transition"

@@ -104,6 +104,8 @@ export default function CashierClient({
     const [unpaid, setUnpaid] = useState<UnpaidOrder[]>(initialUnpaid)
     const money = useCurrency()
     const printInvoiceEnabled = useFeatureEnabled('printInvoiceEnabled')
+    const printBillEnabled = useFeatureEnabled('printBillEnabled')
+    const showInvoiceEnabled = useFeatureEnabled('showInvoiceEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
     const { print: printInvoice } = usePrinter('invoice')
@@ -561,7 +563,11 @@ export default function CashierClient({
             setShowSettlementConfirm(true)
             return
         }
-        setActiveInvoice(data)
+        if (showInvoiceEnabled) {
+            setActiveInvoice(data)
+        } else {
+            handleMarkPaid(data)
+        }
     }
 
     // Confirm button on the settlement popup — folds the just-entered (or
@@ -570,15 +576,20 @@ export default function CashierClient({
     const finalizeSettlementConfirm = () => {
         if (!pendingInvoice) return
         const d = pendingInvoice.data
-        setActiveInvoice({
+        const finalData = {
             ...d,
             guestName: d.creditPaid > 0.01 ? (creditCustomerName.trim() || d.guestName) : d.guestName,
             guestPhone: d.creditPaid > 0.01 ? (creditCustomerPhone.trim() || d.guestPhone) : d.guestPhone,
             customerName: d.creditPaid > 0.01 ? creditCustomerName.trim() : undefined,
             customerPhone: d.creditPaid > 0.01 ? creditCustomerPhone.trim() : undefined,
-        })
+        }
         setShowSettlementConfirm(false)
         setPendingInvoice(null)
+        if (showInvoiceEnabled) {
+            setActiveInvoice(finalData)
+        } else {
+            handleMarkPaid(finalData)
+        }
     }
 
     const cancelSettlementConfirm = () => {
@@ -644,8 +655,10 @@ export default function CashierClient({
         }
     }
 
-    const handleMarkPaid = async () => {
-        if (!activeInvoice || isSettlingRef.current) return
+    const handleMarkPaid = async (directInvoice?: any) => {
+        const localInvoice = directInvoice || activeInvoice
+        if (!localInvoice || isSettlingRef.current) return
+        const activeInvoice = localInvoice // shadows outer state variable
         isSettlingRef.current = true
         setIsSettlingInvoice(true)
         try {
@@ -2286,7 +2299,7 @@ export default function CashierClient({
                                     >
                                         Cancel
                                     </Button>
-                                    {printInvoiceEnabled && (
+                                    {printInvoiceEnabled && printBillEnabled && (
                                         <button
                                             onClick={handlePrintBill}
                                             className="flex-1 py-1.5 px-3 border border-gray-300 rounded-xl text-[10px] font-bold text-gray-700 bg-white hover:bg-gray-50 transition active:scale-95 text-center flex items-center justify-center gap-1.5 shadow-sm min-w-[70px] animate-scale-in"

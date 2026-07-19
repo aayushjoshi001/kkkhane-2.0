@@ -401,6 +401,9 @@ export interface Settings {
         staffManagementEnabled?: boolean
         tableManagementEnabled?: boolean
         irdSyncEnabled?: boolean
+        manualEntryEnabled?: boolean
+        printBillEnabled?: boolean
+        showInvoiceEnabled?: boolean
     }
     business_hours: BusinessHours | null
     updated_at: string

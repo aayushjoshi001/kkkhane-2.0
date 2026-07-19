@@ -76,7 +76,10 @@ export function useFeatureEnabled(key: keyof Omit<Features, 'defaultTaxRate' | '
             'printInvoiceEnabled',
             'generateInvoiceEnabled',
             'staffManagementEnabled',
-            'tableManagementEnabled'
+            'tableManagementEnabled',
+            'manualEntryEnabled',
+            'printBillEnabled',
+            'showInvoiceEnabled'
         ]
         return defaultTrueKeys.includes(key)
     }
