@@ -14,6 +14,31 @@ import {
     type OrderStatus,
 } from '@/lib/takeout'
 
+/**
+ * Map cart items to the RPC item payload. Mirrors the dine-in checkout: the
+ * chosen variation (half/full plate, size, etc.) is passed as `variation_id`
+ * — which place_takeout_order/place_delivery_order price and store — and its
+ * name is prefixed onto special_request as `[Half]` so it shows on the kitchen
+ * ticket and receipt exactly like a dine-in order.
+ */
+function buildOrderItemsPayload(items: CartItem[]) {
+    return items.map((i) => {
+        let specialRequest = i.specialRequest || ''
+        if (i.variationName) {
+            specialRequest = specialRequest
+                ? `[${i.variationName}] ${specialRequest}`
+                : `[${i.variationName}]`
+        }
+        return {
+            menu_item_id: i.menuItemId,
+            quantity: i.quantity,
+            special_request: specialRequest || null,
+            modifiers: (i.modifiers || []).map((m) => ({ modifier_id: m.modifierId })),
+            variation_id: i.variationId || null,
+        }
+    })
+}
+
 interface TakeoutInput {
     restaurantId: string
     customerName: string
@@ -50,12 +75,7 @@ export async function createDeliveryOrder(
 ): Promise<{ orderId?: string; total?: number; code?: string; error?: string }> {
     const supabase = await createAdminClient()
 
-    const payload = input.items.map((i) => ({
-        menu_item_id: i.menuItemId,
-        quantity: i.quantity,
-        special_request: i.specialRequest || null,
-        modifiers: (i.modifiers || []).map((m) => ({ modifier_id: m.modifierId })),
-    }))
+    const payload = buildOrderItemsPayload(input.items)
 
     // Auto-link loyalty account if phone matches
     let finalLoyaltyId = input.loyaltyMemberId || null
@@ -116,12 +136,7 @@ export async function createTakeoutOrder(
 ): Promise<{ orderId?: string; total?: number; error?: string }> {
     const supabase = await createAdminClient()
 
-    const payload = input.items.map((i) => ({
-        menu_item_id: i.menuItemId,
-        quantity: i.quantity,
-        special_request: i.specialRequest || null,
-        modifiers: (i.modifiers || []).map((m) => ({ modifier_id: m.modifierId })),
-    }))
+    const payload = buildOrderItemsPayload(input.items)
 
     // Auto-link loyalty account if phone matches
     let finalLoyaltyId = input.loyaltyMemberId || null

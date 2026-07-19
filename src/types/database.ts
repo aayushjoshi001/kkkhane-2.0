@@ -307,6 +307,8 @@ export interface OrderItem {
     id: string
     order_id: string
     menu_item_id: string
+    /** Chosen variation (half/full plate, size, …); null for a plain item. */
+    menu_item_variation_id?: string | null
     quantity: number
     unit_price: number
     special_request: string | null
