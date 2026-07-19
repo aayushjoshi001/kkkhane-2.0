@@ -12,6 +12,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import Logo from '@/components/shared/Logo'
 import { signOutAndRedirect } from '@/lib/auth/signOut'
 import { useSidebar } from '@/lib/contexts/SidebarContext'
+import { generatedAvatar, isGeneratedAvatar } from '@/lib/avatar'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
@@ -28,6 +29,8 @@ export default function SuperAdminSidebar({ userRole = 'super_admin', userAvatar
     const [imgError, setImgError] = useState(false)
 
     const handleSignOut = () => signOutAndRedirect(router)
+
+    const avatarSrc = userAvatar || generatedAvatar('superadmin', 'fb6303')
 
     const content = (
         <div className="flex flex-col h-full bg-surface text-ink transition-colors duration-500">
@@ -105,10 +108,11 @@ export default function SuperAdminSidebar({ userRole = 'super_admin', userAvatar
                             </div>
                         ) : (
                             <Image 
-                                src={userAvatar || `https://api.dicebear.com/9.x/notionists/svg?seed=superadmin&backgroundColor=fb6303`}
-                                alt="Admin avatar" 
+                                src={avatarSrc}
+                                alt="Admin avatar"
                                 fill
                                 sizes="36px"
+                                unoptimized={isGeneratedAvatar(avatarSrc)}
                                 className="object-cover"
                                 onError={() => setImgError(true)}
                             />

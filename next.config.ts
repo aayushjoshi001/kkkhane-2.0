@@ -119,7 +119,12 @@ const nextConfig: NextConfig = {
               // <Image unoptimized> (the URL-mode preview) is fetched by the
               // browser directly rather than proxied through /_next/image, so
               // 'self' doesn't cover it.
-              ["img-src 'self' data: blob: https://*.supabase.co https://images.unsplash.com https://*.tile.openstreetmap.org", ...(devSupabaseUrl ? [devSupabaseUrl.origin] : [])].join(' '),
+              // api.dicebear.com is the generated fallback avatar host. Those are
+              // SVGs rendered <Image unoptimized> (see src/lib/avatar.ts), so the
+              // browser fetches the host directly rather than via /_next/image —
+              // 'self' doesn't cover it and it must be named here or every nav /
+              // sidebar avatar renders as a broken-image icon.
+              ["img-src 'self' data: blob: https://*.supabase.co https://images.unsplash.com https://*.tile.openstreetmap.org https://api.dicebear.com", ...(devSupabaseUrl ? [devSupabaseUrl.origin] : [])].join(' '),
               // QZ Tray (thermal printer bridge) runs a local WebSocket server on the
               // till/kitchen device itself, port-scanning 8181-8185. It also connects
               // via the localhost.qz.io hostname (resolves to loopback) so a page

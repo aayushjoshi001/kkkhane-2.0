@@ -4,6 +4,7 @@ import { useState, useRef } from 'react'
 import Image from 'next/image'
 import { updateProfile } from '@/lib/actions/profile'
 import { createClient } from '@/lib/supabase/client'
+import { generatedAvatar, isGeneratedAvatar } from '@/lib/avatar'
 import { Save, Loader2, Camera, X, Shield, Mail, Calendar, Hash, Key, User as UserIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { User } from '@/types/database'
@@ -22,7 +23,7 @@ export default function ProfileForm({ user, email }: { user: ProfileUser, email:
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const roleLabel = (user.roles?.name || 'admin').replace(/_/g, ' ')
-    const fallbackAvatar = `https://api.dicebear.com/9.x/notionists/svg?seed=${roleLabel}&backgroundColor=ff5a00`
+    const fallbackAvatar = generatedAvatar(roleLabel)
     
     // Fallback UI to show placeholder if no avatar set, or loading state
     const displayAvatar = avatarUrl || fallbackAvatar
@@ -107,7 +108,7 @@ export default function ProfileForm({ user, email }: { user: ProfileUser, email:
                                     <Loader2 size={24} className="animate-spin text-ink-subtle" />
                                 </div>
                             ) : (
-                                <Image src={displayAvatar} alt="Profile avatar" fill sizes="96px" className="object-cover" />
+                                <Image src={displayAvatar} alt="Profile avatar" fill sizes="96px" unoptimized={isGeneratedAvatar(displayAvatar)} className="object-cover" />
                             )}
                         </div>
                         

@@ -17,6 +17,7 @@ import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { useSidebar } from '@/lib/contexts/SidebarContext'
 import { useFeatures, useBusinessMode } from '@/lib/contexts/FeatureContext'
+import { generatedAvatar, isGeneratedAvatar } from '@/lib/avatar'
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))
@@ -76,7 +77,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
 
     const roleLabel = (userRole || 'admin').replace(/_/g, ' ')
     // Use DiceBear Notionists style for a premium placeholder if no avatar provided
-    const avatarUrl = userAvatar || `https://api.dicebear.com/9.x/notionists/svg?seed=${roleLabel}&backgroundColor=ff5a00`
+    const avatarUrl = userAvatar || generatedAvatar(roleLabel)
 
     const content = (
         <div className={cn(
@@ -221,10 +222,11 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                             </div>
                         ) : (
                             <Image 
-                                src={avatarUrl} 
-                                alt="User avatar" 
+                                src={avatarUrl}
+                                alt="User avatar"
                                 fill
                                 sizes="40px"
+                                unoptimized={isGeneratedAvatar(avatarUrl)}
                                 className="object-cover"
                                 onError={() => setImgError(true)}
                             />
