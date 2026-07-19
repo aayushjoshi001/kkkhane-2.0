@@ -12,6 +12,7 @@ import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import { fetchTablesData } from '@/lib/swr-fetchers'
 import { renderQrCardPng, downloadDataUrl } from '@/lib/qrCardCanvas'
+import DownloadAllQrsButton from '@/components/admin/DownloadAllQrsButton'
 
 // Brand colors for QR code customization
 const QR_FG_COLOR = '#000000'   // black for QR code body to maximize scan readability
@@ -178,14 +179,17 @@ export default function TableManager({
 
     return (
         <div className="bg-surface rounded-card shadow-sm border border-hairline overflow-hidden">
-            <div className="p-6 border-b border-hairline flex justify-between items-center bg-surface-muted/30">
+            <div className="p-6 border-b border-hairline flex justify-between items-center gap-3 bg-surface-muted/30">
                 <h3 className="text-h3 font-extrabold text-ink">Restaurant Layout ({tables.length})</h3>
-                <button
-                    onClick={() => openModal()}
-                    className="flex items-center gap-2 bg-brand-500 text-white px-5 py-2.5 rounded-[var(--r-md)] text-sm font-bold hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] focus-ring"
-                >
-                    <Plus size={16} /> Add Table
-                </button>
+                <div className="flex items-center gap-3 shrink-0">
+                    <DownloadAllQrsButton className="flex items-center gap-2 px-4 py-2.5 rounded-[var(--r-md)] text-sm font-bold bg-surface border border-hairline-strong text-ink-muted hover:bg-surface-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed" />
+                    <button
+                        onClick={() => openModal()}
+                        className="flex items-center gap-2 bg-brand-500 text-white px-5 py-2.5 rounded-[var(--r-md)] text-sm font-bold hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] focus-ring"
+                    >
+                        <Plus size={16} /> Add Table
+                    </button>
+                </div>
             </div>
 
             <div className="p-6">

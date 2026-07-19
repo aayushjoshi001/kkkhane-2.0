@@ -865,6 +865,9 @@ export interface HomepageConfig {
     contact?: {
         enabled?: boolean
         review_link?: string
+        // Free-text physical address (shown in the contact section); distinct
+        // from map_address, which holds the Google Maps link.
+        address?: string
         map_address?: string
         address?: string
         phone?: string

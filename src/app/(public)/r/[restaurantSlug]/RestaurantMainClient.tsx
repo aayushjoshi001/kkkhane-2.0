@@ -36,10 +36,14 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
 
     // Room QR gate states
     const roomParam = searchParams.get('room')
+    // New QRs encode the room id (stable across renames); older ones carry the
+    // number. When it's an id we can't show a room number until the stay is
+    // verified (the server returns it then).
+    const roomParamIsId = !!roomParam && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(roomParam)
     const [phoneNumber, setPhoneNumber] = useState('')
     const [verifying, setVerifying] = useState(false)
     const [error, setError] = useState<string | null>(null)
-    const [verifiedData, setVerifiedData] = useState<{ guestName: string; qrToken: string; tableLabel: string } | null>(null)
+    const [verifiedData, setVerifiedData] = useState<{ guestName: string; qrToken: string; tableLabel: string; roomNumber?: string } | null>(null)
     const [checkingStorage, setCheckingStorage] = useState(true)
     const [showServiceMessage, setShowServiceMessage] = useState(false)
 
@@ -67,7 +71,8 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
                             })
                         })
                         if (res.ok) {
-                            setVerifiedData(parsed)
+                            const fresh = await res.json().catch(() => ({}))
+                            setVerifiedData({ ...parsed, roomNumber: fresh.roomNumber ?? parsed.roomNumber })
                         } else {
                             // Booking changed or checked out — clean up storage
                             localStorage.removeItem(key)
@@ -113,6 +118,7 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
                 guestName: data.guestName,
                 qrToken: data.qrToken,
                 tableLabel: data.tableLabel,
+                roomNumber: data.roomNumber,
                 phoneNumber: phoneNumber.trim() // Save phone number to re-verify later!
             }
 
@@ -192,7 +198,7 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
                             
                             <div className="mb-6 p-4 bg-brand-50/50 rounded-xl border border-brand-100 flex items-center gap-3">
                                 <div className="bg-brand-500 text-white font-black text-sm px-3 py-1.5 rounded-lg shrink-0">
-                                    Room {roomParam}
+                                    {roomParamIsId ? 'Room Service' : `Room ${roomParam}`}
                                 </div>
                                 <div className="text-xs text-ink-subtle leading-normal font-semibold">
                                     Please verify your stay details to browse the menu and place room service orders.
@@ -240,7 +246,7 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
                                     <ShieldCheck size={24} />
                                 </div>
                                 <span className="text-[10px] text-emerald-600 font-extrabold uppercase bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100/50 tracking-wider">
-                                    Verified Stay • Room {roomParam}
+                                    Verified Stay{verifiedData.roomNumber ? ` • Room ${verifiedData.roomNumber}` : (!roomParamIsId ? ` • Room ${roomParam}` : '')}
                                 </span>
                                 <h2 className="text-xl font-black text-ink mt-3">Welcome, {verifiedData.guestName}!</h2>
                                 <p className="text-xs text-ink-subtle font-medium mt-1">Enjoy digital room service orders charged directly to your folio.</p>
