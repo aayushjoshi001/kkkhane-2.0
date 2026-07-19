@@ -245,49 +245,31 @@ export default function CashierRoomManager({
         })
     }, [rooms, roomsFilter])
 
-    // Match table QR session orders or room orders linked to the active booking
+    // Room-service orders bucket (the room's own QR table + manual "direct to
+    // room" orders placed from the cashier/manager). We derive it from the SAME
+    // linked-orders source as the dining bucket below (`filteredLinkedDiningOrders`),
+    // splitting on the `is_room_order` flag the API sets. That keeps this total in
+    // lock-step with the manager's RoomBillingModal, which sums every linked item.
+    //
+    // The previous implementation read session-based orders and required a room
+    // session (sessions.tables.room_id). A manual placeRoomOrderDirect order has
+    // session_id NULL, so it was silently dropped here AND excluded from the dining
+    // bucket (is_room_order === true) — vanishing from the cashier bill while still
+    // appearing on the manager's, so the two panels showed different totals. Reading
+    // both buckets from the one linked-orders array closes that gap.
     const qrOrdersDetails = useMemo(() => {
         if (!selectedRoom || selectedRoom.status !== 'occupied' || !activeBooking) return null
 
-        // Fetch all active/unpaid orders that are directly linked to this booking
-        const allActive = activeOrders.filter(o => o.booking_id === activeBooking.id)
-        const allUnpaid = unpaidOrders.filter(o => o.booking_id === activeBooking.id)
-        
-        // Also fallback to match by session in case booking_id is not set but matchingTable activeSession is
-        const matchingTable = tables.find(t => t.room_id === selectedRoom.id)
-        const sessionId = matchingTable?.activeSession?.id || createdSessionId
-        
-        const additionalActive = sessionId ? activeOrders.filter(o => o.session_id === sessionId && o.booking_id !== activeBooking.id) : []
-        const additionalUnpaid = sessionId ? unpaidOrders.filter(o => o.session_id === sessionId && o.booking_id !== activeBooking.id) : []
+        const roomItems = linkedDiningOrders.filter(o => o.is_room_order)
+        const items = roomItems.map(it => ({
+            name: (it.menu_items as any)?.name || 'Item',
+            quantity: it.quantity || 0,
+            unitPrice: Number(it.unit_price ?? 0),
+        }))
+        const total = items.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0)
 
-        const combinedOrders = [...allActive, ...allUnpaid, ...additionalActive, ...additionalUnpaid]
-        
-        // De-duplicate orders by ID
-        const uniqueOrdersMap = new Map<string, any>()
-        for (const o of combinedOrders) {
-            uniqueOrdersMap.set(o.id, o)
-        }
-        const uniqueOrders = Array.from(uniqueOrdersMap.values()).filter(o => {
-            return o.sessions?.tables?.room_id !== null && o.sessions?.tables?.room_id !== undefined
-        })
-
-        const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
-        let total = 0
-
-        for (const order of uniqueOrders) {
-            const orderItems = order.order_items || []
-            for (const item of orderItems) {
-                const name = item.menu_items?.name || 'Item'
-                const qty = item.quantity || 0
-                const price = Number(item.unit_price ?? 0)
-                const status = item.status || order.status || 'unknown'
-                items.push({ name, quantity: qty, unitPrice: price, status })
-                total += price * qty
-            }
-        }
-
-        return { items, total, sessionId }
-    }, [selectedRoom, activeBooking, activeOrders, unpaidOrders, tables, createdSessionId])
+        return { items, total }
+    }, [selectedRoom, activeBooking, linkedDiningOrders])
 
     // Stay night and price calculations
     const stayPriceDetails = useMemo(() => {
