@@ -1014,14 +1014,16 @@ export default function CashierClient({
 
     const totalUnpaid = unpaid.reduce((s, o) => s + (o.total_amount ?? 0), 0)
 
-    const tabs: { id: 'rooms' | 'tables' | 'space' | 'takeaway' | 'billing'; label: string }[] = isHotel ? [
+    // shortLabel is used below the sm breakpoint, where 3-4 equal columns can't
+    // fit the full "Takeaway/Delivery" without clipping.
+    const tabs: { id: 'rooms' | 'tables' | 'space' | 'takeaway' | 'billing'; label: string; shortLabel?: string }[] = isHotel ? [
         { id: 'rooms', label: 'Rooms' },
         { id: 'tables', label: 'Tables' },
-        { id: 'takeaway', label: 'Takeaway/Delivery' },
+        { id: 'takeaway', label: 'Takeaway/Delivery', shortLabel: 'Takeaway' },
         { id: 'billing', label: 'Billing' },
     ] : [
         { id: 'space', label: 'Space' },
-        { id: 'takeaway', label: 'Takeaway/Delivery' },
+        { id: 'takeaway', label: 'Takeaway/Delivery', shortLabel: 'Takeaway' },
         { id: 'billing', label: 'Billing' },
     ]
 
@@ -1044,7 +1046,7 @@ export default function CashierClient({
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`flex items-center justify-center gap-1.5 py-4 text-xs md:text-sm font-bold whitespace-nowrap transition-colors relative focus:outline-none w-full ${
+                            className={`flex items-center justify-center gap-1.5 py-4 px-1 text-xs md:text-sm font-bold whitespace-nowrap transition-colors relative focus:outline-none w-full ${
                                 isActive ? 'text-[var(--brand-500)]' : 'text-ink-muted hover:text-ink'
                             }`}
                         >
@@ -1062,7 +1064,8 @@ export default function CashierClient({
                                     {unpaid.length}
                                 </span>
                             )}
-                            <span>{tab.label}</span>
+                            <span className="sm:hidden truncate">{tab.shortLabel ?? tab.label}</span>
+                            <span className="hidden sm:inline">{tab.label}</span>
                             {isActive && (
                                 <div className="absolute bottom-0 left-0 w-full h-[3px] bg-[var(--brand-500)] rounded-t-full" />
                             )}
@@ -1077,7 +1080,7 @@ export default function CashierClient({
                     <div className="flex flex-col gap-4 w-full">
                         {/* Sticky Sub-tabs / Filters for Rooms */}
                         <div className="sticky top-28 z-20 bg-canvas -mx-3 px-3 md:mx-0 md:px-0 py-2 border-b border-hairline flex items-center w-full justify-center">
-                            <div className="grid grid-cols-6 gap-1.5 sm:gap-2.5 w-full">
+                            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 sm:gap-2.5 w-full">
                                 {([
                                     { key: 'all', label: 'ALL', count: roomsCounts.all },
                                     { key: 'available', label: 'Available', count: roomsCounts.available },
