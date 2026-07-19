@@ -26,7 +26,7 @@ export default async function CashierPage() {
             .from('orders')
             .select(`
                 id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id,
-                sessions ( id, booking_id, seat_number, tables ( id, label ) ),
+                sessions ( id, booking_id, seat_number, tables ( id, label, room_id ) ),
                 order_items ( quantity, unit_price, menu_items ( name ) )
             `)
             .eq('restaurant_id', restaurantId)
@@ -39,7 +39,7 @@ export default async function CashierPage() {
             .from('orders')
             .select(`
                 id, status, total_amount, placed_at, session_id, order_type, customer_name, customer_phone, delivery_address, payment_status, booking_id,
-                sessions ( id, booking_id, seat_number, tables ( label ) ),
+                sessions ( id, booking_id, seat_number, tables ( id, label, room_id ) ),
                 order_items ( id, quantity, status, unit_price, menu_items ( name ) )
             `)
             .eq('restaurant_id', restaurantId)

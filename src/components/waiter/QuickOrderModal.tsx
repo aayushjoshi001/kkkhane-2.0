@@ -61,6 +61,7 @@ interface CartItem {
     specialRequest: string
     variationId?: string
     variationName?: string
+    isPacking?: boolean
     modifiers: {
         modifierId: string
         name: string
@@ -195,7 +196,7 @@ export default function QuickOrderModal({
 
         // Unique key for matching same items in cart
         const modifierIds = modifiers.map(m => m.id).sort().join(',')
-        const cartItemId = `${item.id}-${variationId || 'none'}-${modifierIds}-${note}`
+        const cartItemId = `${item.id}-${variationId || 'none'}-${modifierIds}-${note}-${orderType}`
 
         setCart(prev => {
             const existingIndex = prev.findIndex(i => i.id === cartItemId)
@@ -214,6 +215,7 @@ export default function QuickOrderModal({
                 specialRequest: note,
                 variationId,
                 variationName,
+                isPacking: orderType === 'takeout',
                 modifiers: modifiers.map(m => ({
                     modifierId: m.id,
                     name: m.name,
@@ -289,13 +291,13 @@ export default function QuickOrderModal({
     }
 
     const getCartItemQuantity = (menuItemId: string, variationId?: string) => {
-        const match = cart.find(ci => ci.menuItemId === menuItemId && ci.variationId === variationId)
+        const match = cart.find(ci => ci.menuItemId === menuItemId && ci.variationId === variationId && ((orderType === 'takeout') === !!ci.isPacking))
         return match ? match.quantity : 0
     }
 
     const handleQuantityChange = (menuItem: MenuItem, variation?: Variation | null, change: number = 1) => {
         const variationId = variation ? variation.id : undefined
-        const existing = cart.find(ci => ci.menuItemId === menuItem.id && ci.variationId === variationId)
+        const existing = cart.find(ci => ci.menuItemId === menuItem.id && ci.variationId === variationId && ((orderType === 'takeout') === !!ci.isPacking))
         if (existing) {
             updateQuantity(existing.id, change)
         } else if (change > 0) {
@@ -318,7 +320,7 @@ export default function QuickOrderModal({
         setSubmitting(true)
         try {
             const cartWithPacking = cart.map(item => {
-                if (orderType === 'takeout') {
+                if (item.isPacking) {
                     const cleanRequest = item.specialRequest ? item.specialRequest.replace('(Packing)', '').replace('[Packing]', '').trim() : ''
                     return {
                         ...item,
@@ -756,7 +758,9 @@ export default function QuickOrderModal({
                                         <div key={item.id} className="bg-surface rounded-xl border border-hairline p-3 shadow-sm flex flex-col gap-2">
                                             <div className="flex justify-between items-start gap-1">
                                                 <div className="min-w-0">
-                                                    <p className="text-body font-bold text-ink truncate">{item.name}</p>
+                                                    <p className="text-body font-bold text-ink truncate">
+                                                         {item.name}{item.isPacking && ' (Packing)'}
+                                                    </p>
                                                     {item.variationName && (
                                                         <p className="text-[10px] text-brand-500 font-extrabold mt-0.5">Size: {item.variationName}</p>
                                                     )}
@@ -1019,7 +1023,7 @@ export default function QuickOrderModal({
                 <div className="p-5 overflow-y-auto space-y-1.5 flex-1">
                     {cart.map(item => (
                         <div key={item.id} className="flex justify-between text-caption text-ink-muted">
-                            <span>{item.name} <span className="text-brand-500 font-bold">×{item.quantity}</span></span>
+                            <span>{item.name}{item.isPacking && ' (Packing)'} <span className="text-brand-500 font-bold">×{item.quantity}</span></span>
                             <span className="font-semibold tabular-nums">
                                 Rs. {(item.price + item.modifiers.reduce((s, m) => s + m.priceAdjustment, 0)) * item.quantity}
                             </span>

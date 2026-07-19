@@ -132,6 +132,9 @@ export default function SettingsManager({
             dineInEnabled: true,
             printInvoiceEnabled: true,
             generateInvoiceEnabled: true,
+            manualEntryEnabled: true,
+            printBillEnabled: true,
+            showInvoiceEnabled: true,
             ...base
         }
     })
@@ -834,6 +837,9 @@ export default function SettingsManager({
                         { key: 'phoneOtpEnabled' as const, label: 'Phone OTP Login', desc: 'Allow phone number login via SMS OTP' },
                         { key: 'multiLanguageEnabled' as const, label: 'Multi-Language', desc: 'Menu in multiple languages' },
                         { key: 'bsDateEnabled' as const, label: 'Bikram Sambat Date', desc: 'Show BS calendar dates' },
+                        { key: 'manualEntryEnabled' as const, label: 'Manual Folio Purchases', desc: 'Allow staff to manually add laundry, minibar, or other charges to a room bill' },
+                        { key: 'printBillEnabled' as const, label: 'Print Checkout Bill', desc: 'Show button to print checkout invoices or receipts' },
+                        { key: 'showInvoiceEnabled' as const, label: 'Show/Generate Invoices', desc: 'Allow generating official invoices at checkout' },
                     ]).map(({ key, label, desc }) => (
                         <button
                             type="button"

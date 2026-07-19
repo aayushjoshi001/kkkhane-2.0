@@ -27,7 +27,7 @@ type OrderItem = {
     unit_price?: number
     menu_items: { name: string } | null 
 }
-type TableRef = { label?: string } | null
+type TableRef = { id?: string; label?: string; room_id?: string | null } | null
 
 export type UnpaidOrder = {
     id: string
@@ -104,6 +104,8 @@ export default function CashierClient({
     const [unpaid, setUnpaid] = useState<UnpaidOrder[]>(initialUnpaid)
     const money = useCurrency()
     const printInvoiceEnabled = useFeatureEnabled('printInvoiceEnabled')
+    const printBillEnabled = useFeatureEnabled('printBillEnabled')
+    const showInvoiceEnabled = useFeatureEnabled('showInvoiceEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
     const { print: printInvoice } = usePrinter('invoice')
@@ -333,7 +335,9 @@ export default function CashierClient({
         for (const o of combinedOrders) {
             uniqueOrdersMap.set(o.id, o)
         }
-        const uniqueOrders = Array.from(uniqueOrdersMap.values())
+        const uniqueOrders = Array.from(uniqueOrdersMap.values()).filter(o => {
+            return o.sessions?.tables?.room_id !== null && o.sessions?.tables?.room_id !== undefined
+        })
 
         const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
         for (const order of uniqueOrders) {
@@ -559,7 +563,11 @@ export default function CashierClient({
             setShowSettlementConfirm(true)
             return
         }
-        setActiveInvoice(data)
+        if (showInvoiceEnabled) {
+            setActiveInvoice(data)
+        } else {
+            handleMarkPaid(data)
+        }
     }
 
     // Confirm button on the settlement popup — folds the just-entered (or
@@ -568,15 +576,20 @@ export default function CashierClient({
     const finalizeSettlementConfirm = () => {
         if (!pendingInvoice) return
         const d = pendingInvoice.data
-        setActiveInvoice({
+        const finalData = {
             ...d,
             guestName: d.creditPaid > 0.01 ? (creditCustomerName.trim() || d.guestName) : d.guestName,
             guestPhone: d.creditPaid > 0.01 ? (creditCustomerPhone.trim() || d.guestPhone) : d.guestPhone,
             customerName: d.creditPaid > 0.01 ? creditCustomerName.trim() : undefined,
             customerPhone: d.creditPaid > 0.01 ? creditCustomerPhone.trim() : undefined,
-        })
+        }
         setShowSettlementConfirm(false)
         setPendingInvoice(null)
+        if (showInvoiceEnabled) {
+            setActiveInvoice(finalData)
+        } else {
+            handleMarkPaid(finalData)
+        }
     }
 
     const cancelSettlementConfirm = () => {
@@ -642,18 +655,19 @@ export default function CashierClient({
         }
     }
 
-    const handleMarkPaid = async () => {
-        if (!activeInvoice || isSettlingRef.current) return
+    const handleMarkPaid = async (directInvoice?: any) => {
+        const localInvoice = directInvoice || activeInvoice
+        if (!localInvoice || isSettlingRef.current) return
         isSettlingRef.current = true
         setIsSettlingInvoice(true)
         try {
-            if (activeInvoice.type === 'room') {
+            if (localInvoice.type === 'room') {
                 // Settle all unpaid orders associated with this room's session
                 // client-side first — /api/bookings/checkout also settles
                 // idempotently, but doing it here records exactly what the
                 // cashier selected (Cash / QR / Both) per order for the EOD
                 // report's cash-vs-digital breakdown.
-                const sessionId = tables.find(t => t.room_id === activeInvoice.roomId)?.activeSession?.id
+                const sessionId = tables.find(t => t.room_id === localInvoice.roomId)?.activeSession?.id
 
                 if (sessionId) {
                     const sessionOrders = active.filter(o => o.session_id === sessionId)
@@ -702,16 +716,16 @@ export default function CashierClient({
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        booking_id: activeInvoice.bookingId,
-                        room_id: activeInvoice.roomId,
-                        total_amount: activeInvoice.total,
-                        cash_paid: activeInvoice.cashPaid,
-                        qr_paid: activeInvoice.qrPaid,
-                        qr_code_id: activeInvoice.qrCodeId,
+                        booking_id: localInvoice.bookingId,
+                        room_id: localInvoice.roomId,
+                        total_amount: localInvoice.total,
+                        cash_paid: localInvoice.cashPaid,
+                        qr_paid: localInvoice.qrPaid,
+                        qr_code_id: localInvoice.qrCodeId,
                         session_id: sessionId || null,
-                        credit_amount: activeInvoice.creditPaid || 0,
-                        customer_name: activeInvoice.customerName,
-                        customer_phone: activeInvoice.customerPhone,
+                        credit_amount: localInvoice.creditPaid || 0,
+                        customer_name: localInvoice.customerName,
+                        customer_phone: localInvoice.customerPhone,
                     })
                 })
                 const data = await res.json()
@@ -719,10 +733,10 @@ export default function CashierClient({
 
                 // Immediately update local state so UI reflects changes without refresh
                 setBookings(prev => prev.map(b =>
-                    b.id === activeInvoice.bookingId ? { ...b, status: 'checked_out' } : b
+                    b.id === localInvoice.bookingId ? { ...b, status: 'checked_out' } : b
                 ))
                 setRoomsState(prev => prev.map(r =>
-                    r.id === activeInvoice.roomId ? { ...r, status: 'dirty' } : r
+                    r.id === localInvoice.roomId ? { ...r, status: 'dirty' } : r
                 ))
 
                 toast.success('Room billing settled and guest checked out successfully!')
@@ -740,15 +754,15 @@ export default function CashierClient({
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        session_id: activeInvoice.sessionId,
-                        cash_paid: activeInvoice.cashPaid,
-                        qr_paid: activeInvoice.qrPaid,
-                        credit_amount: activeInvoice.creditPaid || 0,
-                        qr_code_id: activeInvoice.qrCodeId,
-                        discount_amount: activeInvoice.discountAmount || 0,
-                        discount_reason: activeInvoice.discountReason,
-                        customer_name: activeInvoice.customerName,
-                        customer_phone: activeInvoice.customerPhone,
+                        session_id: localInvoice.sessionId,
+                        cash_paid: localInvoice.cashPaid,
+                        qr_paid: localInvoice.qrPaid,
+                        credit_amount: localInvoice.creditPaid || 0,
+                        qr_code_id: localInvoice.qrCodeId,
+                        discount_amount: localInvoice.discountAmount || 0,
+                        discount_reason: localInvoice.discountReason,
+                        customer_name: localInvoice.customerName,
+                        customer_phone: localInvoice.customerPhone,
                     })
                 })
                 const data = await res.json()
@@ -772,7 +786,7 @@ export default function CashierClient({
             // by the browser anyway, and that just surfaced a confusing
             // "printer not available" dialog after a bill was already settled.
             if (printInvoiceEnabled) {
-                const printResult = await printInvoice(buildInvoiceTicket(activeInvoice, money))
+                const printResult = await printInvoice(buildInvoiceTicket(localInvoice, money))
                 if (!printResult.ok) {
                     toast.error(
                         printResult.status === 'no-printer-selected'
@@ -832,7 +846,8 @@ export default function CashierClient({
         let occupied = 0
         let dirty = 0
         for (const t of tables) {
-            const status = t.activeSession ? 'active' : (t.table_status || 'available')
+            const rawStatus = t.activeSession ? 'active' : (t.table_status || 'available')
+            const status = (isHotel && rawStatus === 'dirty') ? 'available' : rawStatus
             if (status === 'active') occupied++
             else if (status === 'dirty') dirty++
             else if (status === 'reserved') reserved++
@@ -875,7 +890,7 @@ export default function CashierClient({
         if (payload.eventType === 'INSERT') {
             const { data } = await supabase
                 .from('orders')
-                .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, seat_number, tables ( label ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
+                .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, seat_number, tables ( id, label, room_id ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
                 .eq('id', payload.new.id)
                 .single()
             if (data) setActive(prev => [...prev, data as unknown as ActiveOrder])
@@ -885,7 +900,7 @@ export default function CashierClient({
                 // Fetch full record to show in unpaid list
                 const { data } = await supabase
                     .from('orders')
-                    .select(`id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id, sessions ( id, seat_number, tables ( label ) ), order_items ( quantity, unit_price, menu_items ( name ) )`)
+                    .select(`id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id, sessions ( id, seat_number, tables ( id, label, room_id ) ), order_items ( quantity, unit_price, menu_items ( name ) )`)
                     .eq('id', id)
                     .single()
                 if (data) {
@@ -1125,7 +1140,7 @@ export default function CashierClient({
                                 const supabase = supabaseRef.current
                                 const { data } = await supabase
                                     .from('orders')
-                                    .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, seat_number, tables ( label ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
+                                    .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, seat_number, tables ( id, label, room_id ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
                                     .eq('id', orderId)
                                     .single()
                                 if (data) {
@@ -1145,14 +1160,16 @@ export default function CashierClient({
                     <div className="flex flex-col gap-4 w-full">
                         {/* Sticky Sub-tabs / Filters */}
                         <div className="sticky top-28 z-20 bg-canvas -mx-3 px-3 md:mx-0 md:px-0 py-2 border-b border-hairline flex items-center w-full justify-center">
-                            <div className="grid grid-cols-5 gap-1.5 sm:gap-2.5 w-full">
+                            <div className={`flex overflow-x-auto no-scrollbar gap-1.5 sm:gap-2.5 w-full py-1 sm:grid ${isHotel ? 'sm:grid-cols-4' : 'sm:grid-cols-5'}`}>
                                 {([
                                     { key: 'all', label: 'ALL', count: spaceCounts.all },
                                     { key: 'available', label: 'Available', count: spaceCounts.available },
                                     { key: 'reserved', label: 'Reserved', count: spaceCounts.reserved },
                                     { key: 'dirty', label: 'Dirty', count: spaceCounts.dirty },
                                     { key: 'occupied', label: 'Occupied', count: spaceCounts.occupied }
-                                ] as const).map(({ key, label, count }) => {
+                                ] as const)
+                                .filter(({ key }) => !(isHotel && key === 'dirty'))
+                                .map(({ key, label, count }) => {
                                     const isActive = spaceFilter === key
                                     const activeColors = {
                                         all: 'bg-[var(--color-primary)] text-white',
@@ -1166,7 +1183,7 @@ export default function CashierClient({
                                         <button
                                             key={key}
                                             onClick={() => setSpaceFilter(key)}
-                                            className={`relative flex items-center justify-center gap-1.5 py-2 px-1 sm:py-2.5 sm:px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 w-full whitespace-nowrap ${
+                                            className={`relative flex items-center justify-center gap-1.5 py-2 px-3 sm:py-2.5 sm:px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 shrink-0 w-auto sm:w-full whitespace-nowrap ${
                                                 isActive 
                                                     ? activeColors[key] 
                                                     : 'bg-surface border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink-muted shadow-sm'
@@ -1640,25 +1657,11 @@ export default function CashierClient({
                                             <span className="font-extrabold text-ink-muted tabular-nums">{money(calculateStayCost(selectedBillingRoom, billingStayBooking))}</span>
                                         </div>
 
-                                        {getRoomQrOrders(selectedBillingRoom).length > 0 && (
+                                        {billingLinkedOrders.length > 0 && (
                                             <div className="p-4 space-y-2">
-                                                <p className="font-extrabold text-xs text-indigo-650 font-semibold">QR Room service orders</p>
+                                                <p className="font-extrabold text-xs text-indigo-650 font-semibold">Service Orders (QR + Dining)</p>
                                                 <div className="space-y-1.5 pl-3 border-l-2 border-indigo-100">
-                                                    {getRoomQrOrders(selectedBillingRoom).map((item, idx) => (
-                                                        <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
-                                                            <span>{item.name} ({item.quantity}×)</span>
-                                                            <span className="tabular-nums font-semibold">{money(item.unitPrice * item.quantity)}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {filteredLinkedOrders.length > 0 && (
-                                            <div className="p-4 space-y-2">
-                                                <p className="font-extrabold text-xs text-emerald-650 font-semibold">Restaurant dining (table orders)</p>
-                                                <div className="space-y-1.5 pl-3 border-l-2 border-emerald-100">
-                                                    {filteredLinkedOrders.map((item, idx) => (
+                                                    {billingLinkedOrders.map((item, idx) => (
                                                         <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
                                                             <span>{item.menu_items?.name || 'Item'} ({item.quantity}×)</span>
                                                             <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
@@ -2295,7 +2298,7 @@ export default function CashierClient({
                                     >
                                         Cancel
                                     </Button>
-                                    {printInvoiceEnabled && (
+                                    {printInvoiceEnabled && printBillEnabled && (
                                         <button
                                             onClick={handlePrintBill}
                                             className="flex-1 py-1.5 px-3 border border-gray-300 rounded-xl text-[10px] font-bold text-gray-700 bg-white hover:bg-gray-50 transition active:scale-95 text-center flex items-center justify-center gap-1.5 shadow-sm min-w-[70px] animate-scale-in"

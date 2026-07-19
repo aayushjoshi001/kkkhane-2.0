@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Users, X, Check, Bed, ClipboardList, Loader2, CreditCard, RefreshCw, Calendar, FileText, Plus, Landmark, Utensils } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
-import { useCurrency, useFeatures } from '@/lib/contexts/FeatureContext'
+import { useCurrency, useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { type TableWithSession } from './CashierTableManager'
 import { formatDateTime, calculateNights, advanceMethodLabel } from '@/lib/utils'
 import QuickOrderModal from './QuickOrderModal'
@@ -64,6 +64,7 @@ export default function CashierRoomManager({
     const irdSyncEnabled = features?.irdSyncEnabled ?? false
     const money = useCurrency()
     const supabaseRef = useRef(createClient())
+    const manualEntryEnabled = useFeatureEnabled('manualEntryEnabled')
 
     // Sub-modal and drawer states
     const [bookingFormOpen, setBookingFormOpen] = useState(false)
@@ -266,7 +267,9 @@ export default function CashierRoomManager({
         for (const o of combinedOrders) {
             uniqueOrdersMap.set(o.id, o)
         }
-        const uniqueOrders = Array.from(uniqueOrdersMap.values())
+        const uniqueOrders = Array.from(uniqueOrdersMap.values()).filter(o => {
+            return o.sessions?.tables?.room_id !== null && o.sessions?.tables?.room_id !== undefined
+        })
 
         const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
         let total = 0
@@ -1009,12 +1012,14 @@ export default function CashierRoomManager({
                                 <div className="sticky bottom-0 z-10 border border-dashed border-hairline-strong rounded-2xl p-4 bg-surface shadow-lg">
                                     {!showAddChargeForm ? (
                                         <div className="flex flex-col sm:flex-row gap-2 md:gap-2.5 items-center justify-center">
-                                            <button 
-                                                onClick={() => setShowAddChargeForm(true)}
-                                                className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-brand-500 font-extrabold hover:text-brand-600 hover:scale-[1.01] transition-all border border-brand-500/10 hover:border-brand-500/30 rounded-xl bg-surface"
-                                            >
-                                                <Plus size={14} /> Add Manual Purchase (Minibar, Laundry, etc.)
-                                            </button>
+                                            {manualEntryEnabled && (
+                                                <button 
+                                                    onClick={() => setShowAddChargeForm(true)}
+                                                    className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-brand-500 font-extrabold hover:text-brand-600 hover:scale-[1.01] transition-all border border-brand-500/10 hover:border-brand-500/30 rounded-xl bg-surface"
+                                                >
+                                                    <Plus size={14} /> Add Manual Purchase (Minibar, Laundry, etc.)
+                                                </button>
+                                            )}
                                             <button 
                                                 onClick={handleOpenFoodOrder}
                                                 className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-emerald-600 font-extrabold hover:text-emerald-700 hover:scale-[1.01] transition-all border border-emerald-500/10 hover:border-emerald-500/30 rounded-xl bg-surface"

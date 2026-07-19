@@ -250,6 +250,7 @@ export interface Session {
     discount_reason: string | null
     discount_applied_by: string | null
     discount_applied_at: string | null
+    booking_id: string | null
     // Joined fields
     tables?: Table
     seats?: SessionSeat[]
@@ -400,6 +401,9 @@ export interface Settings {
         staffManagementEnabled?: boolean
         tableManagementEnabled?: boolean
         irdSyncEnabled?: boolean
+        manualEntryEnabled?: boolean
+        printBillEnabled?: boolean
+        showInvoiceEnabled?: boolean
     }
     business_hours: BusinessHours | null
     updated_at: string

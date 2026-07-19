@@ -14,7 +14,7 @@ export async function markTableDirtyForSession(admin: SupabaseClient, sessionId:
     try {
         const { data: session } = await admin
             .from('sessions')
-            .select('table_id')
+            .select('table_id, restaurant_id')
             .eq('id', sessionId)
             .maybeSingle()
         if (!session?.table_id) return
@@ -29,9 +29,22 @@ export async function markTableDirtyForSession(admin: SupabaseClient, sessionId:
             .neq('id', sessionId)
             .limit(1)
         if (stillActive && stillActive.length > 0) return
+
+        let targetStatus: 'dirty' | 'available' = 'dirty'
+        if (session.restaurant_id) {
+            const { data: restaurant } = await admin
+                .from('restaurants')
+                .select('business_type')
+                .eq('id', session.restaurant_id)
+                .maybeSingle()
+            if (restaurant?.business_type === 'Resort/Hotel') {
+                targetStatus = 'available'
+            }
+        }
+
         await admin
             .from('tables')
-            .update({ table_status: 'dirty', cleaning_claimed_by: null, cleaning_claimed_at: null })
+            .update({ table_status: targetStatus, cleaning_claimed_by: null, cleaning_claimed_at: null })
             .eq('id', session.table_id)
     } catch (err) {
         console.error('[markTableDirtyForSession] failed:', err)

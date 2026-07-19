@@ -20,9 +20,11 @@ const STATUS_CONFIG = {
     available: { dot: 'bg-ink-subtle',            card: 'border-hairline bg-surface',     label: '',         labelCls: '' },
 }
 
-function getEffectiveStatus(table: TableWithSession): string {
+function getEffectiveStatus(table: TableWithSession, isHotel?: boolean): string {
     if (table.activeSession) return 'active'
-    return table.table_status || 'available'
+    const status = table.table_status || 'available'
+    if (isHotel && status === 'dirty') return 'available'
+    return status
 }
 
 function getFontSizeClass(label: string): string {
@@ -129,11 +131,11 @@ export default function CashierTableManager({
     const filteredTables = useMemo(() => {
         if (spaceFilter === 'all') return tables
         return tables.filter(t => {
-            const status = getEffectiveStatus(t)
+            const status = getEffectiveStatus(t, isHotel)
             if (spaceFilter === 'occupied') return status === 'active'
             return status === spaceFilter
         })
-    }, [tables, spaceFilter])
+    }, [tables, spaceFilter, isHotel])
 
     // Get active session orders & items for the selected occupied table
     const tableSessionDetails = useMemo(() => {
@@ -208,7 +210,7 @@ export default function CashierTableManager({
                     </div>
                 ) : (
                     filteredTables.map(table => {
-                        const status = getEffectiveStatus(table)
+                        const status = getEffectiveStatus(table, isHotel)
                         const cfg = STATUS_CONFIG[status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.available
                         
                         let displayStatusLabel = cfg.label
@@ -296,11 +298,13 @@ export default function CashierTableManager({
                                 <p className="text-caption text-ink-subtle mt-0.5">
                                     {selectedTable.activeSession
                                         ? `Occupied (${getTableCookingStatus(selectedTable)})`
-                                        : selectedTable.table_status === 'dirty'
-                                            ? 'Needs cleaning'
-                                            : selectedTable.table_status === 'reserved'
-                                                ? 'Reserved'
-                                                : 'Available'}
+                                        : selectedTable.table_status === 'reserved'
+                                            ? 'Reserved'
+                                            : (selectedTable.table_status === 'dirty' && isHotel)
+                                                ? 'Available'
+                                                : selectedTable.table_status === 'dirty'
+                                                    ? 'Needs cleaning'
+                                                    : 'Available'}
                                 </p>
                             </div>
                             <button 

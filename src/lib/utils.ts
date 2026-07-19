@@ -232,7 +232,7 @@ export function getItemKOTDisplay(
     }
 
     if (variationName) {
-        name = `${name} ${variationName}`
+        name = `${variationName} ${name}`
     }
 
     const hasPackingLabel = note.includes('(Packing)') || note.includes('[Packing]')
