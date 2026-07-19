@@ -8,6 +8,7 @@ import { useActiveOrders } from '@/lib/stores/activeOrders'
 import { useHydratedStore } from '@/lib/stores/useHydratedStore'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import PromoCodeInput from '@/components/customer/PromoCodeInput'
+import StickyBottomBar from '@/components/customer/StickyBottomBar'
 import type { PromoCode } from '@/types/database'
 import { ArrowLeft, Clock, Loader2, ShoppingBag, MapPin } from 'lucide-react'
 import { toast } from 'react-hot-toast'
@@ -467,37 +468,35 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
             </form>
 
             {/* Bottom bar */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 z-50 bg-surface border-t border-hairline-strong">
-                <div className="max-w-xl mx-auto">
-                    <div className="space-y-1 mb-3">
-                        <div className="flex justify-between text-sm text-ink-subtle">
-                            <span>Subtotal</span>
-                            <span>{money(totalAmount())}</span>
-                        </div>
-                        {promoDiscount > 0 && (
-                            <div className="flex justify-between text-sm text-green-600">
-                                <span>Discount</span>
-                                <span>-{money(promoDiscount)}</span>
-                            </div>
-                        )}
-                        <div className="flex justify-between items-center pt-1 border-t border-hairline">
-                            <span className="font-medium text-ink-muted">Total</span>
-                            <span className="text-xl font-bold text-ink">{money(finalTotal)}</span>
-                        </div>
+            <StickyBottomBar className="z-50">
+                <div className="space-y-1 mb-3">
+                    <div className="flex justify-between text-sm text-ink-subtle">
+                        <span>Subtotal</span>
+                        <span>{money(totalAmount())}</span>
                     </div>
-                    <button
-                        onClick={handleSubmit as unknown as () => void}
-                        disabled={isSubmitting}
-                        className="w-full bg-ink text-white font-medium rounded-xl py-4 flex items-center justify-center gap-2 disabled:opacity-70 shadow-lg cursor-pointer hover:bg-gray-800"
-                    >
-                        {isSubmitting ? (
-                            <><Loader2 className="animate-spin" size={20} /> Placing Order...</>
-                        ) : (
-                            orderType === 'delivery' ? 'Place Delivery Order' : 'Place Takeaway Order'
-                        )}
-                    </button>
+                    {promoDiscount > 0 && (
+                        <div className="flex justify-between text-sm text-green-600">
+                            <span>Discount</span>
+                            <span>-{money(promoDiscount)}</span>
+                        </div>
+                    )}
+                    <div className="flex justify-between items-center pt-1 border-t border-hairline">
+                        <span className="font-medium text-ink-muted">Total</span>
+                        <span className="text-xl font-bold text-ink">{money(finalTotal)}</span>
+                    </div>
                 </div>
-            </div>
+                <button
+                    onClick={handleSubmit as unknown as () => void}
+                    disabled={isSubmitting}
+                    className="w-full bg-ink text-white font-medium rounded-xl py-4 flex items-center justify-center gap-2 disabled:opacity-70 shadow-lg cursor-pointer hover:bg-gray-800"
+                >
+                    {isSubmitting ? (
+                        <><Loader2 className="animate-spin" size={20} /> Placing Order...</>
+                    ) : (
+                        orderType === 'delivery' ? 'Place Delivery Order' : 'Place Takeaway Order'
+                    )}
+                </button>
+            </StickyBottomBar>
         </div>
     )
 }

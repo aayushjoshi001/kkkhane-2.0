@@ -11,6 +11,7 @@ import type { Settings, MenuItem } from '@/types/database'
 import MenuItemCard from '@/components/customer/MenuItemCard'
 import CustomerProfileSheet from '@/components/customer/CustomerProfileSheet'
 import CustomerMenuHeader from '@/components/customer/CustomerMenuHeader'
+import StickyBottomBar from '@/components/customer/StickyBottomBar'
 
 interface Category { id: string; name: string; sort_order: number }
 interface Restaurant { id: string; name: string; slug: string; description: string | null; logo_url: string | null }
@@ -131,20 +132,18 @@ function TakeoutMenu({ restaurant, categories, menuItems, comboItems }: {
                 to open the cart and place the order after adding items. On wider
                 screens it centers to a comfortable width instead of stretching. */}
             {items.length > 0 && (
-                <div className="fixed bottom-0 inset-x-0 bg-surface border-t border-hairline-strong p-4 z-20">
-                    <div className="w-full md:max-w-md md:mx-auto flex items-center gap-2">
-                        <button onClick={clearCart}
-                            title="Clear cart"
-                            className="shrink-0 border border-hairline-strong text-ink-muted py-3 px-4 rounded-xl font-medium hover:bg-surface-muted transition-colors">
-                            Clear
-                        </button>
-                        <button onClick={() => setShowCheckout(true)}
-                            className="flex-1 bg-ink text-white py-3 rounded-xl font-medium flex items-center justify-center gap-2">
-                            <ShoppingBag size={18} />
-                            Checkout ({items.reduce((s, i) => s + i.quantity, 0)} items) — {money(totalAmount())}
-                        </button>
-                    </div>
-                </div>
+                <StickyBottomBar className="z-20" innerClassName="w-full md:max-w-md flex items-center gap-2">
+                    <button onClick={clearCart}
+                        title="Clear cart"
+                        className="shrink-0 border border-hairline-strong text-ink-muted py-3 px-4 rounded-xl font-medium hover:bg-surface-muted transition-colors">
+                        Clear
+                    </button>
+                    <button onClick={() => setShowCheckout(true)}
+                        className="flex-1 bg-ink text-white py-3 rounded-xl font-medium flex items-center justify-center gap-2">
+                        <ShoppingBag size={18} />
+                        Checkout ({items.reduce((s, i) => s + i.quantity, 0)} items) — {money(totalAmount())}
+                    </button>
+                </StickyBottomBar>
             )}
         </div>
     )
