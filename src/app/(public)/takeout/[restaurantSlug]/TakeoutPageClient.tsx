@@ -215,11 +215,15 @@ function TakeoutMenu({ restaurant, categories, menuItems, comboItems }: {
                 </div>
             </div>
 
-            {/* Floating Cart Bar */}
+            {/* Floating Cart Bar — shown on every breakpoint. It used to be
+                md:hidden, which left desktop/tablet users (staff opening
+                "Manual Takeaway/Delivery", plus any desktop customer) with no way
+                to open the cart and place the order after adding items. On wider
+                screens it centers to a comfortable width instead of stretching. */}
             {items.length > 0 && (
-                <div className="fixed bottom-0 inset-x-0 bg-surface border-t border-hairline-strong p-4 md:hidden z-20">
+                <div className="fixed bottom-0 inset-x-0 bg-surface border-t border-hairline-strong p-4 z-20">
                     <button onClick={() => setShowCheckout(true)}
-                        className="w-full bg-ink text-white py-3 rounded-xl font-medium flex items-center justify-center gap-2">
+                        className="w-full md:max-w-md md:mx-auto bg-ink text-white py-3 rounded-xl font-medium flex items-center justify-center gap-2">
                         <ShoppingBag size={18} />
                         Checkout ({items.reduce((s, i) => s + i.quantity, 0)} items) — {money(totalAmount())}
                     </button>
