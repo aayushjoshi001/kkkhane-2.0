@@ -12,7 +12,7 @@ export default async function ManualEntryPage() {
 
     const { getRestaurantFeatures } = await import('@/lib/features')
     const features = await getRestaurantFeatures(currentUser.restaurantId)
-    if (!features?.financeEnabled) {
+    if (!features?.financeEnabled || !features?.manualEntryEnabled) {
         redirect('/admin/dashboard')
     }
 

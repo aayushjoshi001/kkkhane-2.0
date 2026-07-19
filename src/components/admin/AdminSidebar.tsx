@@ -36,6 +36,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
     const features = useFeatures()
     const dineInEnabled = features.dineInEnabled ?? true
     const financeEnabled = !!features.financeEnabled
+    const manualEntryEnabled = features.manualEntryEnabled ?? true
     const promosEnabled = features.promosEnabled ?? true
     const loyaltyEnabled = !!features.loyaltyEnabled
     const takeoutEnabled = !!features.takeoutEnabled
@@ -117,7 +118,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
             {/* Navigation */}
             <nav className={cn("flex-1 overflow-y-auto py-2 scrollbar-none space-y-1 relative z-10", isCollapsed ? "px-2" : "px-4")}>
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/dashboard"     icon={BarChart3}       label="Overview"        path={pathname} />
-                {financeEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/manual-entry"  icon={PenLine}         label="Manual Entry"    path={pathname} />}
+                {financeEnabled && manualEntryEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/manual-entry"  icon={PenLine}         label="Manual Entry"    path={pathname} />}
                 <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Alerts & Status</SectionLabel>
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/critical"      icon={AlertTriangle}   label="Critical Center" path={pathname} />
                 {isHotel ? (
