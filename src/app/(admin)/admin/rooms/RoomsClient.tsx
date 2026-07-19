@@ -777,11 +777,11 @@ export default function RoomsClient({
                                         <div className="border-t border-blue-100/60 pt-2 space-y-1.5">
                                             <div className="flex items-center justify-between text-[11px]">
                                                 <span className="text-gray-400 font-bold">CHECK IN:</span>
-                                                <span className="font-extrabold text-gray-800">{formatDateTime(activeBooking.check_in, bsEnabled)}</span>
+                                                <span className="font-extrabold text-gray-800">{formatDateTime(activeBooking.check_in)}</span>
                                             </div>
                                             <div className="flex items-center justify-between text-[11px]">
                                                 <span className="text-gray-400 font-bold">CHECK OUT:</span>
-                                                <span className="font-extrabold text-gray-800">{formatDateTime(activeBooking.check_out, bsEnabled)}</span>
+                                                <span className="font-extrabold text-gray-800">{formatDateTime(activeBooking.check_out)}</span>
                                             </div>
                                         </div>
 

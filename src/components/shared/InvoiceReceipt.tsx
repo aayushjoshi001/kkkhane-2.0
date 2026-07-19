@@ -11,12 +11,15 @@ export default function InvoiceReceipt({
     money,
     restaurantName = 'KKHANE HOTEL & RESTAURANT',
     className = '',
+    formatDate,
 }: {
     invoice: ActiveInvoice
     money: (amount: number) => string
+    formatDate?: (date: Date | string) => string
     restaurantName?: string
     className?: string
 }) {
+    const now = new Date()
     return (
         <div className={`bg-white text-black print-container font-mono text-[11px] ${className}`}>
             {/* CSS media print override for POS thermal printer */}
@@ -68,7 +71,7 @@ export default function InvoiceReceipt({
                 <div className="border-t border-dashed border-black my-1.5" />
                 <p className="font-bold text-[11px] uppercase tracking-wider">*** INVOICE ***</p>
                 <p className="text-[9px] text-gray-500 font-mono">No: INV-{invoice.id.slice(0, 8).toUpperCase()}</p>
-                <p className="text-[9px] text-gray-500 font-mono">Date: {new Date().toLocaleString()}</p>
+                <p className="text-[9px] text-gray-500 font-mono">Date: {formatDate ? formatDate(now) : now.toLocaleString()}</p>
             </div>
 
             <div className="border-t border-dashed border-black my-1.5" />

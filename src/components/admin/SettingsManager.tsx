@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { Save, Store, Mail, Phone, MapPin, Building, Percent, Check, Loader2, Shield, ToggleLeft, ToggleRight, Upload, X, Bell, Play, Clock, Crown } from 'lucide-react'
 import { updateRestaurantSettingsAction, updateBusinessHoursAction } from '@/app/(admin)/admin/settings/actions'
@@ -108,6 +109,7 @@ export default function SettingsManager({
     initialQrCodes: QrCodeEntry[]
     canEdit: boolean
 }) {
+    const router = useRouter()
     const [formData, setFormData] = useState<RestaurantSettings>(initialRestaurant)
     const [features, setFeatures] = useState<Features>(() => {
         const base = initialFeatures || {}
@@ -284,6 +286,8 @@ export default function SettingsManager({
         if (res.error) {
             toast.error('Failed to save feature toggle')
             setFeatures(features) // revert
+        } else {
+            router.refresh() // Re-fetch server layout so FeatureProvider context updates immediately
         }
         setIsSavingFeatures(false)
     }

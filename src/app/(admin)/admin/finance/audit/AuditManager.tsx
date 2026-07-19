@@ -4,9 +4,11 @@ import { useState } from 'react'
 import { ShieldCheck } from 'lucide-react'
 import { DataTable, SectionTabs, type SectionTab } from '@/components/finance'
 import type { AuditLog } from '@/types/database'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 
 export default function AuditManager({ logs }: { logs: AuditLog[] }) {
     const [tab, setTab] = useState('all')
+    const formatDate = useDateFormatter()
 
     const actions = Array.from(new Set(logs.map((l) => l.action))).sort()
 
@@ -25,7 +27,7 @@ export default function AuditManager({ logs }: { logs: AuditLog[] }) {
             <SectionTabs tabs={tabs} active={tab} onChange={setTab} />
             <DataTable
                 columns={[
-                    { key: 'created_at', header: 'Date', render: (l) => new Date(l.created_at).toLocaleString(), sortValue: (l) => l.created_at },
+                    { key: 'created_at', header: 'Date', render: (l) => formatDate(l.created_at), sortValue: (l) => l.created_at },
                     { key: 'action', header: 'Action', render: (l) => l.action },
                     { key: 'entity_type', header: 'Entity', render: (l) => l.entity_type },
                     { key: 'entity_id', header: 'Entity ID', render: (l) => (l.entity_id ? <span className="font-mono text-xs">{l.entity_id.slice(0, 8)}…</span> : '—') },

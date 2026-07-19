@@ -11,7 +11,7 @@ import { usePrinter } from '@/lib/print/usePrinter'
 import { buildInvoiceTicket, type ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
-import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
+import { useFeatureEnabled, useDateFormatter } from '@/lib/contexts/FeatureContext'
 
 /** Table shape the admin room pages pass in (with its active QR session, if any). */
 export interface BillingTable {
@@ -79,6 +79,7 @@ const calculateStayCost = (room: Room, booking: Booking) => {
 export default function RoomBillingModal({ room, booking, tables, activeOrders, onClose, onSettled }: RoomBillingModalProps) {
     // true after hydration (portals can't render during SSR)
     const mounted = useSyncExternalStore(() => () => {}, () => true, () => false)
+    const formatDate = useDateFormatter()
     const [charges, setCharges] = useState<RoomCharge[]>([])
     // Loading is derived: we're loading until charges have arrived for this booking
     const [chargesLoadedFor, setChargesLoadedFor] = useState<string | null>(null)
@@ -875,7 +876,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                     print-container to target (see InvoiceReceipt's print CSS). */}
                 {invoiceData && (
                     <div className="fixed -left-[9999px] top-0" aria-hidden>
-                        <InvoiceReceipt invoice={invoiceData} money={money} />
+                        <InvoiceReceipt invoice={invoiceData} money={money} formatDate={formatDate} />
                     </div>
                 )}
         </Modal>

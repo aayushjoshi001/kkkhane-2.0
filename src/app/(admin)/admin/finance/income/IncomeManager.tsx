@@ -7,6 +7,7 @@ import { DataTable, FormModal, FormInput, FormSelect, FormTextarea, SectionTabs,
 import Button from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
 import { formatCurrency } from '@/lib/utils'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 import type { IncomeCategory, IncomeEntry } from '@/types/database'
 import {
     createIncomeCategoryAction, updateIncomeCategoryAction, deleteIncomeCategoryAction,
@@ -15,6 +16,7 @@ import {
 
 export default function IncomeManager({ initialCategories, initialEntries }: { initialCategories: IncomeCategory[]; initialEntries: IncomeEntry[] }) {
     const [tab, setTab] = useState('entries')
+    const formatDate = useDateFormatter()
     const [categories, setCategories] = useState(initialCategories)
     const [entries, setEntries] = useState(initialEntries)
 
@@ -104,6 +106,7 @@ function EntriesTab({
     entries: IncomeEntry[]
     setEntries: (fn: (prev: IncomeEntry[]) => IncomeEntry[]) => void
 }) {
+    const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ category_id: '', amount: '', description: '' })
@@ -135,7 +138,7 @@ function EntriesTab({
             </div>
             <DataTable
                 columns={[
-                    { key: 'created_at', header: 'Date', render: (e) => new Date(e.created_at).toLocaleString(), sortValue: (e) => e.created_at },
+                    { key: 'created_at', header: 'Date', render: (e) => formatDate(e.created_at), sortValue: (e) => e.created_at },
                     { key: 'category', header: 'Category', render: (e) => e.income_categories?.name || '—' },
                     { key: 'description', header: 'Description', render: (e) => e.description },
                     { key: 'amount', header: 'Amount', align: 'right', render: (e) => formatCurrency(e.amount), sortValue: (e) => e.amount },

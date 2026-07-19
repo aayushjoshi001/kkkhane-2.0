@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { markDeliveredAndCashPaid } from '@/app/(staff)/waiter/order-actions'
 import { updateTakeoutStatusAction } from '@/app/(admin)/admin/takeout/actions'
-import { useCurrency, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
+import { useCurrency, useFeatureEnabled, useDateFormatter } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
 import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent } from 'lucide-react'
 import PaymentVerificationFeed, { type PaymentClaim } from './PaymentVerificationFeed'
@@ -103,6 +103,7 @@ export default function CashierClient({
     const router = useRouter()
     const [unpaid, setUnpaid] = useState<UnpaidOrder[]>(initialUnpaid)
     const money = useCurrency()
+    const formatDate = useDateFormatter()
     const printInvoiceEnabled = useFeatureEnabled('printInvoiceEnabled')
     const printBillEnabled = useFeatureEnabled('printBillEnabled')
     const showInvoiceEnabled = useFeatureEnabled('showInvoiceEnabled')
@@ -2466,7 +2467,7 @@ export default function CashierClient({
                         className="bg-white w-full max-w-sm p-5 space-y-4 shadow-2xl relative border-t-8 border-brand-500"
                         onClick={e => e.stopPropagation()}
                     >
-                        <InvoiceReceipt invoice={activeInvoice} money={money} />
+                        <InvoiceReceipt invoice={activeInvoice} money={money} formatDate={formatDate} />
 
                         {/* Invoice Footer Actions (Print, Mark Paid, Close) */}
                         <div className="flex gap-2 pt-3 border-t border-gray-100 print-actions flex-wrap">

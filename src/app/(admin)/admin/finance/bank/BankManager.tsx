@@ -7,6 +7,7 @@ import { DataTable, FormModal, FormInput, FormSelect, SectionTabs, type SectionT
 import Button from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
 import { formatCurrency } from '@/lib/utils'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 import type { BankAccount, BankTransaction, BankReconciliation, BankAccountType, WalletProvider, BankTransactionType } from '@/types/database'
 import {
     createBankAccountAction, updateBankAccountAction, deleteBankAccountAction,
@@ -38,6 +39,7 @@ export default function BankManager({
     initialReconciliations: BankReconciliation[]
 }) {
     const [tab, setTab] = useState('accounts')
+    const formatDate = useDateFormatter()
     const [accounts, setAccounts] = useState(initialAccounts)
     const [transactions, setTransactions] = useState(initialTransactions)
     const [reconciliations, setReconciliations] = useState(initialReconciliations)
@@ -223,6 +225,7 @@ function TransactionsTab({
     transactions: BankTransaction[]
     setTransactions: (fn: (prev: BankTransaction[]) => BankTransaction[]) => void
 }) {
+    const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ bank_account_id: '', type: 'deposit' as BankTransactionType, amount: '', description: '', counterparty_account_id: '' })
@@ -260,7 +263,7 @@ function TransactionsTab({
             </div>
             <DataTable
                 columns={[
-                    { key: 'created_at', header: 'Date', render: (t) => new Date(t.created_at).toLocaleString(), sortValue: (t) => t.created_at },
+                    { key: 'created_at', header: 'Date', render: (t) => formatDate(t.created_at), sortValue: (t) => t.created_at },
                     { key: 'account', header: 'Account', render: (t) => t.bank_accounts?.name || '—' },
                     { key: 'type', header: 'Type', render: (t) => TXN_TYPES.find((x) => x.value === t.type)?.label ?? t.type },
                     { key: 'description', header: 'Description', render: (t) => t.description },
@@ -306,6 +309,7 @@ function ReconciliationTab({
     reconciliations: BankReconciliation[]
     setReconciliations: (fn: (prev: BankReconciliation[]) => BankReconciliation[]) => void
 }) {
+    const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ bank_account_id: '', statement_date: '', statement_balance: '', book_balance: '', notes: '' })
@@ -343,7 +347,7 @@ function ReconciliationTab({
             </div>
             <DataTable
                 columns={[
-                    { key: 'statement_date', header: 'Statement Date', render: (r) => new Date(r.statement_date).toLocaleDateString(), sortValue: (r) => r.statement_date },
+                    { key: 'statement_date', header: 'Statement Date', render: (r) => formatDate(r.statement_date), sortValue: (r) => r.statement_date },
                     { key: 'account', header: 'Account', render: (r) => r.bank_accounts?.name || '—' },
                     { key: 'statement_balance', header: 'Statement Balance', align: 'right', render: (r) => formatCurrency(r.statement_balance) },
                     { key: 'book_balance', header: 'Book Balance', align: 'right', render: (r) => (r.book_balance != null ? formatCurrency(r.book_balance) : '—') },
