@@ -85,6 +85,16 @@ function TakeoutMenu({ restaurant, categories, menuItems, comboItems }: {
     const [searchQuery, setSearchQuery] = useState('')
     const items = useCartStore(s => s.items)
     const totalAmount = useCartStore(s => s.totalAmount)
+    const setSession = useCartStore(s => s.setSession)
+    const clearCart = useCartStore(s => s.clearCart)
+
+    // Scope the cart to THIS restaurant's takeout. The cart store is shared with
+    // dine-in and other restaurants; setSession clears it when the scope key
+    // changes (so a leftover dine-in cart can't bleed into a staff takeaway) and
+    // preserves it when re-entering the same takeout page.
+    useEffect(() => {
+        setSession(`takeout:${restaurant.id}`, restaurant.slug, restaurant.id)
+    }, [restaurant.id, restaurant.slug, setSession])
 
     const filteredItems = (activeCategory ? menuItems.filter(i => i.category_id === activeCategory) : menuItems)
         .filter(i => !searchQuery || i.name.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -222,11 +232,18 @@ function TakeoutMenu({ restaurant, categories, menuItems, comboItems }: {
                 screens it centers to a comfortable width instead of stretching. */}
             {items.length > 0 && (
                 <div className="fixed bottom-0 inset-x-0 bg-surface border-t border-hairline-strong p-4 z-20">
-                    <button onClick={() => setShowCheckout(true)}
-                        className="w-full md:max-w-md md:mx-auto bg-ink text-white py-3 rounded-xl font-medium flex items-center justify-center gap-2">
-                        <ShoppingBag size={18} />
-                        Checkout ({items.reduce((s, i) => s + i.quantity, 0)} items) — {money(totalAmount())}
-                    </button>
+                    <div className="w-full md:max-w-md md:mx-auto flex items-center gap-2">
+                        <button onClick={clearCart}
+                            title="Clear cart"
+                            className="shrink-0 border border-hairline-strong text-ink-muted py-3 px-4 rounded-xl font-medium hover:bg-surface-muted transition-colors">
+                            Clear
+                        </button>
+                        <button onClick={() => setShowCheckout(true)}
+                            className="flex-1 bg-ink text-white py-3 rounded-xl font-medium flex items-center justify-center gap-2">
+                            <ShoppingBag size={18} />
+                            Checkout ({items.reduce((s, i) => s + i.quantity, 0)} items) — {money(totalAmount())}
+                        </button>
+                    </div>
                 </div>
             )}
         </div>

@@ -38,6 +38,7 @@ export async function GET() {
         fullName,
         email: user.email,
         avatarUrl,
+        role: user.role,
         dashboardHref: ROLE_LANDING[user.role] || '/admin/dashboard',
     })
 }
