@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { BedDouble, Phone, Loader2, ArrowRight } from 'lucide-react'
 import { verifyRoomGuest } from './roomGuestActions'
 
@@ -25,7 +24,6 @@ export default function RoomGuestVerify({
     const [phone, setPhone] = useState('')
     const [error, setError] = useState<string | null>(null)
     const [pending, setPending] = useState(false)
-    const router = useRouter()
 
     const submit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -37,9 +35,14 @@ export default function RoomGuestVerify({
             setPending(false)
             return
         }
-        // Cookie is set; re-render the page so the server sees it and unlocks
-        // the menu.
-        router.refresh()
+        // Cookie is set. Reload the whole page rather than router.refresh(): a
+        // soft refresh re-renders from the client Router Cache and intermittently
+        // misses the just-set httpOnly cookie, so the server still reads
+        // "unverified" and the gate reappears — forcing the guest to enter their
+        // number a second time. A full navigation sends the cookie on a fresh
+        // request, so the menu unlocks on the first try. We intentionally leave
+        // `pending` true here — the reload replaces the component.
+        window.location.reload()
     }
 
     return (
