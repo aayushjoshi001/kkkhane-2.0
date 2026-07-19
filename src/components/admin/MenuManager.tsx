@@ -531,7 +531,7 @@ export default function MenuManager({
                                             )}
                                         </div>
                                         <div className="min-w-0">
-                                            <div className="font-bold text-ink text-base flex items-center gap-2">
+                                            <div className="font-bold text-ink text-base flex items-center gap-2 min-w-0">
                                                 <span className="truncate">{cat.name}</span>
                                                 {!cat.is_visible && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-danger-bg text-danger-fg uppercase tracking-wider shrink-0 shadow-sm">Hidden</span>}
                                             </div>
@@ -645,8 +645,8 @@ export default function MenuManager({
                                                         )}
                                                     </div>
                                                     <div className="flex-1 min-w-0 flex flex-col">
-                                                        <div className="flex justify-between items-start gap-2">
-                                                            <h5 className="font-bold text-ink text-base truncate leading-tight">{item.name}</h5>
+                                                        <div className="flex justify-between items-start gap-2 min-w-0">
+                                                            <h5 className="font-bold text-ink text-base truncate leading-tight min-w-0 flex-1">{item.name}</h5>
                                                             {item.variations && item.variations.length > 0 ? (
                                                                 <span className="font-bold text-[11px] text-ink-subtle bg-surface-muted px-2 py-1 rounded-md shrink-0 uppercase tracking-wide">
                                                                     {item.variations.length} Options

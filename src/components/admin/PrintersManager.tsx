@@ -64,7 +64,7 @@ export default function PrintersManager({ initialPrinters }: { initialPrinters: 
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-sm font-semibold text-ink truncate">{p.name}</span>
+                                    <span className="text-sm font-semibold text-ink truncate max-w-full">{p.name}</span>
                                     <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-surface-muted text-ink-subtle">{ROLE_LABEL[p.role]}</span>
                                     {p.is_default && <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">Default</span>}
                                     {!p.is_active && <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">Inactive</span>}

@@ -105,7 +105,7 @@ export default function ActiveOrderPill() {
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-400" />
             </span>
             <ChefHat size={16} className="shrink-0" />
-            <span className="text-sm font-bold truncate">{label} · View order</span>
+            <span className="text-sm font-bold truncate min-w-0">{label} · View order</span>
             <ChevronRight size={16} className="shrink-0 opacity-80" />
         </Link>
     )
