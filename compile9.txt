@@ -1,0 +1,5 @@
+src/components/admin/HomepageManager.tsx(413,103): error TS2339: Property 'address' does not exist on type '{ enabled?: boolean | undefined; review_link?: string | undefined; map_address?: string | undefined; phone?: string | undefined; email?: string | undefined; }'.
+src/components/admin/HomepageManager.tsx(413,158): error TS2353: Object literal may only specify known properties, and 'address' does not exist in type 'Partial<{ enabled?: boolean | undefined; review_link?: string | undefined; map_address?: string | undefined; phone?: string | undefined; email?: string | undefined; }>'.
+src/components/kitchen/KotPrintFallback.tsx(54,105): error TS2551: Property 'booking_id' does not exist on type 'KitchenOrder'. Did you mean 'bookings'?
+src/components/kitchen/OrderQueue.tsx(696,133): error TS2551: Property 'booking_id' does not exist on type 'KitchenOrder'. Did you mean 'bookings'?
+src/lib/print/templates/stationTicket.ts(36,97): error TS2551: Property 'booking_id' does not exist on type 'KitchenOrder'. Did you mean 'bookings'?

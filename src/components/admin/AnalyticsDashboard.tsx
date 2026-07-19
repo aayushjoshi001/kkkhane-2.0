@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import StatCard from '@/components/ui/StatCard'
 import { TrendingUp, ShoppingBag, BarChart3, Star, XCircle, Trophy, Clock, ArrowUp, ArrowDown, Minus, Truck, Percent, PercentSquare, Bed } from 'lucide-react'
-import { useBusinessMode, useFeatures } from '@/lib/contexts/FeatureContext'
+import { useBusinessMode, useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
+import { toNepaliDate } from '@/lib/nepaliDate'
 
 interface DayBucket {
     date: string; label: string; dayNum: number; monthStr: string; revenue: number; orders: number; bargainDiscount?: number; occupiedRoomsCount?: number
@@ -135,6 +136,7 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
     const isHotel = businessMode === 'hotel'
     const features = useFeatures()
     const irdSyncEnabled = !!features?.irdSyncEnabled
+    const bsEnabled = !!features?.bsDateEnabled
 
     const days = period === '7d' ? daily.slice(-7) : daily
     const rev = period === '7d' ? kpis.rev7d : kpis.rev30d
@@ -482,9 +484,9 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
                                                 #{c.id.substring(0, 8)}
                                             </span>
                                             <span className="text-[10px] text-ink-subtle">
-                                                {new Date(c.placed_at).toLocaleDateString('en-IN', {
-                                                    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-                                                })}
+                                                {bsEnabled
+                                                    ? toNepaliDate(new Date(c.placed_at), 'MMMM DD, YYYY', 'en')
+                                                    : new Date(c.placed_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                             </span>
                                         </div>
                                         {c.note ? (
@@ -555,7 +557,7 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
                                             <p className="text-sm text-ink">&quot;{f.comment}&quot;</p>
                                             <p className="text-[10px] text-ink-subtle mt-0.5">
                                                 {'★'.repeat(f.rating)}{'☆'.repeat(5 - f.rating)}
-                                                {' · '}{new Date(f.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                                {' · '}{bsEnabled ? toNepaliDate(new Date(f.created_at), 'MMMM DD, YYYY', 'en') : new Date(f.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                                             </p>
                                         </li>
                                     ))}

@@ -5,6 +5,8 @@ import { approveShiftAction, forceClockOutAction, correctShiftAction } from './a
 import { Clock, CheckCircle, LogOut, User, Pencil, X, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
+import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
+import { toNepaliDate } from '@/lib/nepaliDate'
 
 interface ShiftRow {
     id: string
@@ -146,6 +148,7 @@ export default function ShiftsManager({ activeShifts, recentShifts }: {
     const [active, setActive] = useState(activeShifts)
     const [recent, setRecent] = useState(recentShifts)
     const [correcting, setCorrecting] = useState<ShiftRow | null>(null)
+    const bsEnabled = useFeatureEnabled('bsDateEnabled')
 
     async function handleForceClockOut(shift: ShiftRow) {
         if (!confirm(`Force clock-out ${getStaffName(shift)}?`)) return
@@ -249,7 +252,7 @@ export default function ShiftsManager({ activeShifts, recentShifts }: {
                             <tr key={s.id} className="hover:bg-surface-muted/30 transition-colors">
                                 <td className="px-5 py-4 font-extrabold text-ink">{getStaffName(s)}</td>
                                 <td className="px-5 py-4 text-ink-subtle font-medium capitalize hidden md:table-cell">{getStaffRole(s)}</td>
-                                <td className="px-5 py-4 text-ink-subtle font-medium tabular-nums hidden md:table-cell">{new Date(s.clock_in).toLocaleDateString()}</td>
+                                <td className="px-5 py-4 text-ink-subtle font-medium tabular-nums hidden md:table-cell">{bsEnabled ? toNepaliDate(new Date(s.clock_in), 'MMMM DD, YYYY', 'en') : new Date(s.clock_in).toLocaleDateString()}</td>
                                 <td className="px-5 py-4 text-ink-subtle font-bold tabular-nums">
                                     {new Date(s.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     {' → '}

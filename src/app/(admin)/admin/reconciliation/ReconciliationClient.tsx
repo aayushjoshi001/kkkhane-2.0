@@ -8,7 +8,8 @@ import {
     ArrowUpRight, ArrowDownLeft, Landmark, DollarSign, Calendar, Clock, Lock,
     Check, X, Settings, ArrowRight, ToggleLeft, ToggleRight
 } from 'lucide-react'
-import { useCurrency } from '@/lib/contexts/FeatureContext'
+import { useCurrency, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
+import { toNepaliDate } from '@/lib/nepaliDate'
 import Button from '@/components/ui/Button'
 import { createClient } from '@/lib/supabase/client'
 import { 
@@ -61,6 +62,7 @@ export default function ReconciliationClient({
 }) {
     const router = useRouter()
     const money = useCurrency()
+    const bsEnabled = useFeatureEnabled('bsDateEnabled')
     const supabase = createClient()
     const [mounted, setMounted] = useState(false)
 
@@ -714,7 +716,7 @@ export default function ReconciliationClient({
                                             {/* Receivables (Income categories Accounts Receivable) */}
                                             {receivables.map((r) => (
                                                 <tr key={r.id} className="border-b border-hairline hover:bg-surface-muted/20">
-                                                    <td className="py-2.5">{mounted ? new Date(r.created_at).toLocaleDateString() : ''}</td>
+                                                    <td className="py-2.5">{mounted ? (bsEnabled ? toNepaliDate(new Date(r.created_at), 'MMMM DD, YYYY', 'en') : new Date(r.created_at).toLocaleDateString()) : ''}</td>
                                                     <td className="py-2.5 text-emerald-600 font-bold flex items-center gap-1">
                                                         <ArrowDownLeft className="w-3.5 h-3.5" />
                                                         <span>Accounts Receivable</span>
@@ -726,7 +728,7 @@ export default function ReconciliationClient({
                                             {/* Payables (Expenses category Accounts Payable) */}
                                             {payables.map((p) => (
                                                 <tr key={p.id} className="border-b border-hairline hover:bg-surface-muted/20">
-                                                    <td className="py-2.5">{mounted ? new Date(p.created_at).toLocaleDateString() : ''}</td>
+                                                    <td className="py-2.5">{mounted ? (bsEnabled ? toNepaliDate(new Date(p.created_at), 'MMMM DD, YYYY', 'en') : new Date(p.created_at).toLocaleDateString()) : ''}</td>
                                                     <td className="py-2.5 text-rose-600 font-bold flex items-center gap-1">
                                                         <ArrowUpRight className="w-3.5 h-3.5" />
                                                         <span>Accounts Payable</span>

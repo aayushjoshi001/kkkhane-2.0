@@ -1,0 +1,6 @@
+.next/dev/types/validator.ts(1556,1): error TS2304: Cannot find name 'app'.
+.next/dev/types/validator.ts(1556,6): error TS2304: Cannot find name 'staff'.
+.next/dev/types/validator.ts(1556,13): error TS2304: Cannot find name 'kitchen'.
+.next/dev/types/validator.ts(1556,21): error TS2304: Cannot find name 'layout'.
+src/components/admin/HomepageManager.tsx(413,103): error TS2339: Property 'address' does not exist on type '{ enabled?: boolean | undefined; review_link?: string | undefined; map_address?: string | undefined; phone?: string | undefined; email?: string | undefined; }'.
+src/components/admin/HomepageManager.tsx(413,158): error TS2353: Object literal may only specify known properties, and 'address' does not exist in type 'Partial<{ enabled?: boolean | undefined; review_link?: string | undefined; map_address?: string | undefined; phone?: string | undefined; email?: string | undefined; }>'.
