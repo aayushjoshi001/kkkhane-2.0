@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { LayoutDashboard, LogOut, ChevronDown } from 'lucide-react'
 import { signOutAndRedirect } from '@/lib/auth/signOut'
+import { generatedAvatar, isGeneratedAvatar } from '@/lib/avatar'
 
 export interface NavUser {
     fullName: string
@@ -16,11 +17,7 @@ export interface NavUser {
 
 /** Generated fallback avatar — same DiceBear style the AdminSidebar uses. */
 export function avatarFor(user: NavUser): string {
-    const seed = user.fullName || user.email || 'user'
-    return (
-        user.avatarUrl ||
-        `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(seed)}&backgroundColor=ff5a00`
-    )
+    return user.avatarUrl || generatedAvatar(user.fullName || user.email || 'user')
 }
 
 /**
@@ -73,7 +70,7 @@ export default function UserAvatarMenu({ user }: { user: NavUser }) {
                     alt={name}
                     width={32}
                     height={32}
-                    unoptimized
+                    unoptimized={isGeneratedAvatar(avatarFor(user))}
                     className="h-8 w-8 rounded-full object-cover"
                 />
                 <ChevronDown

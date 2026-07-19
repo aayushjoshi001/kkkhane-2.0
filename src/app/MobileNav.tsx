@@ -7,6 +7,7 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { signOutAndRedirect } from '@/lib/auth/signOut'
 import { avatarFor, type NavUser } from '@/components/marketing/UserAvatarMenu'
+import { isGeneratedAvatar } from '@/lib/avatar'
 
 const NAV_LINKS = [
     { href: '/#features', label: 'Features' },
@@ -95,7 +96,7 @@ export default function MobileNav({ user = null }: { user?: NavUser | null }) {
                                     alt={user.fullName || user.email}
                                     width={40}
                                     height={40}
-                                    unoptimized
+                                    unoptimized={isGeneratedAvatar(avatarFor(user))}
                                     className="h-10 w-10 rounded-full object-cover"
                                 />
                                 <div className="min-w-0">
