@@ -36,9 +36,39 @@ export async function renderQrCardPng({ label, restaurantName, sourceCanvas, log
     const ctx = exportCanvas.getContext('2d')
     if (!ctx) throw new Error('Failed to get 2d canvas context')
 
-    // 1. Draw white background
+    // 1. Draw the rounded white card with a hairline boundary, matching the
+    // on-screen preview (rounded-xl + border-hairline-strong). Everything after
+    // this is clipped to the rounded shape so the orange banners follow the
+    // corners instead of poking out as square edges.
+    const inset = 8 * scale
+    const radius = 26 * scale
+    const cardX = inset
+    const cardY = inset
+    const cardW = exportCanvas.width - inset * 2
+    const cardH = exportCanvas.height - inset * 2
+
+    const traceCardPath = () => {
+        ctx.beginPath()
+        if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(cardX, cardY, cardW, cardH, radius)
+        } else {
+            // Fallback for older canvas engines without roundRect.
+            ctx.moveTo(cardX + radius, cardY)
+            ctx.arcTo(cardX + cardW, cardY, cardX + cardW, cardY + cardH, radius)
+            ctx.arcTo(cardX + cardW, cardY + cardH, cardX, cardY + cardH, radius)
+            ctx.arcTo(cardX, cardY + cardH, cardX, cardY, radius)
+            ctx.arcTo(cardX, cardY, cardX + cardW, cardY, radius)
+            ctx.closePath()
+        }
+    }
+
+    // Transparent outside the card so the rounded corners stay clean.
+    ctx.clearRect(0, 0, exportCanvas.width, exportCanvas.height)
+    traceCardPath()
+    ctx.save()
     ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height)
+    ctx.fill()
+    ctx.clip()
 
     // Extract hashed font names from CSS variables created by next/font
     const outfitFont = typeof window !== 'undefined' ? window.getComputedStyle(document.body).getPropertyValue('--font-outfit').trim() || '"Outfit"' : '"Outfit"'
@@ -170,6 +200,13 @@ export async function renderQrCardPng({ label, restaurantName, sourceCanvas, log
         ctx.textBaseline = 'middle'
         ctx.fillText('K', logoCenterX, logoCenterY + 0.5 * scale)
     }
+
+    // Release the rounded clip and stroke the hairline boundary on top.
+    ctx.restore()
+    traceCardPath()
+    ctx.strokeStyle = '#DED8CF' // --border-strong (hairline-strong)
+    ctx.lineWidth = 2 * scale
+    ctx.stroke()
 
     return exportCanvas.toDataURL('image/png')
 }
