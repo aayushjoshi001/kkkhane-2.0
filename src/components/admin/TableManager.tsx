@@ -394,7 +394,7 @@ export default function TableManager({
                         {/* Browser chrome */}
                         <div className="bg-surface-muted px-3 sm:px-4 pb-1.5 sm:pb-2 pt-6 sm:pt-7 border-b border-hairline-strong shrink-0 flex items-center gap-2">
                             <div className="w-4 h-4 text-ink-subtle"><Smartphone size={14} /></div>
-                            <div className="flex-1 bg-surface-muted/80 rounded-lg text-[9px] sm:text-[10px] text-center text-ink-subtle py-1 sm:py-1.5 px-2 truncate font-mono">
+                            <div className="flex-1 min-w-0 bg-surface-muted/80 rounded-lg text-[9px] sm:text-[10px] text-center text-ink-subtle py-1 sm:py-1.5 px-2 truncate font-mono">
                                 {baseUrl.replace(/https?:\/\//, '')}/t/{previewTable?.qr_token?.substring(0, 8) || '...'}…
                             </div>
                         </div>

@@ -1186,8 +1186,8 @@ export default function StaffManager({
                                     )}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="font-extrabold text-ink flex items-center gap-2 truncate">
-                                        {user.full_name}
+                                    <div className="font-extrabold text-ink flex items-center gap-2 min-w-0">
+                                        <span className="truncate">{user.full_name}</span>
                                         {isMe && <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-brand-50 text-brand-700 uppercase border border-brand-100 shrink-0">You</span>}
                                     </div>
                                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">

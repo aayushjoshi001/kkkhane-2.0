@@ -164,7 +164,7 @@ export default function ServiceRequestFeed({
                         meta={
                             <>
                                 <span>{timeAgo(req.created_at)}</span>
-                                {req.message && <span className="text-ink-muted truncate">— {req.message}</span>}
+                                {req.message && <span className="text-ink-muted truncate min-w-0">— {req.message}</span>}
                             </>
                         }
                         trailing={
@@ -197,7 +197,7 @@ export default function ServiceRequestFeed({
                                         — {req.acknowledged_by === userId ? 'You are' : `${staffNames[req.acknowledged_by] || 'A colleague'} is`} on it
                                     </span>
                                 )}
-                                {req.message && <span className="text-ink-muted truncate">— {req.message}</span>}
+                                {req.message && <span className="text-ink-muted truncate min-w-0">— {req.message}</span>}
                             </>
                         }
                         trailing={
