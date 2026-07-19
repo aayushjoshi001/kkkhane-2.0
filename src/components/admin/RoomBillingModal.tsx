@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Loader2, CheckCircle2, Percent } from 'lucide-react'
+import { X, Loader2, CheckCircle2, Percent, Clock } from 'lucide-react'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
@@ -87,6 +87,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const [roomDiscount, setRoomDiscount] = useState('')
     const [orderDiscount, setOrderDiscount] = useState('')
     const [discountReason, setDiscountReason] = useState('')
+    const [extraHourCharge, setExtraHourCharge] = useState('')
     const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qr_digital' | 'split' | 'credit'>('cash')
     const [splitCashAmount, setSplitCashAmount] = useState('')
     const [splitQrAmount, setSplitQrAmount] = useState('')
@@ -179,13 +180,22 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const orderDiscountVal = orderDiscount.trim() !== '' ? parseFloat(orderDiscount) || 0 : 0
     const totalDiscountAmount = roomDiscountVal + orderDiscountVal
 
+    const extraHourChargeVal = extraHourCharge.trim() !== '' ? parseFloat(extraHourCharge) || 0 : 0
+
     const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost || orderDiscountVal < 0 || orderDiscountVal > qrOrdersTotal
     const effectiveStayCost = Math.max(0, stayCost - roomDiscountVal)
     const effectiveOrdersTotal = Math.max(0, qrOrdersTotal - orderDiscountVal)
 
-    const grandTotal = effectiveStayCost + effectiveOrdersTotal + manualChargesTotal
+    const grandTotal = effectiveStayCost + effectiveOrdersTotal + manualChargesTotal + extraHourChargeVal
     const advancePaid = Number(booking?.paid_amount) || 0
     const balanceDue = Math.max(0, grandTotal - advancePaid)
+
+    const checkOutTime = booking ? new Date(booking.check_out) : null
+    const currentTime = new Date()
+    const isExceeded = checkOutTime ? currentTime > checkOutTime : false
+    const extraHours = isExceeded && checkOutTime
+        ? Math.ceil((currentTime.getTime() - checkOutTime.getTime()) / (1000 * 60 * 60))
+        : 0
 
     const resolvedCash = paymentMethod === 'cash' ? balanceDue
         : paymentMethod === 'split' ? (parseFloat(splitCashAmount) || 0)
@@ -233,6 +243,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         creditPaid: resolvedCredit,
         discountAmount: totalDiscountAmount,
         discountReason: discountReason,
+        extraHourCharge: extraHourChargeVal,
     } : null
 
     // 'cash'/'qr_digital' are unambiguous — settle immediately. 'split' and
@@ -280,6 +291,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                     credit_amount: resolvedCredit,
                     customer_name: resolvedCredit > 0 ? creditCustomerName.trim() : undefined,
                     customer_phone: resolvedCredit > 0 ? creditCustomerPhone.trim() : undefined,
+                    extra_hour_charge: extraHourChargeVal,
                 })
             })
             const data = await res.json()
@@ -381,6 +393,9 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                     <p className="text-[10px] font-bold text-gray-400 uppercase">Stay schedule</p>
                                     <p className="font-semibold text-gray-600">In: {formatDateTime(booking.check_in)}</p>
                                     <p className="font-semibold text-gray-600">Out: {formatDateTime(booking.check_out)}</p>
+                                    {isExceeded && (
+                                        <p className="text-[9px] text-rose-600 font-bold mt-1">⚠ Exceeded by {extraHours} hr(s)</p>
+                                    )}
                                 </div>
                             </div>
 
@@ -394,6 +409,16 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         </div>
                                         <span className="font-extrabold text-gray-600 tabular-nums">{money(stayCost)}</span>
                                     </div>
+
+                                    {extraHourChargeVal > 0 && (
+                                        <div className="flex justify-between items-center p-4 text-xs bg-rose-50/20">
+                                            <div>
+                                                <p className="font-extrabold text-rose-700">Extra Hour Charge</p>
+                                                <p className="text-[10px] text-rose-500">Late checkout fee</p>
+                                            </div>
+                                            <span className="font-extrabold text-rose-700 tabular-nums">{money(extraHourChargeVal)}</span>
+                                        </div>
+                                    )}
 
                                     {roomDiscountVal > 0 && (
                                         <div className="flex justify-between items-center p-4 text-xs bg-rose-50/40">
@@ -508,6 +533,35 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                     </div>
                                 )}
                             </div>
+
+                            {/* Extra Hour Charge Box (shown only if check-out time is exceeded) */}
+                            {isExceeded && (
+                                <div className="border-2 border-rose-200 rounded-2xl p-4 space-y-3 bg-rose-50/60 shadow-sm animate-scale-in">
+                                    <div className="flex items-center gap-2 pb-2 border-b border-rose-200/50">
+                                        <div className="w-7 h-7 rounded-lg bg-rose-100 flex items-center justify-center shrink-0">
+                                            <Clock size={14} className="text-rose-700" />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-black text-rose-800 uppercase tracking-wider">Late Checkout Alert</p>
+                                            <p className="text-[10px] text-rose-700/70 font-semibold">Exceeded by {extraHours} hour(s)</p>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="block text-[9px] font-black text-rose-800 uppercase">Extra Hour Charge (Optional)</label>
+                                        <div className="relative">
+                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-rose-700">Rs.</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                placeholder="0.00"
+                                                value={extraHourCharge}
+                                                onChange={e => setExtraHourCharge(e.target.value)}
+                                                className="w-full pl-7 pr-2 py-2 border-2 border-rose-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-rose-500"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Send Digital Invoice */}
                             <div className="mt-3 pt-3 border-t border-dashed border-gray-150">

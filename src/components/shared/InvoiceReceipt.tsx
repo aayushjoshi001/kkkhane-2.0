@@ -155,6 +155,12 @@ export default function InvoiceReceipt({
 
             {/* Invoice Total + Advance + Balance */}
             <div className="space-y-0.5 text-[10px]">
+                {!!invoice.extraHourCharge && invoice.extraHourCharge > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                        <span>Extra Hour Charge</span>
+                        <span className="tabular-nums">{money(invoice.extraHourCharge)}</span>
+                    </div>
+                )}
                 {!!invoice.discountAmount && invoice.discountAmount > 0 && (
                     <div className="flex justify-between text-gray-600">
                         <span>Total Discount</span>

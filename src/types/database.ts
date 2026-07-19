@@ -980,6 +980,7 @@ export interface Booking {
     discount_reason: string | null
     discount_applied_by: string | null
     discount_applied_at: string | null
+    extra_hour_charge?: number
     rooms?: Room | null
 }
 

@@ -176,11 +176,13 @@ export default function CashierClient({
     const [roomDiscount, setRoomDiscount] = useState<string>('')
     const [foodDiscount, setFoodDiscount] = useState<string>('')
     const [discountReason, setDiscountReason] = useState<string>('')
+    const [extraHourCharge, setExtraHourCharge] = useState<string>('')
 
     useEffect(() => {
         setRoomDiscount('')
         setFoodDiscount('')
         setDiscountReason('')
+        setExtraHourCharge('')
         setBillingPaymentMethod('cash')
         setSplitCashAmount('')
         setSplitQrAmount('')
@@ -378,7 +380,16 @@ export default function CashierClient({
     const foodDiscountVal = foodDiscount.trim() !== '' ? parseFloat(foodDiscount) || 0 : 0
     const totalDiscountAmount = roomDiscountVal + foodDiscountVal
 
+    const extraHourChargeVal = extraHourCharge.trim() !== '' ? parseFloat(extraHourCharge) || 0 : 0
+
     const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost || foodDiscountVal < 0 || foodDiscountVal > totalFoodOrders
+
+    const checkOutTime = billingStayBooking ? new Date(billingStayBooking.check_out) : null
+    const currentTime = new Date()
+    const isExceeded = checkOutTime ? currentTime > checkOutTime : false
+    const extraHours = isExceeded && checkOutTime
+        ? Math.ceil((currentTime.getTime() - checkOutTime.getTime()) / (1000 * 60 * 60))
+        : 0
 
     const getTableSessionItems = (table: any) => {
         if (!table || !table.activeSession) return []
@@ -430,7 +441,8 @@ export default function CashierClient({
         const effectiveStayCost = Math.max(0, stayCost - roomDiscountVal)
         const effectiveFoodOrders = Math.max(0, totalFoodOrders - foodDiscountVal)
         const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
-        return effectiveStayCost + effectiveFoodOrders + manualChargesTotal
+        const extraHourChargeVal = extraHourCharge.trim() !== '' ? parseFloat(extraHourCharge) || 0 : 0
+        return effectiveStayCost + effectiveFoodOrders + manualChargesTotal + extraHourChargeVal
     }
 
     // Pure computation — no side effects — so compileInvoice below can inspect
@@ -517,6 +529,7 @@ export default function CashierClient({
                 customerPhone: booking.guest_phone,
                 discountAmount: (parseFloat(roomDiscount) || 0) + (parseFloat(foodDiscount) || 0),
                 discountReason: discountReason,
+                extraHourCharge: extraHourChargeVal,
             }
         } else {
             const table = item
@@ -669,6 +682,7 @@ export default function CashierClient({
                     credit_amount: 0,
                     discount_amount: (parseFloat(roomDiscount) || 0) + (parseFloat(foodDiscount) || 0),
                     discount_reason: discountReason || undefined,
+                    extra_hour_charge: extraHourChargeVal,
                 })
             })
             const data = await res.json()
@@ -765,6 +779,7 @@ export default function CashierClient({
                         customer_phone: invoice.customerPhone,
                         discount_amount: invoice.discountAmount || 0,
                         discount_reason: invoice.discountReason,
+                        extra_hour_charge: invoice.extraHourCharge || 0,
                     })
                 })
                 const data = await res.json()
@@ -1685,6 +1700,9 @@ export default function CashierClient({
                                         <p className="text-[10px] font-bold text-ink-subtle uppercase">Stay schedule</p>
                                         <p className="font-semibold text-ink-muted">In: {formatDateTime(billingStayBooking.check_in)}</p>
                                         <p className="font-semibold text-ink-muted">Out: {formatDateTime(billingStayBooking.check_out)}</p>
+                                        {isExceeded && (
+                                            <p className="text-[9px] text-rose-600 font-bold mt-1">⚠ Exceeded by {extraHours} hr(s)</p>
+                                        )}
                                     </div>
                                 </div>
 
@@ -1698,6 +1716,16 @@ export default function CashierClient({
                                             </div>
                                             <span className="font-extrabold text-ink-muted tabular-nums">{money(stayCost)}</span>
                                         </div>
+
+                                        {extraHourChargeVal > 0 && (
+                                            <div className="flex justify-between items-center p-4 text-xs bg-rose-50/20">
+                                                <div>
+                                                    <p className="font-extrabold text-rose-700">Extra Hour Charge</p>
+                                                    <p className="text-[10px] text-rose-500">Late checkout fee</p>
+                                                </div>
+                                                <span className="font-extrabold text-rose-700 tabular-nums">{money(extraHourChargeVal)}</span>
+                                            </div>
+                                        )}
 
                                         {roomDiscountVal > 0 && (
                                             <div className="flex justify-between items-center p-4 text-xs bg-rose-50/40">
@@ -1748,6 +1776,35 @@ export default function CashierClient({
                                         )}
                                     </div>
                                 </div>
+
+                                {/* Extra Hour Charge Box (shown only if check-out time is exceeded) */}
+                                {isExceeded && (
+                                    <div className="border border-rose-200 rounded-2xl p-4 space-y-3 bg-rose-50/40 shadow-sm animate-scale-in">
+                                        <div className="flex items-center gap-2 pb-2 border-b border-rose-100">
+                                            <div className="w-7 h-7 rounded-lg bg-rose-100 flex items-center justify-center shrink-0">
+                                                <Clock size={14} className="text-rose-700" />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-black text-rose-800 uppercase tracking-wider">Late Checkout Alert</p>
+                                                <p className="text-[10px] text-rose-700/70 font-semibold">Exceeded by {extraHours} hour(s)</p>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="block text-[9px] font-black text-rose-800 uppercase">Extra Hour Charge (Optional)</label>
+                                            <div className="relative">
+                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-rose-700">Rs.</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    placeholder="0.00"
+                                                    value={extraHourCharge}
+                                                    onChange={e => setExtraHourCharge(e.target.value)}
+                                                    className="w-full pl-7 pr-2 py-2 border border-rose-200 rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-rose-500"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Discounts section */}
                                 <div className="border border-hairline rounded-2xl p-4 space-y-4 bg-surface-muted/30">
