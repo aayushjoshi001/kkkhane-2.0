@@ -869,7 +869,6 @@ export interface HomepageConfig {
         // from map_address, which holds the Google Maps link.
         address?: string
         map_address?: string
-        address?: string
         phone?: string
         email?: string
     }
