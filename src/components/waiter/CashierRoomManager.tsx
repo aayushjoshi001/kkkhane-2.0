@@ -147,6 +147,7 @@ export default function CashierRoomManager({
         const checkIn = new Date()
         const checkOut = new Date()
         checkOut.setDate(checkOut.getDate() + 1) // default 1 night stay
+        checkOut.setHours(12, 0, 0, 0) // default check-out to noon 12:00
 
         // Format to YYYY-MM-DDTHH:MM for datetime-local inputs
         const formatLocalTime = (d: Date) => {
@@ -581,7 +582,15 @@ export default function CashierRoomManager({
                                             <input
                                                 type="datetime-local"
                                                 value={bookingForm.check_out}
-                                                onChange={e => setBookingForm(b => ({ ...b, check_out: e.target.value }))}
+                                                onChange={e => {
+                                                    const val = e.target.value
+                                                    if (val) {
+                                                        const datePart = val.slice(0, 10)
+                                                        setBookingForm(b => ({ ...b, check_out: `${datePart}T12:00` }))
+                                                    } else {
+                                                        setBookingForm(b => ({ ...b, check_out: val }))
+                                                    }
+                                                }}
                                                 className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
                                             />
                                         </div>

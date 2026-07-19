@@ -306,6 +306,16 @@ export default function RoomsClient({
         const todayDate = new Date()
         const tomorrowDate = new Date()
         tomorrowDate.setDate(todayDate.getDate() + 1)
+        tomorrowDate.setHours(12, 0, 0, 0) // default to noon 12:00
+
+        const formatLocalTime = (d: Date) => {
+            const pad = (n: number) => (n < 10 ? '0' : '') + n
+            return d.getFullYear() + '-' +
+                pad(d.getMonth() + 1) + '-' +
+                pad(d.getDate()) + 'T' +
+                pad(d.getHours()) + ':' +
+                pad(d.getMinutes())
+        }
 
         const roomType = roomTypesList.find(t => t.id === selectedRoom?.type_id)
 
@@ -313,8 +323,8 @@ export default function RoomsClient({
             guest_name: '',
             guest_phone: '',
             kyc: '',
-            check_in: todayDate.toISOString().slice(0, 16), // YYYY-MM-DDTHH:MM
-            check_out: tomorrowDate.toISOString().slice(0, 16),
+            check_in: formatLocalTime(todayDate),
+            check_out: formatLocalTime(tomorrowDate),
             guest_count: roomType ? roomType.capacity.toString() : '2',
             advance_amount: '0',
             advance_payment_method: 'cash',
@@ -945,7 +955,15 @@ export default function RoomsClient({
                                     <input
                                         type="datetime-local"
                                         value={bookingForm.check_out}
-                                        onChange={e => setBookingForm(b => ({ ...b, check_out: e.target.value }))}
+                                        onChange={e => {
+                                            const val = e.target.value
+                                            if (val) {
+                                                const datePart = val.slice(0, 10)
+                                                setBookingForm(b => ({ ...b, check_out: `${datePart}T12:00` }))
+                                            } else {
+                                                setBookingForm(b => ({ ...b, check_out: val }))
+                                            }
+                                        }}
                                         className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
                                     />
                                 </div>
