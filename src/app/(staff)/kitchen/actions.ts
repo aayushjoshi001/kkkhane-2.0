@@ -8,7 +8,7 @@ import { rollUpOrderStatus } from '@/lib/orderRollup'
 
 // Shared SELECT shape for kitchen orders — mirrors what OrderQueue.tsx expects.
 const KITCHEN_ORDER_SELECT = `
-  id, status, order_type, needs_confirmation, total_amount, placed_at, customer_note, booking_id,
+  id, status, order_type, needs_confirmation, total_amount, placed_at, customer_note, booking_id, session_id,
   bookings:booking_id (
     id,
     rooms:room_id ( id, room_number )

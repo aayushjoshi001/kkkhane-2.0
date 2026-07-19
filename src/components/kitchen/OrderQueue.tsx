@@ -63,7 +63,7 @@ export type ComboItemRow = {
 const QUEUE_AFTER_MS = 2 * 60 * 1000
 
 const ORDER_SELECT = `
-  id, status, order_type, total_amount, placed_at, customer_note, booking_id,
+  id, status, order_type, total_amount, placed_at, customer_note, booking_id, session_id,
   bookings:booking_id (
     id,
     rooms:room_id ( id, room_number )
