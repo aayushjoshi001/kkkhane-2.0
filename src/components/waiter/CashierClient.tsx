@@ -412,10 +412,10 @@ export default function CashierClient({
         const qrOrdersTotal = getRoomQrOrders(room).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
         const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
         const totalFoodOrders = qrOrdersTotal + linkedOrdersTotal
-        
+
         const roomDiscountVal = roomDiscount.trim() !== '' ? parseFloat(roomDiscount) || 0 : 0
         const foodDiscountVal = foodDiscount.trim() !== '' ? parseFloat(foodDiscount) || 0 : 0
-        
+
         const effectiveStayCost = Math.max(0, stayCost - roomDiscountVal)
         const effectiveFoodOrders = Math.max(0, totalFoodOrders - foodDiscountVal)
         const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
@@ -442,7 +442,6 @@ export default function CashierClient({
             const qrOrdersTotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
 
             const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
-            const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
             const total = calculateGrandTotal(room, booking)
 
             // Advance already paid at booking
@@ -489,6 +488,7 @@ export default function CashierClient({
                 })),
                 linkedOrdersTotal,
                 manualCharges: billingRoomCharges,
+                manualChargesTotal,
                 total,
                 advancePaid,
                 advanceMethod: booking.advance_payment_method || 'none',
@@ -655,6 +655,8 @@ export default function CashierClient({
                     qr_paid: 0,
                     session_id: sessionId || null,
                     credit_amount: 0,
+                    discount_amount: (parseFloat(roomDiscount) || 0) + (parseFloat(foodDiscount) || 0),
+                    discount_reason: discountReason || undefined,
                 })
             })
             const data = await res.json()
@@ -746,11 +748,11 @@ export default function CashierClient({
                         qr_paid: invoice.qrPaid,
                         qr_code_id: invoice.qrCodeId,
                         session_id: sessionId || null,
-                        discount_amount: invoice.discountAmount || 0,
-                        discount_reason: invoice.discountReason,
                         credit_amount: invoice.creditPaid || 0,
                         customer_name: invoice.customerName,
                         customer_phone: invoice.customerPhone,
+                        discount_amount: invoice.discountAmount || 0,
+                        discount_reason: invoice.discountReason,
                     })
                 })
                 const data = await res.json()
@@ -1660,20 +1662,7 @@ export default function CashierClient({
                             </div>
                         ) : billingStayBooking ? (
                             <>
-                                {(() => {
-                                    const stayCost = calculateStayCost(selectedBillingRoom, billingStayBooking)
-                                    const qrOrdersTotal = getRoomQrOrders(selectedBillingRoom).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
-                                    const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
-                                    const totalFoodOrders = qrOrdersTotal + linkedOrdersTotal
-
-                                    const roomDiscountVal = roomDiscount.trim() !== '' ? parseFloat(roomDiscount) || 0 : 0
-                                    const foodDiscountVal = foodDiscount.trim() !== '' ? parseFloat(foodDiscount) || 0 : 0
-                                    const totalDiscountAmount = roomDiscountVal + foodDiscountVal
-
-                                    const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost || foodDiscountVal < 0 || foodDiscountVal > totalFoodOrders
-
-                                    return (
-                                        <div className="space-y-6 p-6 overflow-y-auto flex-1">
+                                <div className="space-y-6 p-6 overflow-y-auto flex-1">
                                 <div className="grid grid-cols-2 gap-4 bg-surface-muted/50 border border-hairline rounded-2xl p-4 text-xs">
                                     <div className="space-y-1.5">
                                         <p className="text-[10px] font-bold text-ink-subtle uppercase">Guest</p>
@@ -1701,7 +1690,7 @@ export default function CashierClient({
                                         {roomDiscountVal > 0 && (
                                             <div className="flex justify-between items-center p-4 text-xs bg-rose-50/40">
                                                 <div>
-                                                    <p className="font-extrabold text-rose-600">Room Stay Discount</p>
+                                                    <p className="font-extrabold text-rose-600 font-bold">Room Stay Discount</p>
                                                     <p className="text-[10px] text-gray-400 truncate max-w-[220px]">{discountReason || 'Reason required'}</p>
                                                 </div>
                                                 <span className="font-extrabold text-rose-600 tabular-nums">− {money(roomDiscountVal)}</span>
@@ -1711,7 +1700,7 @@ export default function CashierClient({
                                         {foodDiscountVal > 0 && (
                                             <div className="flex justify-between items-center p-4 text-xs bg-rose-50/40">
                                                 <div>
-                                                    <p className="font-extrabold text-rose-600">Order/Food Discount</p>
+                                                    <p className="font-extrabold text-rose-600 font-bold">Order/Food Discount</p>
                                                     <p className="text-[10px] text-gray-400 truncate max-w-[220px]">{discountReason || 'Reason required'}</p>
                                                 </div>
                                                 <span className="font-extrabold text-rose-600 tabular-nums">− {money(foodDiscountVal)}</span>
