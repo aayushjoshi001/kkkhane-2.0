@@ -369,6 +369,17 @@ export default function CashierClient({
         return items
     }
 
+    const stayCost = selectedBillingRoom && billingStayBooking ? calculateStayCost(selectedBillingRoom, billingStayBooking) : 0
+    const qrOrdersTotal = selectedBillingRoom ? getRoomQrOrders(selectedBillingRoom).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0) : 0
+    const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+    const totalFoodOrders = qrOrdersTotal + linkedOrdersTotal
+
+    const roomDiscountVal = roomDiscount.trim() !== '' ? parseFloat(roomDiscount) || 0 : 0
+    const foodDiscountVal = foodDiscount.trim() !== '' ? parseFloat(foodDiscount) || 0 : 0
+    const totalDiscountAmount = roomDiscountVal + foodDiscountVal
+
+    const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost || foodDiscountVal < 0 || foodDiscountVal > totalFoodOrders
+
     const getTableSessionItems = (table: any) => {
         if (!table || !table.activeSession) return []
         const sessionId = table.activeSession.id
@@ -442,6 +453,7 @@ export default function CashierClient({
             const qrOrdersTotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
 
             const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+            const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
             const total = calculateGrandTotal(room, booking)
 
             // Advance already paid at booking
