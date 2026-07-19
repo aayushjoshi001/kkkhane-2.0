@@ -196,10 +196,17 @@ export function getKOTSourceLabel(order: {
         const activeSessions = tableSessions.filter(s => s.status === 'active')
         const isSplit = activeSessions.length > 1 || (order.sessions?.seat_number ?? 1) >= 2
 
+        let label = `Table ${tbl}`
         if (isSplit) {
-            return `Table ${tbl}-${order.sessions?.seat_number ?? 1}`
+            label = `Table ${tbl}-${order.sessions?.seat_number ?? 1}`
         }
-        return `Table ${tbl}`
+
+        // If they are a hotel guest, also display their room number
+        if (order.booking_id && order.bookings?.rooms?.room_number) {
+            label += ` (Room ${order.bookings.rooms.room_number})`
+        }
+
+        return label
     }
 
     return 'Order'

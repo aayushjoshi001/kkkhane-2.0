@@ -60,6 +60,18 @@ const devSupabaseImagePatterns = devSupabaseUrl
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   images: {
+    // Vercel's Image Optimization quota for this project is exhausted, so the
+    // optimizer answers every uncached transform with HTTP 402
+    // (OPTIMIZED_IMAGE_REQUEST_PAYMENT_REQUIRED) — which the browser renders as a
+    // broken image for whatever srcset width it happens to request. Bypassing the
+    // optimizer serves the original files straight from their host (Supabase
+    // Storage CDN for menu/category/avatar photos, Vercel static for /brand
+    // assets), so images actually load. next/image still lazy-loads, so delivery
+    // stays progressive; the format/size options below are simply inert while
+    // this is on. Re-enable optimization (drop this line) only once the Vercel
+    // image quota is raised. Supabase's own render/image transform is 403 (not
+    // enabled on this project), so it isn't an alternative here.
+    unoptimized: true,
     dangerouslyAllowSVG: true,
     contentDispositionType: 'attachment',
     // Negotiate modern formats — AVIF/WebP are typically 30-50% smaller than the

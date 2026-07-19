@@ -180,7 +180,7 @@ export default function TakeoutQueue({ restaurantId, initialOrders }: TakeoutQue
                         {completedOrders.slice(0, 20).map((order) => (
                             <div key={order.id} className="flex items-center justify-between gap-3 bg-surface/5 rounded-[var(--r-md)] px-4 py-2 text-small">
                                 <span className="font-mono text-dark-muted">#{order.id.slice(0, 8)}</span>
-                                <span className="text-dark-ink truncate flex-1">{order.customer_name}</span>
+                                <span className="text-dark-ink truncate flex-1 min-w-0">{order.customer_name}</span>
                                 <StatusBadge status={order.status} dot={false} />
                             </div>
                         ))}
