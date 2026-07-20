@@ -128,7 +128,8 @@ export async function updateFeaturesAction(restaurantId: string, features: Parti
         'financeEnabled', 'staffManagementEnabled', 'staffShiftsEnabled',
         'tableManagementEnabled', 'ingredientTrackingEnabled', 'loyaltyEnabled',
         'promosEnabled', 'dynamicPricingEnabled', 'takeoutEnabled',
-        'generateInvoiceEnabled', 'printInvoiceEnabled', 'irdSyncEnabled'
+        'generateInvoiceEnabled', 'printInvoiceEnabled', 'irdSyncEnabled',
+        'kotEnabled', 'kdsEnabled'
     ]
     
     // Subscription features gate major modules (Premium and above); only super

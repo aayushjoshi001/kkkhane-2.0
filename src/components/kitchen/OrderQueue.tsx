@@ -7,7 +7,7 @@ import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { playNewOrder } from '@/lib/audio'
 import { toast } from 'react-hot-toast'
 import { timeAgo, getKOTSourceLabel, getItemKOTDisplay } from '@/lib/utils'
-import { useCurrency } from '@/lib/contexts/FeatureContext'
+import { useCurrency, useFeatures } from '@/lib/contexts/FeatureContext'
 import { Bell, Hourglass, Flame, ChefHat, ChevronDown, CheckSquare, Square, Check, Clock, Printer } from 'lucide-react'
 import type { OrderStatus, OrderItemStatus, Order, OrderItem, OrderItemModifier, MenuItem, Session, Table, Booking } from '@/types/database'
 import { setOrderItemsStatus, getKitchenOrders } from '@/app/(staff)/kitchen/actions'
@@ -128,6 +128,8 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
         return false
     })
     const money = useCurrency()
+    const features = useFeatures()
+    const kdsEnabled = !features.kotEnabled && (features.kdsEnabled ?? true)
     const supabaseRef = useRef(createClient())
     const { print: printKot, networkPrinter } = usePrinter(stationMeta.printerRole)
     // Queued, not a single slot — QZ Tray being down for the whole shift means
@@ -377,6 +379,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             collapsed={collapsed.has(section.order.id)}
             onToggle={() => toggleCollapse(section.order.id)}
             onApply={applyItemStatus}
+            kdsEnabled={kdsEnabled}
         />
     )
 
@@ -572,7 +575,7 @@ function itemStatusPill(status: string) {
     return { label: 'Pending', cls: 'text-ink-subtle' }
 }
 
-function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffNames, stationAccent, collapsed, onToggle, onApply }: {
+function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffNames, stationAccent, collapsed, onToggle, onApply, kdsEnabled = true }: {
     tab: TabKey
     order: KitchenOrder
     items: KitchenOrderItem[]
@@ -585,6 +588,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
     collapsed: boolean
     onToggle: () => void
     onApply: (orderId: string, itemIds: string[], next: OrderItemStatus) => Promise<void>
+    kdsEnabled?: boolean
 }) {
     const meta = TAB_META[tab]
     const isCooking = tab === 'cooking'
@@ -658,7 +662,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
             {!collapsed && (
                 <div className="px-4 pb-4">
                     {/* Select-all + action (New/Queue) */}
-                    {!isCooking && items.length > 0 && (
+                    {kdsEnabled && !isCooking && items.length > 0 && (
                         <div className="flex items-center justify-between mb-2 pb-2 border-b border-hairline">
                             {items.length > 1 ? (
                                 <button onClick={toggleAll} className="flex items-center gap-2 text-xs font-bold text-ink-subtle">
@@ -676,7 +680,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
                     <div className="space-y-1">
                         {items.map(item => {
                             const mine = ownItem(item)
-                            const canSelect = isCooking ? mine : true
+                            const canSelect = kdsEnabled && (isCooking ? mine : true)
                             const isSel = selected.has(item.id)
                             const pill = itemStatusPill(item.status)
                             const lineTotal = Number(item.unit_price ?? 0) * item.quantity
@@ -686,11 +690,11 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
                                     onClick={canSelect ? () => toggle(item.id) : undefined}
                                     className={`flex items-center gap-3 py-2 rounded-lg px-1 ${canSelect ? 'cursor-pointer' : 'opacity-70'} ${isSel ? 'bg-brand-50/60' : ''}`}
                                 >
-                                    {canSelect ? (
+                                    {kdsEnabled && (canSelect ? (
                                         isSel ? <CheckSquare size={18} style={{ color: meta.accent }} className="shrink-0" /> : <Square size={18} className="text-gray-300 shrink-0" />
                                     ) : (
                                         <span className="w-[18px] h-[18px] rounded border border-hairline-strong shrink-0" />
-                                    )}
+                                    ))}
                                     <div className="flex-1 min-w-0">
                                         {(() => {
                                             const { name, note } = getItemKOTDisplay(item, order.order_type === 'takeout' && !order.bookings)
@@ -709,7 +713,9 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
                                             </div>
                                         )}
                                     </div>
-                                    <span className={`text-[11px] font-semibold italic shrink-0 ${pill.cls}`}>{pill.label}</span>
+                                    {kdsEnabled && (
+                                        <span className={`text-[11px] font-semibold italic shrink-0 ${pill.cls}`}>{pill.label}</span>
+                                    )}
                                 </div>
                             )
                         })}
@@ -723,7 +729,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
                     )}
 
                     {/* Mark Ready (Cooking, owner) */}
-                    {isCooking && (
+                    {kdsEnabled && isCooking && (
                         selectable.length > 0 ? (
                             <button
                                 onClick={() => run('ready')}

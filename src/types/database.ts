@@ -406,6 +406,8 @@ export interface Settings {
         manualEntryEnabled?: boolean
         printBillEnabled?: boolean
         showInvoiceEnabled?: boolean
+        kotEnabled?: boolean
+        kdsEnabled?: boolean
     }
     business_hours: BusinessHours | null
     updated_at: string
