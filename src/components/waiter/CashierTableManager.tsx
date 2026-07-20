@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
-import { setTableStatus, openSession, linkSessionToBooking, findBookingByRoom } from '@/app/(staff)/waiter/actions'
+import { setTableStatus, openSession, linkSessionToBooking, findBookingByRoom, cancelTransientSession, closeSession } from '@/app/(staff)/waiter/actions'
 import { createClient } from '@/lib/supabase/client'
 import { Users, X, Check, CalendarClock, Eye, ShoppingCart, Hotel, Phone, Search, Loader2, Bed, UserCheck } from 'lucide-react'
 import type { Table, Session } from '@/types/database'
@@ -103,7 +103,8 @@ export default function CashierTableManager({
 
     // Choice step inside the Table click modal
     const [choiceStep, setChoiceStep] = useState<'options' | 'manual_order' | 'reserve'>('options')
-    const [quickOrderSession, setQuickOrderSession] = useState<{ sessionId: string; tableName: string } | null>(null)
+    const [quickOrderSession, setQuickOrderSession] = useState<{ sessionId: string; tableName: string; sessionUuid?: string; tableId?: string } | null>(null)
+    const quickOrderPlacedRef = useRef(false)
     const [vacantSeatNumber, setVacantSeatNumber] = useState<number | null>(null)
     const [vacantSeatStep, setVacantSeatStep] = useState<'choose' | 'room_lookup'>('choose')
     const [phoneInput, setPhoneInput] = useState('')
@@ -287,9 +288,12 @@ export default function CashierTableManager({
                 ? { ...t, ...(typeof patch === 'function' ? patch(t) : patch) }
                 : t))
             
+            quickOrderPlacedRef.current = false
             setQuickOrderSession({
                 sessionId: session.session_token,
-                tableName: seatNumber === 1 && !splitView ? `${selectedTable?.label || 'Table'}` : `${selectedTable?.label || 'Table'}-${seatNumber}`
+                tableName: seatNumber === 1 && !splitView ? `${selectedTable?.label || 'Table'}` : `${selectedTable?.label || 'Table'}-${seatNumber}`,
+                sessionUuid: session.id,
+                tableId,
             })
             setSelectedTable(null)
             setVacantSeatNumber(null)
@@ -329,9 +333,12 @@ export default function CashierTableManager({
                 ? { ...t, ...(typeof patch === 'function' ? patch(t) : patch) }
                 : t))
             
+            quickOrderPlacedRef.current = false
             setQuickOrderSession({
                 sessionId: session.session_token,
-                tableName: seatNumber === 1 && !splitView ? `${selectedTable?.label || 'Table'}` : `${selectedTable?.label || 'Table'}-${seatNumber}`
+                tableName: seatNumber === 1 && !splitView ? `${selectedTable?.label || 'Table'}` : `${selectedTable?.label || 'Table'}-${seatNumber}`,
+                sessionUuid: session.id,
+                tableId,
             })
             setSelectedTable(null)
             setVacantSeatNumber(null)
@@ -957,7 +964,26 @@ export default function CashierTableManager({
             {quickOrderSession && (
                 <QuickOrderModal
                     isOpen={!!quickOrderSession}
-                    onClose={() => setQuickOrderSession(null)}
+                    onClose={async () => {
+                        // If no order was placed and this was a transient session,
+                        // cancel it cleanly — reset table to 'available', not 'dirty'
+                        const snap = quickOrderSession
+                        setQuickOrderSession(null)
+                        if (!quickOrderPlacedRef.current && snap.sessionUuid) {
+                            await cancelTransientSession(snap.sessionUuid)
+                            if (snap.tableId) {
+                                setTables(prev => prev.map(t =>
+                                    t.id === snap.tableId
+                                        ? { ...t, activeSession: undefined, table_status: 'available' }
+                                        : t
+                                ))
+                            }
+                        }
+                    }}
+                    onSuccess={() => {
+                        quickOrderPlacedRef.current = true
+                        setQuickOrderSession(null)
+                    }}
                     sessionId={quickOrderSession.sessionId}
                     tableName={quickOrderSession.tableName}
                     restaurantId={restaurantId}
