@@ -8,6 +8,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import RoomBillingModal, { type BillingTable, type BillingOrder } from '@/components/admin/RoomBillingModal'
 import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import Select from '@/components/ui/Select'
+import { toNepaliDate } from '@/lib/nepaliDate'
 
 interface BookingsClientProps {
     initialBookings: Booking[]
@@ -24,6 +25,7 @@ export default function BookingsClient({ initialBookings, tables = [], activeOrd
     // Booking being settled in the checkout/billing modal
     const [billingBooking, setBillingBooking] = useState<Booking | null>(null)
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
+    const bsEnabled = useFeatureEnabled('bsDateEnabled')
 
     // Re-sync when the server sends fresh bookings (render-phase adjust,
     // see react.dev "You Might Not Need an Effect")
@@ -132,8 +134,16 @@ export default function BookingsClient({ initialBookings, tables = [], activeOrd
                             <tbody className="divide-y divide-hairline text-[14px]">
                                 {filteredBookings.map(b => {
                                     const roomNum = b.rooms?.room_number || '—'
-                                    const checkInStr = new Date(b.check_in).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
-                                    const checkOutStr = new Date(b.check_out).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+                                    const checkInDate = new Date(b.check_in)
+                                    const checkOutDate = new Date(b.check_out)
+                                    const checkInAd = checkInDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+                                    const checkOutAd = checkOutDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+                                    const checkInStr = bsEnabled 
+                                        ? `${checkInAd} (${toNepaliDate(checkInDate, 'MMMM DD, YYYY', 'en')} BS)`
+                                        : checkInAd
+                                    const checkOutStr = bsEnabled
+                                        ? `${checkOutAd} (${toNepaliDate(checkOutDate, 'MMMM DD, YYYY', 'en')} BS)`
+                                        : checkOutAd
                                     const total = b.total_amount || 0.00
                                     const paid = b.paid_amount || 0.00
                                     const balance = total - paid

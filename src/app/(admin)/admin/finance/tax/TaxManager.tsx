@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import { StatusBadge } from '@/components/ui/Badge'
 import type { TaxConfiguration, TaxFiling, TaxType } from '@/types/database'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 import {
     createTaxConfigurationAction, updateTaxConfigurationAction, deleteTaxConfigurationAction,
     createTaxFilingAction, markTaxFilingFiledAction, deleteTaxFilingAction,
@@ -33,6 +34,7 @@ export default function TaxManager({
 }) {
     const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('vat')
+    const formatDate = useDateFormatter()
     const [configurations, setConfigurations] = useState(initialConfigurations)
     const [filings, setFilings] = useState(initialFilings)
 
@@ -172,6 +174,7 @@ function FilingsTab({
     restaurantTax: { vat_registered: boolean }
 }) {
     const { confirm } = useConfirmStore()
+    const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ tax_configuration_id: '', period_start: '', period_end: '', ird_reference: '', notes: '' })
@@ -421,7 +424,7 @@ function FilingsTab({
                                             />
                                         </div>
                                         <p className="text-xs text-ink-subtle font-semibold">
-                                            Period: {new Date(filing.period_start).toLocaleDateString()} to {new Date(filing.period_end).toLocaleDateString()}
+                                            Period: {formatDate(filing.period_start)} to {formatDate(filing.period_end)}
                                         </p>
                                     </div>
 
@@ -501,7 +504,7 @@ function FilingsTab({
                                                 <div className="flex justify-between items-center border-t border-hairline pt-4 text-xs font-bold">
                                                     <span className="text-ink-subtle">
                                                         {filing.status === 'filed' && filing.filed_at && (
-                                                            <span>Filed on {new Date(filing.filed_at).toLocaleDateString()}</span>
+                                                            <span>Filed on {formatDate(filing.filed_at)}</span>
                                                         )}
                                                     </span>
                                                     <div className="flex gap-2">
@@ -714,7 +717,7 @@ function FilingsTab({
                                         ) : (
                                             monthlyReportDetails.sales.map((s: any, idx: number) => (
                                                 <tr key={idx} className="hover:bg-surface-muted/20">
-                                                    <td className="border border-hairline p-2">{new Date(s.date).toLocaleDateString()}</td>
+                                                    <td className="border border-hairline p-2">{formatDate(s.date)}</td>
                                                     <td className="border border-hairline p-2">{s.customerName}</td>
                                                     <td className="border border-hairline p-2 font-mono text-[10px]">{s.description}</td>
                                                     <td className="border border-hairline p-2 text-right tabular-nums">{fmt(s.taxable)}</td>
@@ -754,7 +757,7 @@ function FilingsTab({
                                         ) : (
                                             monthlyReportDetails.purchases.map((p: any, idx: number) => (
                                                 <tr key={idx} className="hover:bg-surface-muted/20">
-                                                    <td className="border border-hairline p-2">{new Date(p.date).toLocaleDateString()}</td>
+                                                    <td className="border border-hairline p-2">{formatDate(p.date)}</td>
                                                     <td className="border border-hairline p-2">{p.recipient}</td>
                                                     <td className="border border-hairline p-2 font-mono text-[10px]">{p.description}</td>
                                                     <td className="border border-hairline p-2 text-right tabular-nums">{fmt(p.taxable)}</td>
@@ -781,6 +784,7 @@ function IrdSyncLogsTab({
     initialLogs: any[]
     restaurantTax: { vat_registered: boolean }
 }) {
+    const formatDate = useDateFormatter()
     const [logs, setLogs] = useState(initialLogs)
     const [retryingId, setRetryingId] = useState<string | null>(null)
 
@@ -835,7 +839,7 @@ function IrdSyncLogsTab({
                             label={l.sync_status.toUpperCase()} 
                         />
                     ) },
-                    { key: 'synced_at', header: 'Synced At', render: (l) => l.synced_at ? new Date(l.synced_at).toLocaleString() : '—' },
+                    { key: 'synced_at', header: 'Synced At', render: (l) => l.synced_at ? formatDate(l.synced_at) : '—' },
                     { key: 'response', header: 'CBMS Gateway Response', render: (l) => (
                         <span className="text-xs text-ink-subtle max-w-[250px] truncate block" title={l.sync_response}>
                             {l.sync_response || 'Pending response...'}

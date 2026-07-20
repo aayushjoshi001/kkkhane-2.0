@@ -5,7 +5,7 @@ import { createPricingRuleAction, updatePricingRuleAction, deletePricingRuleActi
 import { Plus, Trash2, Power, Pencil, CalendarClock, Search, Loader2 } from 'lucide-react'
 import useSWR from 'swr'
 import toast from 'react-hot-toast'
-import { useCurrency } from '@/lib/contexts/FeatureContext'
+import { useCurrency, useDateFormatter } from '@/lib/contexts/FeatureContext'
 import { fetchPricingRules } from '@/lib/swr-fetchers'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
@@ -66,10 +66,10 @@ function ruleStatus(r: Rule): { label: string; cls: string } {
 
 const fmtDate = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 
-function dateRangeLabel(from: string | null, until: string | null): string {
-    if (from && until) return `${fmtDate(from)} – ${fmtDate(until)}`
-    if (from) return `From ${fmtDate(from)}`
-    if (until) return `Until ${fmtDate(until)}`
+function dateRangeLabel(from: string | null, until: string | null, fmt: (d: string) => string = fmtDate): string {
+    if (from && until) return `${fmt(from)} – ${fmt(until)}`
+    if (from) return `From ${fmt(from)}`
+    if (until) return `Until ${fmt(until)}`
     return 'Always'
 }
 
@@ -82,6 +82,7 @@ export default function PricingRulesManager({ initialRules, menuItems, categorie
     const { confirm } = useConfirmStore()
     const { data: rules = initialRules, mutate } = useSWR(['pricing_rules', restaurantId], () => fetchPricingRules(restaurantId), { fallbackData: initialRules })
     const money = useCurrency()
+    const formatDate = useDateFormatter()
     const [showForm, setShowForm] = useState(false)
     const [editingId, setEditingId] = useState<string | null>(null)
     const [form, setForm] = useState<FormState>(EMPTY_FORM)
@@ -411,7 +412,7 @@ export default function PricingRulesManager({ initialRules, menuItems, categorie
                                     </td>
                                     <td className="px-5 py-4 text-right font-bold tabular-nums text-ink whitespace-nowrap">{valueLabel(r)}</td>
                                     <td className="px-5 py-4 text-ink-subtle hidden md:table-cell">{appliesToLabel(r)}</td>
-                                    <td className="px-5 py-4 text-ink-subtle text-xs hidden lg:table-cell whitespace-nowrap">{dateRangeLabel(r.valid_from, r.valid_until)}</td>
+                                    <td className="px-5 py-4 text-ink-subtle text-xs hidden lg:table-cell whitespace-nowrap">{dateRangeLabel(r.valid_from, r.valid_until, formatDate)}</td>
                                     <td className="px-5 py-4 text-ink-subtle text-xs hidden lg:table-cell whitespace-nowrap">
                                         <span className="font-medium">{(r.days_of_week?.length ? r.days_of_week.map((d: number) => DAYS[d]).join(', ') : 'All days')}</span>
                                         <br /><span className="tabular-nums">{r.start_time?.slice(0, 5)}–{r.end_time?.slice(0, 5)}</span>

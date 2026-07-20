@@ -66,6 +66,7 @@ export default function CashierRoomManager({
     const money = useCurrency()
     const supabaseRef = useRef(createClient())
     const manualEntryEnabled = useFeatureEnabled('manualEntryEnabled')
+    const bsEnabled = useFeatureEnabled('bsDateEnabled')
 
     // Sub-modal and drawer states
     const [bookingFormOpen, setBookingFormOpen] = useState(false)
@@ -148,6 +149,7 @@ export default function CashierRoomManager({
         const checkIn = new Date()
         const checkOut = new Date()
         checkOut.setDate(checkOut.getDate() + 1) // default 1 night stay
+        checkOut.setHours(12, 0, 0, 0) // default check-out to noon 12:00
 
         // Format to YYYY-MM-DDTHH:MM for datetime-local inputs
         const formatLocalTime = (d: Date) => {
@@ -582,7 +584,15 @@ export default function CashierRoomManager({
                                             <input
                                                 type="datetime-local"
                                                 value={bookingForm.check_out}
-                                                onChange={e => setBookingForm(b => ({ ...b, check_out: e.target.value }))}
+                                                onChange={e => {
+                                                    const val = e.target.value
+                                                    if (val) {
+                                                        const datePart = val.slice(0, 10)
+                                                        setBookingForm(b => ({ ...b, check_out: `${datePart}T12:00` }))
+                                                    } else {
+                                                        setBookingForm(b => ({ ...b, check_out: val }))
+                                                    }
+                                                }}
                                                 className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
                                             />
                                         </div>
@@ -908,8 +918,8 @@ export default function CashierRoomManager({
                                     </div>
                                     <div className="space-y-2 text-right border-l border-hairline pl-4">
                                         <p className="text-[10px] font-bold text-ink-subtle uppercase text-right">Stay Schedule</p>
-                                        <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">In:</span> {formatDateTime(activeBooking.check_in)}</p>
-                                        <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">Out:</span> {formatDateTime(activeBooking.check_out)}</p>
+                                        <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">In:</span> {formatDateTime(activeBooking.check_in, bsEnabled)}</p>
+                                        <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">Out:</span> {formatDateTime(activeBooking.check_out, bsEnabled)}</p>
                                         <p className="text-[10px] text-brand-500 font-extrabold">{activeBooking.adults} Guest(s)</p>
                                     </div>
                                 </div>

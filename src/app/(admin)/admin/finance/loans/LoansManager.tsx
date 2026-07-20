@@ -7,6 +7,7 @@ import { DataTable, FormModal, FormInput, FormSelect, FormTextarea, SectionTabs,
 import Button from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
 import { formatCurrency } from '@/lib/utils'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 import type { Loan, LoanEmiSchedule, LoanPayment } from '@/types/database'
 import {
     createLoanAction, updateLoanStatusAction, deleteLoanAction,
@@ -26,6 +27,7 @@ export default function LoansManager({
 }) {
     const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('loans')
+    const formatDate = useDateFormatter()
     const [loans, setLoans] = useState(initialLoans)
     const [emiSchedule, setEmiSchedule] = useState(initialEmiSchedule)
     const [payments, setPayments] = useState(initialPayments)
@@ -48,6 +50,7 @@ export default function LoansManager({
 
 function LoansTab({ loans, setLoans }: { loans: Loan[]; setLoans: (fn: (prev: Loan[]) => Loan[]) => void }) {
     const { confirm } = useConfirmStore()
+    const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ lender_name: '', principal_amount: '', interest_rate: '', start_date: '', tenure_months: '', notes: '' })
@@ -97,7 +100,7 @@ function LoansTab({ loans, setLoans }: { loans: Loan[]; setLoans: (fn: (prev: Lo
                     { key: 'lender_name', header: 'Lender', render: (l) => <span className="font-bold text-ink">{l.lender_name}</span> },
                     { key: 'principal_amount', header: 'Principal', align: 'right', render: (l) => formatCurrency(l.principal_amount), sortValue: (l) => l.principal_amount },
                     { key: 'interest_rate', header: 'Interest Rate', align: 'right', render: (l) => (l.interest_rate != null ? `${l.interest_rate}%` : '—') },
-                    { key: 'start_date', header: 'Start Date', render: (l) => new Date(l.start_date).toLocaleDateString() },
+                    { key: 'start_date', header: 'Start Date', render: (l) => formatDate(l.start_date) },
                     { key: 'tenure_months', header: 'Tenure', render: (l) => (l.tenure_months ? `${l.tenure_months} mo` : '—') },
                     { key: 'status', header: 'Status', render: (l) => <StatusBadge status={l.status === 'active' ? 'active' : 'closed'} /> },
                 ]}
@@ -128,6 +131,7 @@ function LoansTab({ loans, setLoans }: { loans: Loan[]; setLoans: (fn: (prev: Lo
 
 function EmiTab({ loans, emiSchedule, setEmiSchedule }: { loans: Loan[]; emiSchedule: LoanEmiSchedule[]; setEmiSchedule: (fn: (prev: LoanEmiSchedule[]) => LoanEmiSchedule[]) => void }) {
     const { confirm } = useConfirmStore()
+    const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ loan_id: '', installment_no: '1', due_date: '', amount: '' })
@@ -173,7 +177,7 @@ function EmiTab({ loans, emiSchedule, setEmiSchedule }: { loans: Loan[]; emiSche
                 columns={[
                     { key: 'loan', header: 'Loan', render: (e) => e.loans?.lender_name || '—' },
                     { key: 'installment_no', header: '#', render: (e) => e.installment_no, sortValue: (e) => e.installment_no },
-                    { key: 'due_date', header: 'Due Date', render: (e) => new Date(e.due_date).toLocaleDateString(), sortValue: (e) => e.due_date },
+                    { key: 'due_date', header: 'Due Date', render: (e) => formatDate(e.due_date), sortValue: (e) => e.due_date },
                     { key: 'amount', header: 'Amount', align: 'right', render: (e) => formatCurrency(e.amount) },
                     { key: 'status', header: 'Status', render: (e) => <StatusBadge status={e.status === 'paid' ? 'paid' : e.status === 'overdue' ? 'rejected' : 'pending'} label={e.status} /> },
                 ]}
@@ -204,6 +208,7 @@ function EmiTab({ loans, emiSchedule, setEmiSchedule }: { loans: Loan[]; emiSche
 
 function PaymentsTab({ loans, payments, setPayments }: { loans: Loan[]; payments: LoanPayment[]; setPayments: (fn: (prev: LoanPayment[]) => LoanPayment[]) => void }) {
     const { confirm } = useConfirmStore()
+    const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ loan_id: '', amount: '', principal_component: '', interest_component: '', payment_date: '' })
@@ -242,7 +247,7 @@ function PaymentsTab({ loans, payments, setPayments }: { loans: Loan[]; payments
             </div>
             <DataTable
                 columns={[
-                    { key: 'payment_date', header: 'Date', render: (p) => new Date(p.payment_date).toLocaleDateString(), sortValue: (p) => p.payment_date },
+                    { key: 'payment_date', header: 'Date', render: (p) => formatDate(p.payment_date), sortValue: (p) => p.payment_date },
                     { key: 'loan', header: 'Loan', render: (p) => p.loans?.lender_name || '—' },
                     { key: 'principal_component', header: 'Principal', align: 'right', render: (p) => (p.principal_component != null ? formatCurrency(p.principal_component) : '—') },
                     { key: 'interest_component', header: 'Interest', align: 'right', render: (p) => (p.interest_component != null ? formatCurrency(p.interest_component) : '—') },

@@ -980,6 +980,7 @@ export interface Booking {
     discount_reason: string | null
     discount_applied_by: string | null
     discount_applied_at: string | null
+    extra_hour_charge?: number
     rooms?: Room | null
 }
 
@@ -1103,6 +1104,7 @@ export interface BankAccount {
     account_number: string | null
     opening_balance: number
     is_active: boolean
+    deactivation_reason: string | null
     created_by: string | null
     created_at: string
     updated_at: string

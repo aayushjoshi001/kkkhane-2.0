@@ -111,7 +111,7 @@ export async function POST(req: Request) {
         const {
             booking_id, room_id, total_amount, cash_paid, qr_paid, qr_code_id, session_id,
             discount_amount, discount_reason, credit_amount, customer_name, customer_phone,
-            redeemed_points,
+            redeemed_points, extra_hour_charge,
         } = body
 
         if (!booking_id || !room_id) {
@@ -193,10 +193,15 @@ export async function POST(req: Request) {
             sessionId: session_id || null,
             discountAmount,
         })
+        const extraHourCharge = Number(extra_hour_charge) || 0
+        if (extraHourCharge < 0) {
+            return NextResponse.json({ error: 'extra_hour_charge cannot be negative' }, { status: 400 })
+        }
+
         if (discountAmount > folio.stayCost) {
             return NextResponse.json({ error: 'Discount cannot exceed the room rate' }, { status: 400 })
         }
-        const authoritativeTotal = folio.total
+        const authoritativeTotal = folio.total + extraHourCharge
 
         const { getRestaurantFeatures } = await import('@/lib/features')
         const features = await getRestaurantFeatures(booking.restaurant_id)
@@ -321,7 +326,8 @@ export async function POST(req: Request) {
             p_authoritative_total: authoritativeTotal,
             p_orders_total: folio.ordersTotal,
             p_ledger_split_mode: restaurant?.ledger_split_mode || 'direct',
-            p_commission_rate: Number(restaurant?.billing_commission_rate) || 0.00
+            p_commission_rate: Number(restaurant?.billing_commission_rate) || 0.00,
+            p_extra_hour_charge: extraHourCharge
         })
 
         if (rpcErr) {

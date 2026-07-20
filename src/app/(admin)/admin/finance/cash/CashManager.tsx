@@ -7,6 +7,7 @@ import { DataTable, FormModal, FormInput, FormSelect, SectionTabs, type SectionT
 import Button from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
 import { formatCurrency } from '@/lib/utils'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 import type { CashDrawer, CashTransaction, CashCount, CashTransactionType } from '@/types/database'
 import {
     createCashDrawerAction, updateCashDrawerAction, deleteCashDrawerAction,
@@ -36,6 +37,7 @@ export default function CashManager({
 }) {
     const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('drawers')
+    const formatDate = useDateFormatter()
     const [drawers, setDrawers] = useState(initialDrawers)
     const [transactions, setTransactions] = useState(initialTransactions)
     const [counts, setCounts] = useState(initialCounts)
@@ -137,6 +139,7 @@ function TransactionsTab({
     setTransactions: (fn: (prev: CashTransaction[]) => CashTransaction[]) => void
 }) {
     const { confirm } = useConfirmStore()
+    const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ drawer_id: '', type: 'cash_in' as CashTransactionType, amount: '', description: '', counterparty_drawer_id: '' })
@@ -175,7 +178,7 @@ function TransactionsTab({
             </div>
             <DataTable
                 columns={[
-                    { key: 'created_at', header: 'Date', render: (t) => new Date(t.created_at).toLocaleString(), sortValue: (t) => t.created_at },
+                    { key: 'created_at', header: 'Date', render: (t) => formatDate(t.created_at), sortValue: (t) => t.created_at },
                     { key: 'drawer', header: 'Drawer', render: (t) => t.cash_drawers?.name || '—' },
                     { key: 'type', header: 'Type', render: (t) => TXN_TYPES.find((x) => x.value === t.type)?.label ?? t.type },
                     { key: 'description', header: 'Description', render: (t) => t.description },
@@ -228,6 +231,7 @@ function CountingTab({
     setCounts: (fn: (prev: CashCount[]) => CashCount[]) => void
 }) {
     const { confirm } = useConfirmStore()
+    const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ drawer_id: '', counted_total: '', expected_total: '', notes: '' })
@@ -265,7 +269,7 @@ function CountingTab({
             </div>
             <DataTable
                 columns={[
-                    { key: 'created_at', header: 'Date', render: (c) => new Date(c.created_at).toLocaleString(), sortValue: (c) => c.created_at },
+                    { key: 'created_at', header: 'Date', render: (c) => formatDate(c.created_at), sortValue: (c) => c.created_at },
                     { key: 'drawer', header: 'Drawer', render: (c) => c.cash_drawers?.name || '—' },
                     { key: 'counted_total', header: 'Counted', align: 'right', render: (c) => formatCurrency(c.counted_total) },
                     { key: 'expected_total', header: 'Expected', align: 'right', render: (c) => (c.expected_total != null ? formatCurrency(c.expected_total) : '—') },

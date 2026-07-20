@@ -7,6 +7,7 @@ import { DataTable, FormModal, FormInput, FormSelect, SectionTabs, type SectionT
 import Button from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
 import { formatCurrency } from '@/lib/utils'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 import type { CustomerCreditAccount, ReceivableTransaction, ReceivableTransactionType } from '@/types/database'
 import {
     createCustomerCreditAccountAction, updateCustomerCreditAccountAction, deleteCustomerCreditAccountAction,
@@ -23,6 +24,7 @@ export default function ReceivablesManager({
 }) {
     const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('accounts')
+    const formatDate = useDateFormatter()
     const [accounts, setAccounts] = useState(initialAccounts)
     const [transactions, setTransactions] = useState(initialTransactions)
 
@@ -121,6 +123,7 @@ function TransactionsTab({
     setTransactions: (fn: (prev: ReceivableTransaction[]) => ReceivableTransaction[]) => void
 }) {
     const { confirm } = useConfirmStore()
+    const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ customer_credit_account_id: '', type: 'charge' as ReceivableTransactionType, amount: '', description: '' })
@@ -158,7 +161,7 @@ function TransactionsTab({
             </div>
             <DataTable
                 columns={[
-                    { key: 'created_at', header: 'Date', render: (t) => new Date(t.created_at).toLocaleString(), sortValue: (t) => t.created_at },
+                    { key: 'created_at', header: 'Date', render: (t) => formatDate(t.created_at), sortValue: (t) => t.created_at },
                     { key: 'customer', header: 'Customer', render: (t) => t.customer_credit_accounts?.customer_name || '—' },
                     { key: 'type', header: 'Type', render: (t) => (t.type === 'charge' ? 'Charge' : 'Payment Collected') },
                     { key: 'description', header: 'Description', render: (t) => t.description },

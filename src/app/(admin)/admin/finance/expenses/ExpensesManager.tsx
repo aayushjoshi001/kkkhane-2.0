@@ -7,6 +7,7 @@ import { DataTable, FormModal, FormInput, FormSelect, FormTextarea, SectionTabs,
 import Button from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
 import { formatCurrency, parseExpenseDescription, orderCategoriesForDisplay } from '@/lib/utils'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 import type { Expense, ExpenseCategory, RecurrenceInterval } from '@/types/database'
 import {
     createExpenseCategoryAction, updateExpenseCategoryAction, deleteExpenseCategoryAction,
@@ -24,6 +25,7 @@ const RECURRENCE: { value: RecurrenceInterval; label: string }[] = [
 export default function ExpensesManager({ initialCategories, initialExpenses }: { initialCategories: ExpenseCategory[]; initialExpenses: Expense[] }) {
     const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('expenses')
+    const formatDate = useDateFormatter()
     const [categories, setCategories] = useState(initialCategories)
     const [expenses, setExpenses] = useState(initialExpenses)
 
@@ -133,6 +135,7 @@ function ExpensesTab({
     setExpenses: (fn: (prev: Expense[]) => Expense[]) => void
 }) {
     const { confirm } = useConfirmStore()
+    const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ category_id: '', amount: '', description: '', vendor_name: '', is_recurring: false, recurrence_interval: 'monthly' as RecurrenceInterval })
@@ -180,7 +183,7 @@ function ExpensesTab({
             </div>
             <DataTable
                 columns={[
-                    { key: 'created_at', header: 'Date', render: (e) => new Date(e.created_at).toLocaleString(), sortValue: (e) => e.created_at },
+                    { key: 'created_at', header: 'Date', render: (e) => formatDate(e.created_at), sortValue: (e) => e.created_at },
                     { key: 'category', header: 'Category', render: (e) => e.expense_categories?.name || '—' },
                     { key: 'description', header: 'Description', render: (e) => (
                         <div>

@@ -14,6 +14,7 @@ import { StatusBadge } from '@/components/ui/Badge'
 import { StatCardSkeleton, RowSkeleton } from '@/components/ui/Skeleton'
 import { getBusinessMode } from '@/lib/businessMode'
 import { getRestaurantFeatures } from '@/lib/features'
+import { toNepaliDate } from '@/lib/nepaliDate'
 
 export const revalidate = 0
 
@@ -123,7 +124,7 @@ export default async function AdminDashboardPage() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">
                     <Suspense fallback={<PipelineCardSkeleton />}>
-                        <PipelineTableSection restaurantId={restaurantId} money={money} isHotel={isHotel} />
+                        <PipelineTableSection restaurantId={restaurantId} money={money} isHotel={isHotel} bsDateEnabled={!!features?.bsDateEnabled} />
                     </Suspense>
 
                     <Suspense fallback={null}>
@@ -251,7 +252,7 @@ function KpiGridSkeleton() {
     )
 }
 
-async function PipelineTableSection({ restaurantId, money, isHotel = false }: { restaurantId: string; money: Money; isHotel?: boolean }) {
+async function PipelineTableSection({ restaurantId, money, isHotel = false, bsDateEnabled = false }: { restaurantId: string; money: Money; isHotel?: boolean; bsDateEnabled?: boolean }) {
     const adminSupabase = await createAdminClient()
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -304,8 +305,14 @@ async function PipelineTableSection({ restaurantId, money, isHotel = false }: { 
                         <tbody className="divide-y divide-hairline">
                             {recentBookings.map(booking => {
                                 const roomNumber = (booking.rooms as unknown as { room_number: string } | null)?.room_number || '—'
-                                const checkInDate = new Date(booking.check_in).toLocaleDateString([], { month: 'short', day: 'numeric' })
-                                const checkOutDate = new Date(booking.check_out).toLocaleDateString([], { month: 'short', day: 'numeric' })
+                                const chIn = new Date(booking.check_in)
+                                const chOut = new Date(booking.check_out)
+                                const checkInDate = bsDateEnabled
+                                    ? toNepaliDate(chIn, 'MMMM DD', 'en')
+                                    : chIn.toLocaleDateString([], { month: 'short', day: 'numeric' })
+                                const checkOutDate = bsDateEnabled
+                                    ? toNepaliDate(chOut, 'MMMM DD', 'en')
+                                    : chOut.toLocaleDateString([], { month: 'short', day: 'numeric' })
                                 return (
                                     <tr key={booking.id} className="group hover:bg-surface-muted/50 transition-colors cursor-pointer">
                                         <td className="px-6 py-4">

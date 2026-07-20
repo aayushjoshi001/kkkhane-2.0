@@ -7,6 +7,7 @@ import { DataTable, FormModal, FormInput, FormSelect, SectionTabs, type SectionT
 import Button from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
 import { formatCurrency } from '@/lib/utils'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 import type { Budget, BudgetCategory, BudgetLine, BudgetPeriodType, BudgetStatus } from '@/types/database'
 import {
     createBudgetAction, updateBudgetStatusAction, deleteBudgetAction,
@@ -26,6 +27,7 @@ export default function BudgetManager({
 }) {
     const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('budgets')
+    const formatDate = useDateFormatter()
     const [budgets, setBudgets] = useState(initialBudgets)
     const [categories, setCategories] = useState(initialCategories)
     const [lines, setLines] = useState(initialLines)
@@ -48,6 +50,7 @@ export default function BudgetManager({
 
 function BudgetsTab({ budgets, setBudgets }: { budgets: Budget[]; setBudgets: (fn: (prev: Budget[]) => Budget[]) => void }) {
     const { confirm } = useConfirmStore()
+    const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ name: '', period_type: 'monthly' as BudgetPeriodType, start_date: '', end_date: '' })
@@ -88,7 +91,7 @@ function BudgetsTab({ budgets, setBudgets }: { budgets: Budget[]; setBudgets: (f
                 columns={[
                     { key: 'name', header: 'Name', render: (b) => <span className="font-bold text-ink">{b.name}</span> },
                     { key: 'period_type', header: 'Period', render: (b) => b.period_type },
-                    { key: 'range', header: 'Range', render: (b) => `${new Date(b.start_date).toLocaleDateString()} – ${new Date(b.end_date).toLocaleDateString()}` },
+                    { key: 'range', header: 'Range', render: (b) => `${formatDate(b.start_date)} – ${formatDate(b.end_date)}` },
                     { key: 'status', header: 'Status', render: (b) => <StatusBadge status={b.status} /> },
                 ]}
                 rows={budgets}

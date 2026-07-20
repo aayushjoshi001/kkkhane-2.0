@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Loader2, CheckCircle2, Percent } from 'lucide-react'
+import { X, Loader2, CheckCircle2, Percent, Clock } from 'lucide-react'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
@@ -11,7 +11,7 @@ import { usePrinter } from '@/lib/print/usePrinter'
 import { buildInvoiceTicket, type ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
-import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
+import { useFeatureEnabled, useDateFormatter } from '@/lib/contexts/FeatureContext'
 import Select from '@/components/ui/Select'
 
 /** Table shape the admin room pages pass in (with its active QR session, if any). */
@@ -80,15 +80,16 @@ const calculateStayCost = (room: Room, booking: Booking) => {
 export default function RoomBillingModal({ room, booking, tables, activeOrders, onClose, onSettled }: RoomBillingModalProps) {
     // true after hydration (portals can't render during SSR)
     const mounted = useSyncExternalStore(() => () => {}, () => true, () => false)
+    const formatDate = useDateFormatter()
     const [charges, setCharges] = useState<RoomCharge[]>([])
     // Loading is derived: we're loading until charges have arrived for this booking
     const [chargesLoadedFor, setChargesLoadedFor] = useState<string | null>(null)
     const loadingDetails = booking ? chargesLoadedFor !== booking.id : false
-    // Bargain rate: the cashier can charge less than the standard rate for
-    // this stay, with a mandatory reason as the audit trail. Blank means "no
-    // change" — the standard rate applies, same as before this existed.
-    const [bargainRate, setBargainRate] = useState('')
-    const [bargainReason, setBargainReason] = useState('')
+    // Discount fields for room stay and food/beverage orders
+    const [roomDiscount, setRoomDiscount] = useState('')
+    const [orderDiscount, setOrderDiscount] = useState('')
+    const [discountReason, setDiscountReason] = useState('')
+    const [extraHourCharge, setExtraHourCharge] = useState('')
     const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qr_digital' | 'split' | 'credit'>('cash')
     const [splitCashAmount, setSplitCashAmount] = useState('')
     const [splitQrAmount, setSplitQrAmount] = useState('')
@@ -111,6 +112,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const printBillEnabled = useFeatureEnabled('printBillEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
+    const bsEnabled = useFeatureEnabled('bsDateEnabled')
     // True once the checkout API confirms the room is settled — printing
     // happens after this, so the manager sees "Settled" immediately instead
     // of waiting on a printer that may be slow or not configured.
@@ -177,16 +179,26 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const creditCustomerName = creditCustomerNameInput || booking?.guest_name || ''
     const creditCustomerPhone = creditCustomerPhoneInput || booking?.guest_phone || ''
 
-    // Blank input = no bargain applied, standard rate stands.
-    const bargainRateEntered = bargainRate.trim() !== ''
-    const bargainRateValue = bargainRateEntered ? parseFloat(bargainRate) || 0 : stayCost
-    const discountAmount = bargainRateEntered ? Math.max(0, stayCost - bargainRateValue) : 0
-    const discountInvalid = bargainRateEntered && (bargainRateValue < 0 || bargainRateValue > stayCost)
-    const effectiveStayCost = stayCost - discountAmount
+    const roomDiscountVal = roomDiscount.trim() !== '' ? parseFloat(roomDiscount) || 0 : 0
+    const orderDiscountVal = orderDiscount.trim() !== '' ? parseFloat(orderDiscount) || 0 : 0
+    const totalDiscountAmount = roomDiscountVal + orderDiscountVal
 
-    const grandTotal = effectiveStayCost + qrOrdersTotal + manualChargesTotal
+    const extraHourChargeVal = extraHourCharge.trim() !== '' ? parseFloat(extraHourCharge) || 0 : 0
+
+    const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost || orderDiscountVal < 0 || orderDiscountVal > qrOrdersTotal
+    const effectiveStayCost = Math.max(0, stayCost - roomDiscountVal)
+    const effectiveOrdersTotal = Math.max(0, qrOrdersTotal - orderDiscountVal)
+
+    const grandTotal = effectiveStayCost + effectiveOrdersTotal + manualChargesTotal + extraHourChargeVal
     const advancePaid = Number(booking?.paid_amount) || 0
     const balanceDue = Math.max(0, grandTotal - advancePaid)
+
+    const checkOutTime = booking ? new Date(booking.check_out) : null
+    const currentTime = new Date()
+    const isExceeded = checkOutTime ? currentTime > checkOutTime : false
+    const extraHours = isExceeded && checkOutTime
+        ? Math.ceil((currentTime.getTime() - checkOutTime.getTime()) / (1000 * 60 * 60))
+        : 0
 
     const resolvedCash = paymentMethod === 'cash' ? balanceDue
         : paymentMethod === 'split' ? (parseFloat(splitCashAmount) || 0)
@@ -215,7 +227,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         guestPhone: booking.guest_phone,
         nights: calculateNights(booking.check_in, booking.check_out),
         basePrice: room.room_types?.base_price || 0,
-        stayCost: effectiveStayCost,
+        stayCost: stayCost,
         qrOrders: allServiceOrderItems.map(item => ({
             name: item.menu_items?.name || 'Item',
             quantity: item.quantity,
@@ -232,6 +244,9 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         cashPaid: resolvedCash,
         qrPaid: resolvedQr,
         creditPaid: resolvedCredit,
+        discountAmount: totalDiscountAmount,
+        discountReason: discountReason,
+        extraHourCharge: extraHourChargeVal,
     } : null
 
     // 'cash'/'qr_digital' are unambiguous — settle immediately. 'split' and
@@ -240,11 +255,11 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // breakdown (and, if needed, customer details) are confirmed.
     const handleSettleClick = () => {
         if (discountInvalid) {
-            toast.error('Bargained rate must be between 0 and the standard rate')
+            toast.error('Discount amounts must be between 0 and the respective stay/order subtotals')
             return
         }
-        if (discountAmount > 0 && !bargainReason.trim()) {
-            toast.error('A reason is required to apply a bargain rate')
+        if (totalDiscountAmount > 0 && !discountReason.trim()) {
+            toast.error('A reason is required to apply a discount')
             return
         }
         if (paymentMethod === 'split' || paymentMethod === 'credit') {
@@ -272,11 +287,14 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                     qr_paid: resolvedQr,
                     qr_code_id: resolvedQr > 0 ? (qrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined)) : undefined,
                     session_id: sessionId,
-                    discount_amount: discountAmount,
-                    discount_reason: discountAmount > 0 ? bargainReason.trim() : undefined,
+                    discount_amount: totalDiscountAmount,
+                    discount_reason: totalDiscountAmount > 0 
+                        ? `Room: Rs. ${roomDiscountVal.toFixed(2)}, Food: Rs. ${orderDiscountVal.toFixed(2)} (Reason: ${discountReason.trim()})`
+                        : undefined,
                     credit_amount: resolvedCredit,
                     customer_name: resolvedCredit > 0 ? creditCustomerName.trim() : undefined,
                     customer_phone: resolvedCredit > 0 ? creditCustomerPhone.trim() : undefined,
+                    extra_hour_charge: extraHourChargeVal,
                 })
             })
             const data = await res.json()
@@ -376,8 +394,11 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                 </div>
                                 <div className="space-y-1 text-right border-l border-hairline pl-4">
                                     <p className="text-[10px] font-bold text-ink-subtle uppercase">Stay schedule</p>
-                                    <p className="font-semibold text-ink-subtle">In: {formatDateTime(booking.check_in)}</p>
-                                    <p className="font-semibold text-ink-subtle">Out: {formatDateTime(booking.check_out)}</p>
+                                    <p className="font-semibold text-ink-subtle">In: {formatDateTime(booking.check_in, bsEnabled)}</p>
+                                    <p className="font-semibold text-ink-subtle">Out: {formatDateTime(booking.check_out, bsEnabled)}</p>
+                                    {isExceeded && (
+                                        <p className="text-[9px] text-rose-600 font-bold mt-1">⚠ Exceeded by {extraHours} hr(s)</p>
+                                    )}
                                 </div>
                             </div>
 
@@ -392,13 +413,33 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         <span className="font-extrabold text-ink-subtle tabular-nums">{money(stayCost)}</span>
                                     </div>
 
-                                    {discountAmount > 0 && (
+                                    {extraHourChargeVal > 0 && (
+                                        <div className="flex justify-between items-center p-4 text-xs bg-rose-50/20">
+                                            <div>
+                                                <p className="font-extrabold text-rose-700">Extra Hour Charge</p>
+                                                <p className="text-[10px] text-rose-500">Late checkout fee</p>
+                                            </div>
+                                            <span className="font-extrabold text-rose-700 tabular-nums">{money(extraHourChargeVal)}</span>
+                                        </div>
+                                    )}
+
+                                    {roomDiscountVal > 0 && (
                                         <div className="flex justify-between items-center p-4 text-xs bg-rose-50/40">
                                             <div>
-                                                <p className="font-extrabold text-rose-600">Bargain Discount</p>
-                                                <p className="text-[10px] text-ink-subtle truncate max-w-[220px]">{bargainReason || 'Reason required'}</p>
+                                                <p className="font-extrabold text-rose-600">Room Stay Discount</p>
+                                                <p className="text-[10px] text-ink-subtle truncate max-w-[220px]">{discountReason || 'Reason required'}</p>
                                             </div>
-                                            <span className="font-extrabold text-rose-600 tabular-nums">− {money(discountAmount)}</span>
+                                            <span className="font-extrabold text-rose-600 tabular-nums">− {money(roomDiscountVal)}</span>
+                                        </div>
+                                    )}
+
+                                    {orderDiscountVal > 0 && (
+                                        <div className="flex justify-between items-center p-4 text-xs bg-rose-50/40">
+                                            <div>
+                                                <p className="font-extrabold text-rose-600">Order/Food Discount</p>
+                                                <p className="text-[10px] text-gray-400 truncate max-w-[220px]">{discountReason || 'Reason required'}</p>
+                                            </div>
+                                            <span className="font-extrabold text-rose-600 tabular-nums">− {money(orderDiscountVal)}</span>
                                         </div>
                                     )}
 
@@ -432,47 +473,98 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                 </div>
                             </div>
 
-                            {/* Bargain rate */}
-                            <div className="border-2 border-amber-200 rounded-2xl p-4 space-y-3 bg-amber-50/60 shadow-sm">
-                                <div className="flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
-                                            <Percent size={14} className="text-amber-700" />
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-black text-amber-800 uppercase tracking-wider">Bargain Rate</p>
-                                            <p className="text-[10px] text-amber-700/70 font-semibold">Standard rate: {money(stayCost)}</p>
-                                        </div>
+                            {/* Discounts section */}
+                            <div className="border-2 border-amber-200 rounded-2xl p-4 space-y-4 bg-amber-50/60 shadow-sm">
+                                <div className="flex items-center gap-2 pb-2 border-b border-amber-200/50">
+                                    <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                                        <Percent size={14} className="text-amber-700" />
                                     </div>
-                                    <div className="relative w-32">
-                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-700">Rs.</span>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            max={stayCost}
-                                            placeholder={stayCost.toFixed(2)}
-                                            value={bargainRate}
-                                            onChange={e => setBargainRate(e.target.value)}
-                                            className={`w-full pl-7 pr-2 py-2 border-2 rounded-xl text-xs font-bold bg-surface focus:outline-none ${discountInvalid ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
-                                        />
+                                    <div>
+                                        <p className="text-xs font-black text-amber-800 uppercase tracking-wider">Discounts</p>
+                                        <p className="text-[10px] text-amber-700/70 font-semibold">Apply discounts to Room rent and/or Food orders</p>
                                     </div>
                                 </div>
-                                {discountInvalid && (
-                                    <p className="text-[9px] text-rose-500 font-bold">Rate must be between Rs. 0 and the standard rate.</p>
-                                )}
-                                {discountAmount > 0 && (
-                                    <div>
-                                        <label className="block text-[9px] font-black text-amber-700 uppercase mb-1">Reason (required)</label>
+
+                                <div className={qrOrdersTotal > 0 ? "grid grid-cols-2 gap-4" : "space-y-1"}>
+                                    <div className="space-y-1">
+                                        <label className="block text-[9px] font-black text-amber-800 uppercase">Room Discount</label>
+                                        <div className="relative">
+                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-700">Rs.</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max={stayCost}
+                                                placeholder="0.00"
+                                                value={roomDiscount}
+                                                onChange={e => setRoomDiscount(e.target.value)}
+                                                className={`w-full pl-7 pr-2 py-2 border-2 rounded-xl text-xs font-bold bg-white focus:outline-none ${roomDiscountVal < 0 || roomDiscountVal > stayCost ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
+                                            />
+                                        </div>
+                                        <span className="text-[9px] text-amber-700/60 font-semibold">Max: {money(stayCost)}</span>
+                                    </div>
+
+                                    {qrOrdersTotal > 0 && (
+                                        <div className="space-y-1">
+                                            <label className="block text-[9px] font-black text-amber-800 uppercase">Food Discount</label>
+                                            <div className="relative">
+                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-700">Rs.</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max={qrOrdersTotal}
+                                                    placeholder="0.00"
+                                                    value={orderDiscount}
+                                                    onChange={e => setOrderDiscount(e.target.value)}
+                                                    className={`w-full pl-7 pr-2 py-2 border-2 rounded-xl text-xs font-bold bg-white focus:outline-none ${orderDiscountVal < 0 || orderDiscountVal > qrOrdersTotal ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
+                                                />
+                                            </div>
+                                            <span className="text-[9px] text-amber-700/60 font-semibold">Max: {money(qrOrdersTotal)}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {totalDiscountAmount > 0 && (
+                                    <div className="space-y-1">
+                                        <label className="block text-[9px] font-black text-amber-700 uppercase">Discount Reason (required)</label>
                                         <input
                                             type="text"
-                                            value={bargainReason}
-                                            onChange={e => setBargainReason(e.target.value)}
-                                            placeholder="e.g. Repeat guest, manager approved"
+                                            value={discountReason}
+                                            onChange={e => setDiscountReason(e.target.value)}
+                                            placeholder="e.g. Regular guest / service delay compensation"
                                             className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-amber-500"
                                         />
                                     </div>
                                 )}
                             </div>
+
+                            {/* Extra Hour Charge Box (shown only if check-out time is exceeded) */}
+                            {isExceeded && (
+                                <div className="border-2 border-rose-200 rounded-2xl p-4 space-y-3 bg-rose-50/60 shadow-sm animate-scale-in">
+                                    <div className="flex items-center gap-2 pb-2 border-b border-rose-200/50">
+                                        <div className="w-7 h-7 rounded-lg bg-rose-100 flex items-center justify-center shrink-0">
+                                            <Clock size={14} className="text-rose-700" />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-black text-rose-800 uppercase tracking-wider">Late Checkout Alert</p>
+                                            <p className="text-[10px] text-rose-700/70 font-semibold">Exceeded by {extraHours} hour(s)</p>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="block text-[9px] font-black text-rose-800 uppercase">Extra Hour Charge (Optional)</label>
+                                        <div className="relative">
+                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-rose-700">Rs.</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                placeholder="0.00"
+                                                value={extraHourCharge}
+                                                onChange={e => setExtraHourCharge(e.target.value)}
+                                                className="w-full pl-7 pr-2 py-2 border-2 border-rose-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-rose-500"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Send Digital Invoice */}
                             <div className="mt-3 pt-3 border-t border-dashed border-hairline">
@@ -664,7 +756,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                             )}
                                             <button
                                                 onClick={handleSettleClick}
-                                                disabled={isSaving || discountInvalid || (discountAmount > 0 && !bargainReason.trim())}
+                                                disabled={isSaving || discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
                                                 className="px-6 py-2 bg-brand-500 hover:bg-brand-600 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-brand-500/10 disabled:opacity-50 flex items-center gap-1.5"
                                             >
                                                 {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
@@ -785,7 +877,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                     print-container to target (see InvoiceReceipt's print CSS). */}
                 {invoiceData && (
                     <div className="fixed -left-[9999px] top-0" aria-hidden>
-                        <InvoiceReceipt invoice={invoiceData} money={money} />
+                        <InvoiceReceipt invoice={invoiceData} money={money} formatDate={formatDate} />
                     </div>
                 )}
         </Modal>

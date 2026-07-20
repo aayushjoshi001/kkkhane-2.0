@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import { StatusBadge } from '@/components/ui/Badge'
 import { formatCurrency } from '@/lib/utils'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 import type {
     ChartOfAccount, VoucherType, FinancePaymentMethod, ApprovalLevel,
     FiscalYear, AccountingPeriod, FinanceSettings, FinanceRolePermission,
@@ -55,6 +56,7 @@ export default function AdministrationManager({
 }) {
     const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('accounts')
+    const formatDate = useDateFormatter()
     const [accounts, setAccounts] = useState(initialAccounts)
     const [voucherTypes, setVoucherTypes] = useState(initialVoucherTypes)
     const [paymentMethods, setPaymentMethods] = useState(initialPaymentMethods)
@@ -364,6 +366,7 @@ function PeriodsTab({
     setPeriods: (fn: (prev: AccountingPeriod[]) => AccountingPeriod[]) => void
 }) {
     const { confirm } = useConfirmStore()
+    const formatDate = useDateFormatter()
     const [openYear, setOpenYear] = useState(false)
     const [openPeriod, setOpenPeriod] = useState(false)
     const [saving, setSaving] = useState(false)
@@ -435,7 +438,7 @@ function PeriodsTab({
                 <DataTable
                     columns={[
                         { key: 'name', header: 'Name', render: (y) => <span className="font-bold text-ink">{y.name}</span> },
-                        { key: 'range', header: 'Range', render: (y) => `${new Date(y.start_date).toLocaleDateString()} – ${new Date(y.end_date).toLocaleDateString()}` },
+                        { key: 'range', header: 'Range', render: (y) => `${formatDate(y.start_date)} – ${formatDate(y.end_date)}` },
                         { key: 'current', header: 'Current', render: (y) => (y.is_current ? <StatusBadge status="active" label="Current" /> : '—') },
                         { key: 'status', header: 'Status', render: (y) => <StatusBadge status={y.status} /> },
                     ]}
@@ -461,7 +464,7 @@ function PeriodsTab({
                     columns={[
                         { key: 'fiscal_year', header: 'Fiscal Year', render: (p) => p.fiscal_years?.name || '—' },
                         { key: 'name', header: 'Name', render: (p) => <span className="font-bold text-ink">{p.name}</span> },
-                        { key: 'range', header: 'Range', render: (p) => `${new Date(p.start_date).toLocaleDateString()} – ${new Date(p.end_date).toLocaleDateString()}` },
+                        { key: 'range', header: 'Range', render: (p) => `${formatDate(p.start_date)} – ${formatDate(p.end_date)}` },
                         { key: 'status', header: 'Status', render: (p) => <StatusBadge status={p.status} /> },
                     ]}
                     rows={periods}

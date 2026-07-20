@@ -23,7 +23,7 @@ export async function getRestaurantFeatures(restaurantId: string): Promise<Setti
                     .eq('restaurant_id', restaurantId)
                     .single()
                 return data?.features_v2 ?? null
-            }, 86400)
+            }, 30) // 30 seconds — short enough that toggle changes show immediately
         },
         [`features-${restaurantId}`],
         { tags: [`features-${restaurantId}`], revalidate: 3600 }

@@ -14,9 +14,10 @@ import NextImage from 'next/image'
 import { renderQrCardPng, downloadDataUrl } from '@/lib/qrCardCanvas'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 import DownloadAllQrsButton from '@/components/admin/DownloadAllQrsButton'
-import { useFeatures } from '@/lib/contexts/FeatureContext'
+import { useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
+import { toNepaliDate } from '@/lib/nepaliDate'
 
 const QR_LOGO_SRC = '/icons/kkkhane.png'
 
@@ -311,6 +312,16 @@ export default function RoomsClient({
         const todayDate = new Date()
         const tomorrowDate = new Date()
         tomorrowDate.setDate(todayDate.getDate() + 1)
+        tomorrowDate.setHours(12, 0, 0, 0) // default to noon 12:00
+
+        const formatLocalTime = (d: Date) => {
+            const pad = (n: number) => (n < 10 ? '0' : '') + n
+            return d.getFullYear() + '-' +
+                pad(d.getMonth() + 1) + '-' +
+                pad(d.getDate()) + 'T' +
+                pad(d.getHours()) + ':' +
+                pad(d.getMinutes())
+        }
 
         const roomType = roomTypesList.find(t => t.id === selectedRoom?.type_id)
 
@@ -318,8 +329,8 @@ export default function RoomsClient({
             guest_name: '',
             guest_phone: '',
             kyc: '',
-            check_in: todayDate.toISOString().slice(0, 16), // YYYY-MM-DDTHH:MM
-            check_out: tomorrowDate.toISOString().slice(0, 16),
+            check_in: formatLocalTime(todayDate),
+            check_out: formatLocalTime(tomorrowDate),
             guest_count: roomType ? roomType.capacity.toString() : '2',
             advance_amount: '0',
             advance_payment_method: 'cash',
@@ -452,15 +463,23 @@ export default function RoomsClient({
         return `https://kkkhane.com/r/${restaurantSlug}?room=${encodeURIComponent(roomId)}`
     }
 
+    const bsEnabled = useFeatureEnabled('bsDateEnabled')
     const formatDateTime = (dateStr: string) => {
         if (!dateStr) return '-'
-        return new Date(dateStr).toLocaleString('en-US', {
+        const date = new Date(dateStr)
+        const ad = date.toLocaleString('en-US', {
             month: 'short',
             day: 'numeric',
             hour: '2-digit',
             minute: '2-digit',
             hour12: true
         })
+        if (!bsEnabled) return ad
+        try {
+            return `${ad} (${toNepaliDate(date, 'MMMM DD, YYYY', 'en')} BS)`
+        } catch {
+            return ad
+        }
     }
 
     return (
@@ -951,7 +970,15 @@ export default function RoomsClient({
                                     <input
                                         type="datetime-local"
                                         value={bookingForm.check_out}
-                                        onChange={e => setBookingForm(b => ({ ...b, check_out: e.target.value }))}
+                                        onChange={e => {
+                                            const val = e.target.value
+                                            if (val) {
+                                                const datePart = val.slice(0, 10)
+                                                setBookingForm(b => ({ ...b, check_out: `${datePart}T12:00` }))
+                                            } else {
+                                                setBookingForm(b => ({ ...b, check_out: val }))
+                                            }
+                                        }}
                                         className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                     />
                                 </div>
