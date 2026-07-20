@@ -7,6 +7,8 @@ import useSWR from 'swr'
 import toast from 'react-hot-toast'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { fetchPricingRules } from '@/lib/swr-fetchers'
+import { useConfirmStore } from '@/lib/stores/confirm'
+import Select from '@/components/ui/Select'
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const RULE_TYPES = [
@@ -77,6 +79,7 @@ export default function PricingRulesManager({ initialRules, menuItems, categorie
     categories: { id: string; name: string }[]
     restaurantId: string
 }) {
+    const { confirm } = useConfirmStore()
     const { data: rules = initialRules, mutate } = useSWR(['pricing_rules', restaurantId], () => fetchPricingRules(restaurantId), { fallbackData: initialRules })
     const money = useCurrency()
     const [showForm, setShowForm] = useState(false)
@@ -214,7 +217,8 @@ export default function PricingRulesManager({ initialRules, menuItems, categorie
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this pricing rule?')) return
+        const ok = await confirm({ title: 'Delete this pricing rule?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deletePricingRuleAction(id)
         if (result.error) { toast.error(result.error); return }
         mutate()
@@ -254,10 +258,10 @@ export default function PricingRulesManager({ initialRules, menuItems, categorie
 
                         <div>
                             <label className="block text-small font-bold text-ink mb-1.5">Type</label>
-                            <select value={form.rule_type} onChange={e => setForm({ ...form, rule_type: e.target.value })}
+                            <Select value={form.rule_type} onChange={e => setForm({ ...form, rule_type: e.target.value })}
                                 className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all">
                                 {RULE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                            </select>
+                            </Select>
                         </div>
                         <div>
                             <label className="block text-small font-bold text-ink mb-1.5">Value</label>
@@ -271,31 +275,31 @@ export default function PricingRulesManager({ initialRules, menuItems, categorie
                         {/* Target */}
                         <div>
                             <label className="block text-small font-bold text-ink mb-1.5">Applies To</label>
-                            <select value={form.target_type} onChange={e => setForm({ ...form, target_type: e.target.value as TargetType })}
+                            <Select value={form.target_type} onChange={e => setForm({ ...form, target_type: e.target.value as TargetType })}
                                 className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all">
                                 <option value="all">All items</option>
                                 <option value="category">A category</option>
                                 <option value="item">A specific item</option>
-                            </select>
+                            </Select>
                         </div>
                         {form.target_type === 'category' && (
                             <div>
                                 <label className="block text-small font-bold text-ink mb-1.5">Category</label>
-                                <select value={form.applies_to_category_id} onChange={e => setForm({ ...form, applies_to_category_id: e.target.value })}
+                                <Select value={form.applies_to_category_id} onChange={e => setForm({ ...form, applies_to_category_id: e.target.value })}
                                     className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all">
                                     <option value="">Select category…</option>
                                     {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                </select>
+                                </Select>
                             </div>
                         )}
                         {form.target_type === 'item' && (
                             <div>
                                 <label className="block text-small font-bold text-ink mb-1.5">Menu Item</label>
-                                <select value={form.applies_to_item_id} onChange={e => setForm({ ...form, applies_to_item_id: e.target.value })}
+                                <Select value={form.applies_to_item_id} onChange={e => setForm({ ...form, applies_to_item_id: e.target.value })}
                                     className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all">
                                     <option value="">Select item…</option>
                                     {menuItems.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-                                </select>
+                                </Select>
                             </div>
                         )}
                     </div>
@@ -364,7 +368,7 @@ export default function PricingRulesManager({ initialRules, menuItems, categorie
                                 className="w-full pl-10 pr-3 py-2.5 rounded-[var(--r-md)] border border-hairline text-sm focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all bg-surface shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
                             />
                         </div>
-                        <select
+                        <Select
                             value={statusFilter}
                             onChange={(e) => setStatusFilter(e.target.value)}
                             className="rounded-[var(--r-md)] border border-hairline bg-surface px-4 py-2.5 text-sm text-ink outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 w-36 shadow-sm transition-all"
@@ -372,7 +376,7 @@ export default function PricingRulesManager({ initialRules, menuItems, categorie
                             <option value="all">All Status</option>
                             <option value="active">Active</option>
                             <option value="inactive">Inactive</option>
-                        </select>
+                        </Select>
                     </div>
                     <button onClick={openCreate}
                         className="flex items-center justify-center gap-2 bg-brand-500 text-white px-5 py-2.5 rounded-[var(--r-md)] text-sm font-bold w-full sm:w-auto shrink-0 shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all focus-ring">

@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { ShoppingBag } from 'lucide-react'
+import Select from '@/components/ui/Select'
 
 export type Order = {
     id: string
@@ -56,15 +57,15 @@ export default function OrdersClient({ orders, restaurants }: {
         <div className="space-y-4">
             {/* Filters */}
             <div className="flex flex-wrap gap-3 bg-surface p-4 rounded-xl border border-hairline-strong shadow-sm">
-                <select
+                <Select
                     value={filterRestaurant}
                     onChange={e => setFilterRestaurant(e.target.value)}
                     className="rounded-lg border border-hairline-strong px-3 py-2 text-sm bg-surface outline-none focus:ring-2 focus:ring-indigo-200"
                 >
                     <option value="all">All Restaurants</option>
                     {restaurants.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                </select>
-                <select
+                </Select>
+                <Select
                     value={filterStatus}
                     onChange={e => setFilterStatus(e.target.value)}
                     className="rounded-lg border border-hairline-strong px-3 py-2 text-sm bg-surface outline-none focus:ring-2 focus:ring-indigo-200"
@@ -73,8 +74,8 @@ export default function OrdersClient({ orders, restaurants }: {
                     {['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'].map(s => (
                         <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
                     ))}
-                </select>
-                <select
+                </Select>
+                <Select
                     value={filterDate}
                     onChange={e => setFilterDate(e.target.value)}
                     className="rounded-lg border border-hairline-strong px-3 py-2 text-sm bg-surface outline-none focus:ring-2 focus:ring-indigo-200"
@@ -83,7 +84,7 @@ export default function OrdersClient({ orders, restaurants }: {
                     <option value="today">Today</option>
                     <option value="7d">Last 7 Days</option>
                     <option value="30d">Last 30 Days</option>
-                </select>
+                </Select>
                 <div className="ml-auto flex items-center gap-4 text-sm text-ink-subtle">
                     <span><strong className="text-ink">{filtered.length}</strong> orders</span>
                     <span><strong className="text-ink">Rs. {totalRevenue.toLocaleString()}</strong> total</span>
@@ -105,7 +106,7 @@ export default function OrdersClient({ orders, restaurants }: {
                                 <th className="px-5 py-3 text-right">Time</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-hairline">
                             {filtered.map(o => (
                                 <tr key={o.id} className="hover:bg-surface-muted/50">
                                     <td className="px-5 py-3 font-mono text-xs font-medium text-ink-muted">{o.id.slice(0, 8).toUpperCase()}</td>

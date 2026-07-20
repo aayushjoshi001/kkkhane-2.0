@@ -13,6 +13,7 @@ import { downloadCsv, downloadExcel } from '@/lib/exportCsv'
 import PrintableReport, { type PrintableReportHandle } from '@/components/admin/PrintableReport'
 import ExportMenu from '@/components/admin/ExportMenu'
 import { useDateFormatter } from '@/lib/contexts/FeatureContext'
+import Select from '@/components/ui/Select'
 
 interface BankAccount {
     id: string
@@ -62,7 +63,7 @@ const CATEGORY_COLORS: Record<string, string> = {
     withdrawal:      'bg-amber-50 text-amber-700 border-amber-100',
     bank_charges:    'bg-rose-50 text-rose-700 border-rose-100',
     transfer_out:    'bg-violet-50 text-violet-700 border-violet-100',
-    other:           'bg-gray-100 text-gray-600 border-gray-200',
+    other:           'bg-surface-muted text-ink-subtle border-hairline',
 }
 
 function formatDescription(desc: string): string {
@@ -276,8 +277,8 @@ export default function BankLedgerManager({
                             <Landmark size={20} className="text-brand-500" />
                         </div>
                         <div>
-                            <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Bank Ledger</h1>
-                            <p className="text-sm text-gray-500 mt-0.5">
+                            <h1 className="text-2xl font-extrabold text-ink tracking-tight">Bank Ledger</h1>
+                            <p className="text-sm text-ink-subtle mt-0.5">
                                 Select bank account to analyze detailed statements, running balances, and cash deposits.
                             </p>
                         </div>
@@ -286,7 +287,7 @@ export default function BankLedgerManager({
                 <div className="flex items-center gap-2">
                     <button
                         onClick={() => setAddBankModalOpen(true)}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-[#ff5a00] hover:bg-[#e04f00] text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md shadow-brand-500/10 focus-ring"
+                        className="flex items-center gap-2 px-5 py-2.5 bg-brand-500 hover:bg-[#e04f00] text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md shadow-brand-500/10 focus-ring"
                     >
                         <Plus size={15} /> Add Bank
                     </button>
@@ -297,17 +298,17 @@ export default function BankLedgerManager({
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 
                 {/* Left Side: Bank Account directory list */}
-                <div className="lg:col-span-4 bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-                    <div className="p-4 border-b border-gray-100 bg-gray-50/50">
-                        <p className="text-xs font-black text-gray-800 uppercase tracking-wider">Bank Accounts ({bankAccountsWithBalances.length})</p>
+                <div className="lg:col-span-4 bg-surface border border-hairline rounded-2xl shadow-sm overflow-hidden">
+                    <div className="p-4 border-b border-hairline bg-surface-muted/50">
+                        <p className="text-xs font-black text-ink uppercase tracking-wider">Bank Accounts ({bankAccountsWithBalances.length})</p>
                     </div>
                     
-                    <div className="divide-y divide-gray-100">
+                    <div className="divide-y divide-hairline">
                         {bankAccountsWithBalances.length === 0 ? (
-                            <div className="text-center py-12 text-gray-400">
+                            <div className="text-center py-12 text-ink-subtle">
                                 <LandmarkIcon size={30} className="mx-auto mb-2 opacity-30" />
                                 <p className="text-xs font-bold">No registered bank accounts</p>
-                                <p className="text-[10px] text-gray-400 mt-1 px-4 leading-relaxed">
+                                <p className="text-[10px] text-ink-subtle mt-1 px-4 leading-relaxed">
                                     Go to Bank Book section to register your bank account details.
                                 </p>
                             </div>
@@ -319,18 +320,18 @@ export default function BankLedgerManager({
                                         key={b.id}
                                         onClick={() => setSelectedBankId(b.id)}
                                         className={`w-full text-left p-4 flex items-center justify-between gap-3 transition-colors ${
-                                            isSelected ? 'bg-brand-50/20 border-l-4 border-brand-500 pl-3' : 'bg-white hover:bg-gray-50/50'
+                                            isSelected ? 'bg-brand-50/20 border-l-4 border-brand-500 pl-3' : 'bg-surface hover:bg-surface-muted/50'
                                         }`}
                                     >
                                         <div className="min-w-0">
-                                            <p className="font-extrabold text-sm text-gray-900 truncate">{b.name}</p>
-                                            <p className="text-[10px] text-gray-500 font-semibold mt-0.5">
+                                            <p className="font-extrabold text-sm text-ink truncate">{b.name}</p>
+                                            <p className="text-[10px] text-ink-subtle font-semibold mt-0.5">
                                                 {b.bank_name || 'Bank'} • {b.account_number || 'N/A'}
                                             </p>
                                         </div>
                                         <div className="text-right shrink-0">
-                                            <p className="text-xs font-black text-gray-900">{formatCurrency(b.currentBalance)}</p>
-                                            <p className="text-[9px] text-gray-400 font-bold uppercase mt-0.5">Balance</p>
+                                            <p className="text-xs font-black text-ink">{formatCurrency(b.currentBalance)}</p>
+                                            <p className="text-[9px] text-ink-subtle font-bold uppercase mt-0.5">Balance</p>
                                         </div>
                                     </button>
                                 )
@@ -344,18 +345,18 @@ export default function BankLedgerManager({
                     {activeBankAccount ? (
                         <>
                             {/* Controls and filter card */}
-                            <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="bg-surface border border-hairline rounded-[var(--r-lg)] p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                 <div>
                                     <span className="text-[9px] font-black uppercase text-brand-600 tracking-wider">Statement Ledger</span>
-                                    <h3 className="text-lg font-extrabold text-gray-900 mt-0.5">{activeBankAccount.name}</h3>
-                                    <p className="text-xs text-gray-400 mt-0.5">
+                                    <h3 className="text-lg font-extrabold text-ink mt-0.5">{activeBankAccount.name}</h3>
+                                    <p className="text-xs text-ink-subtle mt-0.5">
                                         Account No: {activeBankAccount.account_number || 'N/A'} | Bank: {activeBankAccount.bank_name || 'N/A'}
                                     </p>
                                 </div>
-                                
+
                                 <div className="flex items-center gap-2">
-                                    <span className="text-xs font-bold text-gray-400 whitespace-nowrap">Filter:</span>
-                                    <div className="flex bg-gray-50 border border-gray-200 rounded-xl p-1 shrink-0">
+                                    <span className="text-xs font-bold text-ink-subtle whitespace-nowrap">Filter:</span>
+                                    <div className="flex bg-surface-muted/50 border border-hairline rounded-[var(--r-md)] p-1 shrink-0">
                                         {(['this_month', 'this_year', 'all'] as const).map(f => {
                                             const labels = { this_month: 'This Month', this_year: 'This Year', all: 'All Time' }
                                             const active = timeFilter === f
@@ -363,8 +364,8 @@ export default function BankLedgerManager({
                                                 <button
                                                     key={f}
                                                     onClick={() => setTimeFilter(f)}
-                                                    className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all focus:outline-none ${
-                                                        active ? 'bg-brand-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                                                    className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-[var(--r-md)] transition-all focus:outline-none ${
+                                                        active ? 'bg-brand-500 text-white shadow-sm' : 'text-ink-subtle hover:text-ink'
                                                     }`}
                                                 >
                                                     {labels[f]}
@@ -377,32 +378,32 @@ export default function BankLedgerManager({
 
                             {/* Summary Metrics Row */}
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex items-center gap-4">
+                                <div className="bg-surface border border-hairline rounded-2xl p-4 shadow-sm flex items-center gap-4">
                                     <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shrink-0">
                                         <TrendingUp size={18} />
                                     </div>
                                     <div>
-                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Deposits / Inward</p>
+                                        <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Deposits / Inward</p>
                                         <p className="text-base font-black text-emerald-600 mt-0.5">{formatCurrency(stats.deposited)}</p>
                                     </div>
                                 </div>
 
-                                <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex items-center gap-4">
+                                <div className="bg-surface border border-hairline rounded-2xl p-4 shadow-sm flex items-center gap-4">
                                     <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100 shrink-0">
                                         <ArrowRightLeft size={18} />
                                     </div>
                                     <div>
-                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Cash-to-Bank Transfers</p>
+                                        <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Cash-to-Bank Transfers</p>
                                         <p className="text-base font-black text-amber-700 mt-0.5">{formatCurrency(stats.cashTransfers)}</p>
                                     </div>
                                 </div>
 
-                                <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex items-center gap-4">
+                                <div className="bg-surface border border-hairline rounded-2xl p-4 shadow-sm flex items-center gap-4">
                                     <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100 shrink-0">
                                         <TrendingDown size={18} />
                                     </div>
                                     <div>
-                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Withdrawals / Outward</p>
+                                        <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Withdrawals / Outward</p>
                                         <p className="text-base font-black text-rose-600 mt-0.5">{formatCurrency(stats.withdrawn)}</p>
                                     </div>
                                 </div>
@@ -410,7 +411,7 @@ export default function BankLedgerManager({
 
                         </>
                     ) : (
-                        <div className="bg-white border border-gray-100 rounded-2xl py-20 text-center text-gray-400">
+                        <div className="bg-surface border border-hairline rounded-2xl py-20 text-center text-ink-subtle">
                             <Landmark size={44} className="mx-auto mb-3 opacity-30" />
                             <p className="text-sm font-bold">Select a bank account from the directory to view statement</p>
                         </div>
@@ -422,9 +423,9 @@ export default function BankLedgerManager({
             {/* Detailed Statement Table — full width, breaking out of the
                 sidebar+statement grid above so it spans edge to edge */}
             {activeBankAccount && (
-                <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-                    <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <p className="text-xs font-black text-gray-800 uppercase tracking-wider">Account Statement Transactions ({activeBankEntries.length})</p>
+                <div className="bg-surface border border-hairline rounded-2xl shadow-sm overflow-hidden">
+                    <div className="p-4 border-b border-hairline bg-surface-muted/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <p className="text-xs font-black text-ink uppercase tracking-wider">Account Statement Transactions ({activeBankEntries.length})</p>
                         {activeBankEntries.length > 0 && (
                             <div className="flex items-center gap-2">
                                 <ExportMenu
@@ -434,7 +435,7 @@ export default function BankLedgerManager({
                                 />
                                 <button
                                     onClick={() => printRef.current?.print()}
-                                    className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-50 text-gray-700 font-bold rounded-xl text-[10px] uppercase tracking-wider border border-gray-200 transition-all shrink-0"
+                                    className="flex items-center gap-1.5 px-3 py-2 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[10px] uppercase tracking-wider border border-hairline transition-all shrink-0"
                                 >
                                     <Printer size={13} /> Print
                                 </button>
@@ -444,32 +445,32 @@ export default function BankLedgerManager({
 
                     <div className="overflow-x-auto">
                         {activeBankEntries.length === 0 ? (
-                            <div className="text-center py-20 px-4 text-gray-400">
+                            <div className="text-center py-20 px-4 text-ink-subtle">
                                 <FileText size={36} className="mx-auto mb-2 opacity-30" />
                                 <p className="text-xs font-bold">No transactions found for this period</p>
                             </div>
                         ) : (
                             <table className="w-full text-left text-xs border-collapse">
                                 <thead>
-                                    <tr className="bg-gray-55 border-b border-gray-100 text-gray-500">
+                                    <tr className="bg-surface-muted border-b border-hairline text-ink-subtle">
                                         <th className="px-4 py-3 font-bold w-24">Date</th>
                                         <th className="px-4 py-3 font-bold">Description</th>
                                         <th className="px-4 py-3 font-bold text-right w-28">Bank In</th>
                                         <th className="px-4 py-3 font-bold text-right w-28">Bank Out</th>
                                         <th className="px-4 py-3 font-bold text-center w-20">Type</th>
                                         <th className="px-4 py-3 font-bold text-center w-28">Category</th>
-                                        <th className="px-4 py-3 font-bold text-right w-28 bg-gray-50/50">Running Balance</th>
+                                        <th className="px-4 py-3 font-bold text-right w-28 bg-surface-muted/50">Running Balance</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-100">
+                                <tbody className="divide-y divide-hairline">
                                     {activeBankEntries.map(e => (
-                                        <tr key={e.id} className="hover:bg-gray-50/50 transition-colors">
+                                        <tr key={e.id} className="hover:bg-surface-muted/50 transition-colors">
                                             {/* Date */}
-                                            <td className="px-4 py-3 text-gray-500 font-semibold">
+                                            <td className="px-4 py-3 text-ink-subtle font-semibold">
                                                 {formatDate(e.day_book_sessions?.date || e.created_at)}
                                             </td>
                                             {/* Description */}
-                                            <td className="px-4 py-3 font-bold text-gray-800">{formatDescription(e.description)}</td>
+                                            <td className="px-4 py-3 font-bold text-ink">{formatDescription(e.description)}</td>
                                             {/* Bank In */}
                                             <td className="px-4 py-3 text-right font-black text-xs text-emerald-600">
                                                 {e.type === 'bank_in' ? `+${formatCurrency(e.amount)}` : '-'}
@@ -489,13 +490,13 @@ export default function BankLedgerManager({
                                             {/* Category */}
                                             <td className="px-4 py-3 text-center">
                                                 <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold border uppercase ${
-                                                    CATEGORY_COLORS[e.category] || 'bg-gray-50 text-gray-600 border-gray-150'
+                                                    CATEGORY_COLORS[e.category] || 'bg-surface-muted text-ink-subtle border-hairline'
                                                 }`}>
                                                     {CATEGORY_LABELS[e.category] || e.category}
                                                 </span>
                                             </td>
                                             {/* Running Balance */}
-                                            <td className="px-4 py-3 text-right font-black bg-gray-50/30 text-gray-900">
+                                            <td className="px-4 py-3 text-right font-black bg-surface-muted/30 text-ink">
                                                 {formatCurrency(e.runningBalance)}
                                             </td>
                                         </tr>
@@ -506,9 +507,9 @@ export default function BankLedgerManager({
                     </div>
 
                     {activeBankAccountWithBalance && (
-                        <div className="bg-brand-50/5 border-t border-gray-100 p-4 flex items-center justify-between">
-                            <span className="text-xs font-black text-gray-800 uppercase tracking-wider">Total Amount Left in {activeBankAccountWithBalance.name}:</span>
-                            <span className="text-base font-black text-[#ff5a00]">{formatCurrency(activeBankAccountWithBalance.currentBalance)}</span>
+                        <div className="bg-brand-50/5 border-t border-hairline p-4 flex items-center justify-between">
+                            <span className="text-xs font-black text-ink uppercase tracking-wider">Total Amount Left in {activeBankAccountWithBalance.name}:</span>
+                            <span className="text-base font-black text-brand-500">{formatCurrency(activeBankAccountWithBalance.currentBalance)}</span>
                         </div>
                     )}
                 </div>
@@ -516,15 +517,15 @@ export default function BankLedgerManager({
 
             {/* Add Bank Modal */}
             {addBankModalOpen && (
-                <Modal open onClose={() => setAddBankModalOpen(false)} size="md" ariaLabel="Add bank account" className="bg-white overflow-hidden">
-                        <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                <Modal open onClose={() => setAddBankModalOpen(false)} size="md" ariaLabel="Add bank account" className="bg-surface overflow-hidden">
+                        <div className="p-5 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
                             <div>
-                                <h3 className="font-extrabold text-gray-900 text-sm">Register New Bank Account</h3>
-                                <p className="text-[10px] text-gray-400 mt-0.5">Add to your active bank directories</p>
+                                <h3 className="font-extrabold text-ink text-sm">Register New Bank Account</h3>
+                                <p className="text-[10px] text-ink-subtle mt-0.5">Add to your active bank directories</p>
                             </div>
                             <button 
                                 onClick={() => setAddBankModalOpen(false)}
-                                className="p-1.5 hover:bg-gray-150 rounded-xl text-gray-400 hover:text-gray-600 transition-colors"
+                                className="p-1.5 hover:bg-surface-muted rounded-xl text-ink-subtle hover:text-ink-subtle transition-colors"
                             >
                                 <X size={16} />
                             </button>
@@ -533,58 +534,58 @@ export default function BankLedgerManager({
                         <form onSubmit={handleAddBank} className="p-5 space-y-4">
                             {/* Ownership Category */}
                             <div>
-                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Ownership Category *</label>
-                                <select
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Ownership Category *</label>
+                                <Select
                                     value={ownershipType}
                                     onChange={e => setOwnershipType(e.target.value as 'company' | 'personal' | '')}
                                     required
-                                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
                                 >
                                     <option value="">Choose Category *</option>
                                     <option value="company">Company Account (A/C Payee)</option>
                                     <option value="personal">Personal Account (Manager/Owner)</option>
-                                </select>
+                                </Select>
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Bank Name *</label>
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Bank Name *</label>
                                 <input
                                     type="text"
                                     placeholder="e.g. NIC Asia Bank, Nabil Bank"
                                     value={newBankName}
                                     onChange={e => setNewBankName(e.target.value)}
                                     required
-                                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Bank Account Number *</label>
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Bank Account Number *</label>
                                 <input
                                     type="text"
                                     placeholder="e.g. 123456789012"
                                     value={newBankAccountNumber}
                                     onChange={e => setNewBankAccountNumber(e.target.value)}
                                     required
-                                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Display Label (Optional)</label>
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Display Label (Optional)</label>
                                 <input
                                     type="text"
                                     placeholder="e.g. NIC Asia - Main Account"
                                     value={newBankDisplayName}
                                     onChange={e => setNewBankDisplayName(e.target.value)}
-                                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
                                 />
                             </div>
 
                             <button
                                 type="submit"
                                 disabled={submittingBank}
-                                className="w-full mt-2 py-3 bg-[#ff5a00] hover:bg-[#e04f00] text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition-colors shadow-md shadow-brand-500/15 flex items-center justify-center gap-2 focus-ring disabled:opacity-50"
+                                className="w-full mt-2 py-3 bg-brand-500 hover:bg-[#e04f00] text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition-colors shadow-md shadow-brand-500/15 flex items-center justify-center gap-2 focus-ring disabled:opacity-50"
                             >
                                 {submittingBank ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
                                 Register Bank Account

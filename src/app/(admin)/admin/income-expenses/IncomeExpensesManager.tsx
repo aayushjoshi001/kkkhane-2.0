@@ -13,6 +13,8 @@ import { NST_OFFSET_MS } from '@/lib/timezone'
 import { downloadCsv } from '@/lib/exportCsv'
 import PrintableReport, { type PrintableReportHandle } from '@/components/admin/PrintableReport'
 import { useDateFormatter } from '@/lib/contexts/FeatureContext'
+import { useConfirmStore } from '@/lib/stores/confirm'
+import Select from '@/components/ui/Select'
 
 interface Category {
     id: string
@@ -66,6 +68,7 @@ export default function IncomeExpensesManager({
     bankAccounts,
     qrCodes
 }: IncomeExpensesManagerProps) {
+    const { confirm } = useConfirmStore()
     const formatDate = useDateFormatter()
     // Which QR code(s), if any, deposit into each bank account — lets staff
     // paying another party identify the right account by its QR instead of
@@ -316,7 +319,8 @@ export default function IncomeExpensesManager({
 
     // Delete entry handler
     const handleDeleteEntry = async (id: string, type: 'income' | 'expense') => {
-        if (!confirm(`Are you sure you want to delete this ${type} entry?`)) return
+        const ok = await confirm({ title: `Are you sure you want to delete this ${type} entry?`, message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
 
         try {
             const res = await deleteEntryAction(id, type)
@@ -341,7 +345,8 @@ export default function IncomeExpensesManager({
         const cat = catList.find(c => c.id === id)
         if (!cat) return
 
-        if (!confirm(`Are you sure you want to delete the category "${cat.name}"?`)) return
+        const ok = await confirm({ title: `Are you sure you want to delete the category "${cat.name}"?`, message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
 
         try {
             const res = await deleteCategoryAction(id, activeTab)
@@ -589,7 +594,7 @@ export default function IncomeExpensesManager({
                                 </div>
                             ) : (
                                 <div className="flex gap-2">
-                                    <select
+                                    <Select
                                         value={categoryId}
                                         onChange={e => setCategoryId(e.target.value)}
                                         required
@@ -599,7 +604,7 @@ export default function IncomeExpensesManager({
                                         {currentCategories.map(cat => (
                                             <option key={cat.id} value={cat.id}>{cat.name}</option>
                                         ))}
-                                    </select>
+                                    </Select>
                                     {categoryId && (
                                         <button
                                             type="button"
@@ -621,7 +626,7 @@ export default function IncomeExpensesManager({
                                 <button
                                     type="button"
                                     onClick={() => setPaymentSource('cash')}
-                                    className={`flex-1 py-2.5 text-xs font-black uppercase tracking-wider border rounded-xl transition-all focus-ring ${paymentSource === 'cash' ? 'bg-[#ff5a00]/10 border-[#ff5a00]/30 text-[#ff5a00] shadow-sm' : 'bg-surface border-hairline text-ink-subtle hover:text-ink hover:bg-surface-muted/50'}`}
+                                    className={`flex-1 py-2.5 text-xs font-black uppercase tracking-wider border rounded-xl transition-all focus-ring ${paymentSource === 'cash' ? 'bg-brand-500/10 border-brand-500/30 text-brand-500 shadow-sm' : 'bg-surface border-hairline text-ink-subtle hover:text-ink hover:bg-surface-muted/50'}`}
                                 >
                                     Cash Book
                                 </button>
@@ -639,7 +644,7 @@ export default function IncomeExpensesManager({
                         {paymentSource === 'bank' && (
                             <div>
                                 <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Bank Name</label>
-                                <select
+                                <Select
                                     value={bankName}
                                     onChange={e => setBankName(e.target.value)}
                                     required
@@ -656,7 +661,7 @@ export default function IncomeExpensesManager({
                                     {bankAccounts.length === 0 && (
                                         <option value="General Bank">General Bank</option>
                                     )}
-                                </select>
+                                </Select>
                             </div>
                         )}
 
@@ -664,7 +669,7 @@ export default function IncomeExpensesManager({
                         {activeTab === 'expense' && (
                             <div>
                                 <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Supplier / Vendor (Optional)</label>
-                                <select
+                                <Select
                                     value={vendorSelection}
                                     onChange={e => {
                                         setVendorSelection(e.target.value)
@@ -677,7 +682,7 @@ export default function IncomeExpensesManager({
                                         <option key={s.id} value={s.name}>{s.name}</option>
                                     ))}
                                     <option value="custom">Custom Vendor...</option>
-                                </select>
+                                </Select>
 
                                 {vendorSelection === 'custom' && (
                                     <div className="relative mt-2 animate-in slide-in-from-top-1 duration-150">
@@ -733,7 +738,7 @@ export default function IncomeExpensesManager({
                         <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
                             {/* Category Filter */}
                             {listTab === 'income' ? (
-                                <select
+                                <Select
                                     value={selectedIncomeCat}
                                     onChange={e => setSelectedIncomeCat(e.target.value)}
                                     className="px-3 py-1.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)] w-full sm:w-44"
@@ -742,9 +747,9 @@ export default function IncomeExpensesManager({
                                     {incomeCategories.map(cat => (
                                         <option key={cat.id} value={cat.id}>{cat.name}</option>
                                     ))}
-                                </select>
+                                </Select>
                             ) : (
-                                <select
+                                <Select
                                     value={selectedExpenseCat}
                                     onChange={e => setSelectedExpenseCat(e.target.value)}
                                     className="px-3 py-1.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)] w-full sm:w-44"
@@ -753,7 +758,7 @@ export default function IncomeExpensesManager({
                                     {expenseCategories.map(cat => (
                                         <option key={cat.id} value={cat.id}>{cat.name}</option>
                                     ))}
-                                </select>
+                                </Select>
                             )}
 
                             {/* Search Input */}

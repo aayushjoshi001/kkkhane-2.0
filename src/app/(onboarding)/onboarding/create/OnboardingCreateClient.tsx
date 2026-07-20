@@ -11,6 +11,7 @@ import 'leaflet/dist/leaflet.css'
 import { fixLeafletDefaultIcon } from '@/lib/leafletIcons'
 import { SLUG_REGEX, PAN_REGEX, VAT_REGEX, PHONE_REGEX } from '@/lib/validation'
 import { ONBOARDING_BUSINESS_TYPES, getBusinessMode } from '@/lib/businessMode'
+import Select from '@/components/ui/Select'
 
 // Dynamically import Map to prevent SSR issues
 const MapContainer = dynamic(() => import('react-leaflet').then(mod => mod.MapContainer), { ssr: false })
@@ -54,6 +55,7 @@ export default function OnboardingCreateClient() {
     const [telephone, setTelephone] = useState('')
     const [restaurantEmail, setRestaurantEmail] = useState('')
     const [contactPhoneRaw, setContactPhoneRaw] = useState('')
+    const [countryCode, setCountryCode] = useState('+977')
 
     // Logo — held in memory, uploaded only after the restaurant is created
     const [logoFile, setLogoFile] = useState<File | null>(null)
@@ -71,6 +73,7 @@ export default function OnboardingCreateClient() {
 
     // Map State
     const [position, setPosition] = useState<{lat: number, lng: number} | null>(null)
+    const [locationError, setLocationError] = useState<string | null>(null)
 
     useEffect(() => {
         fixLeafletDefaultIcon()
@@ -139,12 +142,24 @@ export default function OnboardingCreateClient() {
     }
 
     const handleCurrentLocation = () => {
-        if ('geolocation' in navigator) {
-            navigator.geolocation.getCurrentPosition(
-                (pos) => updatePositionAndAddress(pos.coords.latitude, pos.coords.longitude),
-                (err) => console.error('Failed to get current location:', err.message || err.code)
-            )
+        if (!('geolocation' in navigator)) {
+            setLocationError('Geolocation is not supported by your browser')
+            return
         }
+        setLocationError(null)
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                setLocationError(null)
+                updatePositionAndAddress(pos.coords.latitude, pos.coords.longitude)
+            },
+            (err) => {
+                setLocationError(
+                    err.code === err.PERMISSION_DENIED
+                        ? 'Location access denied. Please enable location permission or search for your address instead.'
+                        : 'Failed to get current location. Please search for your address instead.'
+                )
+            }
+        )
     }
 
     const handleCancelMap = () => {
@@ -222,7 +237,6 @@ export default function OnboardingCreateClient() {
             formData.set('longitude', position.lng.toString())
         }
 
-        const countryCode = formData.get('countryCode') as string
         if (countryCode && contactPhoneRaw) {
             formData.set('contactPhone', `${countryCode} ${contactPhoneRaw}`)
         }
@@ -425,8 +439,9 @@ export default function OnboardingCreateClient() {
                                 <label className={labelClasses}>Primary Phone <span className="text-red-500">*</span></label>
                                 <div className="flex h-[52px] w-full rounded-xl border border-gray-200 overflow-hidden bg-white focus-within:border-[#ff5a00] focus-within:ring-1 focus-within:ring-[#ff5a00] transition-all">
                                     <div className="flex items-center bg-gray-50 border-r border-gray-200">
-                                        <select 
-                                            name="countryCode"
+                                        <Select
+                                            value={countryCode}
+                                            onChange={e => setCountryCode(e.target.value)}
                                             className="h-full px-3 outline-none bg-transparent text-sm text-gray-900 cursor-pointer appearance-none"
                                         >
                                             <option value="+977">🇳🇵 +977</option>
@@ -434,7 +449,7 @@ export default function OnboardingCreateClient() {
                                             <option value="+44">🇬🇧 +44</option>
                                             <option value="+61">🇦🇺 +61</option>
                                             <option value="+91">🇮🇳 +91</option>
-                                        </select>
+                                        </Select>
                                     </div>
                                     <input
                                         name="contactPhoneRaw"
@@ -589,8 +604,13 @@ export default function OnboardingCreateClient() {
                         </div>
 
                         {/* Current Location Overlay Button */}
-                        <div className="absolute bottom-24 right-4 sm:right-10 z-[1000]">
-                            <button 
+                        <div className="absolute bottom-24 right-4 sm:right-10 z-[1000] flex flex-col items-end gap-2">
+                            {locationError && (
+                                <div className="bg-white text-red-500 text-xs font-medium px-3 py-2 rounded-xl shadow-lg border border-gray-100 max-w-[220px] text-right">
+                                    {locationError}
+                                </div>
+                            )}
+                            <button
                                 onClick={handleCurrentLocation}
                                 className="bg-white text-[#ff5a00] font-semibold text-sm px-4 py-3 rounded-xl shadow-lg border border-gray-100 flex items-center gap-2 hover:bg-orange-50 transition-colors"
                             >

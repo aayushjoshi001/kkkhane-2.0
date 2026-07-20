@@ -8,26 +8,28 @@ import useSWR from 'swr'
 import { fetchReportsData } from '@/lib/swr-fetchers'
 import type { EodReport } from '@/types/database'
 import FinanceReportPanel from './FinanceReportPanel'
+import { getNstDateString } from '@/lib/timezone'
 
 export default function ReportsViewer({ initialReports, restaurantId }: {
     initialReports: EodReport[]
     restaurantId: string
 }) {
     const { data: reports = initialReports, mutate } = useSWR(['reports', restaurantId], () => fetchReportsData(restaurantId), { fallbackData: initialReports })
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
     const [generating, setGenerating] = useState(false)
     const [expanded, setExpanded] = useState<string | null>(null)
     const [viewMode, setViewMode] = useState<'sales' | 'finance'>('sales')
 
     async function handleGenerate() {
         setGenerating(true)
-        const result = await generateEodReportAction(restaurantId, selectedDate)
+        const todayDate = getNstDateString()
+        const result = await generateEodReportAction(restaurantId, todayDate)
         setGenerating(false)
         if (result.error) { toast.error(result.error); return }
-        toast.success('Report generated!')
+        toast.success("Today's report loaded!")
         // Refetch is handled by revalidation, but add to local state
         if (result.data) {
             mutate()
+            setExpanded(result.data.id)
         }
     }
 
@@ -59,16 +61,15 @@ export default function ReportsViewer({ initialReports, restaurantId }: {
                 <FinanceReportPanel restaurantId={restaurantId} />
             ) : (
             <>
-            {/* Generate */}
-            <div className="print:hidden bg-surface rounded-card border border-hairline shadow-sm p-6 flex flex-wrap items-end gap-5">
+            {/* Load Today's Report */}
+            <div className="print:hidden bg-surface rounded-card border border-hairline shadow-sm p-6 flex flex-wrap items-center justify-between gap-5">
                 <div>
-                    <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wide mb-1.5">Report Date</label>
-                    <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
-                        className="rounded-[var(--r-md)] border border-hairline bg-surface px-4 py-2.5 text-sm font-bold text-ink outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all" />
+                    <p className="font-extrabold text-ink text-sm">End of Day Report</p>
+                    <p className="text-ink-subtle text-xs font-bold mt-0.5">Pulls the latest numbers for today's business.</p>
                 </div>
                 <button onClick={handleGenerate} disabled={generating}
                     className="flex items-center gap-2 bg-brand-500 text-white px-6 py-2.5 rounded-[var(--r-md)] text-sm font-bold shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 focus-ring">
-                    <FileText size={16} /> {generating ? 'Generating...' : 'Generate Report'}
+                    <FileText size={16} /> {generating ? 'Loading...' : "Load Today's Report"}
                 </button>
             </div>
 
@@ -223,7 +224,7 @@ export default function ReportsViewer({ initialReports, restaurantId }: {
                 })}
                 {reports.length === 0 && (
                     <div className="bg-surface rounded-card border border-hairline p-10 text-center text-ink-subtle font-bold shadow-sm">
-                        No reports generated yet. Select a date and click Generate.
+                        No reports yet. Click &quot;Load Today&apos;s Report&quot; to get started.
                     </div>
                 )}
             </div>

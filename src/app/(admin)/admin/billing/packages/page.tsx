@@ -128,7 +128,7 @@ export default function PackagesPage() {
                                 onClick={() => setCycle(c)}
                                 className={`flex-1 text-sm font-medium py-2 rounded-lg transition-all duration-200 ${
                                     cycle === c 
-                                    ? 'bg-surface text-ink shadow-sm ring-1 ring-gray-200' 
+                                    ? 'bg-surface text-ink shadow-sm ring-1 ring-hairline'
                                     : 'text-ink-subtle hover:text-ink-muted hover:bg-surface-muted'
                                 }`}
                             >

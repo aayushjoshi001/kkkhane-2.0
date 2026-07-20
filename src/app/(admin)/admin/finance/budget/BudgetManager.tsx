@@ -13,6 +13,7 @@ import {
     createBudgetCategoryAction, deleteBudgetCategoryAction,
     createBudgetLineAction, deleteBudgetLineAction,
 } from './actions'
+import { useConfirmStore } from '@/lib/stores/confirm'
 
 export default function BudgetManager({
     initialBudgets,
@@ -23,6 +24,7 @@ export default function BudgetManager({
     initialCategories: BudgetCategory[]
     initialLines: (BudgetLine & { budgets?: { name: string } })[]
 }) {
+    const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('budgets')
     const [budgets, setBudgets] = useState(initialBudgets)
     const [categories, setCategories] = useState(initialCategories)
@@ -45,6 +47,7 @@ export default function BudgetManager({
 }
 
 function BudgetsTab({ budgets, setBudgets }: { budgets: Budget[]; setBudgets: (fn: (prev: Budget[]) => Budget[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ name: '', period_type: 'monthly' as BudgetPeriodType, start_date: '', end_date: '' })
@@ -68,7 +71,8 @@ function BudgetsTab({ budgets, setBudgets }: { budgets: Budget[]; setBudgets: (f
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this budget?')) return
+        const ok = await confirm({ title: 'Delete this budget?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteBudgetAction(id)
         if (result.error) { toast.error(result.error); return }
         setBudgets((prev) => prev.filter((b) => b.id !== id))
@@ -116,6 +120,7 @@ function BudgetsTab({ budgets, setBudgets }: { budgets: Budget[]; setBudgets: (f
 }
 
 function CategoriesTab({ categories, setCategories }: { categories: BudgetCategory[]; setCategories: (fn: (prev: BudgetCategory[]) => BudgetCategory[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [name, setName] = useState('')
@@ -133,7 +138,8 @@ function CategoriesTab({ categories, setCategories }: { categories: BudgetCatego
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this category?')) return
+        const ok = await confirm({ title: 'Delete this category?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteBudgetCategoryAction(id)
         if (result.error) { toast.error(result.error); return }
         setCategories((prev) => prev.filter((c) => c.id !== id))
@@ -172,6 +178,7 @@ function LinesTab({
     lines: (BudgetLine & { budgets?: { name: string } })[]
     setLines: (fn: (prev: (BudgetLine & { budgets?: { name: string } })[]) => (BudgetLine & { budgets?: { name: string } })[]) => void
 }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ budget_id: '', category_id: '', planned_amount: '' })
@@ -190,7 +197,8 @@ function LinesTab({
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this budget line?')) return
+        const ok = await confirm({ title: 'Delete this budget line?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteBudgetLineAction(id)
         if (result.error) { toast.error(result.error); return }
         setLines((prev) => prev.filter((l) => l.id !== id))

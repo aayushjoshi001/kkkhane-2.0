@@ -11,6 +11,7 @@ import {
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import Button from '@/components/ui/Button'
 import { createClient } from '@/lib/supabase/client'
+import { useConfirmStore } from '@/lib/stores/confirm'
 import { 
     sendLinkRequestAction, 
     acceptLinkRequestAction, 
@@ -62,6 +63,7 @@ export default function ReconciliationClient({
     const router = useRouter()
     const money = useCurrency()
     const supabase = createClient()
+    const { confirm } = useConfirmStore()
     const [mounted, setMounted] = useState(false)
 
     useEffect(() => {
@@ -316,9 +318,13 @@ export default function ReconciliationClient({
 
     const [loadingUnlink, setLoadingUnlink] = useState(false)
     const handleUnlink = async () => {
-        if (!confirm('Are you sure you want to break the integration with your partner property? Historical invoice data will be preserved, but live syncing and order charging will stop.')) {
-            return
-        }
+        const ok = await confirm({
+            title: 'Break the integration with your partner property?',
+            message: 'Historical invoice data will be preserved, but live syncing and order charging will stop.',
+            confirmText: 'Unlink',
+            isDestructive: true,
+        })
+        if (!ok) return
         setLoadingUnlink(true)
         try {
             const res = await fetch('/api/tenants/invitation/unlink', { method: 'POST' })
@@ -391,7 +397,7 @@ export default function ReconciliationClient({
                         
                         <div className="p-3 bg-surface border border-hairline rounded-2xl">
                             <span className="block text-[10px] text-ink-subtle font-extrabold uppercase">Your Property Tenant ID:</span>
-                            <code className="block text-xs font-mono font-bold text-gray-700 select-all mt-1 bg-surface-muted p-2.5 rounded-xl border border-hairline break-all">
+                            <code className="block text-xs font-mono font-bold text-ink select-all mt-1 bg-surface-muted p-2.5 rounded-xl border border-hairline break-all">
                                 {restaurant.id}
                             </code>
                             <span className="block text-[9px] text-ink-subtle font-semibold mt-1">Copy and share this ID with your partner property to establish a connection.</span>
@@ -453,7 +459,7 @@ export default function ReconciliationClient({
                                     {receivedRequests.map(req => (
                                         <div key={req.id} className="p-4 bg-surface border border-hairline rounded-2xl flex items-center justify-between">
                                             <div>
-                                                <p className="text-sm font-bold text-gray-900">{req.sender?.name}</p>
+                                                <p className="text-sm font-bold text-ink">{req.sender?.name}</p>
                                                 <p className="text-[10px] text-ink-subtle uppercase tracking-wider font-semibold mt-0.5">{req.sender?.business_type}</p>
                                             </div>
                                             <div className="flex gap-2">
@@ -574,9 +580,9 @@ export default function ReconciliationClient({
                                         <button 
                                             onClick={() => handleSaveToggles(!allowFolio, allowLoyalty, allowCredit)}
                                             disabled={isSavingToggles}
-                                            className="text-[#ff5a00]"
+                                            className="text-brand-500"
                                         >
-                                            {allowFolio ? <ToggleRight size={32} /> : <ToggleLeft className="text-gray-300" size={32} />}
+                                            {allowFolio ? <ToggleRight size={32} /> : <ToggleLeft className="text-ink-subtle" size={32} />}
                                         </button>
                                     </label>
 
@@ -590,9 +596,9 @@ export default function ReconciliationClient({
                                         <button 
                                             onClick={() => handleSaveToggles(allowFolio, !allowLoyalty, allowCredit)}
                                             disabled={isSavingToggles}
-                                            className="text-[#ff5a00]"
+                                            className="text-brand-500"
                                         >
-                                            {allowLoyalty ? <ToggleRight size={32} /> : <ToggleLeft className="text-gray-300" size={32} />}
+                                            {allowLoyalty ? <ToggleRight size={32} /> : <ToggleLeft className="text-ink-subtle" size={32} />}
                                         </button>
                                     </label>
 
@@ -606,9 +612,9 @@ export default function ReconciliationClient({
                                         <button 
                                             onClick={() => handleSaveToggles(allowFolio, allowLoyalty, !allowCredit)}
                                             disabled={isSavingToggles}
-                                            className="text-[#ff5a00]"
+                                            className="text-brand-500"
                                         >
-                                            {allowCredit ? <ToggleRight size={32} /> : <ToggleLeft className="text-gray-300" size={32} />}
+                                            {allowCredit ? <ToggleRight size={32} /> : <ToggleLeft className="text-ink-subtle" size={32} />}
                                         </button>
                                     </label>
                                 </div>

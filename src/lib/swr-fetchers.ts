@@ -115,6 +115,6 @@ export const fetchPromoCodes = async (restaurantId: string) => {
 
 export const fetchReportsData = async (restaurantId: string) => {
     const supabase = createClient()
-    const { data } = await supabase.from('reports').select('*').eq('restaurant_id', restaurantId).order('created_at', { ascending: false })
+    const { data } = await supabase.from('eod_reports').select('*').eq('restaurant_id', restaurantId).order('report_date', { ascending: false }).limit(30)
     return data || []
 }

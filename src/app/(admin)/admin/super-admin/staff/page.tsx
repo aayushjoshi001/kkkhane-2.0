@@ -97,7 +97,7 @@ export default async function StaffPage() {
                                 <th className="px-5 py-3 text-center">Active</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-hairline">
                             {staff.map(s => (
                                 <tr key={s.id} className="group hover:bg-surface-muted/50 transition-colors">
                                     <td className="px-5 py-3 font-medium text-ink">{s.full_name}</td>
@@ -129,7 +129,7 @@ export default async function StaffPage() {
                 </div>
 
                 {/* Mobile */}
-                <div className="md:hidden divide-y divide-gray-100">
+                <div className="md:hidden divide-y divide-hairline">
                     {staff.map(s => (
                         <div key={s.id} className="p-4 flex items-center gap-3">
                             <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 text-indigo-700 font-bold text-sm">

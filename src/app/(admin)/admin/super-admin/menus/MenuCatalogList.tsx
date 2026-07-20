@@ -95,7 +95,7 @@ export default function MenuCatalogList({ groups }: { groups: MenuGroup[] }) {
                                                     <th className="px-5 py-3 text-center">Available</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-gray-100">
+                                            <tbody className="divide-y divide-hairline">
                                                 {group.items.map((item) => (
                                                     <tr key={item.id} className="group hover:bg-surface-muted/50 transition-colors">
                                                         <td className="px-5 py-3 font-medium text-ink">{item.name}</td>

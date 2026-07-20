@@ -12,8 +12,10 @@ import {
     createIncomeCategoryAction, updateIncomeCategoryAction, deleteIncomeCategoryAction,
     createIncomeEntryAction, deleteIncomeEntryAction,
 } from './actions'
+import { useConfirmStore } from '@/lib/stores/confirm'
 
 export default function IncomeManager({ initialCategories, initialEntries }: { initialCategories: IncomeCategory[]; initialEntries: IncomeEntry[] }) {
+    const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('entries')
     const [categories, setCategories] = useState(initialCategories)
     const [entries, setEntries] = useState(initialEntries)
@@ -33,6 +35,7 @@ export default function IncomeManager({ initialCategories, initialEntries }: { i
 }
 
 function CategoriesTab({ categories, setCategories }: { categories: IncomeCategory[]; setCategories: (fn: (prev: IncomeCategory[]) => IncomeCategory[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ name: '', description: '' })
@@ -56,7 +59,8 @@ function CategoriesTab({ categories, setCategories }: { categories: IncomeCatego
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this category?')) return
+        const ok = await confirm({ title: 'Delete this category?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteIncomeCategoryAction(id)
         if (result.error) { toast.error(result.error); return }
         setCategories((prev) => prev.filter((c) => c.id !== id))
@@ -104,6 +108,7 @@ function EntriesTab({
     entries: IncomeEntry[]
     setEntries: (fn: (prev: IncomeEntry[]) => IncomeEntry[]) => void
 }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ category_id: '', amount: '', description: '' })
@@ -121,7 +126,8 @@ function EntriesTab({
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this income entry?')) return
+        const ok = await confirm({ title: 'Delete this income entry?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteIncomeEntryAction(id)
         if (result.error) { toast.error(result.error); return }
         setEntries((prev) => prev.filter((e) => e.id !== id))

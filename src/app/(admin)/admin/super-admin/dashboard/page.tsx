@@ -85,7 +85,7 @@ export default async function SuperAdminDashboardPage() {
                 <div className="lg:col-span-2 space-y-6">
                     {/* Top restaurants */}
                     <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                        <div className="px-6 py-5 border-b border-gray-50 flex items-center justify-between bg-surface-muted/50">
+                        <div className="px-6 py-5 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
                             <h2 className="text-[1.15rem] font-bold text-ink flex items-center gap-2">
                                 <TrendingUp size={20} className="text-indigo-500" /> Top Performers (30 Days)
                             </h2>
@@ -93,7 +93,7 @@ export default async function SuperAdminDashboardPage() {
                                 View full report
                             </Link>
                         </div>
-                        <div className="divide-y divide-gray-50 p-2">
+                        <div className="divide-y divide-hairline p-2">
                             {metrics.top5ByOrders.length === 0 ? (
                                 <div className="p-10 text-center text-ink-subtle">
                                     <Activity size={32} className="mx-auto mb-3 opacity-20" />
@@ -150,7 +150,7 @@ export default async function SuperAdminDashboardPage() {
                 <div className="space-y-6">
                     {/* Recent signups */}
                     <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                        <div className="px-6 py-5 border-b border-gray-50 flex items-center justify-between">
+                        <div className="px-6 py-5 border-b border-hairline flex items-center justify-between">
                             <h2 className="text-[1.15rem] font-bold text-ink flex items-center gap-2">
                                 <Users size={18} className="text-emerald-500" /> Recent Signups
                             </h2>
@@ -158,7 +158,7 @@ export default async function SuperAdminDashboardPage() {
                                 <ArrowRight size={18} />
                             </Link>
                         </div>
-                        <div className="divide-y divide-gray-50 p-2">
+                        <div className="divide-y divide-hairline p-2">
                             {metrics.recentTenants.length === 0 ? (
                                 <div className="p-8 text-center text-ink-subtle">
                                     <Building2 size={32} className="mx-auto mb-3 opacity-20" />

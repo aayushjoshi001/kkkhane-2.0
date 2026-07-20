@@ -7,6 +7,8 @@ import { toast } from 'react-hot-toast'
 import { addStockMovementAction } from '@/app/(admin)/admin/ingredients/actions'
 import { createSupplierBillAction } from '@/app/(admin)/admin/suppliers/actions'
 import { approveChequeAction, rejectChequeAction } from '@/app/(admin)/admin/vouchers/actions'
+import { useConfirmStore } from '@/lib/stores/confirm'
+import Select from '@/components/ui/Select'
 
 interface Ingredient {
     id: string
@@ -78,6 +80,7 @@ export default function CriticalClient({
     suppliers,
     categories
 }: CriticalClientProps) {
+    const { confirm } = useConfirmStore()
     const { financeEnabled } = useFeatures()
     const [lowStockList, setLowStockList] = useState<Ingredient[]>(initialLowStock)
     const [vouchers, setVouchers] = useState<RawVoucherEntry[]>(initialVouchers)
@@ -142,7 +145,8 @@ export default function CriticalClient({
 
     // Reject voucher handler
     const handleRejectVoucher = async (id: string) => {
-        if (!confirm('Are you sure you want to reject this voucher?')) return
+        const ok = await confirm({ title: 'Are you sure you want to reject this voucher?', message: 'This action cannot be undone.', confirmText: 'Reject', isDestructive: true })
+        if (!ok) return
         setActioningId(id)
         try {
             const res = await rejectChequeAction(id)
@@ -496,7 +500,7 @@ export default function CriticalClient({
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Select Supplier *</label>
-                                <select
+                                <Select
                                     value={selectedSupplierId}
                                     onChange={e => setSelectedSupplierId(e.target.value)}
                                     required
@@ -504,7 +508,7 @@ export default function CriticalClient({
                                 >
                                     <option value="">Select Supplier...</option>
                                     {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                </select>
+                                </Select>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">

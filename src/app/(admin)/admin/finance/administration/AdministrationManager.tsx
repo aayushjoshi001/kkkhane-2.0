@@ -25,6 +25,7 @@ import {
     updateFinanceSettingsAction,
     setFinanceRolePermissionAction,
 } from './actions'
+import { useConfirmStore } from '@/lib/stores/confirm'
 
 const ROLES = ['Owner', 'Administrator', 'Manager', 'Finance Manager', 'Accountant', 'Cashier', 'Receptionist', 'Staff']
 const MODULES = ['dashboard', 'cash', 'bank', 'income', 'expenses', 'receivables', 'payables', 'loans', 'budget', 'tax', 'books', 'statements', 'reports', 'administration', 'audit', 'tools']
@@ -52,6 +53,7 @@ export default function AdministrationManager({
     initialEvents: FinancialEvent[]
     initialEventsTotal: number
 }) {
+    const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('accounts')
     const [accounts, setAccounts] = useState(initialAccounts)
     const [voucherTypes, setVoucherTypes] = useState(initialVoucherTypes)
@@ -88,6 +90,7 @@ export default function AdministrationManager({
 }
 
 function AccountsTab({ accounts, setAccounts }: { accounts: ChartOfAccount[]; setAccounts: (fn: (prev: ChartOfAccount[]) => ChartOfAccount[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ code: '', name: '', account_type: 'asset' as AccountType, parent_id: '' })
@@ -111,7 +114,8 @@ function AccountsTab({ accounts, setAccounts }: { accounts: ChartOfAccount[]; se
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this account?')) return
+        const ok = await confirm({ title: 'Delete this account?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteAccountAction(id)
         if (result.error) { toast.error(result.error); return }
         setAccounts((prev) => prev.filter((a) => a.id !== id))
@@ -165,6 +169,7 @@ function AccountsTab({ accounts, setAccounts }: { accounts: ChartOfAccount[]; se
 }
 
 function VoucherTypesTab({ voucherTypes, setVoucherTypes }: { voucherTypes: VoucherType[]; setVoucherTypes: (fn: (prev: VoucherType[]) => VoucherType[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ name: '', voucher_category: 'receipt' as VoucherCategory, prefix: '' })
@@ -182,7 +187,8 @@ function VoucherTypesTab({ voucherTypes, setVoucherTypes }: { voucherTypes: Vouc
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this voucher type?')) return
+        const ok = await confirm({ title: 'Delete this voucher type?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteVoucherTypeAction(id)
         if (result.error) { toast.error(result.error); return }
         setVoucherTypes((prev) => prev.filter((v) => v.id !== id))
@@ -223,6 +229,7 @@ function VoucherTypesTab({ voucherTypes, setVoucherTypes }: { voucherTypes: Vouc
 }
 
 function PaymentMethodsTab({ paymentMethods, setPaymentMethods }: { paymentMethods: FinancePaymentMethod[]; setPaymentMethods: (fn: (prev: FinancePaymentMethod[]) => FinancePaymentMethod[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ name: '', category: 'cash' as FinancePaymentMethodCategory })
@@ -240,7 +247,8 @@ function PaymentMethodsTab({ paymentMethods, setPaymentMethods }: { paymentMetho
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this payment method?')) return
+        const ok = await confirm({ title: 'Delete this payment method?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteFinancePaymentMethodAction(id)
         if (result.error) { toast.error(result.error); return }
         setPaymentMethods((prev) => prev.filter((p) => p.id !== id))
@@ -280,6 +288,7 @@ function PaymentMethodsTab({ paymentMethods, setPaymentMethods }: { paymentMetho
 }
 
 function ApprovalLevelsTab({ approvalLevels, setApprovalLevels }: { approvalLevels: ApprovalLevel[]; setApprovalLevels: (fn: (prev: ApprovalLevel[]) => ApprovalLevel[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ name: '', level_order: '1', min_amount: '0', max_amount: '', role_required: 'Manager' })
@@ -303,7 +312,8 @@ function ApprovalLevelsTab({ approvalLevels, setApprovalLevels }: { approvalLeve
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this approval level?')) return
+        const ok = await confirm({ title: 'Delete this approval level?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteApprovalLevelAction(id)
         if (result.error) { toast.error(result.error); return }
         setApprovalLevels((prev) => prev.filter((a) => a.id !== id))
@@ -353,6 +363,7 @@ function PeriodsTab({
     periods: AccountingPeriod[]
     setPeriods: (fn: (prev: AccountingPeriod[]) => AccountingPeriod[]) => void
 }) {
+    const { confirm } = useConfirmStore()
     const [openYear, setOpenYear] = useState(false)
     const [openPeriod, setOpenPeriod] = useState(false)
     const [saving, setSaving] = useState(false)
@@ -378,7 +389,8 @@ function PeriodsTab({
     }
 
     async function handleYearDelete(id: string) {
-        if (!confirm('Delete this fiscal year?')) return
+        const ok = await confirm({ title: 'Delete this fiscal year?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteFiscalYearAction(id)
         if (result.error) { toast.error(result.error); return }
         setFiscalYears((prev) => prev.filter((y) => y.id !== id))
@@ -405,7 +417,8 @@ function PeriodsTab({
     }
 
     async function handlePeriodDelete(id: string) {
-        if (!confirm('Delete this accounting period?')) return
+        const ok = await confirm({ title: 'Delete this accounting period?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteAccountingPeriodAction(id)
         if (result.error) { toast.error(result.error); return }
         setPeriods((prev) => prev.filter((p) => p.id !== id))

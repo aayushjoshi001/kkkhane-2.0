@@ -10,6 +10,8 @@ import toast from 'react-hot-toast'
 import { useCurrency, useFeatures } from '@/lib/contexts/FeatureContext'
 import { fetchCombosData } from '@/lib/swr-fetchers'
 import Image from 'next/image'
+import { useConfirmStore } from '@/lib/stores/confirm'
+import Select from '@/components/ui/Select'
 
 // Monotonic counter for unique upload paths — avoids crypto.randomUUID (unavailable
 // on non-HTTPS LAN origins) and Date.now/Math.random (flagged by react-hooks/purity).
@@ -41,6 +43,7 @@ export default function CombosManager({
     isDbReady,
     dbError,
 }: CombosManagerProps) {
+    const { confirm } = useConfirmStore()
     const { data: combosData = { combos: initialCombos, comboItems: initialComboItems }, mutate } = useSWR<{
         combos: MenuItem[];
         comboItems: ComboItemMapping[];
@@ -282,7 +285,8 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
     }
 
     const handleDeleteCombo = async (comboId: string) => {
-        if (!confirm('Are you sure you want to delete this combo offer?')) return
+        const ok = await confirm({ title: 'Are you sure you want to delete this combo offer?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
 
         const result = await deleteComboAction(comboId)
         if (result.error) {
@@ -335,7 +339,7 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                             <div className="grid grid-cols-2 gap-5">
                                 <div>
                                     <label className="block text-small font-bold text-ink mb-1.5">Category *</label>
-                                    <select
+                                    <Select
                                         value={form.category_id}
                                         onChange={e => setForm({ ...form, category_id: e.target.value })}
                                         className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
@@ -345,7 +349,7 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                                                 {c.name}
                                             </option>
                                         ))}
-                                    </select>
+                                    </Select>
                                 </div>
                                 <div>
                                     <label className="block text-small font-bold text-ink mb-1.5">Price ({currencySymbol}) *</label>
@@ -449,7 +453,7 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                             <div className="space-y-3 max-h-72 overflow-y-auto pr-1 custom-scrollbar">
                                 {form.components.map((comp, idx) => (
                                     <div key={idx} className="flex gap-3 items-center bg-surface p-2.5 rounded-[var(--r-md)] border border-hairline shadow-sm">
-                                        <select
+                                        <Select
                                             value={comp.item_id}
                                             onChange={e => handleComponentChange(idx, 'item_id', e.target.value)}
                                             className="flex-1 w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 text-sm p-2.5 border bg-surface text-ink transition-all min-w-0"
@@ -459,7 +463,7 @@ CREATE POLICY "public_read_combo_items" ON public.combo_items FOR SELECT USING (
                                                     {item.name} ({money(item.price)})
                                                 </option>
                                             ))}
-                                        </select>
+                                        </Select>
                                         <input
                                             type="number"
                                             min="1"

@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils'
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
+import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react'
+import Select from '@/components/ui/Select'
 
 export const fieldClasses =
     'w-full px-3.5 py-2.5 border border-hairline-strong rounded-xl text-sm bg-surface text-ink ' +
@@ -53,22 +54,28 @@ export function FormInput({ label, error, hint, required, className, ...props }:
     )
 }
 
-export interface FormSelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
+export interface FormSelectProps {
     label: string
     error?: string
     hint?: string
+    value: string
+    onChange: (e: { target: { value: string } }) => void
+    children: ReactNode
+    className?: string
+    disabled?: boolean
+    required?: boolean
 }
 
 export function FormSelect({ label, error, hint, required, className, children, ...props }: FormSelectProps) {
     return (
         <FieldShell label={label} required={required} error={error} hint={hint}>
-            <select
+            <Select
                 required={required}
                 className={cn(fieldClasses, error && 'border-danger focus:ring-danger/30 focus:border-danger', className)}
                 {...props}
             >
                 {children}
-            </select>
+            </Select>
         </FieldShell>
     )
 }

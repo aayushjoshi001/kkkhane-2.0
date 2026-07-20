@@ -12,6 +12,7 @@ import { buildInvoiceTicket, type ActiveInvoice } from '@/lib/print/templates/in
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
+import Select from '@/components/ui/Select'
 
 /** Table shape the admin room pages pass in (with its active QR session, if any). */
 export interface BillingTable {
@@ -349,53 +350,53 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             onClose={guardedClose}
             size="xl"
             ariaLabel={`Room ${room.room_number} billing`}
-            className="bg-white flex flex-col overflow-hidden max-h-[90vh] md:max-h-[85vh]"
+            className="bg-surface flex flex-col overflow-hidden max-h-[90vh] md:max-h-[85vh]"
         >
-                <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 bg-gray-50/50 flex-shrink-0">
+                <div className="flex items-center justify-between border-b border-hairline px-6 py-4 bg-surface-muted/50 flex-shrink-0">
                     <div>
-                        <h3 className="text-lg font-black text-gray-900">Room {room.room_number} stays details</h3>
-                        <p className="text-xs text-gray-500 mt-0.5">{room.room_types?.name} • Floor {room.floor || 'N/A'}</p>
+                        <h3 className="text-lg font-black text-ink">Room {room.room_number} stays details</h3>
+                        <p className="text-xs text-ink-subtle mt-0.5">{room.room_types?.name} • Floor {room.floor || 'N/A'}</p>
                     </div>
-                    <button onClick={guardedClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition text-gray-500 hover:text-gray-900"><X size={16} /></button>
+                    <button onClick={guardedClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink"><X size={16} /></button>
                 </div>
 
                 {loadingDetails ? (
                     <div className="p-6 flex-1 flex flex-col items-center justify-center gap-3">
-                        <Loader2 size={32} className="animate-spin text-[#ff5a00]" />
-                        <p className="text-xs text-gray-500 font-semibold">Loading details...</p>
+                        <Loader2 size={32} className="animate-spin text-brand-500" />
+                        <p className="text-xs text-ink-subtle font-semibold">Loading details...</p>
                     </div>
                 ) : booking ? (
                     <>
                         <div className="space-y-6 p-6 overflow-y-auto flex-1">
-                            <div className="grid grid-cols-2 gap-4 bg-gray-50/50 border border-gray-100 rounded-2xl p-4 text-xs">
+                            <div className="grid grid-cols-2 gap-4 bg-surface-muted/50 border border-hairline rounded-2xl p-4 text-xs">
                                 <div className="space-y-1.5">
-                                    <p className="text-[10px] font-bold text-gray-400 uppercase">Guest</p>
-                                    <p className="font-extrabold text-gray-900 text-sm">{booking.guest_name}</p>
-                                    <p className="font-semibold text-gray-600">{booking.guest_phone}</p>
+                                    <p className="text-[10px] font-bold text-ink-subtle uppercase">Guest</p>
+                                    <p className="font-extrabold text-ink text-sm">{booking.guest_name}</p>
+                                    <p className="font-semibold text-ink-subtle">{booking.guest_phone}</p>
                                 </div>
-                                <div className="space-y-1 text-right border-l border-gray-100 pl-4">
-                                    <p className="text-[10px] font-bold text-gray-400 uppercase">Stay schedule</p>
-                                    <p className="font-semibold text-gray-600">In: {formatDateTime(booking.check_in)}</p>
-                                    <p className="font-semibold text-gray-600">Out: {formatDateTime(booking.check_out)}</p>
+                                <div className="space-y-1 text-right border-l border-hairline pl-4">
+                                    <p className="text-[10px] font-bold text-ink-subtle uppercase">Stay schedule</p>
+                                    <p className="font-semibold text-ink-subtle">In: {formatDateTime(booking.check_in)}</p>
+                                    <p className="font-semibold text-ink-subtle">Out: {formatDateTime(booking.check_out)}</p>
                                 </div>
                             </div>
 
                             <div className="space-y-4">
-                                <h4 className="text-xs font-bold uppercase text-gray-400 tracking-wider">Stay billing breakdown</h4>
-                                <div className="border border-gray-100 rounded-2xl overflow-hidden divide-y divide-gray-100 bg-white">
+                                <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Stay billing breakdown</h4>
+                                <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-hairline bg-surface">
                                     <div className="flex justify-between items-center p-4 text-xs">
                                         <div>
-                                            <p className="font-extrabold text-gray-900">Room Stay Cost</p>
-                                            <p className="text-[10px] text-gray-400">{money(room.room_types?.base_price || 0)} / Night</p>
+                                            <p className="font-extrabold text-ink">Room Stay Cost</p>
+                                            <p className="text-[10px] text-ink-subtle">{money(room.room_types?.base_price || 0)} / Night</p>
                                         </div>
-                                        <span className="font-extrabold text-gray-600 tabular-nums">{money(stayCost)}</span>
+                                        <span className="font-extrabold text-ink-subtle tabular-nums">{money(stayCost)}</span>
                                     </div>
 
                                     {discountAmount > 0 && (
                                         <div className="flex justify-between items-center p-4 text-xs bg-rose-50/40">
                                             <div>
                                                 <p className="font-extrabold text-rose-600">Bargain Discount</p>
-                                                <p className="text-[10px] text-gray-400 truncate max-w-[220px]">{bargainReason || 'Reason required'}</p>
+                                                <p className="text-[10px] text-ink-subtle truncate max-w-[220px]">{bargainReason || 'Reason required'}</p>
                                             </div>
                                             <span className="font-extrabold text-rose-600 tabular-nums">− {money(discountAmount)}</span>
                                         </div>
@@ -406,7 +407,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                             <p className="font-extrabold text-xs text-indigo-600">Service Orders (QR + Dining)</p>
                                             <div className="space-y-1.5 pl-3 border-l-2 border-indigo-100">
                                                 {allServiceOrderItems.map((item, idx) => (
-                                                    <div key={`service-item-${item.id || 'item'}-${idx}`} className="flex justify-between text-[10px] text-gray-600">
+                                                    <div key={`service-item-${item.id || 'item'}-${idx}`} className="flex justify-between text-[10px] text-ink-subtle">
                                                         <span>{item.menu_items?.name || 'Item'} ({item.quantity}×)</span>
                                                         <span className="tabular-nums font-semibold">{money(item.unit_price * item.quantity)}</span>
                                                     </div>
@@ -420,7 +421,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                             <p className="font-extrabold text-xs text-amber-600">Additional stay charges</p>
                                             <div className="space-y-1.5 pl-3 border-l-2 border-amber-100">
                                                 {charges.map(c => (
-                                                    <div key={c.id} className="flex justify-between text-[10px] text-gray-600">
+                                                    <div key={c.id} className="flex justify-between text-[10px] text-ink-subtle">
                                                         <span className="capitalize">{c.description} ({c.charge_type})</span>
                                                         <span className="tabular-nums font-semibold">{money(c.amount)}</span>
                                                     </div>
@@ -452,7 +453,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                             placeholder={stayCost.toFixed(2)}
                                             value={bargainRate}
                                             onChange={e => setBargainRate(e.target.value)}
-                                            className={`w-full pl-7 pr-2 py-2 border-2 rounded-xl text-xs font-bold bg-white focus:outline-none ${discountInvalid ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
+                                            className={`w-full pl-7 pr-2 py-2 border-2 rounded-xl text-xs font-bold bg-surface focus:outline-none ${discountInvalid ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
                                         />
                                     </div>
                                 </div>
@@ -467,35 +468,35 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                             value={bargainReason}
                                             onChange={e => setBargainReason(e.target.value)}
                                             placeholder="e.g. Repeat guest, manager approved"
-                                            className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-amber-500"
+                                            className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-amber-500"
                                         />
                                     </div>
                                 )}
                             </div>
 
                             {/* Send Digital Invoice */}
-                            <div className="mt-3 pt-3 border-t border-dashed border-gray-150">
-                                <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Send Digital Invoice</label>
+                            <div className="mt-3 pt-3 border-t border-dashed border-hairline">
+                                <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Send Digital Invoice</label>
                                 <input
                                     type="email"
                                     value={guestEmailInput}
                                     onChange={e => setGuestEmailInput(e.target.value)}
                                     placeholder="guest@example.com (optional)"
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
+                                    className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
                                 />
                             </div>
 
                             {/* Payment Method Selector */}
                             {irdSyncEnabled && (
                                 <div className="pt-4">
-                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Payment Method</p>
+                                    <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Payment Method</p>
                                     <div className="grid grid-cols-4 gap-2">
                                         <button
                                             onClick={() => setPaymentMethod('cash')}
                                             className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
                                                 paymentMethod === 'cash'
-                                                    ? 'border-[#ff5a00] bg-orange-50/50 text-[#ff5a00]'
-                                                    : 'border-gray-150 bg-white text-gray-500 hover:border-[#ff5a00]/50 hover:text-[#ff5a00]'
+                                                    ? 'border-brand-500 bg-orange-50/50 text-brand-500'
+                                                    : 'border-hairline bg-surface text-ink-subtle hover:border-brand-500/50 hover:text-brand-500'
                                             }`}
                                         >
                                             <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
@@ -505,8 +506,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                             onClick={() => setPaymentMethod('qr_digital')}
                                             className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
                                                 paymentMethod === 'qr_digital'
-                                                    ? 'border-[#ff5a00] bg-orange-50/50 text-[#ff5a00]'
-                                                    : 'border-gray-150 bg-white text-gray-500 hover:border-[#ff5a00]/50 hover:text-[#ff5a00]'
+                                                    ? 'border-brand-500 bg-orange-50/50 text-brand-500'
+                                                    : 'border-hairline bg-surface text-ink-subtle hover:border-brand-500/50 hover:text-brand-500'
                                             }`}
                                         >
                                             <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
@@ -520,8 +521,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                             }}
                                             className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
                                                 paymentMethod === 'split'
-                                                    ? 'border-[#ff5a00] bg-orange-50/50 text-[#ff5a00]'
-                                                    : 'border-gray-150 bg-white text-gray-500 hover:border-[#ff5a00]/50 hover:text-[#ff5a00]'
+                                                    ? 'border-brand-500 bg-orange-50/50 text-brand-500'
+                                                    : 'border-hairline bg-surface text-ink-subtle hover:border-brand-500/50 hover:text-brand-500'
                                             }`}
                                         >
                                             <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></svg>
@@ -531,8 +532,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                             onClick={() => setPaymentMethod('credit')}
                                             className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
                                                 paymentMethod === 'credit'
-                                                    ? 'border-[#ff5a00] bg-orange-50/50 text-[#ff5a00]'
-                                                    : 'border-gray-150 bg-white text-gray-500 hover:border-[#ff5a00]/50 hover:text-[#ff5a00]'
+                                                    ? 'border-brand-500 bg-orange-50/50 text-brand-500'
+                                                    : 'border-hairline bg-surface text-ink-subtle hover:border-brand-500/50 hover:text-brand-500'
                                             }`}
                                         >
                                             <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 9V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M22 17v-1a2 2 0 0 0-2-2h-1"/><rect width="8" height="8" x="14" y="14" rx="2"/></svg>
@@ -541,18 +542,18 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                     </div>
 
                                     {paymentMethod === 'credit' && (
-                                        <p className="mt-3 text-[10px] text-gray-500 font-semibold text-center">
+                                        <p className="mt-3 text-[10px] text-ink-subtle font-semibold text-center">
                                             You&apos;ll confirm the customer&apos;s name and phone in the next step.
                                         </p>
                                     )}
 
                                     {/* Split amount inputs — shown only when Both is selected */}
                                     {paymentMethod === 'split' && (
-                                        <div className="mt-3 grid grid-cols-2 gap-3 p-3 bg-gray-50/50 border border-gray-100 rounded-2xl">
+                                        <div className="mt-3 grid grid-cols-2 gap-3 p-3 bg-surface-muted/50 border border-hairline rounded-2xl">
                                             <div>
-                                                <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Cash Amount</label>
+                                                <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash Amount</label>
                                                 <div className="relative">
-                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400">Rs.</span>
+                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
                                                     <input
                                                         type="number"
                                                         min="0"
@@ -560,14 +561,14 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                                         placeholder="0.00"
                                                         value={splitCashAmount}
                                                         onChange={e => setSplitCashAmount(e.target.value)}
-                                                        className="w-full pl-7 pr-2 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
+                                                        className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
                                                     />
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">QR / Digital Amount</label>
+                                                <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">QR / Digital Amount</label>
                                                 <div className="relative">
-                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400">Rs.</span>
+                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
                                                     <input
                                                         type="number"
                                                         min="0"
@@ -575,7 +576,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                                         placeholder="0.00"
                                                         value={splitQrAmount}
                                                         onChange={e => setSplitQrAmount(e.target.value)}
-                                                        className="w-full pl-7 pr-2 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
+                                                        className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
                                                     />
                                                 </div>
                                             </div>
@@ -604,26 +605,26 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
 
                                     {(paymentMethod === 'qr_digital' || paymentMethod === 'split') && qrCodes.length > 1 && (
                                         <div className="mt-3">
-                                            <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Which QR did the guest scan?</label>
-                                            <select
+                                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
+                                            <Select
                                                 value={qrCodeId}
                                                 onChange={e => setQrCodeId(e.target.value)}
-                                                className="w-full px-3 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
+                                                className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
                                             >
                                                 <option value="">Select QR code…</option>
                                                 {qrCodes.map(qr => (
                                                     <option key={qr.id} value={qr.id}>{qr.label}</option>
                                                 ))}
-                                            </select>
+                                            </Select>
                                         </div>
                                     )}
                                 </div>
                             )}
                         </div>
-                        <div className="border-t border-gray-100 px-6 py-4 flex-shrink-0 bg-white">
+                        <div className="border-t border-hairline px-6 py-4 flex-shrink-0 bg-surface">
                             <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-bold text-gray-400 uppercase">Total bill amount</span>
-                                <span className="text-sm font-black text-gray-600 tabular-nums">{money(grandTotal)}</span>
+                                <span className="text-[10px] font-bold text-ink-subtle uppercase">Total bill amount</span>
+                                <span className="text-sm font-black text-ink-subtle tabular-nums">{money(grandTotal)}</span>
                             </div>
                             {advancePaid > 0 && (
                                 <div className="flex items-center justify-between">
@@ -634,10 +635,10 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                     <span className="text-sm font-black text-emerald-600 tabular-nums">− {money(advancePaid)}</span>
                                 </div>
                             )}
-                            <div className="flex items-center justify-between pt-1 border-t border-dashed border-gray-100">
+                            <div className="flex items-center justify-between pt-1 border-t border-dashed border-hairline">
                                 <div>
-                                    <span className="text-[10px] font-bold text-gray-400 uppercase">{advancePaid > 0 ? 'Balance Due' : 'Total Due'}</span>
-                                    <p className="text-2xl font-black text-[#ff5a00] tabular-nums">{money(balanceDue)}</p>
+                                    <span className="text-[10px] font-bold text-ink-subtle uppercase">{advancePaid > 0 ? 'Balance Due' : 'Total Due'}</span>
+                                    <p className="text-2xl font-black text-brand-500 tabular-nums">{money(balanceDue)}</p>
                                 </div>
                                 <div className="flex gap-2">
                                     {invoiceSettled ? (
@@ -649,14 +650,14 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         <>
                                             <button
                                                 onClick={onClose}
-                                                className="px-4 py-2 border border-gray-200 rounded-xl text-xs font-semibold hover:bg-gray-50 transition"
+                                                className="px-4 py-2 border border-hairline rounded-xl text-xs font-semibold hover:bg-surface-muted transition"
                                             >
                                                 Close
                                             </button>
                                             {printInvoiceEnabled && printBillEnabled && (
                                                 <button
                                                     onClick={() => window.print()}
-                                                    className="px-4 py-2 border border-gray-200 rounded-xl text-xs font-semibold hover:bg-gray-50 transition"
+                                                    className="px-4 py-2 border border-hairline rounded-xl text-xs font-semibold hover:bg-surface-muted transition"
                                                 >
                                                     Print Bill
                                                 </button>
@@ -664,7 +665,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                             <button
                                                 onClick={handleSettleClick}
                                                 disabled={isSaving || discountInvalid || (discountAmount > 0 && !bargainReason.trim())}
-                                                className="px-6 py-2 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-[#ff5a00]/10 disabled:opacity-50 flex items-center gap-1.5"
+                                                className="px-6 py-2 bg-brand-500 hover:bg-brand-600 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-brand-500/10 disabled:opacity-50 flex items-center gap-1.5"
                                             >
                                                 {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
                                                 {!irdSyncEnabled ? 'Close Guest' : 'Settle & Checkout'}
@@ -677,7 +678,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                     </>
                 ) : (
                     <div className="p-6 flex-1 flex items-center justify-center">
-                        <p className="text-xs text-gray-400">No active stay found for this room.</p>
+                        <p className="text-xs text-ink-subtle">No active stay found for this room.</p>
                     </div>
                 )}
 
@@ -693,25 +694,25 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                         onClick={() => setShowSettlementConfirm(false)}
                     >
                         <div
-                            className="bg-white w-full max-w-sm rounded-[28px] shadow-2xl border border-gray-100 p-6 space-y-4"
+                            className="bg-surface w-full max-w-sm rounded-[28px] shadow-2xl border border-hairline p-6 space-y-4"
                             onClick={e => e.stopPropagation()}
                         >
                             <div>
-                                <h3 className="text-lg font-black text-gray-900">Confirm Settlement</h3>
-                                <p className="text-xs text-gray-500 mt-0.5">Room {room.room_number}</p>
+                                <h3 className="text-lg font-black text-ink">Confirm Settlement</h3>
+                                <p className="text-xs text-ink-subtle mt-0.5">Room {room.room_number}</p>
                             </div>
 
-                            <div className="border border-gray-100 rounded-2xl p-4 space-y-2 text-xs">
+                            <div className="border border-hairline rounded-2xl p-4 space-y-2 text-xs">
                                 {resolvedCash > 0 && (
                                     <div className="flex justify-between">
-                                        <span className="text-gray-500 font-semibold">Cash</span>
-                                        <span className="font-bold text-gray-900 tabular-nums">{money(resolvedCash)}</span>
+                                        <span className="text-ink-subtle font-semibold">Cash</span>
+                                        <span className="font-bold text-ink tabular-nums">{money(resolvedCash)}</span>
                                     </div>
                                 )}
                                 {resolvedQr > 0 && (
                                     <div className="flex justify-between">
-                                        <span className="text-gray-500 font-semibold">QR / Digital</span>
-                                        <span className="font-bold text-gray-900 tabular-nums">{money(resolvedQr)}</span>
+                                        <span className="text-ink-subtle font-semibold">QR / Digital</span>
+                                        <span className="font-bold text-ink tabular-nums">{money(resolvedQr)}</span>
                                     </div>
                                 )}
                                 {resolvedCredit > 0.01 && (
@@ -720,9 +721,9 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         <span className="font-bold text-amber-700 tabular-nums">{money(resolvedCredit)}</span>
                                     </div>
                                 )}
-                                <div className="flex justify-between pt-2 border-t border-dashed border-gray-100">
-                                    <span className="text-[10px] font-bold text-gray-400 uppercase">Balance Due</span>
-                                    <span className="font-black text-gray-900 tabular-nums">{money(balanceDue)}</span>
+                                <div className="flex justify-between pt-2 border-t border-dashed border-hairline">
+                                    <span className="text-[10px] font-bold text-ink-subtle uppercase">Balance Due</span>
+                                    <span className="font-black text-ink tabular-nums">{money(balanceDue)}</span>
                                 </div>
                             </div>
 
@@ -736,23 +737,23 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         {money(resolvedCredit)} will be added to this customer&apos;s credit account — confirm their details:
                                     </p>
                                     <div>
-                                        <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Customer Name</label>
+                                        <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Customer Name</label>
                                         <input
                                             type="text"
                                             value={creditCustomerName}
                                             onChange={e => setCreditCustomerNameInput(e.target.value)}
                                             placeholder="Guest name"
-                                            className="w-full px-3 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
+                                            className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Phone</label>
+                                        <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Phone</label>
                                         <input
                                             type="tel"
                                             value={creditCustomerPhone}
                                             onChange={e => setCreditCustomerPhoneInput(e.target.value)}
                                             placeholder="98XXXXXXXX"
-                                            className="w-full px-3 py-2 border border-gray-100 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-[#ff5a00]"
+                                            className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
                                         />
                                     </div>
                                 </div>
@@ -761,14 +762,14 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                             <div className="flex gap-2 pt-2">
                                 <button
                                     onClick={() => setShowSettlementConfirm(false)}
-                                    className="flex-1 px-4 py-2 border border-gray-200 rounded-xl text-xs font-semibold hover:bg-gray-50 transition"
+                                    className="flex-1 px-4 py-2 border border-hairline rounded-xl text-xs font-semibold hover:bg-surface-muted transition"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={handleSettle}
                                     disabled={isSaving || overpaid || creditFieldsInvalid}
-                                    className="flex-1 px-4 py-2 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-bold rounded-xl text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                                    className="flex-1 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white font-bold rounded-xl text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
                                 >
                                     {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
                                     Confirm &amp; Continue

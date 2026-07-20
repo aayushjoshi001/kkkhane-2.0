@@ -5,6 +5,7 @@ import { approveShiftAction, forceClockOutAction, correctShiftAction } from './a
 import { Clock, CheckCircle, LogOut, User, Pencil, X, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
+import { useConfirmStore } from '@/lib/stores/confirm'
 
 interface ShiftRow {
     id: string
@@ -143,12 +144,14 @@ export default function ShiftsManager({ activeShifts, recentShifts }: {
     activeShifts: ShiftRow[]
     recentShifts: ShiftRow[]
 }) {
+    const { confirm } = useConfirmStore()
     const [active, setActive] = useState(activeShifts)
     const [recent, setRecent] = useState(recentShifts)
     const [correcting, setCorrecting] = useState<ShiftRow | null>(null)
 
     async function handleForceClockOut(shift: ShiftRow) {
-        if (!confirm(`Force clock-out ${getStaffName(shift)}?`)) return
+        const ok = await confirm({ title: `Force clock-out ${getStaffName(shift)}?`, message: 'This action cannot be undone.', confirmText: 'Confirm', isDestructive: true })
+        if (!ok) return
         const result = await forceClockOutAction(shift.id)
         if (result.error) { toast.error(result.error); return }
         setActive(prev => prev.filter(s => s.id !== shift.id))

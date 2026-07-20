@@ -7,6 +7,8 @@ import { Plus, Trash2, ToggleLeft, ToggleRight, Pencil } from 'lucide-react'
 import toast from 'react-hot-toast'
 import useSWR from 'swr'
 import { fetchPromoCodes } from '@/lib/swr-fetchers'
+import { useConfirmStore } from '@/lib/stores/confirm'
+import Select from '@/components/ui/Select'
 
 const PROMO_TYPES = [
     { value: 'percentage_off', label: '% Off' },
@@ -19,6 +21,7 @@ export default function PromoCodesManager({ initialPromos, restaurantId }: {
     initialPromos: PromoCode[]
     restaurantId: string
 }) {
+    const { confirm } = useConfirmStore()
     const { data: promos = initialPromos, mutate } = useSWR(['promo_codes', restaurantId], () => fetchPromoCodes(restaurantId), { fallbackData: initialPromos })
     const [showForm, setShowForm] = useState(false)
     const [editingId, setEditingId] = useState<string | null>(null)
@@ -114,7 +117,8 @@ export default function PromoCodesManager({ initialPromos, restaurantId }: {
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this promo code?')) return
+        const ok = await confirm({ title: 'Delete this promo code?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deletePromoCodeAction(id)
         if (result.error) { toast.error(result.error); return }
         mutate()
@@ -140,10 +144,10 @@ export default function PromoCodesManager({ initialPromos, restaurantId }: {
                         </div>
                         <div>
                             <label className="block text-small font-bold text-ink mb-1.5">Type</label>
-                            <select value={form.promo_type} onChange={e => setForm({ ...form, promo_type: e.target.value })}
+                            <Select value={form.promo_type} onChange={e => setForm({ ...form, promo_type: e.target.value })}
                                 className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all">
                                 {PROMO_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                            </select>
+                            </Select>
                         </div>
                         <div>
                             <label className="block text-small font-bold text-ink mb-1.5">

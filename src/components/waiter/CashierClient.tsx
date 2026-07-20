@@ -9,6 +9,7 @@ import { markDeliveredAndCashPaid } from '@/app/(staff)/waiter/order-actions'
 import { updateTakeoutStatusAction } from '@/app/(admin)/admin/takeout/actions'
 import { useCurrency, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
+import { useConfirmStore } from '@/lib/stores/confirm'
 import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent } from 'lucide-react'
 import PaymentVerificationFeed, { type PaymentClaim } from './PaymentVerificationFeed'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
@@ -61,6 +62,7 @@ export type ActiveOrder = {
 import CashierTableManager, { type TableWithSession } from './CashierTableManager'
 import CashierRoomManager from './CashierRoomManager'
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
+import Select from '@/components/ui/Select'
 
 interface Props {
     restaurantId: string
@@ -101,6 +103,7 @@ export default function CashierClient({
     initialBookings = [],
 }: Props) {
     const router = useRouter()
+    const { confirm } = useConfirmStore()
     const [unpaid, setUnpaid] = useState<UnpaidOrder[]>(initialUnpaid)
     const money = useCurrency()
     const printInvoiceEnabled = useFeatureEnabled('printInvoiceEnabled')
@@ -1586,6 +1589,8 @@ export default function CashierClient({
                                 <div className="grid grid-cols-2 gap-3 pt-2">
                                     <button
                                         onClick={async () => {
+                                            const ok = await confirm({ title: 'Cancel this order?', message: 'This action cannot be undone.', confirmText: 'Cancel Order', isDestructive: true })
+                                            if (!ok) return
                                             await handleUpdateStatus(selectedOrder.id, 'cancelled')
                                             setSelectedOrder(null)
                                         }}
@@ -1818,7 +1823,7 @@ export default function CashierClient({
                                     {(billingPaymentMethod === 'qr_digital' || billingPaymentMethod === 'both') && qrCodes.length > 1 && (
                                         <div className="mt-3">
                                             <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
-                                            <select
+                                            <Select
                                                 value={billingQrCodeId}
                                                 onChange={e => setBillingQrCodeId(e.target.value)}
                                                 className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
@@ -1827,7 +1832,7 @@ export default function CashierClient({
                                                 {qrCodes.map(qr => (
                                                     <option key={qr.id} value={qr.id}>{qr.label}</option>
                                                 ))}
-                                            </select>
+                                            </Select>
                                         </div>
                                     )}
                                 </div>
@@ -2113,7 +2118,7 @@ export default function CashierClient({
                                         {billingPaymentMethod === 'qr_digital' && qrCodes.length > 1 && (
                                             <div className="mt-3">
                                                 <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
-                                                <select
+                                                <Select
                                                     value={billingQrCodeId}
                                                     onChange={e => setBillingQrCodeId(e.target.value)}
                                                     className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
@@ -2122,7 +2127,7 @@ export default function CashierClient({
                                                     {qrCodes.map(qr => (
                                                         <option key={qr.id} value={qr.id}>{qr.label}</option>
                                                     ))}
-                                                </select>
+                                                </Select>
                                             </div>
                                         )}
 

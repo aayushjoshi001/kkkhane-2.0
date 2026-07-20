@@ -12,6 +12,7 @@ import {
     createExpenseCategoryAction, updateExpenseCategoryAction, deleteExpenseCategoryAction,
     createExpenseAction, updateExpenseStatusAction, deleteExpenseAction,
 } from './actions'
+import { useConfirmStore } from '@/lib/stores/confirm'
 
 const RECURRENCE: { value: RecurrenceInterval; label: string }[] = [
     { value: 'weekly', label: 'Weekly' },
@@ -21,6 +22,7 @@ const RECURRENCE: { value: RecurrenceInterval; label: string }[] = [
 ]
 
 export default function ExpensesManager({ initialCategories, initialExpenses }: { initialCategories: ExpenseCategory[]; initialExpenses: Expense[] }) {
+    const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('expenses')
     const [categories, setCategories] = useState(initialCategories)
     const [expenses, setExpenses] = useState(initialExpenses)
@@ -40,6 +42,7 @@ export default function ExpensesManager({ initialCategories, initialExpenses }: 
 }
 
 function CategoriesTab({ categories, setCategories }: { categories: ExpenseCategory[]; setCategories: (fn: (prev: ExpenseCategory[]) => ExpenseCategory[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ name: '', description: '' })
@@ -63,7 +66,8 @@ function CategoriesTab({ categories, setCategories }: { categories: ExpenseCateg
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this category?')) return
+        const ok = await confirm({ title: 'Delete this category?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteExpenseCategoryAction(id)
         if (result.error) { toast.error(result.error); return }
         setCategories((prev) => prev.filter((c) => c.id !== id))
@@ -111,6 +115,7 @@ function ExpensesTab({
     expenses: Expense[]
     setExpenses: (fn: (prev: Expense[]) => Expense[]) => void
 }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ category_id: '', amount: '', description: '', vendor_name: '', is_recurring: false, recurrence_interval: 'monthly' as RecurrenceInterval })
@@ -142,7 +147,8 @@ function ExpensesTab({
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this expense?')) return
+        const ok = await confirm({ title: 'Delete this expense?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteExpenseAction(id)
         if (result.error) { toast.error(result.error); return }
         setExpenses((prev) => prev.filter((e) => e.id !== id))

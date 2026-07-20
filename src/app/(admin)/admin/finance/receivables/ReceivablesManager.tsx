@@ -12,6 +12,7 @@ import {
     createCustomerCreditAccountAction, updateCustomerCreditAccountAction, deleteCustomerCreditAccountAction,
     createReceivableTransactionAction, deleteReceivableTransactionAction,
 } from './actions'
+import { useConfirmStore } from '@/lib/stores/confirm'
 
 export default function ReceivablesManager({
     initialAccounts,
@@ -20,6 +21,7 @@ export default function ReceivablesManager({
     initialAccounts: CustomerCreditAccount[]
     initialTransactions: ReceivableTransaction[]
 }) {
+    const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('accounts')
     const [accounts, setAccounts] = useState(initialAccounts)
     const [transactions, setTransactions] = useState(initialTransactions)
@@ -39,6 +41,7 @@ export default function ReceivablesManager({
 }
 
 function AccountsTab({ accounts, setAccounts }: { accounts: CustomerCreditAccount[]; setAccounts: (fn: (prev: CustomerCreditAccount[]) => CustomerCreditAccount[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ customer_name: '', customer_phone: '', credit_limit: '0' })
@@ -66,7 +69,8 @@ function AccountsTab({ accounts, setAccounts }: { accounts: CustomerCreditAccoun
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this customer credit account?')) return
+        const ok = await confirm({ title: 'Delete this customer credit account?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteCustomerCreditAccountAction(id)
         if (result.error) { toast.error(result.error); return }
         setAccounts((prev) => prev.filter((a) => a.id !== id))
@@ -116,6 +120,7 @@ function TransactionsTab({
     transactions: ReceivableTransaction[]
     setTransactions: (fn: (prev: ReceivableTransaction[]) => ReceivableTransaction[]) => void
 }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ customer_credit_account_id: '', type: 'charge' as ReceivableTransactionType, amount: '', description: '' })
@@ -138,7 +143,8 @@ function TransactionsTab({
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this transaction?')) return
+        const ok = await confirm({ title: 'Delete this transaction?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteReceivableTransactionAction(id)
         if (result.error) { toast.error(result.error); return }
         setTransactions((prev) => prev.filter((t) => t.id !== id))

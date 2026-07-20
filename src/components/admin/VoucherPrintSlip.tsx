@@ -85,10 +85,10 @@ export default function VoucherPrintSlip({
                 onClick={onClose}
             />
 
-            <div className="bg-white rounded-2xl border border-gray-150 shadow-2xl w-full max-w-sm relative z-10 overflow-hidden flex flex-col max-h-[90vh] print:max-h-none print:w-full print:border-none print:shadow-none print:static">
+            <div className="bg-surface rounded-2xl border border-hairline shadow-2xl w-full max-w-sm relative z-10 overflow-hidden flex flex-col max-h-[90vh] print:max-h-none print:w-full print:border-none print:shadow-none print:static">
 
-                <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50 print:hidden shrink-0">
-                    <span className="text-xs font-black text-gray-800 uppercase tracking-wider">Voucher Print Preview</span>
+                <div className="p-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50 print:hidden shrink-0">
+                    <span className="text-xs font-black text-ink uppercase tracking-wider">Voucher Print Preview</span>
                     <div className="flex gap-2">
                         <button
                             onClick={handlePrint}
@@ -98,7 +98,7 @@ export default function VoucherPrintSlip({
                         </button>
                         <button
                             onClick={onClose}
-                            className="p-1.5 hover:bg-gray-150 rounded-xl text-gray-400 hover:text-gray-600 transition-colors"
+                            className="p-1.5 hover:bg-surface-muted rounded-xl text-ink-subtle hover:text-ink-subtle transition-colors"
                         >
                             <X size={16} />
                         </button>
@@ -106,29 +106,29 @@ export default function VoucherPrintSlip({
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-5 print:p-0 print:overflow-visible">
-                    <div className="voucher-slip-print border border-gray-300 p-4 rounded-xl font-mono text-[11px] text-gray-800 space-y-3 print:border-none print:p-1 print:rounded-none">
+                    <div className="voucher-slip-print border border-hairline p-4 rounded-xl font-mono text-[11px] text-ink space-y-3 print:border-none print:p-1 print:rounded-none">
 
-                        <div className="text-center border-b border-dashed border-gray-300 pb-2">
-                            <h2 className="text-sm font-black tracking-tight text-gray-900">KKKHANE RESTAURANT</h2>
-                            <p className="text-[9px] text-gray-500 uppercase font-bold tracking-widest mt-0.5">Workspace Account Voucher</p>
+                        <div className="text-center border-b border-dashed border-hairline pb-2">
+                            <h2 className="text-sm font-black tracking-tight text-ink">KKKHANE RESTAURANT</h2>
+                            <p className="text-[9px] text-ink-subtle uppercase font-bold tracking-widest mt-0.5">Workspace Account Voucher</p>
                         </div>
 
-                        <div className="text-center py-1 bg-gray-100 border border-gray-200 rounded">
-                            <h3 className="text-xs font-black tracking-widest text-gray-900 uppercase">
+                        <div className="text-center py-1 bg-surface-muted border border-hairline rounded">
+                            <h3 className="text-xs font-black tracking-widest text-ink uppercase">
                                 {voucher.voucher_type === 'receipt' ? 'RECEIPT VOUCHER' : 'PAYMENT VOUCHER'}
                             </h3>
                         </div>
 
                         {/* Metadata — stacked single-column, not a grid, so it stays
                             readable at 72mm print width */}
-                        <div className="space-y-1 border-b border-dashed border-gray-300 pb-2 text-[10px]">
+                        <div className="space-y-1 border-b border-dashed border-hairline pb-2 text-[10px]">
                             <div>
-                                <span className="font-bold text-gray-400 uppercase">Voucher No: </span>
-                                <span className="font-black text-gray-900">{voucher.voucher_number}</span>
+                                <span className="font-bold text-ink-subtle uppercase">Voucher No: </span>
+                                <span className="font-black text-ink">{voucher.voucher_number}</span>
                             </div>
                             <div>
-                                <span className="font-bold text-gray-400 uppercase">Date: </span>
-                                <span className="font-black text-gray-900">
+                                <span className="font-bold text-ink-subtle uppercase">Date: </span>
+                                <span className="font-black text-ink">
                                     {(() => {
                                         const d = new Date(voucher.date)
                                         const ad = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -142,61 +142,61 @@ export default function VoucherPrintSlip({
                                 </span>
                             </div>
                             <div>
-                                <span className="font-bold text-gray-400 uppercase">
+                                <span className="font-bold text-ink-subtle uppercase">
                                     {voucher.voucher_type === 'receipt' ? 'Received From: ' : 'Paid To: '}
                                 </span>
-                                <span className="font-black text-gray-900 uppercase">{voucher.party_name}</span>
+                                <span className="font-black text-ink uppercase">{voucher.party_name}</span>
                             </div>
                             <div>
-                                <span className="font-bold text-gray-400 uppercase">Payment Mode: </span>
-                                <span className="font-black text-gray-900 uppercase">
+                                <span className="font-bold text-ink-subtle uppercase">Payment Mode: </span>
+                                <span className="font-black text-ink uppercase">
                                     {voucher.payment_mode === 'cash' ? 'CASH' : voucher.payment_mode === 'qr' ? `QR (${voucher.bank_name})` : voucher.payment_mode === 'cheque' ? `CHEQUE (${voucher.bank_name})` : `BANK (${voucher.bank_name})`}
                                 </span>
                             </div>
                             {voucher.reference_no && (
                                 <div>
-                                    <span className="font-bold text-gray-400 uppercase">Ref Phone: </span>
-                                    <span className="font-black text-gray-900">{voucher.reference_no}</span>
+                                    <span className="font-bold text-ink-subtle uppercase">Ref Phone: </span>
+                                    <span className="font-black text-ink">{voucher.reference_no}</span>
                                 </div>
                             )}
                             {voucher.receiver_name && (
                                 <div>
-                                    <span className="font-bold text-gray-400 uppercase">Receiver Staff: </span>
-                                    <span className="font-black text-gray-900 uppercase">{voucher.receiver_name}</span>
+                                    <span className="font-bold text-ink-subtle uppercase">Receiver Staff: </span>
+                                    <span className="font-black text-ink uppercase">{voucher.receiver_name}</span>
                                 </div>
                             )}
                             {voucher.voucher_type === 'payment' && voucher.category && (
                                 <div>
-                                    <span className="font-bold text-gray-400 uppercase">Ledger Category: </span>
-                                    <span className="font-black text-gray-950 uppercase">{voucher.category}</span>
+                                    <span className="font-bold text-ink-subtle uppercase">Ledger Category: </span>
+                                    <span className="font-black text-ink uppercase">{voucher.category}</span>
                                 </div>
                             )}
                             {voucher.payment_mode === 'cheque' && voucher.cheque_details && (
-                                <div className="border-t border-gray-200 pt-1.5 mt-1 space-y-1">
+                                <div className="border-t border-hairline pt-1.5 mt-1 space-y-1">
                                     <div>
-                                        <span className="font-bold text-gray-400 uppercase">Issuer Bank: </span>
-                                        <span className="font-black text-gray-900 uppercase">{voucher.cheque_details.bank_cheque}</span>
+                                        <span className="font-bold text-ink-subtle uppercase">Issuer Bank: </span>
+                                        <span className="font-black text-ink uppercase">{voucher.cheque_details.bank_cheque}</span>
                                     </div>
                                     <div>
-                                        <span className="font-bold text-gray-400 uppercase">Cheque Number: </span>
-                                        <span className="font-black text-gray-900">{voucher.cheque_details.cheque_number}</span>
+                                        <span className="font-bold text-ink-subtle uppercase">Cheque Number: </span>
+                                        <span className="font-black text-ink">{voucher.cheque_details.cheque_number}</span>
                                     </div>
                                     <div>
-                                        <span className="font-bold text-gray-400 uppercase">Written Name: </span>
-                                        <span className="font-black text-gray-900 uppercase">{voucher.cheque_details.written_name}</span>
+                                        <span className="font-bold text-ink-subtle uppercase">Written Name: </span>
+                                        <span className="font-black text-ink uppercase">{voucher.cheque_details.written_name}</span>
                                     </div>
                                     <div>
-                                        <span className="font-bold text-gray-400 uppercase">Cheque Date: </span>
-                                        <span className="font-black text-gray-900">{voucher.cheque_details.cheque_date}</span>
+                                        <span className="font-bold text-ink-subtle uppercase">Cheque Date: </span>
+                                        <span className="font-black text-ink">{voucher.cheque_details.cheque_date}</span>
                                     </div>
                                     <div>
-                                        <span className="font-bold text-gray-400 uppercase">Cheque Type: </span>
-                                        <span className="font-black text-gray-900 uppercase">
+                                        <span className="font-bold text-ink-subtle uppercase">Cheque Type: </span>
+                                        <span className="font-black text-ink uppercase">
                                             {voucher.cheque_details.cheque_type === 'ac_payee' ? 'A/C Payee' : 'Normal Cheque'}
                                         </span>
                                     </div>
                                     <div>
-                                        <span className="font-bold text-gray-400 uppercase">Status: </span>
+                                        <span className="font-bold text-ink-subtle uppercase">Status: </span>
                                         <span className={`font-black uppercase ${voucher.status === 'approved' ? 'text-emerald-600' : 'text-rose-600'}`}>
                                             {voucher.status}
                                         </span>
@@ -206,8 +206,8 @@ export default function VoucherPrintSlip({
                         </div>
 
                         {/* Particulars — single line item, stacked description then amount */}
-                        <div className="space-y-1 border-b border-dashed border-gray-300 pb-2">
-                            <div className="text-[9px] font-bold text-gray-400 uppercase">Particulars / Description</div>
+                        <div className="space-y-1 border-b border-dashed border-hairline pb-2">
+                            <div className="text-[9px] font-bold text-ink-subtle uppercase">Particulars / Description</div>
                             <div className="font-semibold leading-relaxed text-[10px]">
                                 {voucher.payment_mode === 'cheque' && voucher.cheque_details ? (
                                     <span>
@@ -217,28 +217,28 @@ export default function VoucherPrintSlip({
                                     voucher.particulars
                                 )}
                             </div>
-                            <div className="flex items-center justify-between font-black text-gray-900 pt-1">
-                                <span className="uppercase text-[9px] text-gray-400">Total Amount</span>
+                            <div className="flex items-center justify-between font-black text-ink pt-1">
+                                <span className="uppercase text-[9px] text-ink-subtle">Total Amount</span>
                                 <span className="text-sm">{formatCurrency(voucher.amount)}</span>
                             </div>
                         </div>
 
-                        <div className="p-2 bg-gray-50 border border-gray-150 rounded text-[10px] space-y-0.5">
-                            <span className="block font-bold text-gray-400 uppercase">Sum In Words:</span>
-                            <span className="font-black text-gray-800 italic capitalize">{amountInWords(voucher.amount)}</span>
+                        <div className="p-2 bg-surface-muted border border-hairline rounded text-[10px] space-y-0.5">
+                            <span className="block font-bold text-ink-subtle uppercase">Sum In Words:</span>
+                            <span className="font-black text-ink italic capitalize">{amountInWords(voucher.amount)}</span>
                         </div>
 
                         {/* Signatures — stacked vertically, not side-by-side columns,
                             so each signature line has room on narrow paper */}
-                        <div className="space-y-4 pt-6 text-[9px] font-bold text-gray-400 uppercase">
-                            <div className="border-t border-gray-300 pt-1.5">
-                                <span className="text-gray-800 font-black">Prepared By</span> — Cashier / Accountant
+                        <div className="space-y-4 pt-6 text-[9px] font-bold text-ink-subtle uppercase">
+                            <div className="border-t border-hairline pt-1.5">
+                                <span className="text-ink font-black">Prepared By</span> — Cashier / Accountant
                             </div>
-                            <div className="border-t border-gray-300 pt-1.5">
-                                <span className="text-gray-800 font-black">Approved By</span> — Manager / Owner
+                            <div className="border-t border-hairline pt-1.5">
+                                <span className="text-ink font-black">Approved By</span> — Manager / Owner
                             </div>
-                            <div className="border-t border-gray-300 pt-1.5">
-                                <span className="text-gray-800 font-black">
+                            <div className="border-t border-hairline pt-1.5">
+                                <span className="text-ink font-black">
                                     {voucher.voucher_type === 'receipt' ? 'Paid By' : 'Received By'}
                                 </span> — Receiver Signature
                             </div>

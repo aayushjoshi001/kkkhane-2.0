@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Filter, Bed, Wrench, ChevronRight, Download, Loader2, X, Users, Calendar, Phone, Pencil, Trash2, Tags, ArrowLeft } from 'lucide-react'
+import { Plus, Filter, Bed, Wrench, ChevronRight, Download, Loader2, X, Users, Calendar, Phone, Pencil, Trash2, Tags, ArrowLeft, Check } from 'lucide-react'
 import { ROOM_STATUS_CONFIG, getRoomStatusConfig } from '@/lib/roomStatus'
 import type { Room, RoomType, RoomStatus, Booking } from '@/types/database'
 import EmptyState from '@/components/ui/EmptyState'
@@ -15,6 +15,8 @@ import { renderQrCardPng, downloadDataUrl } from '@/lib/qrCardCanvas'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 import DownloadAllQrsButton from '@/components/admin/DownloadAllQrsButton'
 import { useFeatures } from '@/lib/contexts/FeatureContext'
+import { useConfirmStore } from '@/lib/stores/confirm'
+import Select from '@/components/ui/Select'
 
 const QR_LOGO_SRC = '/icons/kkkhane.png'
 
@@ -36,6 +38,7 @@ export default function RoomsClient({
     tables = [],
     activeOrders = []
 }: RoomsClientProps) {
+    const { confirm } = useConfirmStore()
     const features = useFeatures()
     const irdSyncEnabled = features?.irdSyncEnabled ?? false
     const router = useRouter()
@@ -213,7 +216,8 @@ export default function RoomsClient({
     // Delete (deactivate) Category handler — refused server-side if any active
     // room still uses it (see api/rooms/types DELETE).
     const handleDeleteType = async (type: RoomType) => {
-        if (!confirm(`Delete category "${type.name}"? Rooms using it must be reassigned first.`)) return
+        const ok = await confirm({ title: `Delete category "${type.name}"? Rooms using it must be reassigned first.`, message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         try {
             const res = await fetch('/api/rooms/types', {
                 method: 'DELETE',
@@ -277,7 +281,8 @@ export default function RoomsClient({
     // api/rooms DELETE), so this just hides the room from the list. Occupied
     // rooms are blocked by the API.
     const handleDeleteRoom = async (room: Room) => {
-        if (!confirm(`Delete Room ${room.room_number}? This cannot be undone.`)) return
+        const ok = await confirm({ title: `Delete Room ${room.room_number}? This cannot be undone.`, message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         setIsDeletingRoom(true)
         try {
             const res = await fetch('/api/rooms', {
@@ -463,20 +468,20 @@ export default function RoomsClient({
             {/* Header section */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Rooms & Suites</h1>
-                    <p className="text-sm text-gray-500 mt-1">Manage hotel rooms, occupancy status, and housekeeping.</p>
+                    <h1 className="text-3xl font-extrabold text-ink tracking-tight">Rooms & Suites</h1>
+                    <p className="text-sm text-ink-subtle mt-1">Manage hotel rooms, occupancy status, and housekeeping.</p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                    <DownloadAllQrsButton className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 hover:bg-gray-100 text-gray-700 font-semibold rounded-xl border border-gray-200 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed" />
+                    <DownloadAllQrsButton className="flex items-center gap-2 px-4 py-2.5 bg-surface-muted hover:bg-surface-muted text-ink font-semibold rounded-xl border border-hairline text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed" />
                     <button
                         onClick={() => { setTypeModalView('list'); setIsAddTypeOpen(true) }}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 hover:bg-gray-100 text-gray-700 font-semibold rounded-xl border border-gray-200 text-sm transition-colors"
+                        className="flex items-center gap-2 px-4 py-2.5 bg-surface-muted hover:bg-surface-muted text-ink font-semibold rounded-xl border border-hairline text-sm transition-colors"
                     >
                         <Tags size={16} /> Categories
                     </button>
                     <button
                         onClick={() => { resetRoomForm(); setIsAddRoomOpen(true) }}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-semibold rounded-xl text-sm transition-all shadow-md shadow-[#ff5a00]/10 hover:scale-[1.01]"
+                        className="flex items-center gap-2 px-5 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl text-sm transition-all shadow-md shadow-brand-500/10 hover:scale-[1.01]"
                     >
                         <Plus size={16} /> Add Room
                     </button>
@@ -485,25 +490,25 @@ export default function RoomsClient({
 
             {/* Quick Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-white border border-gray-100 p-5 rounded-2xl shadow-[0_4px_20px_rgb(0,0,0,0.01)]">
+                <div className="bg-surface border border-hairline p-5 rounded-2xl shadow-[0_4px_20px_rgb(0,0,0,0.01)]">
                     <p className="text-xs font-bold uppercase tracking-wider text-emerald-500">{ROOM_STATUS_CONFIG.available.label}</p>
                     <p className="text-3xl font-black text-emerald-600 mt-1 tabular-nums">
                         {rooms.filter(r => r.status === 'available').length}
                     </p>
                 </div>
-                <div className="bg-white border border-gray-100 p-5 rounded-2xl shadow-[0_4px_20px_rgb(0,0,0,0.01)]">
+                <div className="bg-surface border border-hairline p-5 rounded-2xl shadow-[0_4px_20px_rgb(0,0,0,0.01)]">
                     <p className="text-xs font-bold uppercase tracking-wider text-blue-500">{ROOM_STATUS_CONFIG.occupied.label}</p>
                     <p className="text-3xl font-black text-blue-600 mt-1 tabular-nums">
                         {rooms.filter(r => r.status === 'occupied').length}
                     </p>
                 </div>
-                <div className="bg-white border border-gray-100 p-5 rounded-2xl shadow-[0_4px_20px_rgb(0,0,0,0.01)]">
+                <div className="bg-surface border border-hairline p-5 rounded-2xl shadow-[0_4px_20px_rgb(0,0,0,0.01)]">
                     <p className="text-xs font-bold uppercase tracking-wider text-amber-500">{ROOM_STATUS_CONFIG.dirty.label}</p>
                     <p className="text-3xl font-black text-amber-600 mt-1 tabular-nums">
                         {rooms.filter(r => r.status === 'dirty').length}
                     </p>
                 </div>
-                <div className="bg-white border border-gray-100 p-5 rounded-2xl shadow-[0_4px_20px_rgb(0,0,0,0.01)]">
+                <div className="bg-surface border border-hairline p-5 rounded-2xl shadow-[0_4px_20px_rgb(0,0,0,0.01)]">
                     <p className="text-xs font-bold uppercase tracking-wider text-rose-500">{ROOM_STATUS_CONFIG.maintenance.label}</p>
                     <p className="text-3xl font-black text-rose-600 mt-1 tabular-nums">
                         {rooms.filter(r => r.status === 'maintenance').length}
@@ -512,41 +517,41 @@ export default function RoomsClient({
             </div>
 
             {/* Filters */}
-            <div className="bg-white p-4 border border-gray-100 rounded-2xl flex flex-wrap items-center justify-between gap-4 shadow-sm">
+            <div className="bg-surface p-4 border border-hairline rounded-[var(--r-lg)] flex flex-wrap items-center justify-between gap-4 shadow-sm">
                 <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-600 px-1">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-ink-subtle px-1">
                         <Filter size={16} /> Filters:
                     </div>
-                    <select
+                    <Select
                         value={filterStatus}
                         onChange={(e) => setFilterStatus(e.target.value)}
-                        className="px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 focus:outline-none focus:border-[#ff5a00] cursor-pointer"
+                        className="px-3.5 py-2 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-semibold text-ink focus:outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 cursor-pointer transition-all"
                     >
                         <option value="all">All Statuses</option>
                         {(Object.keys(ROOM_STATUS_CONFIG) as Array<keyof typeof ROOM_STATUS_CONFIG>).map(status => (
                             <option key={status} value={status}>{ROOM_STATUS_CONFIG[status].label}</option>
                         ))}
-                    </select>
+                    </Select>
 
-                    <select
+                    <Select
                         value={filterType}
                         onChange={(e) => setFilterType(e.target.value)}
-                        className="px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 focus:outline-none focus:border-[#ff5a00] cursor-pointer"
+                        className="px-3.5 py-2 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-semibold text-ink focus:outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 cursor-pointer transition-all"
                     >
                         <option value="all">All Room Types</option>
                         {roomTypesList.map(t => (
                             <option key={t.id} value={t.id}>{t.name}</option>
                         ))}
-                    </select>
+                    </Select>
                 </div>
-                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                <div className="text-xs font-semibold text-ink-subtle uppercase tracking-wider">
                     Showing {filteredRooms.length} of {rooms.length} Rooms
                 </div>
             </div>
 
             {/* Room Grid */}
             {filteredRooms.length === 0 ? (
-                <div className="bg-white rounded-3xl p-16 border border-gray-100 text-center shadow-sm">
+                <div className="bg-surface rounded-[var(--r-lg)] p-16 border border-hairline text-center shadow-sm">
                     <EmptyState
                         icon={Bed}
                         title="No rooms match filters"
@@ -562,26 +567,26 @@ export default function RoomsClient({
                             <div
                                 key={room.id}
                                 onClick={() => setSelectedRoom(room)}
-                                className={`bg-white border border-l-4 rounded-2xl p-4 flex flex-col justify-between cursor-pointer transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 select-none ${
-                                    selectedRoom?.id === room.id ? 'border-[#ff5a00] ring-1 ring-[#ff5a00]' : `border-gray-100 ${statusCfg.accent}`
+                                className={`bg-surface border border-l-4 rounded-2xl p-4 flex flex-col justify-between cursor-pointer transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 select-none ${
+                                    selectedRoom?.id === room.id ? 'border-brand-500 ring-1 ring-brand-500' : `border-hairline ${statusCfg.accent}`
                                 }`}
                             >
                                 <div className="flex items-start justify-between">
-                                    <span className="text-xs font-bold text-gray-400 capitalize">Floor {room.floor || '1'} • {room.beds || 1} Bed{room.beds !== 1 ? 's' : ''}</span>
+                                    <span className="text-xs font-bold text-ink-subtle capitalize">Floor {room.floor || '1'} • {room.beds || 1} Bed{room.beds !== 1 ? 's' : ''}</span>
                                     <div className={`p-1.5 rounded-lg border flex items-center justify-center shrink-0 ${statusCfg.badge}`}>
                                         <statusCfg.icon size={16} />
                                     </div>
                                 </div>
                                 <div className="my-5">
-                                    <h3 className="text-2xl font-black text-gray-900 tracking-tight leading-none">{room.room_number}</h3>
-                                    <p className="text-xs text-gray-400 mt-1.5 font-bold uppercase truncate">{typeName}</p>
+                                    <h3 className="text-2xl font-black text-ink tracking-tight leading-none">{room.room_number}</h3>
+                                    <p className="text-xs text-ink-subtle mt-1.5 font-bold uppercase truncate">{typeName}</p>
                                 </div>
-                                <div className="border-t border-gray-50 pt-2 flex items-center justify-between">
+                                <div className="border-t border-hairline pt-2 flex items-center justify-between">
                                     <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${statusCfg.text}`}>
                                         <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot}`} />
                                         {statusCfg.label}
                                     </span>
-                                    <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-400" />
+                                    <ChevronRight size={14} className="text-ink-subtle group-hover:text-ink-subtle" />
                                 </div>
                             </div>
                         )
@@ -591,19 +596,19 @@ export default function RoomsClient({
 
             {/* Quick Actions Drawer for Selected Room */}
             {selectedRoom && !isAddRoomOpen && !isAddTypeOpen && !isBookModalOpen && (
-                <div className="fixed bottom-6 right-6 z-40 bg-white border border-gray-200 rounded-3xl p-6 shadow-2xl w-full max-w-sm animate-in slide-in-from-bottom duration-300 max-h-[85vh] overflow-y-auto">
+                <div className="fixed bottom-6 right-6 z-40 bg-surface border border-hairline rounded-3xl p-6 shadow-2xl w-full max-w-sm animate-in slide-in-from-bottom duration-300 max-h-[85vh] overflow-y-auto">
 
                     {/* Drawer Header Block */}
-                    <div className="flex items-start justify-between mb-4 border-b border-gray-50 pb-3">
+                    <div className="flex items-start justify-between mb-4 border-b border-hairline pb-3">
                         <div>
-                            <h4 className="text-lg font-black text-gray-900">Room {selectedRoom.room_number}</h4>
-                            <p className="text-xs text-gray-500 font-semibold uppercase">{roomTypesList.find(t => t.id === selectedRoom.type_id)?.name || 'Standard'}</p>
+                            <h4 className="text-lg font-black text-ink">Room {selectedRoom.room_number}</h4>
+                            <p className="text-xs text-ink-subtle font-semibold uppercase">{roomTypesList.find(t => t.id === selectedRoom.type_id)?.name || 'Standard'}</p>
                         </div>
                         <div className="flex items-center gap-1">
                             <button
                                 onClick={() => openEditRoom(selectedRoom)}
                                 title="Edit room"
-                                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-900"
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-subtle hover:bg-surface-muted hover:text-ink"
                             >
                                 <Pencil size={15} />
                             </button>
@@ -618,7 +623,7 @@ export default function RoomsClient({
                             <button
                                 onClick={() => setSelectedRoom(null)}
                                 title="Close"
-                                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-900"
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-subtle hover:bg-surface-muted hover:text-ink"
                             >
                                 ✕
                             </button>
@@ -629,37 +634,37 @@ export default function RoomsClient({
                     {(() => {
                         const t = roomTypesList.find(rt => rt.id === selectedRoom.type_id)
                         return (
-                            <div className="mb-4 bg-gray-50/70 border border-gray-100 rounded-2xl p-4 grid grid-cols-3 gap-x-3 gap-y-3 text-xs">
+                            <div className="mb-4 bg-surface-muted/70 border border-hairline rounded-2xl p-4 grid grid-cols-3 gap-x-3 gap-y-3 text-xs">
                                 <div>
-                                    <p className="text-gray-400 font-bold uppercase tracking-wide">Floor</p>
-                                    <p className="font-extrabold text-gray-900 mt-0.5">{selectedRoom.floor || '—'}</p>
+                                    <p className="text-ink-subtle font-bold uppercase tracking-wide">Floor</p>
+                                    <p className="font-extrabold text-ink mt-0.5">{selectedRoom.floor || '—'}</p>
                                 </div>
                                 <div>
-                                    <p className="text-gray-400 font-bold uppercase tracking-wide">Beds</p>
-                                    <p className="font-extrabold text-gray-900 mt-0.5">{selectedRoom.beds || 1}</p>
+                                    <p className="text-ink-subtle font-bold uppercase tracking-wide">Beds</p>
+                                    <p className="font-extrabold text-ink mt-0.5">{selectedRoom.beds || 1}</p>
                                 </div>
                                 <div>
-                                    <p className="text-gray-400 font-bold uppercase tracking-wide">Category</p>
-                                    <p className="font-extrabold text-gray-900 mt-0.5 truncate">{t?.name || 'Standard'}</p>
+                                    <p className="text-ink-subtle font-bold uppercase tracking-wide">Category</p>
+                                    <p className="font-extrabold text-ink mt-0.5 truncate">{t?.name || 'Standard'}</p>
                                 </div>
                                 <div>
-                                    <p className="text-gray-400 font-bold uppercase tracking-wide">Base Price</p>
-                                    <p className="font-extrabold text-gray-900 mt-0.5">{t ? `Rs. ${t.base_price}` : '—'}</p>
+                                    <p className="text-ink-subtle font-bold uppercase tracking-wide">Base Price</p>
+                                    <p className="font-extrabold text-ink mt-0.5">{t ? `Rs. ${t.base_price}` : '—'}</p>
                                 </div>
                                 <div>
-                                    <p className="text-gray-400 font-bold uppercase tracking-wide">Capacity</p>
-                                    <p className="font-extrabold text-gray-900 mt-0.5">{t ? `${t.capacity} guest${t.capacity === 1 ? '' : 's'}` : '—'}</p>
+                                    <p className="text-ink-subtle font-bold uppercase tracking-wide">Capacity</p>
+                                    <p className="font-extrabold text-ink mt-0.5">{t ? `${t.capacity} guest${t.capacity === 1 ? '' : 's'}` : '—'}</p>
                                 </div>
                                 {t?.description && (
                                     <div className="col-span-3">
-                                        <p className="text-gray-400 font-bold uppercase tracking-wide">Description</p>
-                                        <p className="font-semibold text-gray-700 mt-0.5 leading-snug">{t.description}</p>
+                                        <p className="text-ink-subtle font-bold uppercase tracking-wide">Description</p>
+                                        <p className="font-semibold text-ink mt-0.5 leading-snug">{t.description}</p>
                                     </div>
                                 )}
                                 {selectedRoom.notes && (
                                     <div className="col-span-2">
-                                        <p className="text-gray-400 font-bold uppercase tracking-wide">Notes</p>
-                                        <p className="font-semibold text-gray-700 mt-0.5 leading-snug">{selectedRoom.notes}</p>
+                                        <p className="text-ink-subtle font-bold uppercase tracking-wide">Notes</p>
+                                        <p className="font-semibold text-ink mt-0.5 leading-snug">{selectedRoom.notes}</p>
                                     </div>
                                 )}
                             </div>
@@ -675,7 +680,7 @@ export default function RoomsClient({
                             disabled={selectedRoom.status !== 'available'}
                             className={`py-2.5 font-extrabold rounded-xl text-xs border transition-all text-center ${
                                 selectedRoom.status !== 'available'
-                                    ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                                    ? 'bg-surface-muted text-ink-subtle border-hairline cursor-not-allowed'
                                     : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200/40'
                             }`}
                         >
@@ -692,7 +697,7 @@ export default function RoomsClient({
                             disabled={selectedRoom.status === 'occupied'}
                             className={`py-2.5 font-extrabold rounded-xl text-xs border transition-all text-center ${
                                 selectedRoom.status === 'occupied'
-                                    ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                                    ? 'bg-surface-muted text-ink-subtle border-hairline cursor-not-allowed'
                                     : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200/40'
                             }`}
                         >
@@ -736,33 +741,33 @@ export default function RoomsClient({
                                 ) : activeBooking ? (
                                     <div className="space-y-2.5 text-xs">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-gray-400 font-bold uppercase tracking-wide">Guest Name:</span>
-                                            <span className="font-extrabold text-gray-900">{activeBooking.guest_name}</span>
+                                            <span className="text-ink-subtle font-bold uppercase tracking-wide">Guest Name:</span>
+                                            <span className="font-extrabold text-ink">{activeBooking.guest_name}</span>
                                         </div>
                                         <div className="flex items-center justify-between">
-                                            <span className="text-gray-400 font-bold uppercase tracking-wide">Phone Number:</span>
+                                            <span className="text-ink-subtle font-bold uppercase tracking-wide">Phone Number:</span>
                                             <a href={`tel:${activeBooking.guest_phone}`} className="font-extrabold text-blue-600 hover:underline flex items-center gap-1">
                                                 <Phone size={10} /> {activeBooking.guest_phone}
                                             </a>
                                         </div>
                                         <div className="flex items-center justify-between">
-                                            <span className="text-gray-400 font-bold uppercase tracking-wide">Total Guests:</span>
-                                            <span className="font-extrabold text-gray-900">{activeBooking.adults} Guests</span>
+                                            <span className="text-ink-subtle font-bold uppercase tracking-wide">Total Guests:</span>
+                                            <span className="font-extrabold text-ink">{activeBooking.adults} Guests</span>
                                         </div>
                                         {activeBooking.notes && activeBooking.notes.startsWith('KYC:') && (
                                             <div className="flex items-center justify-between">
-                                                <span className="text-gray-400 font-bold uppercase tracking-wide">KYC details:</span>
-                                                <span className="font-extrabold text-gray-900">{activeBooking.notes.replace('KYC:', '').trim()}</span>
+                                                <span className="text-ink-subtle font-bold uppercase tracking-wide">KYC details:</span>
+                                                <span className="font-extrabold text-ink">{activeBooking.notes.replace('KYC:', '').trim()}</span>
                                             </div>
                                         )}
                                         <div className="border-t border-blue-100/60 pt-2 space-y-1.5">
                                             <div className="flex items-center justify-between text-[11px]">
-                                                <span className="text-gray-400 font-bold">CHECK IN:</span>
-                                                <span className="font-extrabold text-gray-800">{formatDateTime(activeBooking.check_in)}</span>
+                                                <span className="text-ink-subtle font-bold">CHECK IN:</span>
+                                                <span className="font-extrabold text-ink">{formatDateTime(activeBooking.check_in)}</span>
                                             </div>
                                             <div className="flex items-center justify-between text-[11px]">
-                                                <span className="text-gray-400 font-bold">CHECK OUT:</span>
-                                                <span className="font-extrabold text-gray-800">{formatDateTime(activeBooking.check_out)}</span>
+                                                <span className="text-ink-subtle font-bold">CHECK OUT:</span>
+                                                <span className="font-extrabold text-ink">{formatDateTime(activeBooking.check_out)}</span>
                                             </div>
                                         </div>
 
@@ -782,12 +787,13 @@ export default function RoomsClient({
                                 ) : (
                                     <div className="space-y-2.5">
                                         <p className="text-xs text-rose-500 font-semibold">No booking details found for this session.</p>
-                                        <p className="text-[11px] text-gray-400">
+                                        <p className="text-[11px] text-ink-subtle">
                                             This room is marked occupied but has no matching active stay — likely a stuck status from a data glitch. If you've confirmed no guest is actually here, you can force it back to available.
                                         </p>
                                         <button
-                                            onClick={() => {
-                                                if (!confirm('Force this room back to Available? Only do this if you have confirmed no guest is actually staying here.')) return
+                                            onClick={async () => {
+                                                const ok = await confirm({ title: 'Force this room back to Available? Only do this if you have confirmed no guest is actually staying here.', message: 'This action cannot be undone.', confirmText: 'Confirm', isDestructive: true })
+                                                if (!ok) return
                                                 handleStatusChange(selectedRoom.id, 'available', true)
                                             }}
                                             className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-xl text-xs transition-colors shadow-sm shadow-amber-500/10"
@@ -801,10 +807,10 @@ export default function RoomsClient({
                         )}
 
                         {/* Room Ordering QR Code Card (Dine-in / Table Style) */}
-                        <div className="border-t border-gray-100 pt-4">
-                            <p className="text-xs font-extrabold uppercase tracking-wider text-gray-400 mb-3">Room QR Service Card</p>
+                        <div className="border-t border-hairline pt-4">
+                            <p className="text-xs font-extrabold uppercase tracking-wider text-ink-subtle mb-3">Room QR Service Card</p>
 
-                            <div className="w-[220px] h-[260px] bg-white rounded-xl border border-gray-300 shadow-[0_8px_30px_rgba(0,0,0,0.12)] flex flex-col items-center p-3 pb-9 relative overflow-hidden mb-5 select-none mx-auto">
+                            <div className="w-[220px] h-[260px] bg-surface rounded-xl border border-hairline shadow-[0_8px_30px_rgba(0,0,0,0.12)] flex flex-col items-center p-3 pb-9 relative overflow-hidden mb-5 select-none mx-auto">
 
                                 {/* Top Banner */}
                                 <div className="w-full flex items-center justify-center relative my-1.5 shrink-0">
@@ -815,7 +821,7 @@ export default function RoomsClient({
                                 </div>
 
                                 {/* QR Code */}
-                                <div className="my-1 shrink-0 bg-white">
+                                <div className="my-1 shrink-0 bg-surface">
                                     <div className="hidden">
                                         <QRCodeCanvas
                                             id={`qr-canvas-${selectedRoom.room_number}`}
@@ -845,7 +851,7 @@ export default function RoomsClient({
 
                                 {/* Hotel / Restaurant Name */}
                                 <div className="text-center flex-1 flex flex-col justify-center pb-1 min-h-[40px] px-1 overflow-hidden shrink-0 mt-0.5">
-                                    <p className="font-extrabold text-[12px] text-gray-900 truncate max-w-[190px] leading-tight" title={restaurantName}>
+                                    <p className="font-extrabold text-[12px] text-ink truncate max-w-[190px] leading-tight" title={restaurantName}>
                                         {restaurantName || 'KKKhane'}
                                     </p>
                                 </div>
@@ -858,7 +864,7 @@ export default function RoomsClient({
                                     >
                                         Powered by KKKhane
                                     </span>
-                                    <div className="relative w-4 h-4 rounded-full border-[1.5px] border-white shrink-0 shadow-sm overflow-hidden bg-white">
+                                    <div className="relative w-4 h-4 rounded-full border-[1.5px] border-white shrink-0 shadow-sm overflow-hidden bg-surface">
                                         <NextImage
                                             src="/icons/kkkhane.png"
                                             alt="Logo"
@@ -873,7 +879,7 @@ export default function RoomsClient({
 
                             <button
                                 onClick={() => handleDownloadQR(selectedRoom)}
-                                className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-extrabold rounded-xl text-xs transition-colors"
+                                className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-ink text-surface hover:opacity-90 font-extrabold rounded-xl text-xs transition-colors"
                             >
                                 <Download size={13} /> Download QR Card
                             </button>
@@ -884,75 +890,75 @@ export default function RoomsClient({
 
             {/* ── Book Room Modal ── */}
             {isBookModalOpen && selectedRoom && (
-                <Modal open onClose={() => setIsBookModalOpen(false)} size="md" ariaLabel={`Book Room ${selectedRoom.room_number}`} className="bg-white flex flex-col overflow-hidden max-h-[90vh]">
-                        <div className="px-6 py-5 bg-[#ff5a00] flex items-center justify-between text-white shrink-0">
+                <Modal open onClose={() => setIsBookModalOpen(false)} size="md" ariaLabel={`Book Room ${selectedRoom.room_number}`} className="flex flex-col overflow-hidden max-h-[90vh]">
+                        <div className="px-6 py-5 border-b border-hairline bg-surface-muted/50 flex items-center justify-between shrink-0">
                             <div className="flex items-center gap-3">
-                                <Calendar size={22} />
-                                <h3 className="font-extrabold text-lg">Book Room {selectedRoom.room_number}</h3>
+                                <Calendar size={22} className="text-brand-500" />
+                                <h3 className="text-h3 text-ink">Book Room {selectedRoom.room_number}</h3>
                             </div>
-                            <button onClick={() => setIsBookModalOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
+                            <button onClick={() => setIsBookModalOpen(false)} className="text-ink-subtle hover:text-ink transition-colors focus-ring rounded-md">
                                 <X size={16} />
                             </button>
                         </div>
 
                         <div className="p-6 space-y-4 overflow-y-auto">
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Customer Name *</label>
+                                <label className="block text-small font-bold text-ink mb-1.5">Customer Name *</label>
                                 <input
                                     type="text"
                                     value={bookingForm.guest_name}
                                     onChange={e => setBookingForm(b => ({ ...b, guest_name: e.target.value }))}
                                     placeholder="e.g. John Doe"
-                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                    className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                 />
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Phone Number *</label>
+                                    <label className="block text-small font-bold text-ink mb-1.5">Phone Number *</label>
                                     <input
                                         type="tel"
                                         value={bookingForm.guest_phone}
                                         onChange={e => setBookingForm(b => ({ ...b, guest_phone: e.target.value }))}
                                         placeholder="e.g. 9812345678"
-                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                        className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">KYC Document No. (Optional)</label>
+                                    <label className="block text-small font-bold text-ink mb-1.5">KYC Document No. (Optional)</label>
                                     <input
                                         type="text"
                                         value={bookingForm.kyc}
                                         onChange={e => setBookingForm(b => ({ ...b, kyc: e.target.value }))}
                                         placeholder="Citizenship / Passport"
-                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                        className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                     />
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Check-In Time *</label>
+                                    <label className="block text-small font-bold text-ink mb-1.5">Check-In Time *</label>
                                     <input
                                         type="datetime-local"
                                         value={bookingForm.check_in}
                                         onChange={e => setBookingForm(b => ({ ...b, check_in: e.target.value }))}
-                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                        className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Check-Out Time *</label>
+                                    <label className="block text-small font-bold text-ink mb-1.5">Check-Out Time *</label>
                                     <input
                                         type="datetime-local"
                                         value={bookingForm.check_out}
                                         onChange={e => setBookingForm(b => ({ ...b, check_out: e.target.value }))}
-                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                        className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                     />
                                 </div>
                             </div>
 
                              <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                                <label className="block text-small font-bold text-ink mb-1.5">
                                     Number of Guests *
                                 </label>
                                 <input
@@ -960,13 +966,13 @@ export default function RoomsClient({
                                     min="1"
                                     value={bookingForm.guest_count}
                                     onChange={e => setBookingForm(b => ({ ...b, guest_count: e.target.value }))}
-                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                    className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                 />
                             </div>
 
                              <div className={irdSyncEnabled ? "grid grid-cols-2 gap-4" : ""}>
                                  <div>
-                                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                                     <label className="block text-small font-bold text-ink mb-1.5">
                                          Advance Payment (Rs.)
                                      </label>
                                      <input
@@ -978,23 +984,23 @@ export default function RoomsClient({
                                              ? ((parseFloat(bookingForm.advance_cash_amount) || 0) + (parseFloat(bookingForm.advance_qr_amount) || 0)).toString()
                                              : bookingForm.advance_amount}
                                          onChange={e => setBookingForm(b => ({ ...b, advance_amount: e.target.value }))}
-                                         className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00] disabled:opacity-60"
+                                         className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all disabled:opacity-60"
                                      />
                                  </div>
                                  {irdSyncEnabled && (
                                      <div>
-                                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                                         <label className="block text-small font-bold text-ink mb-1.5">
                                              Payment Method
                                          </label>
-                                         <select
+                                         <Select
                                              value={bookingForm.advance_payment_method}
                                              onChange={e => setBookingForm(b => ({ ...b, advance_payment_method: e.target.value }))}
-                                             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                             className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                          >
                                              <option value="cash">Cash</option>
                                              <option value="qr_digital">QR / Digital</option>
                                              <option value="split">Split (Cash + QR)</option>
-                                         </select>
+                                         </Select>
                                      </div>
                                  )}
                              </div>
@@ -1002,7 +1008,7 @@ export default function RoomsClient({
                             {irdSyncEnabled && bookingForm.advance_payment_method === 'split' && (
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                                        <label className="block text-small font-bold text-ink mb-1.5">
                                             Cash Amount (Rs.)
                                         </label>
                                         <input
@@ -1011,11 +1017,11 @@ export default function RoomsClient({
                                             placeholder="0.00"
                                             value={bookingForm.advance_cash_amount}
                                             onChange={e => setBookingForm(b => ({ ...b, advance_cash_amount: e.target.value }))}
-                                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                            className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                                        <label className="block text-small font-bold text-ink mb-1.5">
                                             QR / Digital Amount (Rs.)
                                         </label>
                                         <input
@@ -1024,7 +1030,7 @@ export default function RoomsClient({
                                             placeholder="0.00"
                                             value={bookingForm.advance_qr_amount}
                                             onChange={e => setBookingForm(b => ({ ...b, advance_qr_amount: e.target.value }))}
-                                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                            className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                         />
                                     </div>
                                 </div>
@@ -1032,33 +1038,33 @@ export default function RoomsClient({
 
                             {irdSyncEnabled && (bookingForm.advance_payment_method === 'qr_digital' || bookingForm.advance_payment_method === 'split') && qrCodes.length > 1 && (
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                                    <label className="block text-small font-bold text-ink mb-1.5">
                                         Which QR did the guest scan?
                                     </label>
-                                    <select
+                                    <Select
                                         value={bookingForm.advance_qr_code_id}
                                         onChange={e => setBookingForm(b => ({ ...b, advance_qr_code_id: e.target.value }))}
-                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                        className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                     >
                                         <option value="">Select QR code…</option>
                                         {qrCodes.map(qr => (
                                             <option key={qr.id} value={qr.id}>{qr.label}</option>
                                         ))}
-                                    </select>
+                                    </Select>
                                 </div>
                             )}
 
-                            <div className="pt-4 flex items-center justify-end gap-2.5">
+                            <div className="pt-2 flex items-center justify-end gap-3">
                                 <button
                                     onClick={() => setIsBookModalOpen(false)}
-                                    className="px-4 py-2.5 text-gray-500 hover:text-gray-700 font-semibold rounded-xl text-sm"
+                                    className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:shadow-md transition-all focus-ring"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={handleCreateBooking}
                                     disabled={isSubmittingBooking}
-                                    className="flex items-center gap-2 px-5 py-2.5 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-semibold rounded-xl text-sm transition-all disabled:opacity-50"
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-brand-500 text-white font-bold rounded-[var(--r-md)] text-sm shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:pointer-events-none"
                                 >
                                     {isSubmittingBooking ? <Loader2 size={15} className="animate-spin" /> : null}
                                     Book Room
@@ -1070,85 +1076,85 @@ export default function RoomsClient({
 
             {/* ── Add / Edit Room Modal ── */}
             {isAddRoomOpen && (
-                <Modal open onClose={() => { setIsAddRoomOpen(false); resetRoomForm() }} size="md" ariaLabel={editingRoomId ? 'Edit Room' : 'Add New Room'} className="bg-white flex flex-col overflow-hidden max-h-[90vh]">
-                        <div className="px-6 py-5 bg-[#ff5a00] flex items-center justify-between text-white shrink-0">
+                <Modal open onClose={() => { setIsAddRoomOpen(false); resetRoomForm() }} size="md" ariaLabel={editingRoomId ? 'Edit Room' : 'Add New Room'} className="flex flex-col overflow-hidden max-h-[90vh]">
+                        <div className="px-6 py-5 border-b border-hairline bg-surface-muted/50 flex items-center justify-between shrink-0">
                             <div className="flex items-center gap-3">
-                                <Bed size={22} />
-                                <h3 className="font-extrabold text-lg">{editingRoomId ? `Edit Room ${roomForm.room_number}` : 'Add New Room'}</h3>
+                                <Bed size={22} className="text-brand-500" />
+                                <h3 className="text-h3 text-ink">{editingRoomId ? `Edit Room ${roomForm.room_number}` : 'Add New Room'}</h3>
                             </div>
-                            <button onClick={() => { setIsAddRoomOpen(false); resetRoomForm() }} className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
+                            <button onClick={() => { setIsAddRoomOpen(false); resetRoomForm() }} className="text-ink-subtle hover:text-ink transition-colors focus-ring rounded-md">
                                 <X size={16} />
                             </button>
                         </div>
 
                         <div className="p-6 space-y-4 overflow-y-auto">
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Room Number *</label>
+                                <label className="block text-small font-bold text-ink mb-1.5">Room Number *</label>
                                 <input
                                     type="text"
                                     value={roomForm.room_number}
                                     onChange={e => setRoomForm(r => ({ ...r, room_number: e.target.value }))}
                                     placeholder="e.g. 101, 204B"
-                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                    className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Floor</label>
+                                <label className="block text-small font-bold text-ink mb-1.5">Floor</label>
                                 <input
                                     type="text"
                                     value={roomForm.floor}
                                     onChange={e => setRoomForm(r => ({ ...r, floor: e.target.value }))}
                                     placeholder="e.g. Ground, 1st, 2nd"
-                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                    className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Number of Beds</label>
+                                <label className="block text-small font-bold text-ink mb-1.5">Number of Beds</label>
                                 <input
                                     type="number"
                                     min="1"
                                     value={roomForm.beds}
                                     onChange={e => setRoomForm(r => ({ ...r, beds: e.target.value }))}
                                     placeholder="e.g. 1, 2"
-                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                    className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                 />
                             </div>
 
                             <div>
                                 <div className="flex justify-between items-center mb-2">
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Room Type (Category) *</label>
+                                    <label className="block text-small font-bold text-ink">Room Type (Category) *</label>
                                     <button
                                         onClick={() => { setIsAddRoomOpen(false); resetTypeForm(); setTypeModalView('form'); setIsAddTypeOpen(true) }}
-                                        className="text-xs font-bold text-[#ff5a00] hover:underline"
+                                        className="text-xs font-bold text-brand-500 hover:underline"
                                     >
                                         + Create Category
                                     </button>
                                 </div>
-                                <select
+                                <Select
                                     value={roomForm.type_id}
                                     onChange={e => setRoomForm(r => ({ ...r, type_id: e.target.value }))}
-                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00] cursor-pointer"
+                                    className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all cursor-pointer"
                                 >
                                     <option value="">Select Room Category...</option>
                                     {roomTypesList.map(t => (
                                         <option key={t.id} value={t.id}>{t.name} (Rs. {t.base_price})</option>
                                     ))}
-                                </select>
+                                </Select>
                             </div>
 
-                            <div className="pt-4 flex items-center justify-end gap-2.5">
+                            <div className="pt-2 flex items-center justify-end gap-3">
                                 <button
                                     onClick={() => { setIsAddRoomOpen(false); resetRoomForm() }}
-                                    className="px-4 py-2.5 text-gray-500 hover:text-gray-700 font-semibold rounded-xl text-sm"
+                                    className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:shadow-md transition-all focus-ring"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={handleSubmitRoom}
                                     disabled={isSubmittingRoom}
-                                    className="flex items-center gap-2 px-5 py-2.5 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-semibold rounded-xl text-sm transition-all disabled:opacity-50"
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-brand-500 text-white font-bold rounded-[var(--r-md)] text-sm shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:pointer-events-none"
                                 >
                                     {isSubmittingRoom ? <Loader2 size={15} className="animate-spin" /> : null}
                                     {editingRoomId ? 'Save Changes' : 'Create Room'}
@@ -1160,58 +1166,58 @@ export default function RoomsClient({
 
             {/* ── Room Categories Modal (list ↔ add/edit form) ── */}
             {isAddTypeOpen && (
-                <Modal open onClose={() => setIsAddTypeOpen(false)} size="md" ariaLabel="Room Categories" className="bg-white flex flex-col overflow-hidden max-h-[90vh]">
-                        <div className="px-6 py-5 bg-gray-900 flex items-center justify-between text-white shrink-0">
+                <Modal open onClose={() => setIsAddTypeOpen(false)} size="md" ariaLabel="Room Categories" className="flex flex-col overflow-hidden max-h-[90vh]">
+                        <div className="px-6 py-5 border-b border-hairline bg-surface-muted/50 flex items-center justify-between shrink-0">
                             <div className="flex items-center gap-3">
                                 {typeModalView === 'form' ? (
-                                    <button onClick={resetTypeForm} className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
+                                    <button onClick={resetTypeForm} className="w-8 h-8 flex items-center justify-center rounded-[var(--r-md)] text-ink-subtle hover:text-ink hover:bg-surface-muted transition-colors focus-ring">
                                         <ArrowLeft size={16} />
                                     </button>
                                 ) : (
-                                    <Tags size={22} className="text-[#ff5a00]" />
+                                    <Tags size={22} className="text-brand-500" />
                                 )}
-                                <h3 className="font-extrabold text-lg">
+                                <h3 className="text-h3 text-ink">
                                     {typeModalView === 'list' ? 'Room Categories' : editingTypeId ? 'Edit Category' : 'Add Category'}
                                 </h3>
                             </div>
-                            <button onClick={() => setIsAddTypeOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
-                                <X size={16} />
+                            <button onClick={() => setIsAddTypeOpen(false)} className="text-ink-subtle hover:text-ink transition-colors focus-ring rounded-md">
+                                <X size={20} />
                             </button>
                         </div>
 
                         {typeModalView === 'list' ? (
-                            <div className="p-6 space-y-4 overflow-y-auto">
+                            <div className="p-6 space-y-5 overflow-y-auto">
                                 <button
                                     onClick={() => { resetTypeForm(); setTypeModalView('form') }}
-                                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#ff5a00] hover:bg-[#ff4500] text-white font-semibold rounded-xl text-sm transition-all"
+                                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-brand-500 text-white font-bold rounded-[var(--r-md)] text-sm shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all"
                                 >
                                     <Plus size={16} /> Add New Category
                                 </button>
 
                                 {roomTypesList.length === 0 ? (
-                                    <p className="text-sm text-gray-400 text-center py-6">No categories yet.</p>
+                                    <p className="text-sm text-ink-subtle font-bold text-center py-6">No categories yet.</p>
                                 ) : (
-                                    <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+                                    <div className="space-y-2.5 max-h-[50vh] overflow-y-auto">
                                         {roomTypesList.map(type => (
                                             <div
                                                 key={type.id}
-                                                className="flex items-center justify-between gap-3 px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl"
+                                                className="flex items-center justify-between gap-3 px-4 py-3 bg-surface-muted/40 border border-hairline rounded-[var(--r-md)]"
                                             >
                                                 <div className="min-w-0">
-                                                    <p className="font-bold text-sm text-gray-900 truncate">{type.name}</p>
-                                                    <p className="text-xs text-gray-500">Rs. {type.base_price} · {type.capacity} Guests</p>
+                                                    <p className="font-bold text-sm text-ink truncate">{type.name}</p>
+                                                    <p className="text-xs text-ink-subtle font-bold">Rs. {type.base_price} · {type.capacity} Guests</p>
                                                 </div>
                                                 <div className="flex items-center gap-1 shrink-0">
                                                     <button
                                                         onClick={() => openEditType(type)}
-                                                        className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-200 hover:text-gray-900 transition-colors"
+                                                        className="w-8 h-8 rounded-[var(--r-md)] flex items-center justify-center text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors"
                                                         title="Edit Category"
                                                     >
                                                         <Pencil size={14} />
                                                     </button>
                                                     <button
                                                         onClick={() => handleDeleteType(type)}
-                                                        className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                                                        className="w-8 h-8 rounded-[var(--r-md)] flex items-center justify-center text-ink-subtle hover:bg-danger-bg hover:text-danger-fg transition-colors"
                                                         title="Delete Category"
                                                     >
                                                         <Trash2 size={14} />
@@ -1223,65 +1229,65 @@ export default function RoomsClient({
                                 )}
                             </div>
                         ) : (
-                            <div className="p-6 space-y-4 overflow-y-auto">
+                            <div className="p-6 space-y-5 overflow-y-auto">
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Category Name *</label>
+                                    <label className="block text-small font-bold text-ink mb-1.5">Category Name *</label>
                                     <input
                                         type="text"
                                         value={typeForm.name}
                                         onChange={e => setTypeForm(t => ({ ...t, name: e.target.value }))}
                                         placeholder="e.g. Deluxe Room, Presidential Suite"
-                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                        className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                     />
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-2 gap-5">
                                     <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Base Price (Rs.) *</label>
+                                        <label className="block text-small font-bold text-ink mb-1.5">Base Price (Rs.) *</label>
                                         <input
                                             type="number"
                                             value={typeForm.base_price}
                                             onChange={e => setTypeForm(t => ({ ...t, base_price: e.target.value }))}
                                             placeholder="0.00"
-                                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                            className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all tabular-nums"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Capacity (Guests) *</label>
+                                        <label className="block text-small font-bold text-ink mb-1.5">Capacity (Guests) *</label>
                                         <input
                                             type="number"
                                             value={typeForm.capacity}
                                             onChange={e => setTypeForm(t => ({ ...t, capacity: e.target.value }))}
                                             placeholder="2"
-                                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00]"
+                                            className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all tabular-nums"
                                         />
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Description</label>
+                                    <label className="block text-small font-bold text-ink mb-1.5">Description</label>
                                     <textarea
                                         value={typeForm.description}
                                         onChange={e => setTypeForm(t => ({ ...t, description: e.target.value }))}
                                         placeholder="e.g. A spacious room with one King size bed and a balcony views."
                                         rows={3}
-                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#ff5a00]/20 focus:border-[#ff5a00] resize-none"
+                                        className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all resize-none"
                                     />
                                 </div>
 
-                                <div className="pt-4 flex items-center justify-end gap-2.5">
+                                <div className="pt-2 flex items-center justify-end gap-3">
                                     <button
                                         onClick={resetTypeForm}
-                                        className="px-4 py-2.5 text-gray-500 hover:text-gray-700 font-semibold rounded-xl text-sm"
+                                        className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:shadow-md transition-all focus-ring"
                                     >
                                         Cancel
                                     </button>
                                     <button
                                         onClick={handleSubmitType}
                                         disabled={isSubmittingType}
-                                        className="flex items-center gap-2 px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-semibold rounded-xl text-sm transition-all disabled:opacity-50"
+                                        className="flex items-center gap-2 px-5 py-2.5 bg-brand-500 text-white font-bold rounded-[var(--r-md)] text-sm shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:pointer-events-none"
                                     >
-                                        {isSubmittingType ? <Loader2 size={15} className="animate-spin" /> : null}
+                                        {isSubmittingType ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
                                         {editingTypeId ? 'Save Changes' : 'Add Category'}
                                     </button>
                                 </div>
@@ -1291,26 +1297,26 @@ export default function RoomsClient({
             )}
             {/* ── Confirm Close Modal ── */}
             {isConfirmCloseOpen && selectedRoom && (
-                <Modal open onClose={() => setIsConfirmCloseOpen(false)} size="md" ariaLabel="Confirm checkout" className="bg-white flex flex-col overflow-hidden max-h-[90vh]">
-                        <div className="px-6 py-5 bg-rose-600 flex items-center justify-between text-white shrink-0">
+                <Modal open onClose={() => setIsConfirmCloseOpen(false)} size="md" ariaLabel="Confirm checkout" className="flex flex-col overflow-hidden max-h-[90vh]">
+                        <div className="px-6 py-5 border-b border-hairline bg-surface-muted/50 flex items-center justify-between shrink-0">
                             <div className="flex items-center gap-3">
-                                <Wrench size={22} />
-                                <h3 className="font-extrabold text-lg">Close Room {selectedRoom.room_number}?</h3>
+                                <Wrench size={22} className="text-danger-fg" />
+                                <h3 className="text-h3 text-ink">Close Room {selectedRoom.room_number}?</h3>
                             </div>
-                            <button onClick={() => setIsConfirmCloseOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
+                            <button onClick={() => setIsConfirmCloseOpen(false)} className="text-ink-subtle hover:text-ink transition-colors focus-ring rounded-md">
                                 <X size={16} />
                             </button>
                         </div>
                         <div className="p-6 space-y-4 overflow-y-auto">
-                            <p className="text-sm text-gray-600 font-medium leading-relaxed">
-                                Are you sure you want to mark this room as <strong className="text-rose-600 font-extrabold">Closed</strong>?
+                            <p className="text-sm text-ink-subtle font-medium leading-relaxed">
+                                Are you sure you want to mark this room as <strong className="text-danger-fg font-extrabold">Closed</strong>?
                                 <br /><br />
                                 This status should only be used if there is a problem with the room, if it is undergoing maintenance, or for other out-of-order works.
                             </p>
-                            <div className="pt-4 flex items-center justify-end gap-2.5 border-t border-gray-50">
+                            <div className="pt-2 flex items-center justify-end gap-3">
                                 <button
                                     onClick={() => setIsConfirmCloseOpen(false)}
-                                    className="px-4 py-2.5 text-gray-500 hover:text-gray-700 font-semibold rounded-xl text-sm"
+                                    className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:shadow-md transition-all focus-ring"
                                 >
                                     Cancel
                                 </button>
@@ -1319,7 +1325,7 @@ export default function RoomsClient({
                                         handleStatusChange(selectedRoom.id, 'maintenance')
                                         setIsConfirmCloseOpen(false)
                                     }}
-                                    className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-xl text-sm transition-all shadow-md shadow-rose-600/10"
+                                    className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-[var(--r-md)] text-sm transition-all shadow-md shadow-rose-600/10"
                                 >
                                     Confirm Close
                                 </button>

@@ -28,7 +28,7 @@ export default function AdminError({
             <div className="flex gap-4">
                 <button
                     onClick={() => reset()}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-ink text-white rounded-xl font-medium hover:bg-gray-800 transition-colors"
+                    className="flex items-center gap-2 px-5 py-2.5 bg-ink text-surface rounded-xl font-medium hover:opacity-90 transition-opacity"
                 >
                     <RefreshCcw size={18} /> Try again
                 </button>

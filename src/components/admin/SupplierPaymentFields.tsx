@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import Select from '@/components/ui/Select'
 
 export type SupplierPaymentSource = 'cash' | 'qr' | 'cheque' | 'cash_qr'
 
@@ -88,7 +89,7 @@ export default function SupplierPaymentFields({ value, onChange, bankAccounts, p
     return (
         <div className="space-y-3">
             <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Payment Type</label>
+                <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Payment Type</label>
                 <div className="grid grid-cols-4 gap-2">
                     {OPTIONS.map(o => (
                         <button
@@ -98,7 +99,7 @@ export default function SupplierPaymentFields({ value, onChange, bankAccounts, p
                             className={`py-2 text-[10px] font-black uppercase tracking-wider border rounded-lg transition-all ${
                                 value.payment_source === o.value
                                     ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-sm'
-                                    : 'bg-white border-gray-200 text-gray-400 hover:text-gray-600'
+                                    : 'bg-surface border-hairline text-ink-subtle hover:text-ink-subtle'
                             }`}
                         >
                             {o.label}
@@ -111,7 +112,7 @@ export default function SupplierPaymentFields({ value, onChange, bankAccounts, p
                 <div className="animate-in slide-in-from-top-1 duration-150">
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Cash Amount (Rs.)</label>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Cash Amount (Rs.)</label>
                             <input
                                 type="number"
                                 min="0"
@@ -119,11 +120,11 @@ export default function SupplierPaymentFields({ value, onChange, bankAccounts, p
                                 placeholder="0.00"
                                 value={value.cash_portion}
                                 onChange={e => onChange({ ...value, cash_portion: e.target.value })}
-                                className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                className="w-full px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                             />
                         </div>
                         <div>
-                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">QR Amount (Rs.)</label>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">QR Amount (Rs.)</label>
                             <input
                                 type="number"
                                 min="0"
@@ -131,7 +132,7 @@ export default function SupplierPaymentFields({ value, onChange, bankAccounts, p
                                 placeholder="0.00"
                                 value={value.qr_portion}
                                 onChange={e => onChange({ ...value, qr_portion: e.target.value })}
-                                className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                className="w-full px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                             />
                         </div>
                     </div>
@@ -145,21 +146,21 @@ export default function SupplierPaymentFields({ value, onChange, bankAccounts, p
 
             {needsBank && (
                 <div className="animate-in slide-in-from-top-1 duration-150">
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                    <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">
                         {value.payment_source === 'cash_qr' ? 'QR / Bank Account' : 'Bank Account'}
                     </label>
-                    <select
+                    <Select
                         value={value.bank_name}
                         onChange={e => onChange({ ...value, bank_name: e.target.value })}
                         required
-                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                        className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                     >
                         <option value="">Select Bank Account</option>
                         {bankAccounts.map(b => (
                             <option key={b.id} value={b.name}>{b.name}{b.account_number ? ` (${b.account_number})` : ''}</option>
                         ))}
                         {bankAccounts.length === 0 && <option value="General Bank">General Bank</option>}
-                    </select>
+                    </Select>
                 </div>
             )}
         </div>

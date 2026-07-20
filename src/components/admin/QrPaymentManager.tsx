@@ -5,6 +5,8 @@ import Image from 'next/image'
 import { QrCode, Upload, Plus, Loader2, Trash2 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { createQrCodeAction, updateQrCodeAction, deleteQrCodeAction } from '@/app/(admin)/admin/settings/actions'
+import { useConfirmStore } from '@/lib/stores/confirm'
+import Select from '@/components/ui/Select'
 
 export interface QrCodeEntry {
     id: string
@@ -31,6 +33,7 @@ export default function QrPaymentManager({
     bankAccounts: { id: string; name: string }[]
     canEdit: boolean
 }) {
+    const { confirm } = useConfirmStore()
     const [qrCodes, setQrCodes] = useState<QrCodeEntry[]>(initialQrCodes)
     const [uploadingId, setUploadingId] = useState<string | null>(null)
     const [savingId, setSavingId] = useState<string | null>(null)
@@ -54,6 +57,8 @@ export default function QrPaymentManager({
     }
 
     const handleDelete = async (id: string) => {
+        const ok = await confirm({ title: 'Delete this QR code?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const prev = qrCodes
         setQrCodes(qrCodes.filter(q => q.id !== id))
         const res = await deleteQrCodeAction(id, restaurantId)
@@ -159,7 +164,7 @@ export default function QrPaymentManager({
 
                         <div>
                             <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Deposits Into</label>
-                            <select
+                            <Select
                                 value={qr.bank_account_id || ''}
                                 disabled={!canEdit}
                                 onChange={(e) => handleUpdate(qr.id, { bank_account_id: e.target.value || null })}
@@ -169,7 +174,7 @@ export default function QrPaymentManager({
                                 {bankAccounts.map(acc => (
                                     <option key={acc.id} value={acc.id}>{acc.name}</option>
                                 ))}
-                            </select>
+                            </Select>
                         </div>
 
                         {canEdit && (

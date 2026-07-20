@@ -12,6 +12,7 @@ import { formatCurrency } from '@/lib/utils'
 import { FINANCIAL_EVENT_TYPES, FINANCIAL_EVENT_STATUSES, type FinancialEvent, type FinancialEventStatus, type FinancialEventType } from '@/types/database'
 import type { SearchFinancialEventsFilters } from '@/lib/finance-events/repository'
 import { searchEventsAction, retryEventAction } from './actions'
+import Select from '@/components/ui/Select'
 
 const PAGE_SIZE = 20
 
@@ -87,22 +88,22 @@ export default function EventsManager({ initialRows, initialTotal }: { initialRo
                         className="w-full pl-9 pr-3 py-2.5 border border-hairline-strong rounded-xl text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
                     />
                 </div>
-                <select
+                <Select
                     value={filters.status}
                     onChange={(e) => updateFilter('status', e.target.value as FinancialEventStatus | '')}
                     className="px-3 py-2.5 border border-hairline-strong rounded-xl text-sm bg-surface text-ink-muted font-semibold focus:outline-none focus:ring-2 focus:ring-brand-500/30"
                 >
                     <option value="">All statuses</option>
                     {FINANCIAL_EVENT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-                <select
+                </Select>
+                <Select
                     value={filters.eventType}
                     onChange={(e) => updateFilter('eventType', e.target.value as FinancialEventType | '')}
                     className="px-3 py-2.5 border border-hairline-strong rounded-xl text-sm bg-surface text-ink-muted font-semibold focus:outline-none focus:ring-2 focus:ring-brand-500/30"
                 >
                     <option value="">All event types</option>
                     {FINANCIAL_EVENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
+                </Select>
                 <input
                     type="date"
                     value={filters.dateFrom}

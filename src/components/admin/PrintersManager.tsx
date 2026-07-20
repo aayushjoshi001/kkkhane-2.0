@@ -7,10 +7,12 @@ import { Plus, Printer as PrinterIcon, Pencil, Trash2, Wifi, Usb } from 'lucide-
 import PrinterFormModal from './PrinterFormModal'
 import { deletePrinterAction } from '@/app/(admin)/admin/printers/actions'
 import type { Printer } from '@/types/database'
+import { useConfirmStore } from '@/lib/stores/confirm'
 
 const ROLE_LABEL: Record<Printer['role'], string> = { kot: 'KOT', bot: 'BOT', bill: 'Bill' }
 
 export default function PrintersManager({ initialPrinters }: { initialPrinters: Printer[] }) {
+    const { confirm } = useConfirmStore()
     const router = useRouter()
     const [modalOpen, setModalOpen] = useState(false)
     const [editing, setEditing] = useState<Printer | null>(null)
@@ -20,7 +22,8 @@ export default function PrintersManager({ initialPrinters }: { initialPrinters: 
     const openEdit = (p: Printer) => { setEditing(p); setModalOpen(true) }
 
     const handleDelete = async (p: Printer) => {
-        if (!confirm(`Delete printer “${p.name}”?`)) return
+        const ok = await confirm({ title: `Delete printer “${p.name}”?`, message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         setDeletingId(p.id)
         try {
             const res = await deletePrinterAction(p.id)

@@ -14,6 +14,8 @@ import SupplierPaymentFields, {
     EMPTY_SUPPLIER_PAYMENT, validateSupplierPayment, isUnderpaidSplit, underpaidSplitConfirmMessage,
     UNSPECIFIED_SUPPLIER_NAME, type SupplierPaymentValue
 } from '@/components/admin/SupplierPaymentFields'
+import { useConfirmStore } from '@/lib/stores/confirm'
+import Select from '@/components/ui/Select'
 
 export default function IngredientsManager({
     initialIngredients,
@@ -28,6 +30,7 @@ export default function IngredientsManager({
     initialSuppliers: Supplier[]
     initialBankAccounts?: BankAccount[]
 }) {
+    const { confirm } = useConfirmStore()
     const { data: ingredients = initialIngredients, mutate } = useSWR(
         ['ingredients', restaurantId],
         () => fetchIngredientsData(restaurantId),
@@ -109,8 +112,9 @@ export default function IngredientsManager({
             if (paidAmount > createTotal) { toast.error('Paid amount cannot exceed the total amount'); return }
             const paymentError = validateSupplierPayment(createPayment, paidAmount)
             if (paymentError) { toast.error(paymentError); return }
-            if (isUnderpaidSplit(createPayment, paidAmount, createTotal) && !confirm(underpaidSplitConfirmMessage(paidAmount, createTotal))) {
-                return
+            if (isUnderpaidSplit(createPayment, paidAmount, createTotal)) {
+                const ok = await confirm({ title: 'Underpaid split', message: underpaidSplitConfirmMessage(paidAmount, createTotal), confirmText: 'Continue', isDestructive: false })
+                if (!ok) return
             }
         }
 
@@ -302,8 +306,9 @@ export default function IngredientsManager({
             if (movePaidAmount > moveTotal) { toast.error('Paid amount cannot exceed the total amount'); return }
             const paymentError = validateSupplierPayment(movePayment, movePaidAmount)
             if (paymentError) { toast.error(paymentError); return }
-            if (isUnderpaidSplit(movePayment, movePaidAmount, moveTotal) && !confirm(underpaidSplitConfirmMessage(movePaidAmount, moveTotal))) {
-                return
+            if (isUnderpaidSplit(movePayment, movePaidAmount, moveTotal)) {
+                const ok = await confirm({ title: 'Underpaid split', message: underpaidSplitConfirmMessage(movePaidAmount, moveTotal), confirmText: 'Continue', isDestructive: false })
+                if (!ok) return
             }
         }
 
@@ -374,7 +379,8 @@ export default function IngredientsManager({
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this stock item?')) return
+        const ok = await confirm({ title: 'Delete this stock item?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteIngredientAction(id)
         if (result.error) { toast.error(result.error); return }
         mutate()
@@ -445,7 +451,7 @@ export default function IngredientsManager({
                             <div className="grid grid-cols-2 gap-5">
                                 <div>
                                     <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Unit *</label>
-                                    <select
+                                    <Select
                                         value={form.unit}
                                         onChange={e => setForm({ ...form, unit: e.target.value })}
                                         className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207l5%205%205-5%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%221.5%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_12px_center]"
@@ -453,7 +459,7 @@ export default function IngredientsManager({
                                         {['kg', 'g', 'L', 'mL', 'pcs', 'lbs', 'oz', 'cups', 'tbsp', 'tsp'].map(u => (
                                             <option key={u} value={u}>{u}</option>
                                         ))}
-                                    </select>
+                                    </Select>
                                 </div>
                                 <div>
                                     <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">
@@ -547,7 +553,7 @@ export default function IngredientsManager({
                                         </button>
                                     </div>
                                 ) : (
-                                    <select
+                                    <Select
                                         value={form.category_id}
                                         onChange={e => setForm({ ...form, category_id: e.target.value, supplier: '' })}
                                         className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207l5%205%205-5%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%221.5%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_12px_center]"
@@ -556,7 +562,7 @@ export default function IngredientsManager({
                                         {stockRelevantCategories.map(c => (
                                             <option key={c.id} value={c.id}>{c.name}</option>
                                         ))}
-                                    </select>
+                                    </Select>
                                 )}
                                 {categories.length > stockRelevantCategories.length && (
                                     <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider">
@@ -618,7 +624,7 @@ export default function IngredientsManager({
                                         </button>
                                     </div>
                                 ) : (
-                                    <select
+                                    <Select
                                         value={form.supplier}
                                         onChange={e => setForm({ ...form, supplier: e.target.value })}
                                         className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207l5%205%205-5%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%221.5%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_12px_center]"
@@ -627,7 +633,7 @@ export default function IngredientsManager({
                                         {filteredSuppliers.map(s => (
                                             <option key={s.id} value={s.name}>{s.name}</option>
                                         ))}
-                                    </select>
+                                    </Select>
                                 )}
                             </div>
 
@@ -697,13 +703,13 @@ export default function IngredientsManager({
                         <div className="space-y-5">
                             <div>
                                 <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Type</label>
-                                <select value={moveForm.movement_type} onChange={e => setMoveForm({ ...moveForm, movement_type: e.target.value })}
+                                <Select value={moveForm.movement_type} onChange={e => setMoveForm({ ...moveForm, movement_type: e.target.value })}
                                     className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207l5%205%205-5%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%221.5%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_12px_center]">
                                     <option value="purchase">Purchase (add)</option>
                                     <option value="usage">Usage (subtract)</option>
                                     <option value="waste">Waste (subtract)</option>
                                     <option value="adjustment">Adjustment (subtract)</option>
-                                </select>
+                                </Select>
                             </div>
                             <div>
                                 <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Quantity ({stockModal.unit})</label>
@@ -720,13 +726,13 @@ export default function IngredientsManager({
                                         {relevantSuppliers.length === 0 ? (
                                             <p className="text-[11px] font-bold text-ink-muted">No suppliers set up yet — the bill will be recorded under &quot;{stockModal.supplier || UNSPECIFIED_SUPPLIER_NAME}&quot;.</p>
                                         ) : (
-                                            <select value={effectiveSupplierId} onChange={e => setMoveForm({ ...moveForm, supplier_id: e.target.value })}
+                                            <Select value={effectiveSupplierId} onChange={e => setMoveForm({ ...moveForm, supplier_id: e.target.value })}
                                                 className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3">
                                                 <option value="">Select supplier...</option>
                                                 {relevantSuppliers.map(s => (
                                                     <option key={s.id} value={s.id}>{s.name}</option>
                                                 ))}
-                                            </select>
+                                            </Select>
                                         )}
                                         <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mt-1.5">Matched by this item&apos;s category, so the bill lands under the right supplier in Suppliers Ledger.</p>
                                     </div>
@@ -852,7 +858,7 @@ export default function IngredientsManager({
                     {categorizedIngredients[''] && categorizedIngredients[''].length > 0 && (
                         <Fragment>
                             <tr className="bg-surface-muted/30">
-                                <td colSpan={6} className="px-5 py-2.5 text-xs font-black text-gray-500 uppercase tracking-wider bg-surface-muted/20">
+                                <td colSpan={6} className="px-5 py-2.5 text-xs font-black text-ink-subtle uppercase tracking-wider bg-surface-muted/20">
                                     📦 Uncategorized Items ({categorizedIngredients[''].length} {categorizedIngredients[''].length === 1 ? 'item' : 'items'})
                                 </td>
                             </tr>

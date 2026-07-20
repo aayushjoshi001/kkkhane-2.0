@@ -226,10 +226,11 @@ export async function PATCH(request: Request) {
 
     // Immediately ready the next business day so the manager never has to
     // manually open it — its opening balances carry forward from this
-    // session's closing balances.
-    await autoOpenNextDayBookSession(supabase, restaurantId, session as DayBookSession, currentUser.id)
+    // session's closing balances, whatever time (even past midnight) the
+    // close happened at.
+    const nextSession = await autoOpenNextDayBookSession(supabase, restaurantId, session as DayBookSession, currentUser.id)
 
-    return NextResponse.json({ success: true, data: session })
+    return NextResponse.json({ success: true, data: session, next_session: nextSession })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

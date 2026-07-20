@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'react-hot-toast'
+import Select from '@/components/ui/Select'
 
 interface RestaurantMainClientProps {
     restaurant: {
@@ -391,7 +392,7 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-ink-muted mb-1.5">Select your Table</label>
-                                <select
+                                <Select
                                     value={selectedTableId}
                                     onChange={(e) => setSelectedTableId(e.target.value)}
                                     className="w-full px-4 py-3 border border-hairline-strong rounded-xl bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
@@ -400,7 +401,7 @@ export default function RestaurantMainClient({ restaurant, tables, restaurantSlu
                                     {tables.map(t => (
                                         <option key={t.id} value={t.id}>Table {t.label}</option>
                                     ))}
-                                </select>
+                                </Select>
                             </div>
 
                             <button

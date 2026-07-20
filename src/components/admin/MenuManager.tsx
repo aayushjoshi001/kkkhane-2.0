@@ -23,6 +23,7 @@ import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import TranslationModal from '@/components/admin/TranslationModal'
 import { fetchMenuData } from '@/lib/swr-fetchers'
+import Select from '@/components/ui/Select'
 
 type TranslationRow = { language_code: string; entity_type: string; entity_id: string; translated_text: string }
 
@@ -32,6 +33,13 @@ let uploadSeq = 0
 
 // The limit the upload zones promise the user ("up to 5MB").
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+// Half Plate is stored as a paired variation rather than a dedicated DB column.
+// A plain item's pair is named "Full" / "Half"; a named variation's pair is
+// "<name>" / "<name> (Half)" so multiple half-enabled variations stay unique.
+const round2 = (n: number) => Math.round(n * 100) / 100
+const halfTwinName = (baseName: string) => (baseName.trim() === 'Full' ? 'Half' : `${baseName} (Half)`)
+const isHalfTwinName = (name: string) => name === 'Half' || name.endsWith(' (Half)')
 
 // The file picker filters by accept="image/*", but a drag-and-drop doesn't —
 // anything the OS lets you drag lands here, so the check has to happen in code.
@@ -117,6 +125,11 @@ export default function MenuManager({
     const [hasVariations, setHasVariations] = useState(false)
     const [itemVariations, setItemVariations] = useState<{ id?: string; name: string; price: number; is_available: boolean; image_url?: string | null }[]>([])
     const [variationUploadIdx, setVariationUploadIdx] = useState<number | null>(null)
+    // Half Plate for a plain (no custom variations) item: a Full/Half pair is
+    // synthesized behind the scenes at save time, without exposing the
+    // Item Variations editor. Custom variations (Small/Large, Chicken/Veg/...)
+    // instead get a per-row half toggle further down, directly in itemVariations.
+    const [simpleHalfPlateOn, setSimpleHalfPlateOn] = useState(false)
 
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [imageUploading, setImageUploading] = useState(false)
@@ -268,9 +281,24 @@ export default function MenuManager({
     const openItemModal = async (item?: MenuItem) => {
         if (item) {
             setEditingItem(item)
-            setItemFormData({ ...item })
-            setHasVariations(!!(item.variations && item.variations.length > 0))
-            setItemVariations(item.variations ? item.variations.map(v => ({ ...v, is_available: v.is_available ?? true })) : [])
+            const variations = item.variations ? item.variations.map(v => ({ ...v, is_available: v.is_available ?? true })) : []
+            // A plain item's synthesized Half Plate pair is exactly one "Full" +
+            // one "Half" row — collapse it back to the simple, hidden-toggle form.
+            const simplePair = variations.length === 2
+                && variations.some(v => v.name.trim() === 'Full')
+                && variations.some(v => v.name.trim() === 'Half')
+            if (simplePair) {
+                const full = variations.find(v => v.name.trim() === 'Full')!
+                setItemFormData({ ...item, price: full.price })
+                setHasVariations(false)
+                setItemVariations([])
+                setSimpleHalfPlateOn(true)
+            } else {
+                setItemFormData({ ...item })
+                setHasVariations(variations.length > 0)
+                setItemVariations(variations)
+                setSimpleHalfPlateOn(false)
+            }
             const res = await getItemRecipeAction(item.id)
             if (res.data) {
                 setRecipe(res.data.map(r => {
@@ -297,15 +325,55 @@ export default function MenuManager({
             setHasVariations(false)
             setItemVariations([])
             setRecipe([])
+            setSimpleHalfPlateOn(false)
         }
         setIsItemModalOpen(true)
     }
 
+    // Turning custom Item Variations on/off. If a simple Half Plate pair was
+    // active, it's carried into the now-visible editor as starter rows instead
+    // of being silently dropped.
+    const toggleItemVariations = (turningOn: boolean) => {
+        setHasVariations(turningOn)
+        if (turningOn) {
+            if (simpleHalfPlateOn) {
+                const fullPrice = Number(itemFormData.price || 0)
+                setItemVariations([
+                    { name: 'Full', price: fullPrice, is_available: true, image_url: null },
+                    { name: 'Half', price: round2(fullPrice / 2), is_available: true, image_url: null }
+                ])
+                setSimpleHalfPlateOn(false)
+            } else if (itemVariations.length === 0) {
+                setItemVariations([{ name: '', price: 0, is_available: true, image_url: null }])
+            }
+        } else {
+            setItemVariations([])
+            setSimpleHalfPlateOn(false)
+        }
+    }
+
+    // Per-variation Half Plate: adds/removes a paired "<name> (Half)" row
+    // priced at 50% of that specific variation.
+    const toggleVariationHalfPlate = (baseIdx: number, enabled: boolean) => {
+        setItemVariations(prev => {
+            const base = prev[baseIdx]
+            const twinName = halfTwinName(base.name)
+            if (enabled) {
+                if (prev.some(v => v.name === twinName)) return prev
+                return [...prev, { name: twinName, price: round2(base.price / 2), is_available: true, image_url: null }]
+            }
+            return prev.filter(v => v.name !== twinName)
+        })
+    }
+
     const saveItem = async () => {
-        const basePrice = hasVariations ? 0 : Number(itemFormData.price || 0)
-        
-        if (!itemFormData.name || (!hasVariations && !itemFormData.price) || !itemFormData.category_id) return
-        
+        const effectiveHasVariations = hasVariations || simpleHalfPlateOn
+        const basePrice = effectiveHasVariations ? 0 : Number(itemFormData.price || 0)
+
+        if (!itemFormData.name || (!effectiveHasVariations && !itemFormData.price) || !itemFormData.category_id) return
+
+        let variationsPayload: typeof itemVariations = []
+
         if (hasVariations) {
             if (itemVariations.length === 0) {
                 toast.error('Please add at least one variation option')
@@ -320,6 +388,13 @@ export default function MenuManager({
                 toast.error('Variation names must be unique (recipes are matched by name)')
                 return
             }
+            variationsPayload = itemVariations
+        } else if (simpleHalfPlateOn) {
+            const fullPrice = Number(itemFormData.price || 0)
+            variationsPayload = [
+                { name: 'Full', price: fullPrice, is_available: true, image_url: null },
+                { name: 'Half', price: round2(fullPrice / 2), is_available: true, image_url: null }
+            ]
         }
 
         setIsSubmitting(true)
@@ -330,7 +405,6 @@ export default function MenuManager({
             price: basePrice
         }
 
-        const variationsPayload = hasVariations ? itemVariations : []
         const validRecipe = recipe.filter(r => r.ingredient_id && Number(r.quantity_needed) > 0)
             .map(r => ({ ...r, quantity_needed: Number(r.quantity_needed) }))
 
@@ -605,7 +679,7 @@ export default function MenuManager({
                                         className="w-full pl-10 pr-4 py-2.5 rounded-[var(--r-lg)] border border-transparent hover:border-hairline bg-surface-muted text-sm font-medium focus:bg-surface focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-ink placeholder:text-ink-subtle"
                                     />
                                 </div>
-                                <select
+                                <Select
                                     value={categoryFilter}
                                     onChange={(e) => setCategoryFilter(e.target.value)}
                                     className="rounded-[var(--r-lg)] border border-transparent hover:border-hairline bg-surface-muted px-4 py-2.5 text-sm font-medium text-ink outline-none focus:bg-surface focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:w-56 transition-all"
@@ -614,7 +688,7 @@ export default function MenuManager({
                                     {categories.map(c => (
                                         <option key={c.id} value={c.id}>{c.name}</option>
                                     ))}
-                                </select>
+                                </Select>
                             </div>
                         )}
 
@@ -861,7 +935,7 @@ export default function MenuManager({
                                 </div>
                                 <div>
                                     <label className="block text-small font-bold text-ink mb-1.5">Category *</label>
-                                    <select
+                                    <Select
                                         value={itemFormData.category_id || ''}
                                         onChange={e => setItemFormData({ ...itemFormData, category_id: e.target.value })}
                                         className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
@@ -870,9 +944,30 @@ export default function MenuManager({
                                         {categories.map(c => (
                                             <option key={c.id} value={c.id}>{c.name}</option>
                                         ))}
-                                    </select>
+                                    </Select>
                                 </div>
                             </div>
+                            {!hasVariations && (
+                                <div className="flex items-center justify-between bg-brand-50 border border-brand-100 rounded-[var(--r-md)] px-3.5 py-3">
+                                    <div>
+                                        <span className="text-small font-bold text-ink block">Half Plate</span>
+                                        <span className="text-xs text-ink-subtle">
+                                            {simpleHalfPlateOn
+                                                ? `Also sold as Half at ${money(round2(Number(itemFormData.price || 0) / 2))}`
+                                                : 'Also sell a Half Plate at 50% of the price above.'}
+                                        </span>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer group shrink-0 ml-3">
+                                        <input
+                                            type="checkbox"
+                                            className="sr-only peer"
+                                            checked={simpleHalfPlateOn}
+                                            onChange={e => setSimpleHalfPlateOn(e.target.checked)}
+                                        />
+                                        <div className="w-11 h-6 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-shadow"></div>
+                                    </label>
+                                </div>
+                            )}
                             <div>
                                 <label className="block text-small font-bold text-ink mb-1.5">Description</label>
                                 <textarea
@@ -969,16 +1064,11 @@ export default function MenuManager({
                                         <span className="text-xs text-ink-subtle">e.g., Small, Medium, Large sizes</span>
                                     </div>
                                     <label className="relative inline-flex items-center cursor-pointer group">
-                                        <input 
-                                            type="checkbox" 
-                                            className="sr-only peer" 
-                                            checked={hasVariations} 
-                                            onChange={e => {
-                                                setHasVariations(e.target.checked)
-                                                if (e.target.checked && itemVariations.length === 0) {
-                                                    setItemVariations([{ name: '', price: 0, is_available: true, image_url: null }])
-                                                }
-                                            }} 
+                                        <input
+                                            type="checkbox"
+                                            className="sr-only peer"
+                                            checked={hasVariations}
+                                            onChange={e => toggleItemVariations(e.target.checked)}
                                         />
                                         <div className="w-11 h-6 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-shadow"></div>
                                     </label>
@@ -986,7 +1076,12 @@ export default function MenuManager({
 
                                 {hasVariations && (
                                     <div className="space-y-3 mt-4 bg-surface-muted/30 p-3.5 rounded-[var(--r-lg)] border border-hairline shadow-inner">
-                                        {itemVariations.map((v, idx) => (
+                                        {itemVariations.map((v, idx) => {
+                                            if (isHalfTwinName(v.name)) return null // rendered inline under its base row below
+                                            const twinName = halfTwinName(v.name)
+                                            const twinIdx = itemVariations.findIndex((vv, i) => i !== idx && vv.name === twinName)
+                                            const twin = twinIdx !== -1 ? itemVariations[twinIdx] : null
+                                            return (
                                             <div key={idx} className="flex gap-3 bg-surface p-3 rounded-[var(--r-md)] border border-hairline shadow-sm hover:shadow-md transition-shadow">
                                                 {/* Variation image */}
                                                 <label className="relative w-16 h-16 shrink-0 rounded-[var(--r-md)] overflow-hidden border border-hairline bg-surface-muted flex items-center justify-center cursor-pointer group/var shadow-inner">
@@ -1020,9 +1115,16 @@ export default function MenuManager({
                                                         type="text"
                                                         value={v.name}
                                                         onChange={e => {
-                                                            const newVars = [...itemVariations]
-                                                            newVars[idx].name = e.target.value
-                                                            setItemVariations(newVars)
+                                                            const newName = e.target.value
+                                                            setItemVariations(prev => {
+                                                                const next = [...prev]
+                                                                const oldName = next[idx].name
+                                                                next[idx] = { ...next[idx], name: newName }
+                                                                const oldTwinName = halfTwinName(oldName)
+                                                                const oldTwinIdx = next.findIndex((vv, i) => i !== idx && vv.name === oldTwinName)
+                                                                if (oldTwinIdx !== -1) next[oldTwinIdx] = { ...next[oldTwinIdx], name: halfTwinName(newName) }
+                                                                return next
+                                                            })
                                                         }}
                                                         placeholder="Variation Name (e.g. Small)"
                                                         className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-2 border bg-surface text-ink transition-all"
@@ -1039,9 +1141,15 @@ export default function MenuManager({
                                                                 onChange={e => {
                                                                     const val = e.target.value
                                                                     if (/^\d*\.?\d*$/.test(val)) {
-                                                                        const newVars = [...itemVariations]
-                                                                        newVars[idx].price = val === '' ? 0 : Number(val)
-                                                                        setItemVariations(newVars)
+                                                                        const newPrice = val === '' ? 0 : Number(val)
+                                                                        setItemVariations(prev => {
+                                                                            const next = [...prev]
+                                                                            const name = next[idx].name
+                                                                            next[idx] = { ...next[idx], price: newPrice }
+                                                                            const tIdx = next.findIndex((vv, i) => i !== idx && vv.name === halfTwinName(name))
+                                                                            if (tIdx !== -1) next[tIdx] = { ...next[tIdx], price: round2(newPrice / 2) }
+                                                                            return next
+                                                                        })
                                                                     }
                                                                 }}
                                                                 placeholder="Price"
@@ -1060,12 +1168,16 @@ export default function MenuManager({
                                                         <button
                                                             type="button"
                                                             onClick={() => {
-                                                                setItemVariations(itemVariations.filter((_, i) => i !== idx))
+                                                                // Removing a base variation also drops its auto-generated
+                                                                // "(Half)" twin, so half-plate pricing never orphans.
+                                                                const removedNames = [v.name.toLowerCase().trim(), twinName.toLowerCase().trim()]
+                                                                const removedIds = itemVariations.filter(vv => removedNames.includes(vv.name.toLowerCase().trim())).map(vv => vv.id)
+                                                                setItemVariations(prev => prev.filter(vv => !removedNames.includes(vv.name.toLowerCase().trim())))
                                                                 // Drop any recipe rows scoped to this variation — otherwise they'd
                                                                 // silently reattach to the whole item on save.
                                                                 setRecipe(prev => prev.filter(r =>
-                                                                    (v.id ? r.variation_id !== v.id : true) &&
-                                                                    r.variation_name?.toLowerCase().trim() !== v.name.toLowerCase().trim()
+                                                                    !(r.variation_id && removedIds.includes(r.variation_id)) &&
+                                                                    !(r.variation_name && removedNames.includes(r.variation_name.toLowerCase().trim()))
                                                                 ))
                                                             }}
                                                             className="p-2 text-ink-subtle hover:text-danger-fg hover:bg-danger-bg rounded-[var(--r-md)] shrink-0 ml-auto transition-colors"
@@ -1073,9 +1185,22 @@ export default function MenuManager({
                                                             <Trash2 size={16} />
                                                         </button>
                                                     </div>
+                                                    <label className={`flex items-center gap-2 pt-1 ${!v.name.trim() ? 'opacity-50 pointer-events-none' : ''}`}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={!!twin}
+                                                            disabled={!v.name.trim()}
+                                                            onChange={e => toggleVariationHalfPlate(idx, e.target.checked)}
+                                                            className="rounded border-hairline text-brand-500 focus:ring-brand-500/20 w-4 h-4 bg-surface transition-colors"
+                                                        />
+                                                        <span className="text-xs font-bold text-ink-subtle">
+                                                            Half Plate{twin ? ` — ${money(twin.price)}` : ''}
+                                                        </span>
+                                                    </label>
                                                 </div>
                                             </div>
-                                        ))}
+                                            )
+                                        })}
                                         <button
                                             type="button"
                                             onClick={() => setItemVariations([...itemVariations, { name: '', price: 0, is_available: true, image_url: null }])}
@@ -1110,7 +1235,7 @@ export default function MenuManager({
                                             return (
                                                 <div key={idx} className="flex flex-wrap gap-3 items-center bg-surface p-2.5 rounded-[var(--r-md)] border border-hairline shadow-sm hover:shadow-md transition-shadow">
                                                     <div className="flex-1 min-w-[140px]">
-                                                        <select
+                                                        <Select
                                                             value={r.ingredient_id}
                                                             onChange={e => handleRecipeRowChange(idx, { ingredient_id: e.target.value })}
                                                             className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 text-xs p-2.5 border bg-surface text-ink transition-all"
@@ -1119,11 +1244,11 @@ export default function MenuManager({
                                                             {ingredients.map(ing => (
                                                                 <option key={ing.id} value={ing.id}>{ing.name}</option>
                                                             ))}
-                                                        </select>
+                                                        </Select>
                                                     </div>
                                                     {hasVariations && (
                                                          <div className="w-40 shrink-0">
-                                                             <select
+                                                             <Select
                                                                  value={r.variation_id || r.variation_name || ''}
                                                                  onChange={e => {
                                                                      const val = e.target.value
@@ -1141,7 +1266,7 @@ export default function MenuManager({
                                                                          {v.name}
                                                                      </option>
                                                                  ))}
-                                                             </select>
+                                                             </Select>
                                                          </div>
                                                      )}
                                                     <div className="w-20 shrink-0">
@@ -1161,7 +1286,7 @@ export default function MenuManager({
                                                         />
                                                     </div>
                                                     <div className="w-24 shrink-0">
-                                                        <select
+                                                        <Select
                                                             value={r.input_unit || selectedIng?.unit || 'g'}
                                                             onChange={e => handleRecipeRowChange(idx, { input_unit: e.target.value })}
                                                             className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 text-xs p-2.5 border bg-surface text-ink transition-all"
@@ -1169,7 +1294,7 @@ export default function MenuManager({
                                                             {getAvailableUnits(selectedIng?.unit || 'g').map(u => (
                                                                 <option key={u} value={u}>{u}</option>
                                                             ))}
-                                                        </select>
+                                                        </Select>
                                                     </div>
                                                     {selectedIng && r.input_unit && r.input_unit !== selectedIng.unit && (
                                                         <span className="text-[10px] text-ink-subtle font-mono shrink-0 ml-1 bg-surface-muted px-2 py-1 rounded-md border border-hairline">
@@ -1322,7 +1447,7 @@ export default function MenuManager({
                             <div className="grid grid-cols-2 gap-5">
                                 <div>
                                     <label className="block text-small font-bold text-ink mb-1.5">Unit *</label>
-                                    <select
+                                    <Select
                                         value={newStockForm.unit}
                                         onChange={e => setNewStockForm({ ...newStockForm, unit: e.target.value })}
                                         className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
@@ -1330,7 +1455,7 @@ export default function MenuManager({
                                         {['kg', 'g', 'L', 'mL', 'pcs', 'lbs', 'oz', 'cups', 'tbsp', 'tsp'].map(u => (
                                             <option key={u} value={u}>{u}</option>
                                         ))}
-                                    </select>
+                                    </Select>
                                 </div>
                                 <div>
                                     <label className="block text-small font-bold text-ink mb-1.5">Initial Quantity *</label>

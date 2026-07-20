@@ -93,6 +93,35 @@ const SAMPLE_MENU: Array<{ category: string; station?: StationKind; items: Array
     },
 ]
 
+/** Default expense categories covering common restaurant + hotel operating costs. */
+const DEFAULT_EXPENSE_CATEGORIES: string[] = [
+    'Food & Beverage Purchases',
+    'Kitchen Supplies & Equipment',
+    'Packaging & Takeaway Supplies',
+    'Housekeeping & Guest Supplies',
+    'Laundry Services',
+    'Staff Salaries & Wages',
+    'Staff Meals & Welfare',
+    'Rent / Lease',
+    'Electricity',
+    'Water',
+    'Gas / LPG',
+    'Internet & Telephone',
+    'Repairs & Maintenance',
+    'Equipment & Furniture',
+    'Marketing & Advertising',
+    'Licenses & Permits',
+    'Insurance',
+    'Bank Charges & Fees',
+    'Transportation & Fuel',
+    'Cleaning & Sanitation Supplies',
+    'Office & Administrative Supplies',
+    'Professional Fees (Legal/Accounting)',
+    'Taxes & Government Fees',
+    'Commission & Online Delivery Fees',
+    'Miscellaneous / Other',
+]
+
 export async function provisionRestaurant(input: ProvisionInput): Promise<ProvisionResult> {
     const supabase = await createAdminClient()
     const tier: Tier = input.tier ?? 'free'
@@ -234,10 +263,17 @@ async function seedStarterData(
         }))
         : []
 
-    const [{ error: itemError }, tableRes] = await Promise.all([
+    const expenseCategoryRows = DEFAULT_EXPENSE_CATEGORIES.map(name => ({
+        restaurant_id: restaurantId,
+        name,
+    }))
+
+    const [{ error: itemError }, tableRes, expenseCatRes] = await Promise.all([
         supabase.from('menu_items').insert(itemRows),
         tableRows.length ? supabase.from('tables').insert(tableRows) : Promise.resolve({ error: null }),
+        supabase.from('expense_categories').insert(expenseCategoryRows),
     ])
     if (itemError) throw new Error(`Seed menu items failed: ${itemError.message}`)
     if (tableRes.error) throw new Error(`Seed tables failed: ${tableRes.error.message}`)
+    if (expenseCatRes.error) throw new Error(`Seed expense categories failed: ${expenseCatRes.error.message}`)
 }

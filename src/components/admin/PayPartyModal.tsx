@@ -8,6 +8,7 @@ import { formatCurrency } from '@/lib/utils'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import { createVoucherAction, openTodayDayBookSessionAction, getSupplierOutstandingBalanceAction, getStaffCurrentDueAction } from '@/app/(admin)/admin/vouchers/actions'
 import VoucherPrintSlip, { type VoucherSlipData } from '@/components/admin/VoucherPrintSlip'
+import Select from '@/components/ui/Select'
 
 export interface PayPartyResult {
     settledBills?: Array<{ id: string; paid_amount: number }>
@@ -243,11 +244,11 @@ export default function PayPartyModal({
     return (
         <>
             <Modal open={isOpen} onClose={handleClose} size="md" ariaLabel={`Pay ${partyName}`} className="max-h-[90vh] flex flex-col overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+                <div className="px-6 py-4 border-b border-hairline flex items-center justify-between shrink-0">
                     <div>
-                        <h3 className="font-extrabold text-gray-900">Pay {partyName}</h3>
+                        <h3 className="font-extrabold text-ink">Pay {partyName}</h3>
                         {(currentDue !== undefined || fetchedDue !== null || loadingDue) && (
-                            <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                            <p className="text-xs text-ink-subtle mt-0.5 flex items-center gap-1">
                                 Outstanding:{' '}
                                 <span className="font-bold text-rose-600">
                                     {loadingDue ? (
@@ -282,7 +283,7 @@ export default function PayPartyModal({
 
                         {category === 'staff' && (
                             <div>
-                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Pay Category</label>
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Pay Category</label>
                                 <div className="grid grid-cols-3 gap-2">
                                     {STAFF_ENTRY_TYPE_OPTIONS.map(opt => (
                                         <button
@@ -290,19 +291,19 @@ export default function PayPartyModal({
                                             type="button"
                                             onClick={() => setStaffEntryType(opt.value)}
                                             className={`py-2 text-[10px] font-black uppercase tracking-wider border rounded-lg transition-all ${
-                                                staffEntryType === opt.value ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                                                staffEntryType === opt.value ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm' : 'bg-surface border-hairline text-ink-subtle hover:bg-surface-muted'
                                             }`}
                                         >
                                             {opt.label}
                                         </button>
                                     ))}
                                 </div>
-                                <p className="text-[10px] text-gray-400 mt-1">Salary Payout is capped at what&apos;s currently due; Advance Payment and Bonus are not.</p>
+                                <p className="text-[10px] text-ink-subtle mt-1">Salary Payout is capped at what&apos;s currently due; Advance Payment and Bonus are not.</p>
                             </div>
                         )}
 
                         <div>
-                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Amount (Rs.) *</label>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Amount (Rs.) *</label>
                             <input
                                 type="number"
                                 min="0.01"
@@ -310,19 +311,19 @@ export default function PayPartyModal({
                                 value={amount}
                                 onChange={e => setAmount(e.target.value)}
                                 required
-                                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-lg font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+                                className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-lg font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
                             />
                         </div>
 
                         <div>
-                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Payment Method</label>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Payment Method</label>
                             <div className="grid grid-cols-3 gap-2">
                                 {(['cash', 'qr', 'cheque'] as const).map(mode => (
                                     <button
                                         key={mode}
                                         type="button"
                                         onClick={() => { setPaymentMode(mode); setBankName('') }}
-                                        className={`py-2.5 rounded-xl text-xs font-bold border transition capitalize ${paymentMode === mode ? 'bg-brand-50 border-brand-500 text-brand-600 shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                                        className={`py-2.5 rounded-xl text-xs font-bold border transition capitalize ${paymentMode === mode ? 'bg-brand-50 border-brand-500 text-brand-600 shadow-sm' : 'bg-surface border-hairline text-ink-subtle hover:bg-surface-muted'}`}
                                     >
                                         {mode}
                                     </button>
@@ -332,57 +333,57 @@ export default function PayPartyModal({
 
                         {(paymentMode === 'qr' || paymentMode === 'cheque') && (
                             <div className="animate-in slide-in-from-top-1 duration-150">
-                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Bank Account *</label>
-                                <select
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Bank Account *</label>
+                                <Select
                                     value={bankName}
                                     onChange={e => setBankName(e.target.value)}
                                     required
-                                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
                                 >
                                     <option value="">Select Bank Account</option>
                                     {bankAccounts.map(b => (
                                         <option key={b.id} value={b.name}>{b.name}{b.account_number ? ` (${b.account_number})` : ''}</option>
                                     ))}
-                                </select>
+                                </Select>
                             </div>
                         )}
 
                         {paymentMode === 'cheque' && (
-                            <div className="space-y-4 border-t border-gray-150 pt-4 animate-in slide-in-from-top-2 duration-200">
+                            <div className="space-y-4 border-t border-hairline pt-4 animate-in slide-in-from-top-2 duration-200">
                                 <p className="text-xs font-black text-purple-700 uppercase tracking-wider">Cheque Specifications</p>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Written Name *</label>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Written Name *</label>
                                         <input type="text" value={chequeWrittenName} onChange={e => setChequeWrittenName(e.target.value)} required
-                                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500" />
+                                            className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500" />
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Issuer Bank *</label>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Issuer Bank *</label>
                                         <input type="text" value={chequeBank} onChange={e => setChequeBank(e.target.value)} required
-                                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500" />
+                                            className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500" />
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Cheque Number *</label>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Cheque Number *</label>
                                         <input type="text" value={chequeNumber} onChange={e => setChequeNumber(e.target.value)} required
-                                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500" />
+                                            className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500" />
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Cheque Date *</label>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Cheque Date *</label>
                                         <input type="date" value={chequeDate} onChange={e => setChequeDate(e.target.value)} required
-                                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500" />
+                                            className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500" />
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Cheque Type</label>
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Cheque Type</label>
                                     <div className="grid grid-cols-2 gap-2">
                                         <button type="button" onClick={() => setChequeType('ac_payee')}
-                                            className={`py-2 rounded-xl text-xs font-bold border transition ${chequeType === 'ac_payee' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 font-extrabold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                                            className={`py-2 rounded-xl text-xs font-bold border transition ${chequeType === 'ac_payee' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 font-extrabold' : 'bg-surface border-hairline text-ink-subtle hover:bg-surface-muted'}`}>
                                             A/C Payee (Company)
                                         </button>
                                         <button type="button" onClick={() => setChequeType('normal')}
-                                            className={`py-2 rounded-xl text-xs font-bold border transition ${chequeType === 'normal' ? 'bg-amber-50 border-amber-500 text-amber-700 font-extrabold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                                            className={`py-2 rounded-xl text-xs font-bold border transition ${chequeType === 'normal' ? 'bg-amber-50 border-amber-500 text-amber-700 font-extrabold' : 'bg-surface border-hairline text-ink-subtle hover:bg-surface-muted'}`}>
                                             Normal Person Cheque
                                         </button>
                                     </div>
@@ -391,32 +392,32 @@ export default function PayPartyModal({
                         )}
 
                         <div>
-                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Particulars / Description *</label>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Particulars / Description *</label>
                             <textarea
                                 value={particulars}
                                 onChange={e => setParticulars(e.target.value)}
                                 required
                                 rows={2}
-                                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all resize-none"
+                                className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all resize-none"
                             />
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Reference / Phone (Optional)</label>
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Reference / Phone (Optional)</label>
                                 <input type="tel" value={referenceNo} onChange={e => setReferenceNo(e.target.value)}
-                                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
                             </div>
                             <div>
-                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Receiver Staff Name (Optional)</label>
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Receiver Staff Name (Optional)</label>
                                 <input type="text" value={receiverName} onChange={e => setReceiverName(e.target.value)}
-                                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
                             </div>
                         </div>
                     </div>
 
-                    <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-end gap-3 sticky bottom-0">
-                        <button type="button" onClick={handleClose} className="px-4 py-2 text-gray-400 hover:text-gray-600 font-bold text-sm">
+                    <div className="px-6 py-4 border-t border-hairline bg-surface-muted flex items-center justify-end gap-3 sticky bottom-0">
+                        <button type="button" onClick={handleClose} className="px-4 py-2 text-ink-subtle hover:text-ink-subtle font-bold text-sm">
                             Cancel
                         </button>
                         <button

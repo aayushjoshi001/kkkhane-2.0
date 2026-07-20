@@ -13,6 +13,7 @@ import {
     createSupplierBillAction, deleteSupplierBillAction,
     createSupplierPaymentAction, deleteSupplierPaymentAction,
 } from './actions'
+import { useConfirmStore } from '@/lib/stores/confirm'
 
 export default function PayablesManager({
     initialSuppliers,
@@ -23,6 +24,7 @@ export default function PayablesManager({
     initialBills: SupplierBill[]
     initialPayments: SupplierPayment[]
 }) {
+    const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('suppliers')
     const [suppliers, setSuppliers] = useState(initialSuppliers)
     const [bills, setBills] = useState(initialBills)
@@ -45,6 +47,7 @@ export default function PayablesManager({
 }
 
 function SuppliersTab({ suppliers, setSuppliers }: { suppliers: Supplier[]; setSuppliers: (fn: (prev: Supplier[]) => Supplier[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ name: '', contact_person: '', phone: '', email: '', address: '' })
@@ -68,7 +71,8 @@ function SuppliersTab({ suppliers, setSuppliers }: { suppliers: Supplier[]; setS
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this supplier?')) return
+        const ok = await confirm({ title: 'Delete this supplier?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteSupplierAction(id)
         if (result.error) { toast.error(result.error); return }
         setSuppliers((prev) => prev.filter((s) => s.id !== id))
@@ -113,6 +117,7 @@ function SuppliersTab({ suppliers, setSuppliers }: { suppliers: Supplier[]; setS
 }
 
 function BillsTab({ suppliers, bills, setBills }: { suppliers: Supplier[]; bills: SupplierBill[]; setBills: (fn: (prev: SupplierBill[]) => SupplierBill[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ supplier_id: '', bill_number: '', amount: '', description: '', due_date: '' })
@@ -136,7 +141,8 @@ function BillsTab({ suppliers, bills, setBills }: { suppliers: Supplier[]; bills
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this bill?')) return
+        const ok = await confirm({ title: 'Delete this bill?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteSupplierBillAction(id)
         if (result.error) { toast.error(result.error); return }
         setBills((prev) => prev.filter((b) => b.id !== id))
@@ -191,6 +197,7 @@ function PaymentsTab({
     payments: SupplierPayment[]
     setPayments: (fn: (prev: SupplierPayment[]) => SupplierPayment[]) => void
 }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ supplier_id: '', bill_id: '', amount: '', description: '' })
@@ -213,7 +220,8 @@ function PaymentsTab({
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this payment?')) return
+        const ok = await confirm({ title: 'Delete this payment?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteSupplierPaymentAction(id)
         if (result.error) { toast.error(result.error); return }
         setPayments((prev) => prev.filter((p) => p.id !== id))
