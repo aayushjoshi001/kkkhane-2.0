@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { ShoppingBag, Search, X } from 'lucide-react'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import RefundOrderButton from './RefundOrderButton'
+import Select from '@/components/ui/Select'
 
 export type AdminOrder = {
     id: string
@@ -100,20 +101,20 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                     />
                 </div>
                 <div className="grid grid-cols-3 sm:flex gap-3">
-                    <select value={status} onChange={e => setStatus(e.target.value)} className={selectClass} aria-label="Filter by status">
+                    <Select value={status} onChange={e => setStatus(e.target.value)} className={selectClass} aria-label="Filter by status">
                         <option value="all">All Status</option>
                         {STATUSES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
-                    </select>
-                    <select value={payment} onChange={e => setPayment(e.target.value)} className={selectClass} aria-label="Filter by payment">
+                    </Select>
+                    <Select value={payment} onChange={e => setPayment(e.target.value)} className={selectClass} aria-label="Filter by payment">
                         <option value="all">All Payment</option>
                         {PAYMENTS.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
-                    </select>
-                    <select value={dateRange} onChange={e => setDateRange(e.target.value)} className={selectClass} aria-label="Filter by date">
+                    </Select>
+                    <Select value={dateRange} onChange={e => setDateRange(e.target.value)} className={selectClass} aria-label="Filter by date">
                         <option value="all">All Time</option>
                         <option value="today">Today</option>
                         <option value="7d">Last 7 Days</option>
                         <option value="30d">Last 30 Days</option>
-                    </select>
+                    </Select>
                 </div>
                 {hasActiveFilters && (
                     <button onClick={clearFilters} className="h-10 px-4 inline-flex items-center justify-center gap-1.5 rounded-[var(--r-md)] text-sm font-bold text-ink-subtle hover:text-ink hover:bg-surface-muted transition-colors focus-ring">

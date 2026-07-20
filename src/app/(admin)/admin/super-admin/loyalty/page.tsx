@@ -71,7 +71,7 @@ export default async function LoyaltyPage() {
                                 <th className="px-5 py-3 text-right">Redeem Value</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-hairline">
                             {rows.map(r => (
                                 <tr key={r.restaurant_id} className="group hover:bg-surface-muted/50 transition-colors">
                                     <td className="px-5 py-3 font-medium text-ink">{r.restaurants?.name || '—'}</td>
@@ -83,7 +83,7 @@ export default async function LoyaltyPage() {
                                     <td className="px-5 py-3 text-center">
                                         {r.is_active
                                             ? <CheckCircle size={14} className="text-emerald-500 mx-auto" />
-                                            : <XCircle size={14} className="text-gray-300 mx-auto" />
+                                            : <XCircle size={14} className="text-ink-subtle mx-auto" />
                                         }
                                     </td>
                                     <td className="px-5 py-3 text-right font-semibold text-ink">{r.memberCount}</td>

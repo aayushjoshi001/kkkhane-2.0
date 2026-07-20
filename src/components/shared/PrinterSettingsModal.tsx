@@ -6,6 +6,7 @@ import { Printer, RefreshCw, X } from 'lucide-react'
 import { usePrinter, type PrinterRole } from '@/lib/print/usePrinter'
 import { EscPosBuilder } from '@/lib/print/escpos'
 import Modal from '@/components/ui/Modal'
+import Select from '@/components/ui/Select'
 
 const ROLE_COPY: Record<PrinterRole, { title: string; hint: string }> = {
     invoice: { title: 'Invoice Printer', hint: 'Used to print the bill automatically when a table or room is settled. Leave unset on a single-printer till to reuse the Kitchen (KOT) printer.' },
@@ -90,7 +91,7 @@ export function PrinterSettingsModal({ role, open, onClose }: { role: PrinterRol
                     </div>
 
                     <label className="block mt-4 text-xs font-semibold text-ink-subtle uppercase tracking-wide">Printer</label>
-                    <select
+                    <Select
                         value={selectedPrinter ?? ''}
                         onChange={(e) => selectPrinter(e.target.value || null)}
                         className="mt-1.5 w-full px-3 py-2 text-sm rounded-lg border border-hairline-strong bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/50"
@@ -99,7 +100,7 @@ export function PrinterSettingsModal({ role, open, onClose }: { role: PrinterRol
                         {printers.map((p) => (
                             <option key={p} value={p}>{p}</option>
                         ))}
-                    </select>
+                    </Select>
 
                     <p className="mt-2 text-[11px] text-ink-subtle">Remembered on this device only — set it once per till or kitchen screen.</p>
                 </div>

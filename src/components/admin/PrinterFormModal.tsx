@@ -8,6 +8,7 @@ import { EscPosBuilder } from '@/lib/print/escpos'
 import { printRawEscPos } from '@/lib/print/qzClient'
 import { createPrinterAction, updatePrinterAction, type PrinterInput } from '@/app/(admin)/admin/printers/actions'
 import type { Printer, PrinterConfigRole, PrinterType, PaperWidth } from '@/types/database'
+import Select from '@/components/ui/Select'
 
 const ROLE_OPTIONS: { value: PrinterConfigRole; label: string }[] = [
     { value: 'kot', label: 'Kitchen Ticket (KOT)' },
@@ -119,11 +120,11 @@ export default function PrinterFormModal({
                     </div>
                     <div>
                         <label className={labelCls}>Connection Type</label>
-                        <select className={inputCls} value={form.printer_type}
+                        <Select className={inputCls} value={form.printer_type}
                             onChange={(e) => set('printer_type', e.target.value as PrinterType)}>
                             <option value="network">Network Printer (IP)</option>
                             <option value="usb">USB (per-device)</option>
-                        </select>
+                        </Select>
                     </div>
 
                     {isNetwork && (
@@ -143,18 +144,18 @@ export default function PrinterFormModal({
 
                     <div>
                         <label className={labelCls}>Prints</label>
-                        <select className={inputCls} value={form.role}
+                        <Select className={inputCls} value={form.role}
                             onChange={(e) => set('role', e.target.value as PrinterConfigRole)}>
                             {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-                        </select>
+                        </Select>
                     </div>
                     <div>
                         <label className={labelCls}>Paper Width</label>
-                        <select className={inputCls} value={form.paper_width}
+                        <Select className={inputCls} value={form.paper_width}
                             onChange={(e) => set('paper_width', e.target.value as PaperWidth)}>
                             <option value="80mm">80mm</option>
                             <option value="58mm">58mm</option>
-                        </select>
+                        </Select>
                     </div>
                     <div>
                         <label className={labelCls}>Copies</label>
@@ -204,7 +205,7 @@ function Toggle({ label, hint, checked, onChange }: { label: string; hint: strin
             </div>
             <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
                 className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${checked ? 'bg-[var(--color-primary)]' : 'bg-hairline-strong'}`}>
-                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-surface shadow transition-transform ${checked ? 'translate-x-5' : 'translate-x-0.5'}`} />
             </button>
         </div>
     )

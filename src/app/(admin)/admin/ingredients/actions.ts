@@ -105,6 +105,7 @@ export async function createIngredientCategoryAction(input: {
     restaurant_id: string
     name: string
     description?: string
+    parent_id?: string | null
 }) {
     await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
@@ -114,6 +115,7 @@ export async function createIngredientCategoryAction(input: {
             restaurant_id: input.restaurant_id,
             name: input.name.trim(),
             description: input.description?.trim() || null,
+            parent_id: input.parent_id || null,
             is_active: true,
             is_stock_category: true
         })

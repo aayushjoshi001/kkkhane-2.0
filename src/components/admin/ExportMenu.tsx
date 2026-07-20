@@ -38,27 +38,27 @@ export default function ExportMenu({
         <div ref={ref} className={`relative ${className || ''}`}>
             <button
                 onClick={() => setOpen(o => !o)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-50 text-gray-700 font-bold rounded-xl text-[10px] uppercase tracking-wider border border-gray-200 transition-all"
+                className="flex items-center gap-1.5 px-3 py-2 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[10px] uppercase tracking-wider border border-hairline transition-all"
             >
                 <Download size={13} /> Export <ChevronDown size={12} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
             {open && (
-                <div className="absolute right-0 top-full mt-1 w-40 bg-white border border-gray-200 rounded-xl shadow-lg z-20 overflow-hidden">
+                <div className="absolute right-0 top-full mt-1 w-40 bg-surface border border-hairline rounded-xl shadow-lg z-20 overflow-hidden">
                     <button
                         onClick={() => { onExportCsv(); setOpen(false) }}
-                        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-bold text-ink hover:bg-surface-muted transition-colors"
                     >
                         <FileText size={13} /> CSV
                     </button>
                     <button
                         onClick={() => { onExportExcel(); setOpen(false) }}
-                        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors border-t border-gray-100"
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-bold text-ink hover:bg-surface-muted transition-colors border-t border-hairline"
                     >
                         <FileSpreadsheet size={13} /> Excel
                     </button>
                     <button
                         onClick={() => { onExportPdf(); setOpen(false) }}
-                        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors border-t border-gray-100"
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-bold text-ink hover:bg-surface-muted transition-colors border-t border-hairline"
                     >
                         <FileType size={13} /> PDF
                     </button>

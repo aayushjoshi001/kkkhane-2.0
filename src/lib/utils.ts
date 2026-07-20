@@ -3,7 +3,7 @@
 
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import type { AdvancePaymentMethod } from '@/types/database'
+import type { AdvancePaymentMethod, ExpenseCategory } from '@/types/database'
 
 /**
  * Merge class names with Tailwind-aware deduplication.
@@ -150,6 +150,68 @@ export function parseExpenseDescription(description: string): SupplierBillDetail
     } catch {
         return fallback
     }
+}
+
+/**
+ * Orders a flat category list into a one-level tree for display in a plain
+ * <select>: each main category (parent_id null) immediately followed by its
+ * subcategories, alphabetized within each level. A main with no children
+ * renders like a standalone category (e.g. "Others").
+ */
+export function orderCategoriesForDisplay<T extends Pick<ExpenseCategory, 'id' | 'name' | 'parent_id'>>(
+    categories: T[]
+): Array<{ category: T; label: string }> {
+    const presentIds = new Set(categories.map(c => c.id))
+    const byParent = new Map<string | null, T[]>()
+    for (const c of categories) {
+        // A parent filtered out of this list (e.g. general-expense parent excluded
+        // from a stock-only view) shouldn't make its child vanish — fall back to
+        // top-level so every passed-in category is always represented.
+        const key = c.parent_id && presentIds.has(c.parent_id) ? c.parent_id : null
+        const bucket = byParent.get(key)
+        if (bucket) bucket.push(c)
+        else byParent.set(key, [c])
+    }
+    const sortByName = (a: T, b: T) => a.name.localeCompare(b.name)
+    const mains = (byParent.get(null) || []).sort(sortByName)
+
+    const ordered: Array<{ category: T; label: string }> = []
+    for (const main of mains) {
+        ordered.push({ category: main, label: main.name })
+        const subs = (byParent.get(main.id) || []).sort(sortByName)
+        for (const sub of subs) ordered.push({ category: sub, label: `— ${sub.name}` })
+    }
+    return ordered
+}
+
+/**
+ * Given a selected category id, looks up its parent (main) category — so
+ * picking a subcategory (e.g. "Vegetables") can automatically surface which
+ * main category it belongs to (e.g. "Grocery") without the user having to
+ * know the hierarchy. Returns null for a top-level category or an unknown id.
+ */
+export function findMainCategory<T extends Pick<ExpenseCategory, 'id' | 'name' | 'parent_id'>>(
+    categories: T[],
+    selectedCategoryId: string
+): T | null {
+    const selected = categories.find(c => c.id === selectedCategoryId)
+    if (!selected?.parent_id) return null
+    return categories.find(c => c.id === selected.parent_id) ?? null
+}
+
+/**
+ * Prepends a picked staff/supplier name to a transaction description at submit
+ * time (not on every keystroke) so it's guaranteed to show up wherever that
+ * description is later displayed — ledgers, transaction logs, reports —
+ * without fighting whatever the user is actively typing. A no-op if the name
+ * is already present (e.g. the user typed it themselves).
+ */
+export function buildDescriptionWithName(description: string, label: string, name: string | undefined): string {
+    const trimmed = description.trim()
+    if (!name) return trimmed
+    if (trimmed.toLowerCase().includes(name.toLowerCase())) return trimmed
+    const prefix = `${label}: ${name}`
+    return trimmed ? `${prefix} — ${trimmed}` : prefix
 }
 
 /**

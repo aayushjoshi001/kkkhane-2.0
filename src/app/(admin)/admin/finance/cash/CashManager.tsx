@@ -13,6 +13,7 @@ import {
     createCashTransactionAction, deleteCashTransactionAction,
     createCashCountAction, deleteCashCountAction,
 } from './actions'
+import { useConfirmStore } from '@/lib/stores/confirm'
 
 const TXN_TYPES: { value: CashTransactionType; label: string }[] = [
     { value: 'cash_in', label: 'Cash In' },
@@ -33,6 +34,7 @@ export default function CashManager({
     initialTransactions: CashTransaction[]
     initialCounts: CashCount[]
 }) {
+    const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('drawers')
     const [drawers, setDrawers] = useState(initialDrawers)
     const [transactions, setTransactions] = useState(initialTransactions)
@@ -55,6 +57,7 @@ export default function CashManager({
 }
 
 function DrawersTab({ drawers, setDrawers }: { drawers: CashDrawer[]; setDrawers: (fn: (prev: CashDrawer[]) => CashDrawer[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ name: '', location: '', opening_balance: '0' })
@@ -82,7 +85,8 @@ function DrawersTab({ drawers, setDrawers }: { drawers: CashDrawer[]; setDrawers
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this cash drawer?')) return
+        const ok = await confirm({ title: 'Delete this cash drawer?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteCashDrawerAction(id)
         if (result.error) { toast.error(result.error); return }
         setDrawers((prev) => prev.filter((d) => d.id !== id))
@@ -132,6 +136,7 @@ function TransactionsTab({
     transactions: CashTransaction[]
     setTransactions: (fn: (prev: CashTransaction[]) => CashTransaction[]) => void
 }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ drawer_id: '', type: 'cash_in' as CashTransactionType, amount: '', description: '', counterparty_drawer_id: '' })
@@ -155,7 +160,8 @@ function TransactionsTab({
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this transaction?')) return
+        const ok = await confirm({ title: 'Delete this transaction?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteCashTransactionAction(id)
         if (result.error) { toast.error(result.error); return }
         setTransactions((prev) => prev.filter((t) => t.id !== id))
@@ -221,6 +227,7 @@ function CountingTab({
     counts: CashCount[]
     setCounts: (fn: (prev: CashCount[]) => CashCount[]) => void
 }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ drawer_id: '', counted_total: '', expected_total: '', notes: '' })
@@ -243,7 +250,8 @@ function CountingTab({
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this count?')) return
+        const ok = await confirm({ title: 'Delete this count?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteCashCountAction(id)
         if (result.error) { toast.error(result.error); return }
         setCounts((prev) => prev.filter((c) => c.id !== id))

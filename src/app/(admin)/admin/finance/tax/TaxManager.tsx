@@ -15,6 +15,8 @@ import {
     getMonthlyVatDetailsAction
 } from './actions'
 import { getIrdSyncLogsAction, retryIrdSyncAction } from './sync-actions'
+import { useConfirmStore } from '@/lib/stores/confirm'
+import Select from '@/components/ui/Select'
 
 const fmt = (n: number) => `Rs. ${new Intl.NumberFormat('en-IN').format(Math.round(n))}`
 
@@ -29,6 +31,7 @@ export default function TaxManager({
     initialSyncLogs: any[]
     restaurantTax: { pan_number: string | null; vat_registered: boolean; vat_number: string | null }
 }) {
+    const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('vat')
     const [configurations, setConfigurations] = useState(initialConfigurations)
     const [filings, setFilings] = useState(initialFilings)
@@ -58,6 +61,7 @@ function VatTab({
     configurations: TaxConfiguration[]
     setConfigurations: (fn: (prev: TaxConfiguration[]) => TaxConfiguration[]) => void
 }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ name: '', tax_type: 'vat' as TaxType, rate_percent: '' })
@@ -81,7 +85,8 @@ function VatTab({
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this tax configuration?')) return
+        const ok = await confirm({ title: 'Delete this tax configuration?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteTaxConfigurationAction(id)
         if (result.error) { toast.error(result.error); return }
         setConfigurations((prev) => prev.filter((c) => c.id !== id))
@@ -166,6 +171,7 @@ function FilingsTab({
     setFilings: (fn: (prev: any[]) => any[]) => void
     restaurantTax: { vat_registered: boolean }
 }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ tax_configuration_id: '', period_start: '', period_end: '', ird_reference: '', notes: '' })
@@ -286,7 +292,8 @@ function FilingsTab({
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this filing?')) return
+        const ok = await confirm({ title: 'Delete this filing?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteTaxFilingAction(id)
         if (result.error) { toast.error(result.error); return }
         setFilings((prev) => prev.filter((f) => f.id !== id))
@@ -331,7 +338,7 @@ function FilingsTab({
                 <div className="flex flex-wrap items-center gap-3 pt-2">
                     <div className="flex-1 min-w-[120px]">
                         <label className="block text-[9px] font-bold text-ink-subtle uppercase tracking-wider mb-1">Select Month</label>
-                        <select
+                        <Select
                             value={reportMonth}
                             onChange={(e) => setReportMonth(e.target.value)}
                             className="w-full px-3 py-2 bg-surface border border-hairline rounded-xl text-xs font-bold outline-none"
@@ -348,23 +355,23 @@ function FilingsTab({
                             <option value="10">October</option>
                             <option value="11">November</option>
                             <option value="12">December</option>
-                        </select>
+                        </Select>
                     </div>
                     <div className="flex-1 min-w-[100px]">
                         <label className="block text-[9px] font-bold text-ink-subtle uppercase tracking-wider mb-1">Select Year</label>
-                        <select
+                        <Select
                             value={reportYear}
                             onChange={(e) => setReportYear(e.target.value)}
                             className="w-full px-3 py-2 bg-surface border border-hairline rounded-xl text-xs font-bold outline-none"
                         >
                             <option value="2026">2026</option>
                             <option value="2025">2025</option>
-                        </select>
+                        </Select>
                     </div>
                     <button
                         onClick={handleCompileMonthlyReport}
                         disabled={compilingReport}
-                        className="px-4 py-2 bg-[#ff5a00] hover:bg-[#ff4500] text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 self-end h-[34px]"
+                        className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 self-end h-[34px]"
                     >
                         {compilingReport ? (
                             <>
@@ -432,7 +439,7 @@ function FilingsTab({
                                     <div className="border-t border-hairline bg-surface-muted/10 p-5 space-y-4">
                                         {isFilingLoading ? (
                                             <div className="flex items-center justify-center py-8 gap-2 text-xs font-bold text-ink-subtle">
-                                                <Loader2 className="w-4 h-4 animate-spin text-[#ff5a00]" />
+                                                <Loader2 className="w-4 h-4 animate-spin text-brand-500" />
                                                 <span>Calculating returns and totals...</span>
                                             </div>
                                         ) : summary ? (
@@ -441,7 +448,7 @@ function FilingsTab({
                                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                     {/* Sales */}
                                                     <div className="p-4 bg-surface border border-hairline rounded-2xl space-y-2">
-                                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Sales Revenue (Output)</span>
+                                                        <span className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider block">Sales Revenue (Output)</span>
                                                         <div className="flex justify-between items-baseline">
                                                             <span className="text-xs font-bold text-ink-subtle">Total Gross:</span>
                                                             <span className="text-sm font-bold text-ink">{fmt(summary.totalSales)}</span>
@@ -454,7 +461,7 @@ function FilingsTab({
 
                                                     {/* Purchases */}
                                                     <div className="p-4 bg-surface border border-hairline rounded-2xl space-y-2">
-                                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Supplier Purchases (Input)</span>
+                                                        <span className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider block">Supplier Purchases (Input)</span>
                                                         <div className="flex justify-between items-baseline">
                                                             <span className="text-xs font-bold text-ink-subtle">Total Gross:</span>
                                                             <span className="text-sm font-bold text-ink">{fmt(summary.totalPurchases)}</span>
@@ -468,7 +475,7 @@ function FilingsTab({
                                                     {/* Net Payable / Refund */}
                                                     <div className="p-4 bg-surface border border-hairline rounded-2xl space-y-2 flex flex-col justify-between">
                                                         <div>
-                                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Net Return Calculation</span>
+                                                            <span className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider block">Net Return Calculation</span>
                                                             <p className={`text-xl font-black mt-2 ${summary.netVat >= 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                                                                 {fmt(Math.abs(summary.netVat))}
                                                             </p>
@@ -540,8 +547,8 @@ function FilingsTab({
 
                 {/* Return preview loading state */}
                 {loadingPreview && (
-                    <div className="p-4 bg-gray-50 border border-hairline rounded-2xl flex items-center justify-center gap-1.5 text-xs text-ink-subtle font-bold">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-[#ff5a00]" />
+                    <div className="p-4 bg-surface-muted border border-hairline rounded-2xl flex items-center justify-center gap-1.5 text-xs text-ink-subtle font-bold">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-500" />
                         <span>Calculating taxable sales, purchases & net return preview...</span>
                     </div>
                 )}
@@ -591,7 +598,7 @@ function FilingsTab({
                             type="button"
                             onClick={() => setReportTab('summary')}
                             className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
-                                reportTab === 'summary' ? 'bg-[#ff5a00] text-white' : 'bg-surface-muted hover:bg-surface-muted/80 text-ink'
+                                reportTab === 'summary' ? 'bg-brand-500 text-white' : 'bg-surface-muted hover:bg-surface-muted/80 text-ink'
                             }`}
                         >
                             Summary Return Sheet
@@ -600,7 +607,7 @@ function FilingsTab({
                             type="button"
                             onClick={() => setReportTab('annex7')}
                             className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
-                                reportTab === 'annex7' ? 'bg-[#ff5a00] text-white' : 'bg-surface-muted hover:bg-surface-muted/80 text-ink'
+                                reportTab === 'annex7' ? 'bg-brand-500 text-white' : 'bg-surface-muted hover:bg-surface-muted/80 text-ink'
                             }`}
                         >
                             Annex 7 (Sales Book)
@@ -609,7 +616,7 @@ function FilingsTab({
                             type="button"
                             onClick={() => setReportTab('annex8')}
                             className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
-                                reportTab === 'annex8' ? 'bg-[#ff5a00] text-white' : 'bg-surface-muted hover:bg-surface-muted/80 text-ink'
+                                reportTab === 'annex8' ? 'bg-brand-500 text-white' : 'bg-surface-muted hover:bg-surface-muted/80 text-ink'
                             }`}
                         >
                             Annex 8 (Purchase Book)

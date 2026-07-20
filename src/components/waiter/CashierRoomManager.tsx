@@ -14,6 +14,7 @@ import QuickOrderModal from './QuickOrderModal'
 import { openSession } from '@/app/(staff)/waiter/actions'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 import { getRoomStatusConfig } from '@/lib/roomStatus'
+import Select from '@/components/ui/Select'
 
 export interface RoomWithTypes {
     id: string
@@ -708,7 +709,7 @@ export default function CashierRoomManager({
                                                     {irdSyncEnabled && advanceType !== 'none' && (advancePayMethod === 'qr_digital' || advancePayMethod === 'split') && qrCodes.length > 1 && (
                                                         <div>
                                                             <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
-                                                            <select
+                                                            <Select
                                                                 value={advanceQrCodeId}
                                                                 onChange={e => setAdvanceQrCodeId(e.target.value)}
                                                                 className="w-full px-2 py-1.5 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
@@ -717,7 +718,7 @@ export default function CashierRoomManager({
                                                                 {qrCodes.map(qr => (
                                                                     <option key={qr.id} value={qr.id}>{qr.label}</option>
                                                                 ))}
-                                                            </select>
+                                                            </Select>
                                                         </div>
                                                     )}
                                                 </div>
@@ -1016,7 +1017,7 @@ export default function CashierRoomManager({
                                             <div className="grid grid-cols-3 gap-2.5">
                                                 <div>
                                                     <label className="block text-[8px] font-bold text-ink-subtle uppercase mb-1">Type</label>
-                                                    <select
+                                                    <Select
                                                         value={newCharge.charge_type}
                                                         onChange={e => setNewCharge(c => ({ ...c, charge_type: e.target.value }))}
                                                         className="w-full px-2.5 py-2 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
@@ -1027,7 +1028,7 @@ export default function CashierRoomManager({
                                                         <option value="parking">Parking</option>
                                                         <option value="room_service">Room Service</option>
                                                         <option value="other">Other</option>
-                                                    </select>
+                                                    </Select>
                                                 </div>
                                                 <div className="col-span-2">
                                                     <label className="block text-[8px] font-bold text-ink-subtle uppercase mb-1">Description</label>

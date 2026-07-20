@@ -13,6 +13,7 @@ import {
     createLoanEmiAction, updateLoanEmiStatusAction, deleteLoanEmiAction,
     createLoanPaymentAction, deleteLoanPaymentAction,
 } from './actions'
+import { useConfirmStore } from '@/lib/stores/confirm'
 
 export default function LoansManager({
     initialLoans,
@@ -23,6 +24,7 @@ export default function LoansManager({
     initialEmiSchedule: LoanEmiSchedule[]
     initialPayments: LoanPayment[]
 }) {
+    const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('loans')
     const [loans, setLoans] = useState(initialLoans)
     const [emiSchedule, setEmiSchedule] = useState(initialEmiSchedule)
@@ -45,6 +47,7 @@ export default function LoansManager({
 }
 
 function LoansTab({ loans, setLoans }: { loans: Loan[]; setLoans: (fn: (prev: Loan[]) => Loan[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ lender_name: '', principal_amount: '', interest_rate: '', start_date: '', tenure_months: '', notes: '' })
@@ -76,7 +79,8 @@ function LoansTab({ loans, setLoans }: { loans: Loan[]; setLoans: (fn: (prev: Lo
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this loan account?')) return
+        const ok = await confirm({ title: 'Delete this loan account?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteLoanAction(id)
         if (result.error) { toast.error(result.error); return }
         setLoans((prev) => prev.filter((l) => l.id !== id))
@@ -123,6 +127,7 @@ function LoansTab({ loans, setLoans }: { loans: Loan[]; setLoans: (fn: (prev: Lo
 }
 
 function EmiTab({ loans, emiSchedule, setEmiSchedule }: { loans: Loan[]; emiSchedule: LoanEmiSchedule[]; setEmiSchedule: (fn: (prev: LoanEmiSchedule[]) => LoanEmiSchedule[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ loan_id: '', installment_no: '1', due_date: '', amount: '' })
@@ -151,7 +156,8 @@ function EmiTab({ loans, emiSchedule, setEmiSchedule }: { loans: Loan[]; emiSche
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this installment?')) return
+        const ok = await confirm({ title: 'Delete this installment?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteLoanEmiAction(id)
         if (result.error) { toast.error(result.error); return }
         setEmiSchedule((prev) => prev.filter((e) => e.id !== id))
@@ -197,6 +203,7 @@ function EmiTab({ loans, emiSchedule, setEmiSchedule }: { loans: Loan[]; emiSche
 }
 
 function PaymentsTab({ loans, payments, setPayments }: { loans: Loan[]; payments: LoanPayment[]; setPayments: (fn: (prev: LoanPayment[]) => LoanPayment[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ loan_id: '', amount: '', principal_component: '', interest_component: '', payment_date: '' })
@@ -220,7 +227,8 @@ function PaymentsTab({ loans, payments, setPayments }: { loans: Loan[]; payments
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this payment?')) return
+        const ok = await confirm({ title: 'Delete this payment?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteLoanPaymentAction(id)
         if (result.error) { toast.error(result.error); return }
         setPayments((prev) => prev.filter((p) => p.id !== id))

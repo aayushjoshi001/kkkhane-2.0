@@ -13,6 +13,7 @@ import {
     createBankTransactionAction, deleteBankTransactionAction,
     createBankReconciliationAction, deleteBankReconciliationAction,
 } from './actions'
+import { useConfirmStore } from '@/lib/stores/confirm'
 
 const WALLET_PROVIDERS: { value: WalletProvider; label: string }[] = [
     { value: 'esewa', label: 'eSewa' },
@@ -37,6 +38,7 @@ export default function BankManager({
     initialTransactions: BankTransaction[]
     initialReconciliations: BankReconciliation[]
 }) {
+    const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('accounts')
     const [accounts, setAccounts] = useState(initialAccounts)
     const [transactions, setTransactions] = useState(initialTransactions)
@@ -59,6 +61,7 @@ export default function BankManager({
 }
 
 function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAccounts: (fn: (prev: BankAccount[]) => BankAccount[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ name: '', account_type: 'bank' as BankAccountType, wallet_provider: '', bank_name: '', account_number: '', opening_balance: '0', ownership_type: '' as 'company' | 'personal' | '' })
@@ -96,7 +99,8 @@ function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAc
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this bank account?')) return
+        const ok = await confirm({ title: 'Delete this bank account?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteBankAccountAction(id)
         if (result.error) { toast.error(result.error); return }
         setAccounts((prev) => prev.filter((a) => a.id !== id))
@@ -182,6 +186,7 @@ function TransactionsTab({
     transactions: BankTransaction[]
     setTransactions: (fn: (prev: BankTransaction[]) => BankTransaction[]) => void
 }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ bank_account_id: '', type: 'deposit' as BankTransactionType, amount: '', description: '', counterparty_account_id: '' })
@@ -205,7 +210,8 @@ function TransactionsTab({
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this transaction?')) return
+        const ok = await confirm({ title: 'Delete this transaction?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteBankTransactionAction(id)
         if (result.error) { toast.error(result.error); return }
         setTransactions((prev) => prev.filter((t) => t.id !== id))
@@ -265,6 +271,7 @@ function ReconciliationTab({
     reconciliations: BankReconciliation[]
     setReconciliations: (fn: (prev: BankReconciliation[]) => BankReconciliation[]) => void
 }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ bank_account_id: '', statement_date: '', statement_balance: '', book_balance: '', notes: '' })
@@ -288,7 +295,8 @@ function ReconciliationTab({
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this reconciliation?')) return
+        const ok = await confirm({ title: 'Delete this reconciliation?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteBankReconciliationAction(id)
         if (result.error) { toast.error(result.error); return }
         setReconciliations((prev) => prev.filter((r) => r.id !== id))

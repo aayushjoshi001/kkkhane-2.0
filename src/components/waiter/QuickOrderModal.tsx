@@ -5,6 +5,7 @@ import { X, Search, Plus, Minus, Trash2, Loader2, ShoppingCart, Utensils, Messag
 import Modal from '@/components/ui/Modal'
 import { getStaffMenu, placeStaffOrder, placeRoomOrderDirect } from '@/app/(staff)/waiter/actions'
 import { toast } from 'react-hot-toast'
+import Select from '@/components/ui/Select'
 
 interface Modifier {
     id: string
@@ -425,7 +426,7 @@ export default function QuickOrderModal({
                             {activeTables && activeTables.length > 0 ? (
                                 <div className="mt-1 flex items-center gap-1.5">
                                     <span className="text-[10px] font-bold text-ink-subtle uppercase">Table:</span>
-                                    <select
+                                    <Select
                                         value={selectedSession?.id || ''}
                                         onChange={e => {
                                             const table = activeTables.find(t => t.activeSession?.id === e.target.value)
@@ -447,7 +448,7 @@ export default function QuickOrderModal({
                                                     Table {t.label}
                                                 </option>
                                             ))}
-                                    </select>
+                                    </Select>
                                 </div>
                             ) : selectedSession ? (
                                 <p className="text-caption text-ink-subtle mt-0.5">Table {selectedSession.label} · Active Session</p>

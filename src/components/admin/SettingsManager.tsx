@@ -10,6 +10,7 @@ import type { Settings, BusinessHours, DayHours } from '@/types/database'
 import { unlockAudio, setCustomNotificationSound, playNewOrder } from '@/lib/audio'
 import { ONBOARDING_BUSINESS_TYPES, getBusinessMode } from '@/lib/businessMode'
 import QrPaymentManager, { type QrCodeEntry } from './QrPaymentManager'
+import Select from '@/components/ui/Select'
 
 type RestaurantSettings = {
     id: string
@@ -390,10 +391,9 @@ export default function SettingsManager({
                                 <Store size={14} className="text-brand-500" />
                                 Business Type
                             </label>
-                            <select
-                                name="business_type"
+                            <Select
                                 value={formData.business_type || ''}
-                                onChange={handleChange}
+                                onChange={e => setFormData({ ...formData, business_type: e.target.value })}
                                 disabled={!canEdit || isSubmitting}
                                 className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
                             >
@@ -401,7 +401,7 @@ export default function SettingsManager({
                                 {ONBOARDING_BUSINESS_TYPES.map(type => (
                                     <option key={type} value={type}>{type}</option>
                                 ))}
-                            </select>
+                            </Select>
                             {getBusinessMode(formData.business_type) !== getBusinessMode(initialRestaurant.business_type) && (
                                 <p className="mt-2 text-[11px] font-bold text-amber-600">
                                     Changing this won&apos;t automatically update dine-in/takeout defaults below — adjust those directly if needed.

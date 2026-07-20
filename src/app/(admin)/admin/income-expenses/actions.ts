@@ -12,10 +12,10 @@ async function requireManager() {
 const PATH = '/admin/income-expenses'
 
 // ── Categories (Income & Expense) ───────────────────────────
-export async function createCategoryAction(name: string, type: 'income' | 'expense', description?: string) {
+export async function createCategoryAction(name: string, type: 'income' | 'expense', description?: string, parentId?: string | null) {
     let user
     try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
-    
+
     const trimmedName = name?.trim()
     if (!trimmedName) return { error: 'Category name is required.' }
 
@@ -28,7 +28,10 @@ export async function createCategoryAction(name: string, type: 'income' | 'expen
             name: trimmedName,
             description: description?.trim() || null,
             restaurant_id: user.restaurantId,
-            created_by: user.id
+            created_by: user.id,
+            // income_categories has no parent_id column — only expense_categories
+            // supports the main/subcategory grouping.
+            ...(type === 'expense' ? { parent_id: parentId || null } : {}),
         })
         .select()
         .single()

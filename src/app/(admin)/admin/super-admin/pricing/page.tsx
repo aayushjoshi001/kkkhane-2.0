@@ -51,7 +51,7 @@ export default async function PricingPage() {
             </div>
 
             <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                <div className="px-6 py-5 border-b border-gray-50 bg-surface-muted/50">
+                <div className="px-6 py-5 border-b border-hairline bg-surface-muted/50">
                     <h2 className="text-[1.15rem] font-bold text-ink">Feature Status Per Restaurant</h2>
                     <p className="text-[13px] text-ink-subtle mt-0.5">Dynamic pricing is available on Pro and Enterprise tiers</p>
                 </div>
@@ -65,7 +65,7 @@ export default async function PricingPage() {
                                 <th className="px-5 py-3 text-right">Active Rules</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-hairline">
                             {rows.map(r => (
                                 <tr key={r.restaurant_id} className="group hover:bg-surface-muted/50 transition-colors">
                                     <td className="px-5 py-3 font-medium text-ink">{r.restaurant?.name || '—'}</td>
@@ -77,7 +77,7 @@ export default async function PricingPage() {
                                     <td className="px-5 py-3 text-center">
                                         {r.dynamicPricingEnabled
                                             ? <CheckCircle size={14} className="text-emerald-500 mx-auto" />
-                                            : <XCircle size={14} className="text-gray-300 mx-auto" />
+                                            : <XCircle size={14} className="text-ink-subtle mx-auto" />
                                         }
                                     </td>
                                     <td className="px-5 py-3 text-right">

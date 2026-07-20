@@ -470,7 +470,7 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
                             No cancellations in the last 30 days — great work!
                         </div>
                     ) : (
-                        <div className="divide-y divide-gray-50">
+                        <div className="divide-y divide-hairline">
                             {cancelled.slice(0, 10).map(c => (
                                 <div key={c.id} className="px-5 py-3 flex items-start gap-3">
                                     <div className="w-8 h-8 rounded-full bg-red-50 border border-red-100 flex items-center justify-center shrink-0 mt-0.5">

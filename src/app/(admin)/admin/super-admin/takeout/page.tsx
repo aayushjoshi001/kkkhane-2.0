@@ -76,7 +76,7 @@ export default async function TakeoutPage() {
                                 <th className="px-5 py-3 text-right">Placed At</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-hairline">
                             {orders.map(o => (
                                 <tr key={o.id} className="group hover:bg-surface-muted/50 transition-colors">
                                     <td className="px-5 py-3 font-medium text-ink">{o.restaurants?.name || '—'}</td>
@@ -101,7 +101,7 @@ export default async function TakeoutPage() {
                 </div>
 
                 {/* Mobile */}
-                <div className="md:hidden divide-y divide-gray-100">
+                <div className="md:hidden divide-y divide-hairline">
                     {orders.map(o => (
                         <div key={o.id} className="p-4">
                             <div className="flex items-start justify-between gap-2">

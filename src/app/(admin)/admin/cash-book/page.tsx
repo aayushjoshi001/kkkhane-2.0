@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import CashBookClient from './CashBookClient'
-import type { DayBookEntry, ExpenseCategory } from '@/types/database'
+import type { BankAccount, DayBookEntry, ExpenseCategory, Supplier } from '@/types/database'
 import { getNstDateString } from '@/lib/timezone'
 import { resolveActiveDayBookSession } from '@/lib/ledger'
 
@@ -30,6 +30,27 @@ export default async function CashBookPage() {
 
     const { data: expenseCategories } = await supabase
         .from('expense_categories')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', true)
+        .order('name', { ascending: true })
+
+    const { data: bankAccounts } = await supabase
+        .from('bank_accounts')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', true)
+        .order('name', { ascending: true })
+
+    const { data: staff } = await supabase
+        .from('users')
+        .select('id, full_name')
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', true)
+        .order('full_name', { ascending: true })
+
+    const { data: suppliers } = await supabase
+        .from('suppliers')
         .select('*')
         .eq('restaurant_id', restaurantId)
         .eq('is_active', true)
@@ -75,6 +96,9 @@ export default async function CashBookPage() {
             previousClosingBalance={previousClosingBalance}
             previousClosingBankBalance={previousClosingBankBalance}
             expenseCategories={(expenseCategories as ExpenseCategory[]) || []}
+            bankAccounts={(bankAccounts as BankAccount[]) || []}
+            staffList={staff || []}
+            suppliers={(suppliers as Supplier[]) || []}
         />
     )
 }

@@ -17,6 +17,7 @@ import { FINANCE_GATED_ROLES } from '@/types/database'
 import { formatCurrency } from '@/lib/utils'
 import PayPartyModal from '@/components/admin/PayPartyModal'
 import { computeStaffCurrentDue, type StaffLedgerEntryType } from '@/lib/staffLedger'
+import Select from '@/components/ui/Select'
 
 // Ledger entry types that represent money actually paid out to staff (as opposed
 // to 'accrual', which only increases what's owed, or 'deduction', which reduces it)
@@ -1005,7 +1006,7 @@ export default function StaffManager({
                         className="w-full pl-10 pr-4 py-2.5 rounded-[var(--r-md)] border border-hairline bg-surface text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
                     />
                 </div>
-                <select
+                <Select
                     value={roleFilter}
                     onChange={(e) => setRoleFilter(e.target.value)}
                     className="rounded-[var(--r-md)] border border-hairline bg-surface px-4 py-2.5 text-sm font-bold text-ink outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] sm:w-56"
@@ -1014,7 +1015,7 @@ export default function StaffManager({
                     {availableRoles.map(r => (
                         <option key={r.id} value={r.id.toString()}>{formatRoleName(r.name)}</option>
                     ))}
-                </select>
+                </Select>
             </div>
 
             {/* Desktop Table — hidden on mobile */}
@@ -1585,7 +1586,7 @@ export default function StaffManager({
                             {/* Department */}
                             <div>
                                 <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-3">Department</label>
-                                <select
+                                <Select
                                     value={editModal.departmentId || ''}
                                     onChange={e => setEditModal(prev => ({ ...prev, departmentId: e.target.value || null }))}
                                     className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
@@ -1594,7 +1595,7 @@ export default function StaffManager({
                                     {departments.map(d => (
                                         <option key={d.id} value={d.id}>{d.name}</option>
                                     ))}
-                                </select>
+                                </Select>
                             </div>
 
                             {/* Password */}
@@ -1784,8 +1785,8 @@ export default function StaffManager({
 
                             <div>
                                 <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Initial Role</label>
-                                <select
-                                    value={createModal.roleId}
+                                <Select
+                                    value={String(createModal.roleId)}
                                     onChange={(e) => setCreateModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
                                     disabled={createModal.isCreating}
                                     className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
@@ -1793,12 +1794,12 @@ export default function StaffManager({
                                     {availableRoles.map(role => (
                                         <option key={role.id} value={role.id}>{formatRoleName(role.name)}</option>
                                     ))}
-                                </select>
+                                </Select>
                             </div>
 
                             <div>
                                 <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Department <span className="text-ink-subtle font-normal normal-case">(optional)</span></label>
-                                <select
+                                <Select
                                     value={createModal.departmentId}
                                     onChange={(e) => setCreateModal(prev => ({ ...prev, departmentId: e.target.value }))}
                                     disabled={createModal.isCreating}
@@ -1808,7 +1809,7 @@ export default function StaffManager({
                                     {departments.map(dept => (
                                         <option key={dept.id} value={dept.id}>{dept.name}</option>
                                     ))}
-                                </select>
+                                </Select>
                             </div>
                         </div>
 
@@ -1855,8 +1856,8 @@ export default function StaffManager({
 
                             <div>
                                 <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Role</label>
-                                <select
-                                    value={inviteModal.roleId}
+                                <Select
+                                    value={String(inviteModal.roleId)}
                                     onChange={(e) => setInviteModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
                                     disabled={inviteModal.isInviting}
                                     className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
@@ -1864,12 +1865,12 @@ export default function StaffManager({
                                     {availableRoles.map(role => (
                                         <option key={role.id} value={role.id}>{formatRoleName(role.name)}</option>
                                     ))}
-                                </select>
+                                </Select>
                             </div>
 
                             <div>
                                 <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Department <span className="text-ink-subtle font-normal normal-case">(optional)</span></label>
-                                <select
+                                <Select
                                     value={inviteModal.departmentId}
                                     onChange={(e) => setInviteModal(prev => ({ ...prev, departmentId: e.target.value }))}
                                     disabled={inviteModal.isInviting}
@@ -1879,7 +1880,7 @@ export default function StaffManager({
                                     {departments.map(dept => (
                                         <option key={dept.id} value={dept.id}>{dept.name}</option>
                                     ))}
-                                </select>
+                                </Select>
                             </div>
                         </div>
 
@@ -2141,14 +2142,14 @@ export default function StaffManager({
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Entry Type</label>
-                                    <select
+                                    <Select
                                         value={transactionModal.entryType}
                                         onChange={e => setTransactionModal(prev => ({ ...prev, entryType: e.target.value as typeof transactionModal.entryType }))}
                                         className="w-full px-3 py-2 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
                                     >
                                         <option value="accrual">Add to Amount Due (Not Paid Yet)</option>
                                         <option value="deduction">Deduction / Fine</option>
-                                    </select>
+                                    </Select>
                                 </div>
                                 <div>
                                     <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Amount</label>
@@ -2188,7 +2189,7 @@ export default function StaffManager({
                             {(transactionModal.paymentMethod === 'bank_transfer' || transactionModal.paymentMethod === 'qr_digital') && (
                                 <div className="animate-in slide-in-from-top-1 duration-150">
                                     <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Bank Account</label>
-                                    <select
+                                    <Select
                                         value={transactionModal.bankName}
                                         onChange={e => setTransactionModal(prev => ({ ...prev, bankName: e.target.value }))}
                                         required
@@ -2201,7 +2202,7 @@ export default function StaffManager({
                                         {bankAccounts.length === 0 && (
                                             <option value="General Bank">General Bank</option>
                                         )}
-                                    </select>
+                                    </Select>
                                 </div>
                             )}
 
@@ -2379,7 +2380,7 @@ export default function StaffManager({
                                                 value={ledgerModal.openingBalanceEdit}
                                                 onChange={e => setLedgerModal(prev => ({ ...prev, openingBalanceEdit: e.target.value }))}
                                                 placeholder={String(ledgerModal.user.opening_balance)}
-                                                className="w-32 px-2.5 py-1.5 text-xs font-bold border border-blue-200 rounded-[var(--r-sm)] bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                                className="w-32 px-2.5 py-1.5 text-xs font-bold border border-blue-200 rounded-[var(--r-sm)] bg-surface focus:outline-none focus:ring-2 focus:ring-blue-300"
                                             />
                                             <button
                                                 disabled={ledgerModal.savingOpeningBalance || ledgerModal.openingBalanceEdit === ''}
@@ -2462,7 +2463,7 @@ export default function StaffManager({
                                                             deduction: 'bg-rose-50 text-rose-700 border-rose-100',
                                                             accrual: 'bg-violet-50 text-violet-700 border-violet-100',
                                                         }
-                                                        const colorClass = typeColors[entry.entry_type] || 'bg-gray-50 text-gray-600 border-gray-100'
+                                                        const colorClass = typeColors[entry.entry_type] || 'bg-surface-muted text-ink-subtle border-hairline'
                                                         const methodLabel = entry.payment_method === 'bank_transfer' ? 'Bank' : entry.payment_method === 'qr_digital' ? 'QR' : entry.payment_method === 'cash' ? 'Cash' : '—'
 
                                                         // Running balance: starts from opening, accruals add, payments/deductions subtract
@@ -2568,8 +2569,8 @@ export default function StaffManager({
                         {/* Month/Year Selectors */}
                         <div className="px-6 py-4 border-b border-hairline flex items-center gap-3 bg-surface shrink-0">
                             <span className="text-xs font-bold text-ink-subtle uppercase tracking-wider">Select Payroll Period:</span>
-                            <select
-                                value={autoAccrualModal.month}
+                            <Select
+                                value={String(autoAccrualModal.month)}
                                 onChange={e => {
                                     const m = parseInt(e.target.value)
                                     loadAutoAccrualPreview(autoAccrualModal.year, m)
@@ -2581,9 +2582,9 @@ export default function StaffManager({
                                         {new Date(2000, i).toLocaleString('default', { month: 'long' })}
                                     </option>
                                 ))}
-                            </select>
-                            <select
-                                value={autoAccrualModal.year}
+                            </Select>
+                            <Select
+                                value={String(autoAccrualModal.year)}
                                 onChange={e => {
                                     const y = parseInt(e.target.value)
                                     loadAutoAccrualPreview(y, autoAccrualModal.month)
@@ -2594,7 +2595,7 @@ export default function StaffManager({
                                     const y = new Date().getFullYear() - i
                                     return <option key={y} value={y}>{y}</option>
                                 })}
-                            </select>
+                            </Select>
                         </div>
 
                         {/* Preview Table */}

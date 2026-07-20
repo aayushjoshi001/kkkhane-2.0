@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useConfirmStore } from '@/lib/stores/confirm'
 import Image from 'next/image'
 import { HomepageConfig, HomepageTemplate, HOMEPAGE_TEMPLATES } from '@/types/database'
 import { 
@@ -82,6 +83,7 @@ const Textarea = ({ label, value, onChange, placeholder }: InputProps) => (
 )
 
 export default function HomepageManager({ restaurantId }: HomepageManagerProps) {
+    const { confirm } = useConfirmStore()
     const { config: fetchedConfig, isLoading, error } = useHomepageConfig(restaurantId)
     const [config, setConfig] = useState<HomepageConfig>(DEFAULT_CONFIG)
     const [isSaving, setIsSaving] = useState(false)
@@ -261,7 +263,7 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                                         return (
                                             <div 
                                                 key={section.id} 
-                                                className="group flex items-center p-3 bg-white border border-hairline hover:border-brand-300 rounded-lg shadow-sm hover:shadow-md transition-all"
+                                                className="group flex items-center p-3 bg-surface border border-hairline hover:border-brand-300 rounded-lg shadow-sm hover:shadow-md transition-all"
                                             >
                                                 <div className="text-ink-muted/50 cursor-grab hover:text-ink mr-2">
                                                     <MenuIcon className="w-4 h-4" />
@@ -335,7 +337,7 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                                                     <button onClick={() => patchAndSave({ hero_video_url: null })} className="absolute top-2 right-2 p-1.5 bg-danger-bg text-danger-fg rounded-full hover:scale-110 transition-transform"><X size={14} /></button>
                                                 </div>
                                             ) : (
-                                                <label className="flex flex-col items-center justify-center aspect-video border-2 border-dashed border-hairline rounded-xl cursor-pointer hover:bg-surface-muted transition-colors bg-white">
+                                                <label className="flex flex-col items-center justify-center aspect-video border-2 border-dashed border-hairline rounded-xl cursor-pointer hover:bg-surface-muted transition-colors bg-surface">
                                                     <Upload size={20} className="text-ink-muted mb-2" />
                                                     <span className="text-xs font-medium">Upload Video</span>
                                                     <input type="file" accept="video/*" onChange={async (e) => { if (e.target.files?.[0]) { const url = await uploadFile(e.target.files[0], 'video'); if (url) await patchAndSave({ hero_video_url: url }) } }} className="sr-only" />
@@ -379,7 +381,14 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                                         </button>
                                         {features.map((f, idx) => (
                                             <div key={idx} className="p-3 bg-surface-muted rounded-lg border border-hairline relative">
-                                                <button onClick={() => patch({ features: features.filter((_, i) => i !== idx) })} className="absolute top-2 right-2 text-danger-fg p-1 hover:bg-white rounded"><Trash2 size={14} /></button>
+                                                <button
+                                                    onClick={async () => {
+                                                        const ok = await confirm({ title: 'Remove this highlight?', message: 'You can add it back before publishing.', confirmText: 'Remove', isDestructive: true })
+                                                        if (!ok) return
+                                                        patch({ features: features.filter((_, i) => i !== idx) })
+                                                    }}
+                                                    className="absolute top-2 right-2 text-danger-fg p-1 hover:bg-surface rounded"
+                                                ><Trash2 size={14} /></button>
                                                 <Input label={`Highlight ${idx + 1}`} value={f.title} onChange={(v: string) => patch({ features: features.map((it, i) => (i === idx ? { ...it, title: v } : it)) })} />
                                                 <Textarea label="Description" value={f.description} onChange={(v: string) => patch({ features: features.map((it, i) => (i === idx ? { ...it, description: v } : it)) })} />
                                             </div>
@@ -494,19 +503,19 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                     <div className="flex-1 overflow-y-auto p-4 space-y-4">
                         
                         {/* Publish Status Toggle */}
-                        <div className="border border-hairline rounded-xl p-4 bg-white shadow-sm flex items-center justify-between cursor-pointer hover:bg-surface-muted transition-colors">
+                        <div className="border border-hairline rounded-xl p-4 bg-surface shadow-sm flex items-center justify-between cursor-pointer hover:bg-surface-muted transition-colors">
                             <div>
                                 <h3 className="text-sm font-semibold text-ink">Site is public</h3>
                                 <p className="text-xs text-ink-muted">Anyone can view your site</p>
                             </div>
                             <label className="relative inline-flex items-center cursor-pointer">
                                 <input type="checkbox" className="sr-only peer" defaultChecked />
-                                <div className="w-9 h-5 bg-ink-muted/30 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                                <div className="w-9 h-5 bg-ink-muted/30 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
                             </label>
                         </div>
 
                         {/* Branding / Logo */}
-                        <div className="border border-hairline rounded-xl p-4 bg-white shadow-sm space-y-4">
+                        <div className="border border-hairline rounded-xl p-4 bg-surface shadow-sm space-y-4">
                             <h3 className="text-xs font-semibold text-ink uppercase tracking-wider">Brand Logo</h3>
                             {config.logo_url ? (
                                 <div className="relative group p-2 border border-hairline rounded-lg flex justify-center bg-surface-muted">
@@ -523,8 +532,8 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                         </div>
 
                         {/* Template Accordion */}
-                        <div className="border border-hairline rounded-xl overflow-hidden bg-white shadow-sm">
-                            <button onClick={() => toggleRightPanel('template')} className="w-full flex items-center justify-between p-4 bg-white hover:bg-surface-muted transition-colors">
+                        <div className="border border-hairline rounded-xl overflow-hidden bg-surface shadow-sm">
+                            <button onClick={() => toggleRightPanel('template')} className="w-full flex items-center justify-between p-4 bg-surface hover:bg-surface-muted transition-colors">
                                 <div className="flex items-center gap-3">
                                     <div className="p-1.5 bg-brand-50 text-brand-600 rounded-md"><Layout className="w-4 h-4" /></div>
                                     <span className="text-sm font-semibold text-ink">Layout Template</span>
@@ -540,7 +549,7 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                                         <button 
                                             key={template}
                                             onClick={() => patchAndSave({ template })}
-                                            className={cn("flex items-center gap-3 p-3 rounded-lg border-2 text-left transition-all", config.template === template ? 'border-brand-500 bg-brand-50/50' : 'border-hairline hover:border-brand-200 bg-white')}
+                                            className={cn("flex items-center gap-3 p-3 rounded-lg border-2 text-left transition-all", config.template === template ? 'border-brand-500 bg-brand-50/50' : 'border-hairline hover:border-brand-200 bg-surface')}
                                         >
                                             <span className="text-2xl">{HOMEPAGE_TEMPLATES[template].icon}</span>
                                             <div>
@@ -554,8 +563,8 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                         </div>
 
                         {/* Theme Colors Accordion */}
-                        <div className="border border-hairline rounded-xl overflow-hidden bg-white shadow-sm">
-                            <button onClick={() => toggleRightPanel('colors')} className="w-full flex items-center justify-between p-4 bg-white hover:bg-surface-muted transition-colors">
+                        <div className="border border-hairline rounded-xl overflow-hidden bg-surface shadow-sm">
+                            <button onClick={() => toggleRightPanel('colors')} className="w-full flex items-center justify-between p-4 bg-surface hover:bg-surface-muted transition-colors">
                                 <div className="flex items-center gap-3">
                                     <div className="p-1.5 bg-blue-50 text-blue-600 rounded-md"><Palette className="w-4 h-4" /></div>
                                     <span className="text-sm font-semibold text-ink">Theme Colors</span>
@@ -581,8 +590,8 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
                         </div>
 
                         {/* Social Links Accordion */}
-                        <div className="border border-hairline rounded-xl overflow-hidden bg-white shadow-sm">
-                            <button onClick={() => toggleRightPanel('social')} className="w-full flex items-center justify-between p-4 bg-white hover:bg-surface-muted transition-colors">
+                        <div className="border border-hairline rounded-xl overflow-hidden bg-surface shadow-sm">
+                            <button onClick={() => toggleRightPanel('social')} className="w-full flex items-center justify-between p-4 bg-surface hover:bg-surface-muted transition-colors">
                                 <div className="flex items-center gap-3">
                                     <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-md"><Globe className="w-4 h-4" /></div>
                                     <span className="text-sm font-semibold text-ink">Social Links</span>

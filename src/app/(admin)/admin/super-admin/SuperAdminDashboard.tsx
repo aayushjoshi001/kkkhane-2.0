@@ -6,6 +6,7 @@ import { Building2, ShoppingBag, Crown, Ban, CheckCircle, Loader2, ChevronDown, 
 import { createTenantWithOwner, suspendRestaurant, updateSubscriptionTier, sendPasswordResetEmail, updateOwnerContact, recordSubscriptionPayment, toggleRestaurantFinance, updateRestaurantFeatures } from './actions'
 import { TIER_LIMITS, TIERS, TIER_LABELS, FINANCE_TIERS, isUnlimited, type Tier } from '@/lib/tiers'
 import { toast } from 'react-hot-toast'
+import Select from '@/components/ui/Select'
 
 interface Restaurant {
     id: string
@@ -348,7 +349,7 @@ export default function SuperAdminDashboard({
 
             {/* Restaurant List */}
             <div className="bg-surface rounded-[24px] shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-hairline overflow-hidden animate-fade-up" style={{ animationDelay: '0.3s' }}>
-                <div className="px-6 py-5 border-b border-gray-50 bg-surface-muted/50 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="px-6 py-5 border-b border-hairline bg-surface-muted/50 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div>
                         <h2 className="text-[1.15rem] font-bold text-ink">All Businesses</h2>
                         <p className="text-[13px] text-ink-subtle mt-0.5">Manage tenants, tiers, and suspension</p>
@@ -375,7 +376,7 @@ export default function SuperAdminDashboard({
                         />
                     </div>
                     <div className="flex gap-3">
-                        <select
+                        <Select
                             value={tierFilter}
                             onChange={(e) => setTierFilter(e.target.value as any)}
                             className="rounded-xl border border-hairline-strong bg-surface px-3 py-2 text-sm text-ink-muted outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 w-full sm:w-auto"
@@ -384,8 +385,8 @@ export default function SuperAdminDashboard({
                             {TIERS.map(t => (
                                 <option key={t} value={t}>{TIER_LABELS[t]}</option>
                             ))}
-                        </select>
-                        <select
+                        </Select>
+                        <Select
                             value={statusFilter}
                             onChange={(e) => setStatusFilter(e.target.value as any)}
                             className="rounded-xl border border-hairline-strong bg-surface px-3 py-2 text-sm text-ink-muted outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 w-full sm:w-auto"
@@ -393,11 +394,11 @@ export default function SuperAdminDashboard({
                             <option value="all">All Status</option>
                             <option value="active">Active</option>
                             <option value="suspended">Suspended</option>
-                        </select>
+                        </Select>
                     </div>
                 </div>
 
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-hairline">
                     {filteredItems.map((restaurant) => (
                         <div
                             key={restaurant.id}
@@ -465,7 +466,7 @@ export default function SuperAdminDashboard({
 
                                 {/* Tier Selector */}
                                 <div className="relative">
-                                    <select
+                                    <Select
                                         value={restaurant.subscription_tier || 'free'}
                                         onChange={(e) => handleTierChange(restaurant.id, e.target.value as Tier)}
                                         disabled={loading === restaurant.id}
@@ -474,7 +475,7 @@ export default function SuperAdminDashboard({
                                         {TIERS.map(t => (
                                             <option key={t} value={t}>{TIER_LABELS[t]}</option>
                                         ))}
-                                    </select>
+                                    </Select>
                                     <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" />
                                 </div>
                                 
@@ -702,7 +703,7 @@ export default function SuperAdminDashboard({
                                 </Field>
 
                                 <Field label="Subscription tier" icon={<Crown size={16} />}>
-                                    <select
+                                    <Select
                                         value={createForm.subscriptionTier}
                                         onChange={(e) => handleCreateFormChange('subscriptionTier', e.target.value)}
                                         className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
@@ -710,11 +711,11 @@ export default function SuperAdminDashboard({
                                         {TIERS.map(t => (
                                             <option key={t} value={t}>{TIER_LABELS[t]}</option>
                                         ))}
-                                    </select>
+                                    </Select>
                                 </Field>
 
                                 <Field label="Business type *" icon={<Building2 size={16} />}>
-                                    <select
+                                    <Select
                                         value={createForm.businessType}
                                         onChange={(e) => handleCreateFormChange('businessType', e.target.value)}
                                         className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
@@ -727,7 +728,7 @@ export default function SuperAdminDashboard({
                                         <option value="Fine Dining">Fine Dining (Dine-in)</option>
                                         <option value="Bar">Bar (Bar Service)</option>
                                         <option value="Cloud Kitchen">Cloud Kitchen (Delivery Only)</option>
-                                    </select>
+                                    </Select>
                                 </Field>
                             </div>
 
@@ -829,7 +830,7 @@ export default function SuperAdminDashboard({
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-ink-muted mb-1.5">Payment Method</label>
-                                <select
+                                <Select
                                     value={paymentForm.method}
                                     onChange={e => setPaymentForm(p => ({ ...p, method: e.target.value }))}
                                     className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
@@ -839,7 +840,7 @@ export default function SuperAdminDashboard({
                                     <option value="khalti">Khalti</option>
                                     <option value="bank_transfer">Bank Transfer</option>
                                     <option value="fonepay">FonePay</option>
-                                </select>
+                                </Select>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-ink-muted mb-1.5">Reference / Transaction ID</label>
