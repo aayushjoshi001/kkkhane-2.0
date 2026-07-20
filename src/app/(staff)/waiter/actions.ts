@@ -66,10 +66,8 @@ export async function openSession(tableId: string, restaurantId: string, guestCo
 }
 
 export async function closeSession(sessionId: string) {
-    const supabase = await createServerClient()
     const adminSupabase = await createAdminClient()
-
-    const { data: { user } } = await supabase.auth.getUser()
+    const currentUser = await getCurrentUser().catch(() => null)
 
     const { data: session, error } = await adminSupabase
         .from('sessions')
@@ -89,7 +87,7 @@ export async function closeSession(sessionId: string) {
 
     void logAudit({
         restaurantId: session.restaurant_id,
-        userId: user?.id ?? null,
+        userId: currentUser?.id ?? null,
         action: 'session_closed',
         entityType: 'session',
         entityId: sessionId,

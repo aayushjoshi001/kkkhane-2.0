@@ -13,6 +13,7 @@ import { checkAndAlertLowStock } from '@/app/(admin)/admin/ingredients/actions'
 import { getRestaurantFeatures } from '@/lib/features'
 import { verifyClientIp } from '@/lib/ip-check'
 import { getRoomContextForTable } from '@/lib/rooms'
+import { markTableDirtyForSession } from '@/lib/tableLifecycle'
 
 type PlaceOrderItemPayload = {
     menu_item_id: string
@@ -260,6 +261,15 @@ export async function placeOrder(
             if (bindError) {
                 console.error('[order]', result.order_id, 'failed to bind booking:', bindError)
             }
+
+            // Auto-close the table session: the bill is now on the room folio,
+            // so the table is free. This mirrors what placeStaffOrder does.
+            await supabase
+                .from('sessions')
+                .update({ status: 'closed', closed_at: new Date().toISOString() })
+                .eq('id', sessionUuid)
+                .eq('status', 'active')
+            await markTableDirtyForSession(supabase, sessionUuid)
         }
 
         // If there are variations, look up their prices and update order_items

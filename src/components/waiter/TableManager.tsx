@@ -114,7 +114,9 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
     const [mounted, setMounted] = useState(false)
     useEffect(() => { setMounted(true) }, [])
 
-    const [quickOrderSession, setQuickOrderSession] = useState<{ sessionId: string; tableName: string } | null>(null)
+    const [quickOrderSession, setQuickOrderSession] = useState<{ sessionId: string; tableName: string; sessionUuid?: string; tableId?: string } | null>(null)
+    // Whether the current quick-order session has had an order placed (prevents auto-cancel on close)
+    const quickOrderPlacedRef = useRef(false)
 
     const [openSessionRequests, setOpenSessionRequests] = useState<Record<string, string>>({})
 
@@ -319,11 +321,13 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
             }
             const session = res.session as unknown as Session
             await setTableStatus(tableId, 'available')
-            
+            quickOrderPlacedRef.current = false
             setTables(prev => prev.map(t => t.id === tableId ? { ...t, activeSession: session } : t))
             setQuickOrderSession({
                 sessionId: session.session_token,
-                tableName: selectedTable?.label || 'Table'
+                tableName: selectedTable?.label || 'Table',
+                sessionUuid: session.id,
+                tableId,
             })
             setSelectedTable(null)
         } catch (err) {
@@ -351,12 +355,14 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                 setIsProcessing(false)
                 return
             }
-            
+            quickOrderPlacedRef.current = false
             toast.success(`Linked to Room ${roomNumber}`)
             setTables(prev => prev.map(t => t.id === tableId ? { ...t, activeSession: { ...session, booking_id: bookingId } } : t))
             setQuickOrderSession({
                 sessionId: session.session_token,
-                tableName: selectedTable?.label || 'Table'
+                tableName: selectedTable?.label || 'Table',
+                sessionUuid: session.id,
+                tableId,
             })
             setSelectedTable(null)
         } catch (err) {
@@ -1578,7 +1584,24 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
             {quickOrderSession && (
                 <QuickOrderModal
                     isOpen={true}
-                    onClose={() => setQuickOrderSession(null)}
+                    onClose={async () => {
+                        // If no order was placed and we have a transient session, auto-cancel it
+                        // so the table doesn't stay occupied after the waiter just browses
+                        const snap = quickOrderSession
+                        setQuickOrderSession(null)
+                        if (!quickOrderPlacedRef.current && snap.sessionUuid) {
+                            await closeSession(snap.sessionUuid)
+                            if (snap.tableId) {
+                                setTables(prev => prev.map(t =>
+                                    t.id === snap.tableId ? { ...t, activeSession: undefined } : t
+                                ))
+                            }
+                        }
+                    }}
+                    onSuccess={() => {
+                        quickOrderPlacedRef.current = true
+                        setQuickOrderSession(null)
+                    }}
                     sessionId={quickOrderSession.sessionId}
                     tableName={quickOrderSession.tableName}
                     restaurantId={restaurantId}
