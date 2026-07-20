@@ -37,6 +37,7 @@ export default function CashierRoomManager({
     restaurantId,
     partnerRestaurantId,
     roomsFilter,
+    roomTypeFilter = 'all',
     tables,
     activeOrders,
     unpaidOrders,
@@ -50,6 +51,7 @@ export default function CashierRoomManager({
     restaurantId: string
     partnerRestaurantId?: string | null
     roomsFilter: 'all' | 'available' | 'reserve' | 'occupied' | 'dirty' | 'closed'
+    roomTypeFilter?: string
     tables: TableWithSession[]
     activeOrders: any[]
     unpaidOrders: any[]
@@ -237,8 +239,13 @@ export default function CashierRoomManager({
 
     // Filter rooms
     const filteredRooms = useMemo(() => {
-        if (roomsFilter === 'all') return rooms
         return rooms.filter(r => {
+            // Category filter
+            if (roomTypeFilter && roomTypeFilter !== 'all' && r.type_id !== roomTypeFilter) {
+                return false
+            }
+            // Status filter
+            if (roomsFilter === 'all') return true
             if (roomsFilter === 'available') return r.status === 'available'
             if (roomsFilter === 'occupied') return r.status === 'occupied'
             if (roomsFilter === 'dirty') return r.status === 'dirty'
@@ -246,7 +253,7 @@ export default function CashierRoomManager({
             if (roomsFilter === 'reserve') return false // dummy reserved status
             return true
         })
-    }, [rooms, roomsFilter])
+    }, [rooms, roomsFilter, roomTypeFilter])
 
     // Room-service orders bucket (the room's own QR table + manual "direct to
     // room" orders placed from the cashier/manager). We derive it from the SAME

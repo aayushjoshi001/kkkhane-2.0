@@ -15,6 +15,7 @@ import Button from '@/components/ui/Button'
 import EmptyState from '@/components/ui/EmptyState'
 import { useRouter } from 'next/navigation'
 import QuickOrderModal from './QuickOrderModal'
+import { useFeatures } from '@/lib/contexts/FeatureContext'
 
 export type TableWithSession = Table & { activeSession?: Session | null; otherActiveSessions?: Session[] }
 
@@ -60,6 +61,8 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
     const [isProcessing, setIsProcessing] = useState(false)
     const { confirm } = useConfirmStore()
     const router = useRouter()
+    const features = useFeatures()
+    const kdsEnabled = !features.kotEnabled && (features.kdsEnabled ?? true)
 
     // Split-table (per-seat billing) state — lets a waiter turn a shared table
     // into independent covers (Table 5-1, Table 5-2, ...) that each order and
@@ -582,11 +585,13 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                             const sessionOrders = sessionId
                                 ? Object.values(orderStatuses).filter(o => o.session_id === sessionId && !['delivered', 'cancelled'].includes(o.status))
                                 : []
-                            const orderLight = sessionOrders.some(o => o.status === 'ready')
-                                ? 'ready'
-                                : sessionOrders.some(o => o.status === 'preparing' || o.status === 'confirmed')
-                                    ? 'preparing'
-                                    : sessionOrders.length > 0 ? 'pending' : null
+                            const orderLight = !kdsEnabled
+                                ? null
+                                : sessionOrders.some(o => o.status === 'ready')
+                                    ? 'ready'
+                                    : sessionOrders.some(o => o.status === 'preparing' || o.status === 'confirmed')
+                                        ? 'preparing'
+                                        : sessionOrders.length > 0 ? 'pending' : null
 
                             const trafficLight = {
                                 ready:    { dot: 'bg-success animate-pulse', label: '● Ready',   cls: 'text-success-fg' },

@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { markDeliveredAndCashPaid } from '@/app/(staff)/waiter/order-actions'
 import { updateTakeoutStatusAction } from '@/app/(admin)/admin/takeout/actions'
-import { useCurrency, useFeatureEnabled, useDateFormatter } from '@/lib/contexts/FeatureContext'
+import { useCurrency, useFeatureEnabled, useDateFormatter, useFeatures } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent } from 'lucide-react'
@@ -16,6 +16,8 @@ import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import Button from '@/components/ui/Button'
 import { usePrinter } from '@/lib/print/usePrinter'
 import { buildInvoiceTicket } from '@/lib/print/templates/invoiceTicket'
+import { buildStationTicket } from '@/lib/print/templates/stationTicket'
+import type { KitchenOrder } from '@/components/kitchen/OrderQueue'
 
 
 import { formatDateTime, calculateNights, advanceMethodLabel } from '@/lib/utils'
@@ -106,6 +108,7 @@ export default function CashierClient({
     const { confirm } = useConfirmStore()
     const [unpaid, setUnpaid] = useState<UnpaidOrder[]>(initialUnpaid)
     const money = useCurrency()
+    const features = useFeatures()
     const formatDate = useDateFormatter()
     const printInvoiceEnabled = useFeatureEnabled('printInvoiceEnabled')
     const printBillEnabled = useFeatureEnabled('printBillEnabled')
@@ -114,6 +117,8 @@ export default function CashierClient({
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
     const bsEnabled = useFeatureEnabled('bsDateEnabled')
     const { print: printInvoice } = usePrinter('invoice')
+    const { print: printKot } = usePrinter('kot')
+    const { print: printBot } = usePrinter('bot')
     const [active, setActive] = useState<ActiveOrder[]>(initialActive)
     const [processingId, setProcessingId] = useState<string | null>(null)
     const [pendingClaims, setPendingClaims] = useState(
@@ -129,6 +134,25 @@ export default function CashierClient({
     
     // Stays and Billing states
     const [roomsState, setRoomsState] = useState<any[]>(rooms)
+    const [roomTypeFilter, setRoomTypeFilter] = useState<string>('all')
+    const [billingRoomTypeFilter, setBillingRoomTypeFilter] = useState<string>('all')
+
+    const roomTypesList = useMemo(() => {
+        const unique = new Map()
+        roomsState.forEach(r => {
+            if (r.type_id && r.room_types?.name) {
+                unique.set(r.type_id, r.room_types.name)
+            }
+        })
+        return Array.from(unique.entries()).map(([id, name]) => ({ id, name }))
+    }, [roomsState])
+
+    const filteredBillingRooms = useMemo(() => {
+        return roomsState
+            .filter(r => r.status === 'occupied')
+            .filter(r => billingRoomTypeFilter === 'all' || r.type_id === billingRoomTypeFilter)
+    }, [roomsState, billingRoomTypeFilter])
+
     const [bookings, setBookings] = useState<any[]>(initialBookings)
     const [billingSubTab, setBillingSubTab] = useState<'rooms' | 'tables'>('rooms')
     const [selectedBillingRoom, setSelectedBillingRoom] = useState<any | null>(null)
@@ -949,10 +973,41 @@ export default function CashierClient({
         if (payload.eventType === 'INSERT') {
             const { data } = await supabase
                 .from('orders')
-                .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, seat_number, tables ( id, label, room_id ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
+                .select(`
+                    id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address,
+                    sessions ( id, seat_number, tables ( id, label, room_id, rooms ( id, room_number ) ) ),
+                    bookings ( id, rooms ( id, room_number ) ),
+                    order_items (
+                        id, quantity, status, unit_price, special_request,
+                        menu_items ( id, name, station, is_combo ),
+                        menu_item_variations:menu_item_variation_id ( id, name ),
+                        order_item_modifiers ( modifier_name, price_adjustment )
+                    )
+                `)
                 .eq('id', payload.new.id)
                 .single()
-            if (data) setActive(prev => [...prev, data as unknown as ActiveOrder])
+            if (data) {
+                setActive(prev => [...prev, data as unknown as ActiveOrder])
+
+                // Auto-print KOT/BOT if KOT printing is enabled
+                if (features?.kotEnabled) {
+                    const orderForPrint = data as unknown as KitchenOrder
+                    
+                    // 1. KOT (Kitchen Ticket) auto-print
+                    const kitchenItems = (orderForPrint.order_items || []).filter(i => i.menu_items?.station === 'kitchen')
+                    if (kitchenItems.length > 0) {
+                        const ticketBytes = buildStationTicket(orderForPrint, 'kitchen')
+                        void printKot(ticketBytes).catch(err => console.error('[Cashier KOT Auto-print Failed]:', err))
+                    }
+
+                    // 2. BOT (Bar Ticket) auto-print
+                    const barItems = (orderForPrint.order_items || []).filter(i => i.menu_items?.station === 'bar')
+                    if (barItems.length > 0) {
+                        const ticketBytes = buildStationTicket(orderForPrint, 'bar')
+                        void printBot(ticketBytes).catch(err => console.error('[Cashier BOT Auto-print Failed]:', err))
+                    }
+                }
+            }
         } else if (payload.eventType === 'UPDATE') {
             const { id, status, payment_status } = payload.new
             if (status === 'delivered' && payment_status === 'unpaid') {
@@ -1138,8 +1193,8 @@ export default function CashierClient({
                 {activeTab === 'rooms' && (
                     <div className="flex flex-col gap-4 w-full">
                         {/* Sticky Sub-tabs / Filters for Rooms */}
-                        <div className="sticky top-28 z-20 bg-canvas -mx-3 px-3 md:mx-0 md:px-0 py-2 border-b border-hairline flex items-center w-full justify-center">
-                            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 sm:gap-2.5 w-full">
+                        <div className="sticky top-28 z-20 bg-canvas -mx-3 px-3 md:mx-0 md:px-0 py-2 border-b border-hairline flex flex-col md:flex-row items-center w-full justify-between gap-3 shadow-sm">
+                            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 sm:gap-2.5 w-full md:w-auto flex-1">
                                 {([
                                     { key: 'all', label: 'ALL', count: roomsCounts.all },
                                     { key: 'available', label: 'Available', count: roomsCounts.available },
@@ -1180,6 +1235,20 @@ export default function CashierClient({
                                     )
                                 })}
                             </div>
+                            {/* Room Category Filter select */}
+                            <div className="w-full md:w-60 flex items-center gap-2 shrink-0 md:justify-end">
+                                <span className="text-[10px] font-black text-ink-subtle uppercase shrink-0">Type:</span>
+                                <Select
+                                    value={roomTypeFilter}
+                                    onChange={(e) => setRoomTypeFilter(e.target.value)}
+                                    className="w-full md:w-48 text-xs"
+                                >
+                                    <option value="all">All Room Types</option>
+                                    {roomTypesList.map(type => (
+                                        <option key={type.id} value={type.id}>{type.name}</option>
+                                    ))}
+                                </Select>
+                            </div>
                         </div>
 
                         <CashierRoomManager
@@ -1190,6 +1259,7 @@ export default function CashierClient({
                             restaurantId={restaurantId}
                             partnerRestaurantId={partnerRestaurantId}
                             roomsFilter={roomsFilter}
+                            roomTypeFilter={roomTypeFilter}
                             tables={tables}
                             activeOrders={active}
                             unpaidOrders={unpaid}
@@ -1390,28 +1460,45 @@ export default function CashierClient({
                         {/* Awaiting Payment section */}
                         <div>
                             {isHotel && (
-                                <div className="border-b border-hairline pb-3 mb-4 flex items-center justify-between">
+                                <div className="border-b border-hairline pb-3 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                     <h2 className="text-sm font-semibold text-ink-muted flex items-center gap-2">
                                         <Receipt size={14} className="text-red-400" />
                                         Awaiting Settlement
                                     </h2>
-                                    <div className="flex bg-surface-muted p-1 rounded-xl border border-hairline">
-                                        <button
-                                            onClick={() => setBillingSubTab('rooms')}
-                                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                                billingSubTab === 'rooms' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
-                                            }`}
-                                        >
-                                            Rooms ({roomsState.filter(r => r.status === 'occupied').length})
-                                        </button>
-                                        <button
-                                            onClick={() => setBillingSubTab('tables')}
-                                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                                billingSubTab === 'tables' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
-                                            }`}
-                                        >
-                                            Tables ({billingTableEntries.length})
-                                        </button>
+                                    <div className="flex items-center gap-3">
+                                        {billingSubTab === 'rooms' && (
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-[10px] font-black text-ink-subtle uppercase shrink-0">Type:</span>
+                                                <Select
+                                                    value={billingRoomTypeFilter}
+                                                    onChange={(e) => setBillingRoomTypeFilter(e.target.value)}
+                                                    className="w-48 text-xs"
+                                                >
+                                                    <option value="all">All Room Types</option>
+                                                    {roomTypesList.map(type => (
+                                                        <option key={type.id} value={type.id}>{type.name}</option>
+                                                    ))}
+                                                </Select>
+                                            </div>
+                                        )}
+                                        <div className="flex bg-surface-muted p-1 rounded-xl border border-hairline shrink-0">
+                                            <button
+                                                onClick={() => setBillingSubTab('rooms')}
+                                                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                                    billingSubTab === 'rooms' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
+                                                }`}
+                                            >
+                                                Rooms ({roomsState.filter(r => r.status === 'occupied').length})
+                                            </button>
+                                            <button
+                                                onClick={() => setBillingSubTab('tables')}
+                                                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                                    billingSubTab === 'tables' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
+                                                }`}
+                                            >
+                                                Tables ({billingTableEntries.length})
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -1423,7 +1510,7 @@ export default function CashierClient({
                                 </h2>
                             )}
 
-                            {((isHotel && billingSubTab === 'rooms') ? roomsState.filter(r => r.status === 'occupied') : billingTableEntries).length === 0 ? (
+                            {((isHotel && billingSubTab === 'rooms') ? filteredBillingRooms : billingTableEntries).length === 0 ? (
                                 <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-10 text-center">
                                     <CheckCircle size={32} className="mx-auto text-emerald-300 mb-2" />
                                     <p className="text-sm font-medium text-ink-subtle">All bills settled</p>
@@ -1434,7 +1521,7 @@ export default function CashierClient({
                                     {isHotel && billingSubTab === 'rooms' ? (
                                         // Occupied Rooms Grid
                                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                                            {roomsState.filter(r => r.status === 'occupied').map(room => {
+                                            {filteredBillingRooms.map(room => {
                                                 const booking = bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
                                                 const stayCost = calculateStayCost(room, booking)
                                                 const qrOrdersTotal = getRoomQrOrders(room).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)

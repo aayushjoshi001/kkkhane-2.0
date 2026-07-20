@@ -140,6 +140,8 @@ export default function SettingsManager({
             manualEntryEnabled: true,
             printBillEnabled: true,
             showInvoiceEnabled: true,
+            kotEnabled: false,
+            kdsEnabled: true,
             ...(base as any)
         } as Features
     })
@@ -281,11 +283,19 @@ export default function SettingsManager({
     const toggleFeature = async (key: keyof Features) => {
         if (!canEdit) return
         const newValue = !features[key]
-        const updated = { ...features, [key]: newValue }
+        
+        let updatePayload: Partial<Features> = { [key]: newValue }
+        if (key === 'kotEnabled' && newValue) {
+            updatePayload.kdsEnabled = false
+        } else if (key === 'kdsEnabled' && newValue) {
+            updatePayload.kotEnabled = false
+        }
+
+        const updated = { ...features, ...updatePayload }
         setFeatures(updated)
 
         setIsSavingFeatures(true)
-        const res = await updateFeaturesAction(formData.id, { [key]: newValue })
+        const res = await updateFeaturesAction(formData.id, updatePayload)
         if (res.error) {
             toast.error('Failed to save feature toggle')
             setFeatures(features) // revert
@@ -897,6 +907,8 @@ export default function SettingsManager({
                         { key: 'generateInvoiceEnabled' as const, label: 'Generate Invoice', desc: 'Settle and record official invoice data' },
                         { key: 'printInvoiceEnabled' as const, label: 'Print Invoice', desc: 'Auto spool print receipts at till checkout' },
                         { key: 'irdSyncEnabled' as const, label: 'IRD Real-time Sync', desc: 'Sync billing receipts to Inland Revenue Department' },
+                        { key: 'kotEnabled' as const, label: 'KOT Print System', desc: 'Auto-print kitchen tickets' },
+                        { key: 'kdsEnabled' as const, label: 'Kitchen Display System (KDS)', desc: 'Interactive kitchen screen with prep status' },
                     ]).map(({ key, label, desc }) => {
                         if (isSuperAdmin) {
                             return (

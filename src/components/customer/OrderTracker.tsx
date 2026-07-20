@@ -70,7 +70,7 @@ export default function OrderTracker({
     // order status here never advances for them, so live tracking is hidden for
     // every order in a hotel-mode restaurant, not just ones billed to a room.
     const businessMode = useBusinessMode()
-    const hideLiveTracking = isHotelRoom || businessMode === 'hotel'
+    const hideLiveTracking = isHotelRoom || businessMode === 'hotel' || !!features?.kotEnabled
     const activeShowSuccess = hideLiveTracking ? true : showSuccessScreen
 
     useEffect(() => {

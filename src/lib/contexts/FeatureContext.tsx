@@ -33,6 +33,8 @@ const defaultFeatures: Features = {
     staffManagementEnabled: true,
     tableManagementEnabled: true,
     irdSyncEnabled: false,
+    kotEnabled: false,
+    kdsEnabled: true,
 }
 
 const FeatureContext = createContext<Features>(defaultFeatures)
@@ -45,7 +47,8 @@ export function FeatureProvider({ features, children }: { features: Features | n
         financeEnabled: isIrd ? true : (rawFeatures.financeEnabled ?? false),
         generateInvoiceEnabled: isIrd ? true : (rawFeatures.generateInvoiceEnabled ?? true),
         printInvoiceEnabled: isIrd ? true : (rawFeatures.printInvoiceEnabled ?? true),
-        vatEnabled: isIrd ? rawFeatures.vatEnabled : false
+        vatEnabled: isIrd ? rawFeatures.vatEnabled : false,
+        kdsEnabled: rawFeatures.kotEnabled ? false : (rawFeatures.kdsEnabled ?? true),
     }
 
     return (
