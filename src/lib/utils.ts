@@ -225,6 +225,7 @@ export function buildDescriptionWithName(description: string, label: string, nam
  * Helper to determine the correct source label for a Kitchen Order Ticket (KOT).
  */
 export function getKOTSourceLabel(order: {
+    id?: string
     order_type?: string | null
     session_id?: string | null
     booking_id?: string | null
@@ -265,20 +266,37 @@ export function getKOTSourceLabel(order: {
         const activeSessions = tableSessions.filter(s => s.status === 'active')
         const isSplit = activeSessions.length > 1 || (order.sessions?.seat_number ?? 1) >= 2
 
-        let label = `Table ${tbl}`
-        if (isSplit) {
-            label = `Table ${tbl}-${order.sessions?.seat_number ?? 1}`
-        }
+        const tableNum = isSplit ? `${tbl}-${order.sessions?.seat_number ?? 1}` : tbl
+        let label = `Table ${tableNum}`
 
         // If they are a hotel guest, also display their room number
         if (order.booking_id && order.bookings?.rooms?.room_number) {
-            label += ` (Room ${order.bookings.rooms.room_number})`
+            label = `Table: ${tableNum} - Room: ${order.bookings.rooms.room_number}`
         }
 
         return label
     }
 
-    return 'Order'
+    // TEMPORARY diagnostic tag while tracking down why some tickets fall back to
+    // this branch — printed directly on the ticket so it can be read off the
+    // paper without opening devtools. Remove once the cause is confirmed fixed.
+    const reason = !order.session_id ? 'no-session'
+        : !order.sessions ? 'session-not-fetched'
+        : !order.sessions.tables ? 'no-table-link'
+        : 'no-label'
+
+    if (typeof window !== 'undefined') {
+        console.warn('[KOT] Could not resolve a table/room label for order — printing generic "Order" fallback.', {
+            orderId: order.id,
+            sessionId: order.session_id,
+            bookingId: order.booking_id,
+            orderType: order.order_type,
+            sessions: order.sessions,
+            bookings: order.bookings,
+        })
+    }
+
+    return `Order [${reason}]`
 }
 
 /**
