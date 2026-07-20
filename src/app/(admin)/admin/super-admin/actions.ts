@@ -832,7 +832,16 @@ export async function updateRestaurantFeatures(restaurantId: string, features: a
         console.error('Failed to invalidate Redis cache:', err)
     }
 
+    try {
+        const { revalidateTag } = await import('next/cache')
+        revalidateTag(`features-${restaurantId}`, 'max')
+        revalidateTag(`mode-${restaurantId}`, 'max')
+    } catch (err) {
+        console.error('Failed to invalidate NextCache tags:', err)
+    }
+
     revalidatePath('/admin/super-admin')
     revalidatePath('/admin/settings')
+    revalidatePath('/waiter')
     return { success: true }
 }
