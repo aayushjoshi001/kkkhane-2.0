@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useMemo } from 'react'
 import {
     TrendingUp, TrendingDown, Landmark, FileText, Package, Truck,
     X, ChevronRight, Loader2, CheckCircle, AlertCircle, ArrowRight,
@@ -10,6 +10,7 @@ import { toast } from 'react-hot-toast'
 import { createVoucherAction, openTodayDayBookSessionAction, getSupplierOutstandingBalanceAction, getStaffCurrentDueAction } from '@/app/(admin)/admin/vouchers/actions'
 import { addStockMovementAction } from '@/app/(admin)/admin/ingredients/actions'
 import type { BankAccount, ExpenseCategory, Supplier } from '@/types/database'
+import { orderCategoriesForDisplay, findMainCategory, buildDescriptionWithName } from '@/lib/utils'
 import Select from '@/components/ui/Select'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -105,8 +106,8 @@ const ENTRY_CARDS = [
 
 const emptyForms = {
     cash_in: { amount: '', description: '', category: 'other' },
-    cash_out: { amount: '', description: '', category: 'other', expense_category_id: '', bank_name: '' },
-    bank_transaction: { amount: '', description: '', bank_name: '', transaction_type: 'deposit' },
+    cash_out: { amount: '', description: '', category: 'other', expense_category_id: '', bank_name: '', staff_id: '', supplier_id: '' },
+    bank_transaction: { amount: '', description: '', bank_name: '', transaction_type: 'deposit', category: 'other', expense_category_id: '', staff_id: '', supplier_id: '' },
     voucher: { voucher_type: 'receipt', party_name: '', amount: '', particulars: '', payment_mode: 'cash', bank_name: '' },
     inventory: { ingredient_id: '', movement_type: 'purchase', quantity: '', notes: '' },
     supplier_payment: { supplier_id: '', amount: '', payment_source: 'cash', bank_name: '', notes: '' },
@@ -132,6 +133,7 @@ function SelectField({ label, children, ...props }: {
     onChange: (e: { target: { value: string } }) => void
     disabled?: boolean
     required?: boolean
+    searchable?: boolean
     children: React.ReactNode
 }) {
     return (
@@ -163,6 +165,23 @@ export default function ManualEntryClient({
     const [forms, setForms] = useState(emptyForms)
     const [isPending, startTransition] = useTransition()
     const [lastSuccess, setLastSuccess] = useState<{ type: EntryType; label: string } | null>(null)
+    const expenseCategoryOptions = useMemo(() => orderCategoriesForDisplay(expenseCategories), [expenseCategories])
+    // Both Cash Out and Bank Out (bank_transaction/withdrawal) can be tagged as
+    // an expense — track whichever one is currently active.
+    const activeExpenseCategoryId = activeType === 'cash_out'
+        ? forms.cash_out.expense_category_id
+        : activeType === 'bank_transaction'
+            ? forms.bank_transaction.expense_category_id
+            : ''
+    // Auto-identifies the main category once a subcategory is picked.
+    const selectedMainExpenseCategory = useMemo(
+        () => findMainCategory(expenseCategories, activeExpenseCategoryId),
+        [expenseCategories, activeExpenseCategoryId],
+    )
+    // is_stock_category covers the food/beverage/supply groups (Grocery,
+    // Beverages, Supplies) — used as the "food related" signal for offering
+    // a Supplier picker on an expense entry.
+    const isActiveExpenseFoodRelated = expenseCategories.find(c => c.id === activeExpenseCategoryId)?.is_stock_category ?? false
 
     const activeCard = ENTRY_CARDS.find(c => c.type === activeType)
 
@@ -170,6 +189,20 @@ export default function ManualEntryClient({
 
     function updateForm<T extends EntryType>(type: T, field: string, value: string) {
         setForms(prev => ({ ...prev, [type]: { ...prev[type], [field]: value } }))
+    }
+
+    // Shared by Cash Out and Bank Out's "Expense" + Supplier picker — shows
+    // what's already owed so paying it down doesn't need a second, separate
+    // expense record (the bill was recorded once, at purchase time).
+    const [expenseSupplierBalance, setExpenseSupplierBalance] = useState<number | null>(null)
+
+    function handleExpenseSupplierSelect(type: 'cash_out' | 'bank_transaction', sId: string) {
+        updateForm(type, 'supplier_id', sId)
+        setExpenseSupplierBalance(null)
+        if (!sId) return
+        getSupplierOutstandingBalanceAction(sId).then(res => {
+            if (res.data !== undefined) setExpenseSupplierBalance(res.data)
+        })
     }
 
     const handleSupplierPaymentSelect = (sId: string) => {
@@ -259,23 +292,51 @@ export default function ManualEntryClient({
                     if (!f.description.trim()) { toast.error('Description is required'); return }
                     if (!sessionId) { toast.error('No active session'); return }
 
-                    const res = await fetch('/api/day-book/entries', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            session_id: sessionId,
-                            type: activeType,
+                    const cashOutForm = activeType === 'cash_out' ? (f as typeof forms.cash_out) : null
+                    // Paying a known supplier settles their outstanding bill(s) directly
+                    // in the Suppliers Ledger — the bill itself was already recorded once,
+                    // at purchase time, so this must never create a second expense row.
+                    const isSupplierExpense = !!(cashOutForm?.category === 'expense' && cashOutForm.supplier_id)
+
+                    if (isSupplierExpense && cashOutForm) {
+                        const supplierObj = suppliers.find(s => s.id === cashOutForm.supplier_id)
+                        result = await createVoucherAction({
+                            voucher_type: 'payment',
+                            party_name: supplierObj?.name || '',
                             amount,
-                            description: f.description.trim(),
-                            category: (f as typeof forms.cash_in).category,
-                            expense_category_id: activeType === 'cash_out' && (f as typeof forms.cash_out).category === 'expense'
-                                ? (f as typeof forms.cash_out).expense_category_id || undefined
-                                : undefined,
-                        }),
-                    })
-                    const data = await res.json()
-                    if (!res.ok) throw new Error(data.error)
-                    result = { data }
+                            payment_mode: 'cash',
+                            particulars: f.description.trim() || `Payment to ${supplierObj?.name || 'supplier'}`,
+                            category: 'suppliers',
+                            supplier_id: cashOutForm.supplier_id,
+                        })
+                    } else {
+                        if (cashOutForm?.category === 'expense' && !cashOutForm.expense_category_id) {
+                            toast.error('Select an expense category')
+                            return
+                        }
+                        const staffName = cashOutForm?.category === 'salary'
+                            ? staffList.find(s => s.id === cashOutForm.staff_id)?.full_name
+                            : undefined
+                        const finalDescription = buildDescriptionWithName(f.description.trim(), 'Staff', staffName)
+
+                        const res = await fetch('/api/day-book/entries', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                session_id: sessionId,
+                                type: activeType,
+                                amount,
+                                description: finalDescription,
+                                category: (f as typeof forms.cash_in).category,
+                                expense_category_id: cashOutForm?.category === 'expense'
+                                    ? cashOutForm.expense_category_id || undefined
+                                    : undefined,
+                            }),
+                        })
+                        const data = await res.json()
+                        if (!res.ok) throw new Error(data.error)
+                        result = { data }
+                    }
 
                 } else if (activeType === 'bank_transaction') {
                     const f = forms.bank_transaction
@@ -284,23 +345,49 @@ export default function ManualEntryClient({
                     if (!f.bank_name) { toast.error('Select a bank account'); return }
                     if (!f.description.trim()) { toast.error('Description is required'); return }
                     if (!sessionId) { toast.error('No active session'); return }
+                    const isWithdrawal = f.transaction_type === 'withdrawal'
+                    const isSupplierExpense = isWithdrawal && f.category === 'expense' && !!f.supplier_id
+                    if (isWithdrawal && f.category === 'expense' && !isSupplierExpense && !f.expense_category_id) {
+                        toast.error('Select an expense category')
+                        return
+                    }
 
-                    const entryType = f.transaction_type === 'deposit' ? 'bank_in' : 'bank_out'
-                    const res = await fetch('/api/day-book/entries', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            session_id: sessionId,
-                            type: entryType,
+                    if (isSupplierExpense) {
+                        const supplierObj = suppliers.find(s => s.id === f.supplier_id)
+                        result = await createVoucherAction({
+                            voucher_type: 'payment',
+                            party_name: supplierObj?.name || '',
                             amount,
-                            description: f.description.trim(),
-                            category: f.transaction_type === 'deposit' ? 'deposit' : 'withdrawal',
+                            payment_mode: 'bank',
                             bank_name: f.bank_name,
-                        }),
-                    })
-                    const data = await res.json()
-                    if (!res.ok) throw new Error(data.error)
-                    result = { data }
+                            particulars: f.description.trim() || `Payment to ${supplierObj?.name || 'supplier'}`,
+                            category: 'suppliers',
+                            supplier_id: f.supplier_id,
+                        })
+                    } else {
+                        const staffName = isWithdrawal && f.category === 'salary'
+                            ? staffList.find(s => s.id === f.staff_id)?.full_name
+                            : undefined
+                        const finalDescription = buildDescriptionWithName(f.description.trim(), 'Staff', staffName)
+
+                        const entryType = f.transaction_type === 'deposit' ? 'bank_in' : 'bank_out'
+                        const res = await fetch('/api/day-book/entries', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                session_id: sessionId,
+                                type: entryType,
+                                amount,
+                                description: finalDescription,
+                                category: f.transaction_type === 'deposit' ? 'deposit' : f.category,
+                                expense_category_id: isWithdrawal && f.category === 'expense' ? f.expense_category_id : undefined,
+                                bank_name: f.bank_name,
+                            }),
+                        })
+                        const data = await res.json()
+                        if (!res.ok) throw new Error(data.error)
+                        result = { data }
+                    }
 
                 } else if (activeType === 'voucher') {
                     const f = forms.voucher
@@ -547,15 +634,47 @@ export default function ManualEntryClient({
                                                 <option value="bank_deposit">Bank Deposit</option>
                                                 <option value="other">Other</option>
                                             </SelectField>
+                                            {forms.cash_out.category === 'salary' && staffList.length > 0 && (
+                                                <SelectField
+                                                    label="Staff Member"
+                                                    value={forms.cash_out.staff_id}
+                                                    onChange={e => updateForm('cash_out', 'staff_id', e.target.value)}
+                                                    searchable
+                                                >
+                                                    <option value="">Select staff member...</option>
+                                                    {staffList.map(s => (
+                                                        <option key={s.id} value={s.id}>{s.full_name}</option>
+                                                    ))}
+                                                </SelectField>
+                                            )}
                                             {forms.cash_out.category === 'expense' && expenseCategories.length > 0 && (
                                                 <SelectField
                                                     label="Expense Category"
                                                     value={forms.cash_out.expense_category_id}
                                                     onChange={e => updateForm('cash_out', 'expense_category_id', e.target.value)}
+                                                    searchable
                                                 >
                                                     <option value="">Select category...</option>
-                                                    {expenseCategories.map(ec => (
-                                                        <option key={ec.id} value={ec.id}>{ec.name}</option>
+                                                    {expenseCategoryOptions.map(({ category, label }) => (
+                                                        <option key={category.id} value={category.id}>{label}</option>
+                                                    ))}
+                                                </SelectField>
+                                            )}
+                                            {selectedMainExpenseCategory && (
+                                                <p className="text-[11px] font-bold text-ink-muted uppercase tracking-wider -mt-1">
+                                                    Main Category: <span className="text-ink-subtle normal-case">{selectedMainExpenseCategory.name}</span>
+                                                </p>
+                                            )}
+                                            {forms.cash_out.category === 'expense' && isActiveExpenseFoodRelated && suppliers.length > 0 && (
+                                                <SelectField
+                                                    label="Supplier"
+                                                    value={forms.cash_out.supplier_id}
+                                                    onChange={e => updateForm('cash_out', 'supplier_id', e.target.value)}
+                                                    searchable
+                                                >
+                                                    <option value="">Select supplier...</option>
+                                                    {suppliers.map(s => (
+                                                        <option key={s.id} value={s.id}>{s.name}</option>
                                                     ))}
                                                 </SelectField>
                                             )}
@@ -603,6 +722,63 @@ export default function ManualEntryClient({
                                                     <option key={ba.id} value={ba.name}>{ba.name}</option>
                                                 ))}
                                             </SelectField>
+                                            {forms.bank_transaction.transaction_type === 'withdrawal' && (
+                                                <SelectField
+                                                    label="Category"
+                                                    value={forms.bank_transaction.category}
+                                                    onChange={e => updateForm('bank_transaction', 'category', e.target.value)}
+                                                >
+                                                    <option value="expense">Expense</option>
+                                                    <option value="salary">Salary / Wage</option>
+                                                    <option value="advance">Advance</option>
+                                                    <option value="refund">Refund</option>
+                                                    <option value="other">Other</option>
+                                                </SelectField>
+                                            )}
+                                            {forms.bank_transaction.transaction_type === 'withdrawal' && forms.bank_transaction.category === 'salary' && staffList.length > 0 && (
+                                                <SelectField
+                                                    label="Staff Member"
+                                                    value={forms.bank_transaction.staff_id}
+                                                    onChange={e => updateForm('bank_transaction', 'staff_id', e.target.value)}
+                                                    searchable
+                                                >
+                                                    <option value="">Select staff member...</option>
+                                                    {staffList.map(s => (
+                                                        <option key={s.id} value={s.id}>{s.full_name}</option>
+                                                    ))}
+                                                </SelectField>
+                                            )}
+                                            {forms.bank_transaction.transaction_type === 'withdrawal' && forms.bank_transaction.category === 'expense' && expenseCategories.length > 0 && (
+                                                <SelectField
+                                                    label="Expense Category"
+                                                    value={forms.bank_transaction.expense_category_id}
+                                                    onChange={e => updateForm('bank_transaction', 'expense_category_id', e.target.value)}
+                                                    searchable
+                                                >
+                                                    <option value="">Select category...</option>
+                                                    {expenseCategoryOptions.map(({ category, label }) => (
+                                                        <option key={category.id} value={category.id}>{label}</option>
+                                                    ))}
+                                                </SelectField>
+                                            )}
+                                            {selectedMainExpenseCategory && (
+                                                <p className="text-[11px] font-bold text-ink-muted uppercase tracking-wider -mt-1">
+                                                    Main Category: <span className="text-ink-subtle normal-case">{selectedMainExpenseCategory.name}</span>
+                                                </p>
+                                            )}
+                                            {forms.bank_transaction.transaction_type === 'withdrawal' && forms.bank_transaction.category === 'expense' && isActiveExpenseFoodRelated && suppliers.length > 0 && (
+                                                <SelectField
+                                                    label="Supplier"
+                                                    value={forms.bank_transaction.supplier_id}
+                                                    onChange={e => updateForm('bank_transaction', 'supplier_id', e.target.value)}
+                                                    searchable
+                                                >
+                                                    <option value="">Select supplier...</option>
+                                                    {suppliers.map(s => (
+                                                        <option key={s.id} value={s.id}>{s.name}</option>
+                                                    ))}
+                                                </SelectField>
+                                            )}
                                             <InputField
                                                 label="Amount (Rs.)"
                                                 type="number"

@@ -11,7 +11,7 @@ async function requireFinanceManager() {
 const PATH = '/admin/finance/expenses'
 
 // ── Expense Categories ───────────────────────────────────────
-export async function createExpenseCategoryAction(input: { name: string; description?: string }) {
+export async function createExpenseCategoryAction(input: { name: string; description?: string; parent_id?: string | null }) {
     let user
     try { user = await requireFinanceManager() } catch { return { error: 'You are not authorized to manage expense categories.' } }
     const name = input.name?.trim()
@@ -20,7 +20,13 @@ export async function createExpenseCategoryAction(input: { name: string; descrip
     const supabase = await createAdminClient()
     const { data, error } = await supabase
         .from('expense_categories')
-        .insert({ name, description: input.description?.trim() || null, restaurant_id: user.restaurantId, created_by: user.id })
+        .insert({
+            name,
+            description: input.description?.trim() || null,
+            parent_id: input.parent_id || null,
+            restaurant_id: user.restaurantId,
+            created_by: user.id,
+        })
         .select()
         .single()
     if (error) return { error: error.message }
@@ -28,7 +34,7 @@ export async function createExpenseCategoryAction(input: { name: string; descrip
     return { data }
 }
 
-export async function updateExpenseCategoryAction(id: string, updates: { name?: string; description?: string; is_active?: boolean }) {
+export async function updateExpenseCategoryAction(id: string, updates: { name?: string; description?: string; is_active?: boolean; parent_id?: string | null }) {
     let user
     try { user = await requireFinanceManager() } catch { return { error: 'You are not authorized to manage expense categories.' } }
     const supabase = await createAdminClient()

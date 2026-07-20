@@ -1169,6 +1169,8 @@ export interface ExpenseCategory {
     description: string | null
     is_active: boolean
     is_stock_category: boolean
+    /** Main category this one nests under, or null for a top-level/main category. One level deep. */
+    parent_id: string | null
     created_by: string | null
     created_at: string
 }

@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useMemo } from 'react'
 import {
     TrendingUp, TrendingDown, Plus, X, Loader2,
     Wallet, Lock, Trash2, CalendarDays, CheckCircle2, AlertCircle,
     Download, Printer
 } from 'lucide-react'
-import type { BankAccount, DayBookSession, DayBookEntry, DayBookEntryCategory, ExpenseCategory } from '@/types/database'
+import type { BankAccount, DayBookSession, DayBookEntry, DayBookEntryCategory, ExpenseCategory, Supplier } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
 import { downloadCsv } from '@/lib/exportCsv'
@@ -14,6 +14,7 @@ import PrintableReport, { type PrintableReportHandle } from '@/components/admin/
 import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { toNepaliDate } from '@/lib/nepaliDate'
 import { useConfirmStore } from '@/lib/stores/confirm'
+import { orderCategoriesForDisplay, findMainCategory, buildDescriptionWithName } from '@/lib/utils'
 import Select from '@/components/ui/Select'
 
 interface CashBookClientProps {
@@ -30,6 +31,8 @@ interface CashBookClientProps {
     previousClosingBankBalance: number
     expenseCategories: ExpenseCategory[]
     bankAccounts: BankAccount[]
+    staffList: { id: string; full_name: string }[]
+    suppliers: Supplier[]
 }
 
 const OTHERS_BANK_VALUE = '__others__'
@@ -106,6 +109,8 @@ export default function CashBookClient({
     previousClosingBankBalance,
     expenseCategories,
     bankAccounts,
+    staffList,
+    suppliers,
 }: CashBookClientProps) {
     const { confirm } = useConfirmStore()
     const [session, setSession]   = useState<DayBookSession | null>(initialSession)
@@ -113,6 +118,7 @@ export default function CashBookClient({
     const [totals, setTotals]     = useState(initialTotals)
     const [isOtherBank, setIsOtherBank] = useState(false)
     const [ledgerTab, setLedgerTab] = useState<'cash_in' | 'cash_out'>('cash_in')
+    const expenseCategoryOptions = useMemo(() => orderCategoriesForDisplay(expenseCategories), [expenseCategories])
 
     const printRef = useRef<PrintableReportHandle>(null)
     const reportColumns = [
@@ -139,10 +145,18 @@ export default function CashBookClient({
     const [isSubmittingOpen, setIsSubmittingOpen] = useState(false)
 
     // Add Entry modal
-    const EMPTY_ENTRY_FORM = { amount: '', description: '', category: 'other' as DayBookEntryCategory, bank_name: '', expense_category_id: '' }
+    const EMPTY_ENTRY_FORM = { amount: '', description: '', category: 'other' as DayBookEntryCategory, bank_name: '', expense_category_id: '', staff_id: '', supplier_id: '' }
     const [entryModal, setEntryModal] = useState<{ type: 'cash_in' | 'cash_out' } | null>(null)
     const [entryForm, setEntryForm]   = useState(EMPTY_ENTRY_FORM)
     const [isSubmittingEntry, setIsSubmittingEntry] = useState(false)
+    // Auto-identifies the main category once a subcategory is picked.
+    const selectedMainExpenseCategory = useMemo(
+        () => findMainCategory(expenseCategories, entryForm.expense_category_id),
+        [expenseCategories, entryForm.expense_category_id],
+    )
+    // is_stock_category covers the food/beverage/supply groups — used as the
+    // "food related" signal for offering a Supplier picker on an expense entry.
+    const isEntryExpenseFoodRelated = expenseCategories.find(c => c.id === entryForm.expense_category_id)?.is_stock_category ?? false
 
     // Reset on open so a Cash Out-only category (e.g. 'expense') left behind by
     // a cancelled entry can't be submitted against a Cash In.
@@ -214,6 +228,18 @@ export default function CashBookClient({
             return
         }
 
+        const isCashOut = entryModal.type === 'cash_out'
+        const staffName = isCashOut && entryForm.category === 'salary'
+            ? staffList.find(s => s.id === entryForm.staff_id)?.full_name
+            : undefined
+        const supplierName = isCashOut && entryForm.category === 'expense'
+            ? suppliers.find(s => s.id === entryForm.supplier_id)?.name
+            : undefined
+        const finalDescription = buildDescriptionWithName(
+            buildDescriptionWithName(entryForm.description.trim(), 'Staff', staffName),
+            'Supplier', supplierName,
+        )
+
         setIsSubmittingEntry(true)
         try {
             const res = await fetch('/api/day-book/entries', {
@@ -223,7 +249,7 @@ export default function CashBookClient({
                     session_id: session.id,
                     type: entryModal.type,
                     amount,
-                    description: entryForm.description.trim(),
+                    description: finalDescription,
                     category: entryForm.category,
                     bank_name: (entryForm.category === 'bank_deposit') ? entryForm.bank_name.trim() : null,
                     expense_category_id: (entryForm.category === 'expense') ? entryForm.expense_category_id : undefined,
@@ -271,7 +297,7 @@ export default function CashBookClient({
             setEntries(updated)
             recalc(updated, session.opening_balance)
             setEntryModal(null)
-            setEntryForm({ amount: '', description: '', category: 'other', bank_name: '', expense_category_id: '' })
+            setEntryForm(EMPTY_ENTRY_FORM)
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : 'Failed to add entry'
             toast.error(errMsg)
@@ -733,6 +759,23 @@ export default function CashBookClient({
                                 </Select>
                             </div>
 
+                            {entryModal.type === 'cash_out' && entryForm.category === 'salary' && staffList.length > 0 && (
+                                <div>
+                                    <label className="block text-small font-bold text-ink mb-1.5">Staff Member</label>
+                                    <Select
+                                        value={entryForm.staff_id}
+                                        onChange={e => setEntryForm(prev => ({ ...prev, staff_id: e.target.value }))}
+                                        searchable
+                                        className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
+                                    >
+                                        <option value="">Select staff member...</option>
+                                        {staffList.map(s => (
+                                            <option key={s.id} value={s.id}>{s.full_name}</option>
+                                        ))}
+                                    </Select>
+                                </div>
+                            )}
+
                             {entryForm.category === 'bank_deposit' && (
                                 <div>
                                     <label className="block text-small font-bold text-ink mb-1.5">Bank Name</label>
@@ -783,18 +826,41 @@ export default function CashBookClient({
                                     <Select
                                         value={entryForm.expense_category_id}
                                         onChange={e => setEntryForm(prev => ({ ...prev, expense_category_id: e.target.value }))}
+                                        searchable
                                         className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                     >
                                         <option value="">Select category...</option>
-                                        {expenseCategories.map(c => (
-                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                        {expenseCategoryOptions.map(({ category, label }) => (
+                                            <option key={category.id} value={category.id}>{label}</option>
                                         ))}
                                     </Select>
+                                    {selectedMainExpenseCategory && (
+                                        <span className="text-[11px] font-bold text-ink-muted uppercase tracking-wider mt-1 block">
+                                            Main Category: <span className="text-ink-subtle normal-case">{selectedMainExpenseCategory.name}</span>
+                                        </span>
+                                    )}
                                     {expenseCategories.length === 0 && (
                                         <span className="text-[11px] text-ink-subtle font-semibold mt-1 block">
                                             No expense categories yet — add one from Income &amp; Expenses.
                                         </span>
                                     )}
+                                </div>
+                            )}
+
+                            {entryForm.category === 'expense' && isEntryExpenseFoodRelated && suppliers.length > 0 && (
+                                <div>
+                                    <label className="block text-small font-bold text-ink mb-1.5">Supplier</label>
+                                    <Select
+                                        value={entryForm.supplier_id}
+                                        onChange={e => setEntryForm(prev => ({ ...prev, supplier_id: e.target.value }))}
+                                        searchable
+                                        className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
+                                    >
+                                        <option value="">Select supplier...</option>
+                                        {suppliers.map(s => (
+                                            <option key={s.id} value={s.id}>{s.name}</option>
+                                        ))}
+                                    </Select>
                                 </div>
                             )}
 

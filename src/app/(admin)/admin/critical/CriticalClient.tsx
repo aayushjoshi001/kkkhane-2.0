@@ -9,6 +9,7 @@ import { createSupplierBillAction } from '@/app/(admin)/admin/suppliers/actions'
 import { approveChequeAction, rejectChequeAction } from '@/app/(admin)/admin/vouchers/actions'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
+import { UNSPECIFIED_SUPPLIER_NAME, OTHERS_SUPPLIER_ID } from '@/components/admin/SupplierPaymentFields'
 
 interface Ingredient {
     id: string
@@ -196,7 +197,9 @@ export default function CriticalClient({
 
             // 2. Post supplier bill automatically (prevents double entry)
             const supplier = suppliers.find(s => s.id === selectedSupplierId)
-            const supplierName = supplier?.name || purchasingItem.supplier || 'Unspecified Supplier'
+            const supplierName = selectedSupplierId === OTHERS_SUPPLIER_ID
+                ? UNSPECIFIED_SUPPLIER_NAME
+                : supplier?.name || purchasingItem.supplier || UNSPECIFIED_SUPPLIER_NAME
             const categoryId = purchasingItem.category_id || categories.find(c => c.is_stock_category)?.id || ''
 
             const billRes = await createSupplierBillAction({
@@ -508,6 +511,7 @@ export default function CriticalClient({
                                 >
                                     <option value="">Select Supplier...</option>
                                     {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                    <option value={OTHERS_SUPPLIER_ID}>Others (unauthorized / unregistered)</option>
                                 </Select>
                             </div>
 

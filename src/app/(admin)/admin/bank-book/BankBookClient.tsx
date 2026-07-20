@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useMemo } from 'react'
 import { createBankAccountAction } from './actions'
 import {
     TrendingUp, TrendingDown, Plus, X, Loader2,
@@ -15,6 +15,7 @@ import PrintableReport, { type PrintableReportHandle } from '@/components/admin/
 import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { toNepaliDate } from '@/lib/nepaliDate'
 import { useConfirmStore } from '@/lib/stores/confirm'
+import { orderCategoriesForDisplay, findMainCategory } from '@/lib/utils'
 import Select from '@/components/ui/Select'
 
 interface BankBookClientProps {
@@ -107,6 +108,7 @@ export default function BankBookClient({
     const [entries, setEntries]   = useState<DayBookEntry[]>(initialEntries)
     const [totals, setTotals]     = useState(initialTotals)
     const [bankAccountsList, setBankAccountsList] = useState(bankAccounts)
+    const expenseCategoryOptions = useMemo(() => orderCategoriesForDisplay(expenseCategories), [expenseCategories])
 
     const printRef = useRef<PrintableReportHandle>(null)
     const reportColumns = [
@@ -146,6 +148,11 @@ export default function BankBookClient({
     const EMPTY_ENTRY_FORM = { amount: '', description: '', category: 'transfer' as DayBookEntryCategory, bank_name: '', expense_category_id: '' }
     const [entryModal, setEntryModal] = useState<{ type: 'bank_in' | 'bank_out' } | null>(null)
     const [entryForm, setEntryForm]   = useState(EMPTY_ENTRY_FORM)
+    // Auto-identifies the main category once a subcategory is picked.
+    const selectedMainExpenseCategory = useMemo(
+        () => findMainCategory(expenseCategories, entryForm.expense_category_id),
+        [expenseCategories, entryForm.expense_category_id],
+    )
 
     // Reset on open so a Bank Out-only category ('expense', 'withdrawal') left
     // behind by a cancelled entry can't be submitted against a Bank In.
@@ -782,13 +789,19 @@ export default function BankBookClient({
                                     <Select
                                         value={entryForm.expense_category_id}
                                         onChange={e => setEntryForm(prev => ({ ...prev, expense_category_id: e.target.value }))}
+                                        searchable
                                         className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                     >
                                         <option value="">Select category...</option>
-                                        {expenseCategories.map(c => (
-                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                        {expenseCategoryOptions.map(({ category, label }) => (
+                                            <option key={category.id} value={category.id}>{label}</option>
                                         ))}
                                     </Select>
+                                    {selectedMainExpenseCategory && (
+                                        <span className="text-[11px] font-bold text-ink-muted uppercase tracking-wider mt-1 block">
+                                            Main Category: <span className="text-ink-subtle normal-case">{selectedMainExpenseCategory.name}</span>
+                                        </span>
+                                    )}
                                     {expenseCategories.length === 0 && (
                                         <span className="text-[11px] text-ink-subtle font-semibold mt-1 block">
                                             No expense categories yet — add one from Income &amp; Expenses.

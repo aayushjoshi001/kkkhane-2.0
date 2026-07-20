@@ -64,6 +64,7 @@ export interface FormSelectProps {
     className?: string
     disabled?: boolean
     required?: boolean
+    searchable?: boolean
 }
 
 export function FormSelect({ label, error, hint, required, className, children, ...props }: FormSelectProps) {

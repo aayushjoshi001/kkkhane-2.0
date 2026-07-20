@@ -20,10 +20,18 @@ export const EMPTY_SUPPLIER_PAYMENT: SupplierPaymentValue = {
 }
 
 // Used as the bill's vendor_name whenever a purchase is logged with no named
-// supplier attached — lets a manager still track a purchase's total, payment,
-// and any due balance purely for their own records, without being forced to
-// register a formal supplier first.
-export const UNSPECIFIED_SUPPLIER_NAME = 'Unspecified Supplier'
+// supplier attached (e.g. bought from an unauthorized/unregistered vendor) —
+// lets a manager still track a purchase's total, payment, and any due balance
+// purely for their own records, without being forced to register a formal
+// supplier first. Purchases under this name are grouped together as "Others"
+// in the Suppliers Ledger.
+export const UNSPECIFIED_SUPPLIER_NAME = 'Others'
+
+// Sentinel supplier_id for "Others" options in ID-based supplier dropdowns
+// (the picker holds a real Supplier's id, not its name). Never a real UUID,
+// so it can't collide with an actual supplier's id — resolve it back to
+// UNSPECIFIED_SUPPLIER_NAME before billing.
+export const OTHERS_SUPPLIER_ID = '__others__'
 
 // Client-side mirror of the server-side check in suppliers/actions.ts, so the
 // form can flag a bad split before round-tripping to the server.

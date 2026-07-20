@@ -9,7 +9,7 @@
 // existing `e => setX(e.target.value)` handlers work unmodified.
 
 import { useEffect, useRef, useState, Children, isValidElement, type ReactNode } from 'react'
-import { ChevronDown, Check } from 'lucide-react'
+import { ChevronDown, Check, Search } from 'lucide-react'
 
 interface SelectChangeEvent {
     target: { value: string }
@@ -51,6 +51,7 @@ export default function Select({
     className = '',
     disabled = false,
     id,
+    searchable = false,
     'aria-label': ariaLabel,
 }: {
     value: string
@@ -63,15 +64,25 @@ export default function Select({
     name?: string
     autoFocus?: boolean
     title?: string
+    /** Adds a type-to-filter search box at the top of the open list — for
+     *  dropdowns with enough options that scanning them all isn't practical
+     *  (e.g. a category picker with 50+ entries). */
+    searchable?: boolean
     'aria-label'?: string
 }) {
     const [open, setOpen] = useState(false)
+    const [query, setQuery] = useState('')
     const ref = useRef<HTMLDivElement>(null)
+    const searchRef = useRef<HTMLInputElement>(null)
     const options = extractOptions(children)
     const selected = options.find(o => o.value === value)
+    const visibleOptions = searchable && query.trim()
+        ? options.filter(o => o.label.toLowerCase().includes(query.trim().toLowerCase()))
+        : options
 
     useEffect(() => {
         if (!open) return
+        if (searchable) searchRef.current?.focus()
         function onDocClick(e: MouseEvent) {
             if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
         }
@@ -84,6 +95,10 @@ export default function Select({
             document.removeEventListener('mousedown', onDocClick)
             document.removeEventListener('keydown', onKey)
         }
+    }, [open, searchable])
+
+    useEffect(() => {
+        if (!open) setQuery('')
     }, [open])
 
     return (
@@ -104,30 +119,44 @@ export default function Select({
                 <ChevronDown size={16} className={`text-ink-subtle shrink-0 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
             </button>
             {open && (
-                <div
-                    role="listbox"
-                    className="absolute z-50 mt-1.5 w-full max-h-64 overflow-y-auto bg-surface border border-hairline rounded-[var(--r-md)] shadow-2xl py-1.5 animate-in fade-in zoom-in-95 duration-150"
-                >
-                    {options.map((opt, i) => (
-                        <button
-                            key={`${opt.value}-${i}`}
-                            type="button"
-                            role="option"
-                            aria-selected={opt.value === value}
-                            disabled={opt.disabled}
-                            onClick={() => {
-                                if (opt.disabled) return
-                                onChange({ target: { value: opt.value } })
-                                setOpen(false)
-                            }}
-                            className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-sm text-left transition-colors ${
-                                opt.value === value ? 'bg-brand-50 text-brand-700 font-bold' : 'text-ink hover:bg-surface-muted font-semibold'
-                            } disabled:opacity-40 disabled:cursor-not-allowed`}
-                        >
-                            <span className="truncate">{opt.label}</span>
-                            {opt.value === value && <Check size={14} className="text-brand-500 shrink-0" />}
-                        </button>
-                    ))}
+                <div className="absolute z-50 mt-1.5 w-full bg-surface border border-hairline rounded-[var(--r-md)] shadow-2xl animate-in fade-in zoom-in-95 duration-150 overflow-hidden">
+                    {searchable && (
+                        <div className="flex items-center gap-2 px-3 py-2 border-b border-hairline">
+                            <Search size={14} className="text-ink-subtle shrink-0" />
+                            <input
+                                ref={searchRef}
+                                type="text"
+                                value={query}
+                                onChange={e => setQuery(e.target.value)}
+                                placeholder="Search..."
+                                className="w-full bg-transparent text-sm font-semibold text-ink placeholder:text-ink-muted placeholder:font-normal focus:outline-none"
+                            />
+                        </div>
+                    )}
+                    <div role="listbox" className="max-h-64 overflow-y-auto py-1.5">
+                        {visibleOptions.length === 0 ? (
+                            <p className="px-3.5 py-2.5 text-sm text-ink-subtle">No matches</p>
+                        ) : visibleOptions.map((opt, i) => (
+                            <button
+                                key={`${opt.value}-${i}`}
+                                type="button"
+                                role="option"
+                                aria-selected={opt.value === value}
+                                disabled={opt.disabled}
+                                onClick={() => {
+                                    if (opt.disabled) return
+                                    onChange({ target: { value: opt.value } })
+                                    setOpen(false)
+                                }}
+                                className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-sm text-left transition-colors ${
+                                    opt.value === value ? 'bg-brand-50 text-brand-700 font-bold' : 'text-ink hover:bg-surface-muted font-semibold'
+                                } disabled:opacity-40 disabled:cursor-not-allowed`}
+                            >
+                                <span className="truncate">{opt.label}</span>
+                                {opt.value === value && <Check size={14} className="text-brand-500 shrink-0" />}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             )}
         </div>

@@ -1,12 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Plus, Trash2, Receipt } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { DataTable, FormModal, FormInput, FormSelect, FormTextarea, SectionTabs, type SectionTab } from '@/components/finance'
 import Button from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
-import { formatCurrency, parseExpenseDescription } from '@/lib/utils'
+import { formatCurrency, parseExpenseDescription, orderCategoriesForDisplay } from '@/lib/utils'
 import type { Expense, ExpenseCategory, RecurrenceInterval } from '@/types/database'
 import {
     createExpenseCategoryAction, updateExpenseCategoryAction, deleteExpenseCategoryAction,
@@ -45,18 +45,25 @@ function CategoriesTab({ categories, setCategories }: { categories: ExpenseCateg
     const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
-    const [form, setForm] = useState({ name: '', description: '' })
+    const [form, setForm] = useState({ name: '', description: '', parent_id: '' })
+
+    const orderedCategories = useMemo(() => orderCategoriesForDisplay(categories), [categories])
+    const labelById = useMemo(() => new Map(orderedCategories.map(o => [o.category.id, o.label])), [orderedCategories])
+    // Any category with no parent can itself be a parent — offered when
+    // creating a new one, so e.g. a fresh "Grains" nests under "Grocery"
+    // instead of only ever landing as another flat top-level entry.
+    const mainCategories = useMemo(() => categories.filter((c) => !c.parent_id), [categories])
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
         setSaving(true)
-        const result = await createExpenseCategoryAction(form)
+        const result = await createExpenseCategoryAction({ ...form, parent_id: form.parent_id || undefined })
         setSaving(false)
         if (result.error) { toast.error(result.error); return }
         setCategories((prev) => [result.data as ExpenseCategory, ...prev])
         toast.success('Expense category created')
         setOpen(false)
-        setForm({ name: '', description: '' })
+        setForm({ name: '', description: '', parent_id: '' })
     }
 
     async function toggleActive(c: ExpenseCategory) {
@@ -81,11 +88,11 @@ function CategoriesTab({ categories, setCategories }: { categories: ExpenseCateg
             </div>
             <DataTable
                 columns={[
-                    { key: 'name', header: 'Name', render: (c) => <span className="font-bold text-ink">{c.name}</span> },
+                    { key: 'name', header: 'Name', render: (c) => <span className="font-bold text-ink">{labelById.get(c.id) || c.name}</span> },
                     { key: 'description', header: 'Description', render: (c) => c.description || <span className="text-ink-subtle">—</span> },
                     { key: 'status', header: 'Status', render: (c) => <StatusBadge status={c.is_active ? 'active' : 'closed'} label={c.is_active ? 'Active' : 'Inactive'} /> },
                 ]}
-                rows={categories}
+                rows={orderedCategories.map((o) => o.category)}
                 rowKey={(c) => c.id}
                 searchKeys={(c) => [c.name]}
                 emptyIcon={Receipt}
@@ -101,6 +108,16 @@ function CategoriesTab({ categories, setCategories }: { categories: ExpenseCateg
             <FormModal open={open} onClose={() => setOpen(false)} title="New Expense Category" onSubmit={handleSubmit} submitting={saving}>
                 <FormInput label="Name" required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Electricity" />
                 <FormTextarea label="Description" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+                <FormSelect
+                    label="Parent Category"
+                    hint='Pick a main category to nest this as a subcategory, e.g. "Electricity" under "Utilities". Leave blank for a top-level category.'
+                    value={form.parent_id}
+                    onChange={(e) => setForm((f) => ({ ...f, parent_id: e.target.value }))}
+                    searchable
+                >
+                    <option value="">None — top-level</option>
+                    {mainCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </FormSelect>
             </FormModal>
         </div>
     )
@@ -119,6 +136,7 @@ function ExpensesTab({
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ category_id: '', amount: '', description: '', vendor_name: '', is_recurring: false, recurrence_interval: 'monthly' as RecurrenceInterval })
+    const categoryOptions = useMemo(() => orderCategoriesForDisplay(categories), [categories])
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
@@ -197,9 +215,9 @@ function ExpensesTab({
                 )}
             />
             <FormModal open={open} onClose={() => setOpen(false)} title="New Expense" onSubmit={handleSubmit} submitting={saving}>
-                <FormSelect label="Category" required value={form.category_id} onChange={(e) => setForm((f) => ({ ...f, category_id: e.target.value }))}>
+                <FormSelect label="Category" required searchable value={form.category_id} onChange={(e) => setForm((f) => ({ ...f, category_id: e.target.value }))}>
                     <option value="">Select a category</option>
-                    {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {categoryOptions.map(({ category, label }) => <option key={category.id} value={category.id}>{label}</option>)}
                 </FormSelect>
                 <FormInput label="Amount" type="number" min="0.01" step="0.01" required value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
                 <FormInput label="Description" required value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />

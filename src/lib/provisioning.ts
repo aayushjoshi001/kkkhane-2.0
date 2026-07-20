@@ -93,33 +93,56 @@ const SAMPLE_MENU: Array<{ category: string; station?: StationKind; items: Array
     },
 ]
 
-/** Default expense categories covering common restaurant + hotel operating costs. */
-const DEFAULT_EXPENSE_CATEGORIES: string[] = [
-    'Food & Beverage Purchases',
-    'Kitchen Supplies & Equipment',
-    'Packaging & Takeaway Supplies',
-    'Housekeeping & Guest Supplies',
-    'Laundry Services',
-    'Staff Salaries & Wages',
-    'Staff Meals & Welfare',
-    'Rent / Lease',
-    'Electricity',
-    'Water',
-    'Gas / LPG',
-    'Internet & Telephone',
-    'Repairs & Maintenance',
-    'Equipment & Furniture',
-    'Marketing & Advertising',
-    'Licenses & Permits',
-    'Insurance',
-    'Bank Charges & Fees',
-    'Transportation & Fuel',
-    'Cleaning & Sanitation Supplies',
-    'Office & Administrative Supplies',
-    'Professional Fees (Legal/Accounting)',
-    'Taxes & Government Fees',
-    'Commission & Online Delivery Fees',
-    'Miscellaneous / Other',
+/** A main category with its default subcategories — one level of grouping on
+ *  the shared expense_categories table (main has parent_id null, subs point
+ *  back at it). `isStock` marks both the main and its subs as relevant to the
+ *  Ingredients/Stock category picker, not just general Expense tracking. */
+interface DefaultCategoryGroup {
+    main: string
+    isStock?: boolean
+    subs: string[]
+}
+
+/** Default category tree covering common restaurant + hotel operating costs
+ *  and ingredient/supply groups. Grouped so the Categories UI reads as
+ *  "Grocery > Vegetables, Fruits, ..." instead of one long flat list. */
+const DEFAULT_CATEGORY_GROUPS: DefaultCategoryGroup[] = [
+    {
+        main: 'Grocery',
+        isStock: true,
+        subs: [
+            'Vegetables', 'Fruits', 'Dairy & Eggs', 'Meat & Poultry', 'Seafood & Fish',
+            'Grains, Rice & Cereals', 'Pulses & Lentils', 'Spices & Condiments', 'Oils & Ghee',
+            'Bakery & Bread', 'Frozen Foods', 'Sauces & Marinades', 'Dry Goods & Packaged Foods',
+            'Confectionery & Desserts',
+        ],
+    },
+    { main: 'Beverages', isStock: true, subs: ['Beverages (Non-Alcoholic)', 'Alcoholic Beverages'] },
+    {
+        main: 'Supplies',
+        isStock: true,
+        subs: ['Cleaning & Sanitation Supplies', 'Kitchen Supplies & Equipment', 'Packaging & Disposables', 'Housekeeping & Guest Supplies'],
+    },
+    { main: 'Utilities', subs: ['Electricity', 'Water', 'Gas / LPG', 'Internet & Telephone'] },
+    { main: 'Staff & Payroll', subs: ['Staff Salaries & Wages', 'Staff Meals & Welfare'] },
+    { main: 'Property & Facilities', subs: ['Rent / Lease', 'Repairs & Maintenance', 'Equipment & Furniture'] },
+    { main: 'Operations', subs: ['Laundry Services', 'Transportation & Fuel'] },
+    {
+        main: 'Admin & Compliance',
+        subs: [
+            'Licenses & Permits', 'Insurance', 'Bank Charges & Fees',
+            'Professional Fees (Legal/Accounting)', 'Taxes & Government Fees', 'Office & Administrative Supplies',
+        ],
+    },
+    { main: 'Sales & Marketing', subs: ['Marketing & Advertising', 'Commission & Online Delivery Fees'] },
+]
+
+/** Standalone categories with no natural parent group — stay top-level. */
+const DEFAULT_UNGROUPED_CATEGORIES: { name: string; isStock?: boolean }[] = [
+    { name: 'Food & Beverage Purchases' },
+    { name: 'Packaging & Takeaway Supplies' },
+    { name: 'Miscellaneous / Other' },
+    { name: 'Others', isStock: true },
 ]
 
 export async function provisionRestaurant(input: ProvisionInput): Promise<ProvisionResult> {
@@ -263,15 +286,41 @@ async function seedStarterData(
         }))
         : []
 
-    const expenseCategoryRows = DEFAULT_EXPENSE_CATEGORIES.map(name => ({
+    // Main categories (e.g. "Grocery") must exist before their subcategories can
+    // point parent_id at them, so insert those first and capture their ids.
+    const mainRows = DEFAULT_CATEGORY_GROUPS.map(g => ({
         restaurant_id: restaurantId,
-        name,
+        name: g.main,
+        is_stock_category: !!g.isStock,
+    }))
+    const { data: insertedMains, error: mainCatError } = await supabase
+        .from('expense_categories')
+        .insert(mainRows)
+        .select('id, name')
+    if (mainCatError) throw new Error(`Seed main categories failed: ${mainCatError.message}`)
+
+    const mainIdByName = new Map<string, string>(
+        (insertedMains || []).map(c => [c.name as string, c.id as string]),
+    )
+
+    const subCategoryRows = DEFAULT_CATEGORY_GROUPS.flatMap(g =>
+        g.subs.map(name => ({
+            restaurant_id: restaurantId,
+            name,
+            is_stock_category: !!g.isStock,
+            parent_id: mainIdByName.get(g.main) ?? null,
+        })),
+    )
+    const ungroupedCategoryRows = DEFAULT_UNGROUPED_CATEGORIES.map(u => ({
+        restaurant_id: restaurantId,
+        name: u.name,
+        is_stock_category: !!u.isStock,
     }))
 
     const [{ error: itemError }, tableRes, expenseCatRes] = await Promise.all([
         supabase.from('menu_items').insert(itemRows),
         tableRows.length ? supabase.from('tables').insert(tableRows) : Promise.resolve({ error: null }),
-        supabase.from('expense_categories').insert(expenseCategoryRows),
+        supabase.from('expense_categories').insert([...subCategoryRows, ...ungroupedCategoryRows]),
     ])
     if (itemError) throw new Error(`Seed menu items failed: ${itemError.message}`)
     if (tableRes.error) throw new Error(`Seed tables failed: ${tableRes.error.message}`)

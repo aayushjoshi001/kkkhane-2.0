@@ -4,15 +4,15 @@ import { useState, useMemo, Fragment } from 'react'
 import Modal from '@/components/ui/Modal'
 import { createIngredientAction, addStockMovementAction, deleteIngredientAction, updateIngredientAction, createIngredientCategoryAction, createIngredientSupplierAction } from './actions'
 import { createSupplierBillAction } from '../suppliers/actions'
-import { Plus, Trash2, Edit2, AlertTriangle, Package, X, Check, Loader2 } from 'lucide-react'
+import { Plus, Trash2, Edit2, AlertTriangle, Package, PackagePlus, X, Check, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import useSWR from 'swr'
 import type { Ingredient, ExpenseCategory, Supplier, BankAccount } from '@/types/database'
 import { fetchIngredientsData } from '@/lib/swr-fetchers'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, orderCategoriesForDisplay, findMainCategory } from '@/lib/utils'
 import SupplierPaymentFields, {
     EMPTY_SUPPLIER_PAYMENT, validateSupplierPayment, isUnderpaidSplit, underpaidSplitConfirmMessage,
-    UNSPECIFIED_SUPPLIER_NAME, type SupplierPaymentValue
+    UNSPECIFIED_SUPPLIER_NAME, OTHERS_SUPPLIER_ID, type SupplierPaymentValue
 } from '@/components/admin/SupplierPaymentFields'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
@@ -45,6 +45,8 @@ export default function IngredientsManager({
     const [showAdd, setShowAdd] = useState(false)
     const [editingItem, setEditingItem] = useState<Ingredient | null>(null)
     const [stockModal, setStockModal] = useState<Ingredient | null>(null)
+    const [showPicker, setShowPicker] = useState(false)
+    const [pickerIngredientId, setPickerIngredientId] = useState('')
     const [form, setForm] = useState({
         name: '', unit: 'kg', stock_quantity: '', reorder_level: '10', cost_per_unit: '', supplier: '', category_id: '',
     })
@@ -64,6 +66,7 @@ export default function IngredientsManager({
     const [showAddCategory, setShowAddCategory] = useState(false)
     const [newCategoryName, setNewCategoryName] = useState('')
     const [newCategoryDesc, setNewCategoryDesc] = useState('')
+    const [newCategoryParentId, setNewCategoryParentId] = useState('')
     const [addingCategory, setAddingCategory] = useState(false)
 
     // Inline Supplier form state
@@ -91,6 +94,8 @@ export default function IngredientsManager({
         setForm({ name: '', unit: 'kg', stock_quantity: '', reorder_level: '10', cost_per_unit: '', supplier: '', category_id: '' })
         setCreatePaidAmount('')
         setCreatePayment(EMPTY_SUPPLIER_PAYMENT)
+        resetInlineSupplierForm()
+        resetInlineCategoryForm()
     }
 
     async function handleCreateOrUpdate() {
@@ -181,6 +186,13 @@ export default function IngredientsManager({
         resetCreateForm()
     }
 
+    function resetInlineCategoryForm() {
+        setShowAddCategory(false)
+        setNewCategoryName('')
+        setNewCategoryDesc('')
+        setNewCategoryParentId('')
+    }
+
     async function handleInlineAddCategory(e: React.FormEvent) {
         e.preventDefault()
         const name = newCategoryName.trim()
@@ -189,7 +201,8 @@ export default function IngredientsManager({
         const result = await createIngredientCategoryAction({
             restaurant_id: restaurantId,
             name,
-            description: newCategoryDesc || undefined
+            description: newCategoryDesc || undefined,
+            parent_id: newCategoryParentId || undefined,
         })
         setAddingCategory(false)
         if (result.error) {
@@ -199,24 +212,33 @@ export default function IngredientsManager({
         if (result.data) {
             setCategories(prev => [...prev, result.data as ExpenseCategory])
             setForm(f => ({ ...f, category_id: result.data.id }))
-            setNewCategoryName('')
-            setNewCategoryDesc('')
-            setShowAddCategory(false)
+            resetInlineCategoryForm()
             toast.success('Category created inline!')
         }
+    }
+
+    function resetInlineSupplierForm() {
+        setShowAddSupplier(false)
+        setNewSupplierName('')
+        setNewSupplierPhone('')
+        setNewSupplierAddress('')
     }
 
     async function handleInlineAddSupplier(e: React.FormEvent) {
         e.preventDefault()
         const name = newSupplierName.trim()
         if (!name) return
+        // Same inline-add UI is shared by the Create/Edit modal (form.category_id)
+        // and the restock/"Add on Stock Item" modal (stockModal.category_id) —
+        // only one of those modals is ever open at a time.
+        const categoryId = stockModal ? stockModal.category_id : form.category_id
         setAddingSupplier(true)
         const result = await createIngredientSupplierAction({
             restaurant_id: restaurantId,
             name,
             phone: newSupplierPhone || undefined,
             address: newSupplierAddress || undefined,
-            category_id: form.category_id || null
+            category_id: categoryId || null
         })
         setAddingSupplier(false)
         if (result.error) {
@@ -224,12 +246,14 @@ export default function IngredientsManager({
             return
         }
         if (result.data) {
-            setSuppliers(prev => [...prev, result.data as Supplier])
-            setForm(f => ({ ...f, supplier: result.data.name }))
-            setNewSupplierName('')
-            setNewSupplierPhone('')
-            setNewSupplierAddress('')
-            setShowAddSupplier(false)
+            const newSupplier = result.data as Supplier
+            setSuppliers(prev => [...prev, newSupplier])
+            if (stockModal) {
+                setMoveForm(f => ({ ...f, supplier_id: newSupplier.id }))
+            } else {
+                setForm(f => ({ ...f, supplier: newSupplier.name }))
+            }
+            resetInlineSupplierForm()
             toast.success('Supplier created inline!')
         }
     }
@@ -265,6 +289,26 @@ export default function IngredientsManager({
         return categories.filter(c => c.is_stock_category || c.id === form.category_id)
     }, [categories, form.category_id])
 
+    const stockCategoryOptions = useMemo(
+        () => orderCategoriesForDisplay(stockRelevantCategories),
+        [stockRelevantCategories],
+    )
+
+    // Main (top-level) stock categories only — offered as the parent when
+    // creating a new one inline, so a manager can nest it (e.g. a new
+    // "Grains" subcategory under "Grocery") instead of only adding flat ones.
+    const stockMainCategories = useMemo(
+        () => categories.filter(c => c.is_stock_category && !c.parent_id),
+        [categories],
+    )
+
+    // Auto-identifies the main category once a subcategory is picked, e.g.
+    // selecting "Vegetables" surfaces "Grocery" automatically.
+    const selectedMainCategory = useMemo(
+        () => findMainCategory(categories, form.category_id),
+        [categories, form.category_id],
+    )
+
     const emptyMoveForm = {
         movement_type: 'purchase', quantity: '', rate: '', paid_amount: '', notes: '', supplier_id: ''
     }
@@ -291,6 +335,26 @@ export default function IngredientsManager({
         setStockModal(ing)
         setMoveForm({ ...emptyMoveForm, rate: ing.cost_per_unit ? ing.cost_per_unit.toString() : '' })
         setMovePayment(EMPTY_SUPPLIER_PAYMENT)
+    }
+
+    function closeStockModal() {
+        setStockModal(null)
+        setMoveForm(emptyMoveForm)
+        setMovePayment(EMPTY_SUPPLIER_PAYMENT)
+        resetInlineSupplierForm()
+    }
+
+    function openPicker() {
+        if (ingredients.length === 0) { toast.error('No stock items yet — create one first'); return }
+        setPickerIngredientId(ingredients[0].id)
+        setShowPicker(true)
+    }
+
+    function confirmPicker() {
+        const ing = ingredients.find(i => i.id === pickerIngredientId)
+        if (!ing) return
+        setShowPicker(false)
+        openStockModal(ing)
     }
 
     async function handleStockMove() {
@@ -332,7 +396,9 @@ export default function IngredientsManager({
         // it as full credit rather than skipping the financial record.
         if (willBill) {
             const selectedSupplier = suppliers.find(s => s.id === effectiveSupplierId)
-            const supplierName = selectedSupplier?.name || stockModal.supplier || UNSPECIFIED_SUPPLIER_NAME
+            const supplierName = effectiveSupplierId === OTHERS_SUPPLIER_ID
+                ? UNSPECIFIED_SUPPLIER_NAME
+                : selectedSupplier?.name || stockModal.supplier || UNSPECIFIED_SUPPLIER_NAME
 
             const billRes = await createSupplierBillAction({
                 supplier_name: supplierName,
@@ -360,9 +426,7 @@ export default function IngredientsManager({
             if (billRes.error) {
                 toast.error(`Stock updated, but the supplier bill wasn't recorded: ${billRes.error}`)
                 mutate()
-                setStockModal(null)
-                setMoveForm(emptyMoveForm)
-                setMovePayment(EMPTY_SUPPLIER_PAYMENT)
+                closeStockModal()
                 return
             }
             toast.success('Stock and supplier bill updated!')
@@ -373,9 +437,7 @@ export default function IngredientsManager({
         }
 
         mutate()
-        setStockModal(null)
-        setMoveForm(emptyMoveForm)
-        setMovePayment(EMPTY_SUPPLIER_PAYMENT)
+        closeStockModal()
     }
 
     async function handleDelete(id: string) {
@@ -406,11 +468,15 @@ export default function IngredientsManager({
                 </div>
             )}
 
-            {/* Header Action Button */}
-            <div className="flex justify-end items-center mb-6">
+            {/* Header Action Buttons */}
+            <div className="flex justify-end items-center gap-3 mb-6">
+                <button onClick={openPicker}
+                    className="flex items-center gap-2 bg-surface text-ink border border-hairline px-6 py-3 rounded-[var(--r-md)] text-sm font-bold shadow-sm hover:bg-surface-muted transition-all focus-ring">
+                    <Plus size={16} /> Add on Stock Item
+                </button>
                 <button onClick={() => { setEditingItem(null); setShowAdd(true); }}
                     className="flex items-center gap-2 bg-brand-500 text-white px-6 py-3 rounded-[var(--r-md)] text-sm font-bold shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all focus-ring">
-                    <Plus size={16} /> Add Stock Item
+                    <PackagePlus size={16} /> Create New Stock Item
                 </button>
             </div>
 
@@ -530,7 +596,7 @@ export default function IngredientsManager({
                                         <p className="text-[10px] font-black text-brand-500 uppercase tracking-wider">New Category Details</p>
                                         <input
                                             type="text"
-                                            placeholder="Category Name (e.g. Food, Beverages)"
+                                            placeholder="Category Name (e.g. Grains, Alcoholic Beverages)"
                                             value={newCategoryName}
                                             onChange={e => setNewCategoryName(e.target.value)}
                                             className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 p-2.5"
@@ -542,6 +608,21 @@ export default function IngredientsManager({
                                             onChange={e => setNewCategoryDesc(e.target.value)}
                                             className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 p-2.5"
                                         />
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-ink-muted uppercase tracking-wider mb-1.5">Parent Category (Optional)</label>
+                                            <Select
+                                                value={newCategoryParentId}
+                                                onChange={e => setNewCategoryParentId(e.target.value)}
+                                                searchable
+                                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 p-2.5"
+                                            >
+                                                <option value="">None — top-level (e.g. Grocery)</option>
+                                                {stockMainCategories.map(c => (
+                                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                                ))}
+                                            </Select>
+                                            <p className="text-[10px] font-bold text-ink-muted mt-1">Pick a main category to nest this as a subcategory, e.g. "Vegetables" under "Grocery".</p>
+                                        </div>
                                         <button
                                             type="button"
                                             onClick={handleInlineAddCategory}
@@ -556,13 +637,19 @@ export default function IngredientsManager({
                                     <Select
                                         value={form.category_id}
                                         onChange={e => setForm({ ...form, category_id: e.target.value, supplier: '' })}
+                                        searchable
                                         className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207l5%205%205-5%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%221.5%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_12px_center]"
                                     >
                                         <option value="">Uncategorized</option>
-                                        {stockRelevantCategories.map(c => (
-                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                        {stockCategoryOptions.map(({ category, label }) => (
+                                            <option key={category.id} value={category.id}>{label}</option>
                                         ))}
                                     </Select>
+                                )}
+                                {selectedMainCategory && (
+                                    <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider">
+                                        Main Category: <span className="text-ink-subtle">{selectedMainCategory.name}</span>
+                                    </p>
                                 )}
                                 {categories.length > stockRelevantCategories.length && (
                                     <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider">
@@ -633,6 +720,7 @@ export default function IngredientsManager({
                                         {filteredSuppliers.map(s => (
                                             <option key={s.id} value={s.name}>{s.name}</option>
                                         ))}
+                                        <option value={UNSPECIFIED_SUPPLIER_NAME}>Others (unauthorized / unregistered)</option>
                                     </Select>
                                 )}
                             </div>
@@ -693,9 +781,34 @@ export default function IngredientsManager({
                 </Modal>
             )}
 
+            {/* Add on Stock Item — pick an existing item to restock */}
+            {showPicker && (
+                <Modal open onClose={() => setShowPicker(false)} size="sm" ariaLabel="Add on Stock Item" className="p-6 space-y-6">
+                        <h3 className="text-h3 font-extrabold text-ink">Add on Stock Item</h3>
+                        <div>
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Stock Item *</label>
+                            <Select
+                                value={pickerIngredientId}
+                                onChange={e => setPickerIngredientId(e.target.value)}
+                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3"
+                            >
+                                {ingredients.map(ing => (
+                                    <option key={ing.id} value={ing.id}>{ing.name} ({ing.stock_quantity} {ing.unit})</option>
+                                ))}
+                            </Select>
+                        </div>
+                        <div className="flex justify-end gap-3">
+                            <button onClick={() => setShowPicker(false)} className="px-5 py-2.5 text-sm font-bold text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors focus-ring">Cancel</button>
+                            <button onClick={confirmPicker} className="px-6 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 focus-ring">
+                                Continue
+                            </button>
+                        </div>
+                </Modal>
+            )}
+
             {/* Stock Movement Modal */}
             {stockModal && (
-                <Modal open onClose={() => { setStockModal(null); setMovePayment(EMPTY_SUPPLIER_PAYMENT) }} size="md" ariaLabel={`Stock movement — ${stockModal.name}`} className="p-6 space-y-6">
+                <Modal open onClose={closeStockModal} size="md" ariaLabel={`Stock movement — ${stockModal.name}`} className="p-6 space-y-6">
                         <div>
                             <h3 className="text-h3 font-extrabold text-ink">Stock Movement — {stockModal.name}</h3>
                             <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-1">Current Stock: <span className="text-brand-500">{stockModal.stock_quantity} {stockModal.unit}</span></p>
@@ -721,10 +834,51 @@ export default function IngredientsManager({
 
                             {isPurchase && (
                                 <div className="space-y-4 p-4 bg-surface-muted/30 border border-hairline rounded-[var(--r-md)]">
-                                    <div>
-                                        <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Supplier</label>
-                                        {relevantSuppliers.length === 0 ? (
-                                            <p className="text-[11px] font-bold text-ink-muted">No suppliers set up yet — the bill will be recorded under &quot;{stockModal.supplier || UNSPECIFIED_SUPPLIER_NAME}&quot;.</p>
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between items-center">
+                                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Supplier</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowAddSupplier(!showAddSupplier)}
+                                                className="text-[11px] font-black text-indigo-600 hover:text-indigo-700 transition-colors focus:outline-none"
+                                            >
+                                                {showAddSupplier ? '✕ Cancel' : '+ Add Supplier'}
+                                            </button>
+                                        </div>
+                                        {showAddSupplier ? (
+                                            <div className="bg-surface-muted/30 border border-hairline rounded-[var(--r-md)] p-4 space-y-3 animate-in slide-in-from-top-1 duration-150">
+                                                <p className="text-[10px] font-black text-indigo-700 uppercase tracking-wider">New Supplier Details</p>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Supplier Name (e.g. Organic Farm Co)"
+                                                    value={newSupplierName}
+                                                    onChange={e => setNewSupplierName(e.target.value)}
+                                                    className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 p-2.5"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Phone Number"
+                                                    value={newSupplierPhone}
+                                                    onChange={e => setNewSupplierPhone(e.target.value)}
+                                                    className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 p-2.5"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Address (Optional)"
+                                                    value={newSupplierAddress}
+                                                    onChange={e => setNewSupplierAddress(e.target.value)}
+                                                    className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 p-2.5"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={handleInlineAddSupplier}
+                                                    disabled={!newSupplierName.trim() || addingSupplier}
+                                                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-extrabold rounded-[var(--r-md)] text-[10px] uppercase tracking-wider shadow-sm transition-colors flex items-center justify-center gap-1.5"
+                                                >
+                                                    {addingSupplier ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                                                    Create Supplier
+                                                </button>
+                                            </div>
                                         ) : (
                                             <Select value={effectiveSupplierId} onChange={e => setMoveForm({ ...moveForm, supplier_id: e.target.value })}
                                                 className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3">
@@ -732,9 +886,10 @@ export default function IngredientsManager({
                                                 {relevantSuppliers.map(s => (
                                                     <option key={s.id} value={s.id}>{s.name}</option>
                                                 ))}
+                                                <option value={OTHERS_SUPPLIER_ID}>Others (unauthorized / unregistered)</option>
                                             </Select>
                                         )}
-                                        <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mt-1.5">Matched by this item&apos;s category, so the bill lands under the right supplier in Suppliers Ledger.</p>
+                                        <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mt-1.5">Matched by this item&apos;s category, so the bill lands under the right supplier in Suppliers Ledger — pick a different one each restock if you buy from more than one, or "Others" for an unauthorized/unregistered vendor.</p>
                                     </div>
 
                                     <div>
@@ -782,7 +937,7 @@ export default function IngredientsManager({
                             </div>
                         </div>
                         <div className="flex gap-3 justify-end pt-2 border-t border-hairline">
-                            <button onClick={() => { setStockModal(null); setMovePayment(EMPTY_SUPPLIER_PAYMENT) }} className="px-5 py-2.5 text-sm font-bold text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors focus-ring">Cancel</button>
+                            <button onClick={closeStockModal} className="px-5 py-2.5 text-sm font-bold text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors focus-ring">Cancel</button>
                             <button onClick={handleStockMove} disabled={saving}
                                 className="bg-brand-500 text-white px-6 py-2.5 rounded-[var(--r-md)] text-sm font-bold disabled:opacity-50 shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all focus-ring flex items-center gap-2">
                                 {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} {saving ? 'Saving...' : 'Submit'}
