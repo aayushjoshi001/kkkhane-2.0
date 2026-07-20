@@ -9,14 +9,14 @@ import { getRoomContextForTable } from '@/lib/rooms'
 import { getCurrentUser } from '@/lib/auth'
 
 export async function openSession(tableId: string, restaurantId: string, guestCount?: number, seatNumber: number = 1) {
-    const supabase = await createServerClient()
     const adminSupabase = await createAdminClient()
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    const currentUser = await getCurrentUser().catch(() => null)
+    if (!currentUser?.id) {
         console.error('[openSession] No authenticated user found')
         return { error: 'Unauthorized' }
     }
+    const user = { id: currentUser.id }
 
     // Expire any stale sessions for this table+seat that passed their expires_at
     // but were never cleaned up — otherwise the unique-active-per-table-per-seat
@@ -65,11 +65,44 @@ export async function openSession(tableId: string, restaurantId: string, guestCo
     return { success: true, session: data }
 }
 
-export async function closeSession(sessionId: string) {
-    const supabase = await createServerClient()
+/**
+ * Cancel a transient session that had no orders placed.
+ * Unlike closeSession, this does NOT mark the table dirty — it resets it
+ * straight to 'available' since there is nothing to clean up.
+ */
+export async function cancelTransientSession(sessionId: string): Promise<{ error?: string; success?: boolean }> {
     const adminSupabase = await createAdminClient()
 
-    const { data: { user } } = await supabase.auth.getUser()
+    // Close the session row
+    const { error } = await adminSupabase
+        .from('sessions')
+        .update({ status: 'closed', closed_at: new Date().toISOString() })
+        .eq('id', sessionId)
+        .eq('status', 'active')
+
+    if (error) return { error: error.message }
+
+    // Look up the table so we can reset its status to available
+    const { data: session } = await adminSupabase
+        .from('sessions')
+        .select('table_id')
+        .eq('id', sessionId)
+        .maybeSingle()
+
+    if (session?.table_id) {
+        await adminSupabase
+            .from('tables')
+            .update({ table_status: 'available', cleaning_claimed_by: null, cleaning_claimed_at: null })
+            .eq('id', session.table_id)
+    }
+
+    revalidatePath('/waiter')
+    return { success: true }
+}
+
+export async function closeSession(sessionId: string) {
+    const adminSupabase = await createAdminClient()
+    const currentUser = await getCurrentUser().catch(() => null)
 
     const { data: session, error } = await adminSupabase
         .from('sessions')
@@ -89,7 +122,7 @@ export async function closeSession(sessionId: string) {
 
     void logAudit({
         restaurantId: session.restaurant_id,
-        userId: user?.id ?? null,
+        userId: currentUser?.id ?? null,
         action: 'session_closed',
         entityType: 'session',
         entityId: sessionId,
@@ -151,10 +184,10 @@ export async function setTableStatus(
 export async function claimTableCleaning(
     tableId: string
 ): Promise<{ error?: string; success?: boolean; conflict?: boolean }> {
-    const supabase = await createServerClient()
     const admin = await createAdminClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: 'Unauthorized' }
+    const currentUser = await getCurrentUser().catch(() => null)
+    if (!currentUser?.id) return { error: 'Unauthorized' }
+    const user = { id: currentUser.id }
 
     const { data, error } = await admin
         .from('tables')
@@ -173,10 +206,10 @@ export async function claimTableCleaning(
 export async function releaseTableCleaning(
     tableId: string
 ): Promise<{ error?: string; success?: boolean }> {
-    const supabase = await createServerClient()
     const admin = await createAdminClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: 'Unauthorized' }
+    const currentUser = await getCurrentUser().catch(() => null)
+    if (!currentUser?.id) return { error: 'Unauthorized' }
+    const user = { id: currentUser.id }
 
     await admin
         .from('tables')
@@ -191,10 +224,10 @@ export async function releaseTableCleaning(
 export async function markTableClean(
     tableId: string
 ): Promise<{ error?: string; success?: boolean; conflict?: boolean }> {
-    const supabase = await createServerClient()
     const admin = await createAdminClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: 'Unauthorized' }
+    const currentUser = await getCurrentUser().catch(() => null)
+    if (!currentUser?.id) return { error: 'Unauthorized' }
+    const user = { id: currentUser.id }
 
     // PostgREST throws a spurious "column does not exist" error when an .or()
     // filter is combined with .update() on this table, so the owner-or-unclaimed
@@ -325,12 +358,9 @@ export async function linkSessionToBooking(sessionId: string, bookingId: string)
 }
 
 export async function getStaffMenu(restaurantId: string) {
-    const supabase = await createServerClient()
-    const adminSupabase = await createAdminClient()
-    
-    // Check if staff user
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: 'Unauthorized' }
+    // Check if staff user (works for all roles including super_admin)
+    const currentUser = await getCurrentUser().catch(() => null)
+    if (!currentUser?.id) return { error: 'Unauthorized' }
 
     try {
         const data = await getCachedMenuData(restaurantId)
@@ -350,12 +380,11 @@ export async function placeStaffOrder(
     items: any[],
     customerNote?: string
 ) {
-    const supabase = await createServerClient()
     const adminSupabase = await createAdminClient()
-    
-    // Check if staff user
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: 'Unauthorized' }
+
+    // Check if staff user (works for all roles including super_admin)
+    const currentUser = await getCurrentUser().catch(() => null)
+    if (!currentUser?.id) return { error: 'Unauthorized' }
 
     // Resolve session (UUID vs token) safely to avoid UUID casting errors in Postgres
     let query = adminSupabase
@@ -450,7 +479,7 @@ export async function placeStaffOrder(
 
             void logAudit({
                 restaurantId: session.restaurant_id,
-                userId: user.id,
+                userId: currentUser.id,
                 action: 'session_closed',
                 entityType: 'session',
                 entityId: session.id,

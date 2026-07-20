@@ -92,6 +92,19 @@ export default function CashierRoomManager({
     const [createdSessionId, setCreatedSessionId] = useState<string | null>(null)
     const [refreshTrigger, setRefreshTrigger] = useState(0)
 
+    // Helper to reset booking form + sub-views when opening/closing a room modal
+    const resetRoomModal = () => {
+        setBookingFormOpen(false)
+        setConfirmCloseOpen(false)
+        setConfirmDirtyOpen(false)
+        setShowAddChargeForm(false)
+        setBookingForm({ guest_name: '', guest_phone: '', kyc: '', check_in: '', check_out: '', guest_count: '2' })
+        setAdvanceType('none')
+        setAdvanceAmount('')
+        setAdvanceSplitCash('')
+        setAdvanceSplitQr('')
+    }
+
     // Booking form inputs
     const [bookingForm, setBookingForm] = useState({
         guest_name: '',
@@ -487,6 +500,7 @@ export default function CashierRoomManager({
                             <button
                                 key={room.id}
                                 onClick={() => {
+                                    resetRoomModal()
                                     setSelectedRoom(room)
                                 }}
                                 className={`relative aspect-square rounded-[20px] border flex flex-col items-center justify-center transition-all duration-300 ${cfg.card} hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95`}

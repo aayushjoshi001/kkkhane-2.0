@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
-import { openSession, closeSession, setTableStatus, claimTableCleaning, releaseTableCleaning, markTableClean, openSessionFromRequest, findBookingByRoom, getActiveBookings, linkSessionToBooking } from '@/app/(staff)/waiter/actions'
+import { openSession, closeSession, cancelTransientSession, setTableStatus, claimTableCleaning, releaseTableCleaning, markTableClean, openSessionFromRequest, findBookingByRoom, getActiveBookings, linkSessionToBooking } from '@/app/(staff)/waiter/actions'
 import { createClient } from '@/lib/supabase/client'
 import { Users, QrCode, PowerOff, Power, Sparkles, CalendarClock, UtensilsCrossed, Footprints, Check, X, Flame, ShoppingCart, Hotel, Phone, Search, Loader2, Bed, UserCheck } from 'lucide-react'
 import type { Table, Session } from '@/types/database'
@@ -114,7 +114,9 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
     const [mounted, setMounted] = useState(false)
     useEffect(() => { setMounted(true) }, [])
 
-    const [quickOrderSession, setQuickOrderSession] = useState<{ sessionId: string; tableName: string } | null>(null)
+    const [quickOrderSession, setQuickOrderSession] = useState<{ sessionId: string; tableName: string; sessionUuid?: string; tableId?: string } | null>(null)
+    // Whether the current quick-order session has had an order placed (prevents auto-cancel on close)
+    const quickOrderPlacedRef = useRef(false)
 
     const [openSessionRequests, setOpenSessionRequests] = useState<Record<string, string>>({})
 
@@ -319,11 +321,13 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
             }
             const session = res.session as unknown as Session
             await setTableStatus(tableId, 'available')
-            
+            quickOrderPlacedRef.current = false
             setTables(prev => prev.map(t => t.id === tableId ? { ...t, activeSession: session } : t))
             setQuickOrderSession({
                 sessionId: session.session_token,
-                tableName: selectedTable?.label || 'Table'
+                tableName: selectedTable?.label || 'Table',
+                sessionUuid: session.id,
+                tableId,
             })
             setSelectedTable(null)
         } catch (err) {
@@ -351,12 +355,14 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                 setIsProcessing(false)
                 return
             }
-            
+            quickOrderPlacedRef.current = false
             toast.success(`Linked to Room ${roomNumber}`)
             setTables(prev => prev.map(t => t.id === tableId ? { ...t, activeSession: { ...session, booking_id: bookingId } } : t))
             setQuickOrderSession({
                 sessionId: session.session_token,
-                tableName: selectedTable?.label || 'Table'
+                tableName: selectedTable?.label || 'Table',
+                sessionUuid: session.id,
+                tableId,
             })
             setSelectedTable(null)
         } catch (err) {
@@ -1578,7 +1584,26 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
             {quickOrderSession && (
                 <QuickOrderModal
                     isOpen={true}
-                    onClose={() => setQuickOrderSession(null)}
+                    onClose={async () => {
+                        // If no order was placed and this was a transient session,
+                        // cancel it cleanly — reset table to 'available', not 'dirty'
+                        const snap = quickOrderSession
+                        setQuickOrderSession(null)
+                        if (!quickOrderPlacedRef.current && snap.sessionUuid) {
+                            await cancelTransientSession(snap.sessionUuid)
+                            if (snap.tableId) {
+                                setTables(prev => prev.map(t =>
+                                    t.id === snap.tableId
+                                        ? { ...t, activeSession: undefined, table_status: 'available' }
+                                        : t
+                                ))
+                            }
+                        }
+                    }}
+                    onSuccess={() => {
+                        quickOrderPlacedRef.current = true
+                        setQuickOrderSession(null)
+                    }}
                     sessionId={quickOrderSession.sessionId}
                     tableName={quickOrderSession.tableName}
                     restaurantId={restaurantId}

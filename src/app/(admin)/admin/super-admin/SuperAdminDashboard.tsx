@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Building2, ShoppingBag, Crown, Ban, CheckCircle, Loader2, ChevronDown, Plus, X, Store, UserRound, Mail, KeyRound, Phone, MapPin, Check, CreditCard, AlertTriangle, Search, Filter, Wallet, Settings } from 'lucide-react'
+import { Building2, ShoppingBag, Crown, Ban, CheckCircle, Loader2, ChevronDown, Plus, X, Store, UserRound, Mail, KeyRound, Phone, MapPin, Check, CreditCard, AlertTriangle, Search, Filter, Wallet, Settings, Printer, ChefHat } from 'lucide-react'
 import { createTenantWithOwner, suspendRestaurant, updateSubscriptionTier, sendPasswordResetEmail, updateOwnerContact, recordSubscriptionPayment, toggleRestaurantFinance, updateRestaurantFeatures } from './actions'
 import { TIER_LIMITS, TIERS, TIER_LABELS, FINANCE_TIERS, isUnlimited, type Tier } from '@/lib/tiers'
 import { toast } from 'react-hot-toast'
@@ -221,6 +221,34 @@ export default function SuperAdminDashboard({
                 )
             )
             toast.success(enabled ? 'IRD Certification & Finance enabled' : 'IRD Certification & Finance disabled')
+        } else {
+            toast.error(res.error || 'Failed')
+        }
+        setLoading(null)
+    }
+
+    const handleFeatureToggle = async (id: string, key: 'kotEnabled' | 'kdsEnabled', enabled: boolean) => {
+        setLoading(id)
+        let updatePayload: any = { [key]: enabled }
+        if (key === 'kotEnabled' && enabled) {
+            updatePayload.kdsEnabled = false
+        } else if (key === 'kdsEnabled' && enabled) {
+            updatePayload.kotEnabled = false
+        }
+
+        const res = await updateRestaurantFeatures(id, updatePayload)
+        if (res.success) {
+            setItems(prev =>
+                prev.map(r =>
+                    r.id === id
+                        ? { 
+                            ...r, 
+                            features: { ...(r.features || {}), ...updatePayload }
+                          }
+                        : r
+                )
+            )
+            toast.success(`Features updated successfully`)
         } else {
             toast.error(res.error || 'Failed')
         }
@@ -497,6 +525,44 @@ export default function SuperAdminDashboard({
                                          <div className="w-9 h-5 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-all peer-disabled:opacity-40"></div>
                                      </label>
                                  </div>
+
+                                 {/* KOT Toggle */}
+                                  <div
+                                      className="flex items-center gap-2 px-3 py-2 border border-hairline-strong rounded-lg bg-surface transition-all select-none"
+                                      title="Toggle KOT Physical Ticket Printing"
+                                  >
+                                      <Printer size={14} className={restaurant.features?.kotEnabled ? "text-brand-500" : "text-ink-subtle"} />
+                                      <span className="text-xs font-semibold text-ink-muted hidden sm:inline">KOT</span>
+                                      <label className="relative inline-flex items-center cursor-pointer group">
+                                          <input
+                                              type="checkbox"
+                                              className="sr-only peer"
+                                              checked={!!restaurant.features?.kotEnabled}
+                                              disabled={loading === restaurant.id}
+                                              onChange={(e) => handleFeatureToggle(restaurant.id, 'kotEnabled', e.target.checked)}
+                                          />
+                                          <div className="w-9 h-5 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-all peer-disabled:opacity-40"></div>
+                                      </label>
+                                  </div>
+
+                                 {/* KDS Toggle */}
+                                  <div
+                                      className="flex items-center gap-2 px-3 py-2 border border-hairline-strong rounded-lg bg-surface transition-all select-none"
+                                      title="Toggle Digital Kitchen Display System"
+                                  >
+                                      <ChefHat size={14} className={restaurant.features?.kdsEnabled !== false ? "text-brand-500" : "text-ink-subtle"} />
+                                      <span className="text-xs font-semibold text-ink-muted hidden sm:inline">KDS</span>
+                                      <label className="relative inline-flex items-center cursor-pointer group">
+                                          <input
+                                              type="checkbox"
+                                              className="sr-only peer"
+                                              checked={restaurant.features?.kdsEnabled !== false}
+                                              disabled={loading === restaurant.id}
+                                              onChange={(e) => handleFeatureToggle(restaurant.id, 'kdsEnabled', e.target.checked)}
+                                          />
+                                          <div className="w-9 h-5 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-all peer-disabled:opacity-40"></div>
+                                      </label>
+                                  </div>
 
                                 {/* Suspend/Reactivate */}
                                 <button
