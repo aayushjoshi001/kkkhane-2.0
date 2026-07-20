@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
-import { openSession, closeSession, setTableStatus, claimTableCleaning, releaseTableCleaning, markTableClean, openSessionFromRequest, findBookingByRoom, getActiveBookings, linkSessionToBooking } from '@/app/(staff)/waiter/actions'
+import { openSession, closeSession, cancelTransientSession, setTableStatus, claimTableCleaning, releaseTableCleaning, markTableClean, openSessionFromRequest, findBookingByRoom, getActiveBookings, linkSessionToBooking } from '@/app/(staff)/waiter/actions'
 import { createClient } from '@/lib/supabase/client'
 import { Users, QrCode, PowerOff, Power, Sparkles, CalendarClock, UtensilsCrossed, Footprints, Check, X, Flame, ShoppingCart, Hotel, Phone, Search, Loader2, Bed, UserCheck } from 'lucide-react'
 import type { Table, Session } from '@/types/database'
@@ -1585,15 +1585,17 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                 <QuickOrderModal
                     isOpen={true}
                     onClose={async () => {
-                        // If no order was placed and we have a transient session, auto-cancel it
-                        // so the table doesn't stay occupied after the waiter just browses
+                        // If no order was placed and this was a transient session,
+                        // cancel it cleanly — reset table to 'available', not 'dirty'
                         const snap = quickOrderSession
                         setQuickOrderSession(null)
                         if (!quickOrderPlacedRef.current && snap.sessionUuid) {
-                            await closeSession(snap.sessionUuid)
+                            await cancelTransientSession(snap.sessionUuid)
                             if (snap.tableId) {
                                 setTables(prev => prev.map(t =>
-                                    t.id === snap.tableId ? { ...t, activeSession: undefined } : t
+                                    t.id === snap.tableId
+                                        ? { ...t, activeSession: undefined, table_status: 'available' }
+                                        : t
                                 ))
                             }
                         }

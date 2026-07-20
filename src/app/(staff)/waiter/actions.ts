@@ -65,6 +65,41 @@ export async function openSession(tableId: string, restaurantId: string, guestCo
     return { success: true, session: data }
 }
 
+/**
+ * Cancel a transient session that had no orders placed.
+ * Unlike closeSession, this does NOT mark the table dirty — it resets it
+ * straight to 'available' since there is nothing to clean up.
+ */
+export async function cancelTransientSession(sessionId: string): Promise<{ error?: string; success?: boolean }> {
+    const adminSupabase = await createAdminClient()
+
+    // Close the session row
+    const { error } = await adminSupabase
+        .from('sessions')
+        .update({ status: 'closed', closed_at: new Date().toISOString() })
+        .eq('id', sessionId)
+        .eq('status', 'active')
+
+    if (error) return { error: error.message }
+
+    // Look up the table so we can reset its status to available
+    const { data: session } = await adminSupabase
+        .from('sessions')
+        .select('table_id')
+        .eq('id', sessionId)
+        .maybeSingle()
+
+    if (session?.table_id) {
+        await adminSupabase
+            .from('tables')
+            .update({ table_status: 'available', cleaning_claimed_by: null, cleaning_claimed_at: null })
+            .eq('id', session.table_id)
+    }
+
+    revalidatePath('/waiter')
+    return { success: true }
+}
+
 export async function closeSession(sessionId: string) {
     const adminSupabase = await createAdminClient()
     const currentUser = await getCurrentUser().catch(() => null)
