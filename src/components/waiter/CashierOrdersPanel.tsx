@@ -306,42 +306,45 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
             )}
 
             {ordersSubTab === 'status' && (
-                <div className="bg-surface rounded-[24px] border border-hairline shadow-sm overflow-hidden">
-                    <div className="divide-y divide-gray-50">
-                        {statusOrders.length === 0 && (
-                            <p className="px-4 py-12 text-center text-xs text-ink-subtle font-semibold">No open orders right now.</p>
-                        )}
-                        {statusOrders.map(order => {
-                            const items = order.order_items || []
-                            const isExpanded = expandedStatusId === order.id
-                            return (
-                                <div key={order.id} ref={el => { statusRowRefs.current[order.id] = el }}>
-                                    <button
-                                        onClick={() => expandStatus(order.id)}
-                                        className="w-full flex items-center gap-2.5 px-4 py-3.5 text-left hover:bg-surface-muted/50 transition-colors"
-                                    >
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-bold text-ink truncate">{locationLabel(order, splitSessionIds)}</p>
-                                            <p className="text-[11px] text-ink-subtle capitalize">{order.status} · {items.length} item{items.length !== 1 ? 's' : ''} · {money(Number(order.total_amount) || 0)}</p>
-                                        </div>
-                                        <ChevronDown size={15} className={`text-ink-subtle shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                                    </button>
-                                    {isExpanded && (
-                                        <StatusDetail
-                                            order={order}
-                                            items={items}
-                                            money={money}
-                                            busy={busyId === order.id}
-                                            reason={cancelReason}
-                                            onReasonChange={setCancelReason}
-                                            onMarkServed={(ids) => handleMarkServed(order.id, ids)}
-                                            onCancel={() => handleCancelOrder(order)}
-                                        />
-                                    )}
-                                </div>
-                            )
-                        })}
-                    </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
+                    {statusOrders.length === 0 && (
+                        <p className="col-span-full py-12 text-center text-xs text-ink-subtle font-semibold bg-surface rounded-2xl border border-hairline shadow-sm">No open orders right now.</p>
+                    )}
+                    {statusOrders.map(order => {
+                        const items = order.order_items || []
+                        const isExpanded = expandedStatusId === order.id
+                        return (
+                            <div 
+                                key={order.id} 
+                                ref={el => { statusRowRefs.current[order.id] = el }}
+                                className="bg-surface rounded-2xl border border-hairline shadow-sm overflow-hidden flex flex-col h-fit"
+                            >
+                                <button
+                                    onClick={() => expandStatus(order.id)}
+                                    className="w-full flex items-center justify-between p-4 text-left hover:bg-surface-muted/50 transition-colors"
+                                >
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-bold text-ink truncate">{locationLabel(order, splitSessionIds)}</p>
+                                        <p className="text-[11px] text-ink-subtle capitalize">{order.status} · {items.length} item{items.length !== 1 ? 's' : ''} · {money(Number(order.total_amount) || 0)}</p>
+                                    </div>
+                                    <ChevronDown size={15} className={`text-ink-subtle shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                </button>
+                                {isExpanded && (
+                                    <StatusDetail
+                                        order={order}
+                                        items={items}
+                                        money={money}
+                                        busy={busyId === order.id}
+                                        reason={cancelReason}
+                                        onReasonChange={setCancelReason}
+                                        onMarkServed={(ids) => handleMarkServed(order.id, ids)}
+                                        onCancel={() => handleCancelOrder(order)}
+                                        kotEnabled={features.kotEnabled}
+                                    />
+                                )}
+                            </div>
+                        )
+                    })}
                 </div>
             )}
         </div>
@@ -465,7 +468,7 @@ function TakeoutConfirmDetail({ order, money, busy, onConfirm, onCancel }: {
     )
 }
 
-function StatusDetail({ order, items, money, busy, reason, onReasonChange, onMarkServed, onCancel }: {
+function StatusDetail({ order, items, money, busy, reason, onReasonChange, onMarkServed, onCancel, kotEnabled }: {
     order: AnyOrder
     items: NonNullable<AnyOrder['order_items']>
     money: (n: number) => string
@@ -474,13 +477,14 @@ function StatusDetail({ order, items, money, busy, reason, onReasonChange, onMar
     onReasonChange: (v: string) => void
     onMarkServed: (itemIds: string[]) => void
     onCancel: () => void
+    kotEnabled?: boolean
 }) {
     const readyIds = items.filter(i => i.status === 'ready' && i.id).map(i => i.id!)
     const { selected, allSelected, toggleAll, toggle } = useSelection(readyIds)
 
     return (
         <div className="px-4 pb-4 pt-1 bg-surface-muted/30 space-y-2.5">
-            {readyIds.length > 0 && (
+            {!kotEnabled && readyIds.length > 0 && (
                 <button
                     onClick={toggleAll}
                     className="flex items-center gap-1.5 text-[11px] font-bold text-ink-subtle hover:text-ink transition-colors"
@@ -491,19 +495,17 @@ function StatusDetail({ order, items, money, busy, reason, onReasonChange, onMar
             )}
             <div className="space-y-1.5">
                 {items.map(item => {
-                    const canServe = item.status === 'ready' && item.id
+                    const canServe = !kotEnabled && item.status === 'ready' && item.id
                     return (
                         <div key={item.id} className="flex items-center gap-2.5 bg-surface rounded-xl border border-hairline px-3 py-2">
                             {canServe ? (
                                 <button onClick={() => item.id && toggle(item.id)} className="shrink-0 text-brand-500">
                                     {item.id && selected.has(item.id) ? <CheckSquare size={16} /> : <Square size={16} className="text-ink-subtle" />}
                                 </button>
-                            ) : (
-                                <span className="shrink-0 w-4" />
-                            )}
+                            ) : null}
                             <div className="flex-1 min-w-0">
                                 <p className="text-xs font-bold text-ink truncate">{item.quantity}× {item.menu_items?.name || 'Item'}</p>
-                                <p className="text-[10px] text-ink-subtle capitalize">{item.status}</p>
+                                {!kotEnabled && <p className="text-[10px] text-ink-subtle capitalize">{item.status}</p>}
                             </div>
                             <span className="text-[11px] font-semibold text-ink-muted tabular-nums shrink-0">
                                 {money((item.unit_price || 0) * item.quantity)}
@@ -512,7 +514,7 @@ function StatusDetail({ order, items, money, busy, reason, onReasonChange, onMar
                     )
                 })}
             </div>
-            {readyIds.length > 0 && (
+            {!kotEnabled && readyIds.length > 0 && (
                 <button
                     onClick={() => onMarkServed(Array.from(selected))}
                     disabled={busy || selected.size === 0}
