@@ -1,5 +1,8 @@
 import Link from 'next/link'
 import Image from 'next/image'
+import { redirect } from 'next/navigation'
+import { getOptionalUser } from '@/lib/auth'
+import { ROLE_LANDING } from '@/lib/roleLanding'
 import { MarketingNav, MarketingFooter, PricingCards } from '@/components/marketing'
 import {
     QrCode, ArrowRight, BarChart3,
@@ -17,9 +20,13 @@ const faqs = [
 ]
 
 export default async function Home() {
-    // Logged-in users are no longer bounced to their dashboard here — the
-    // marketing nav shows their avatar (with a Dashboard link) instead, so they
-    // can browse the home page and jump back into the app from the avatar menu.
+    // If logged in, redirect directly to user's dashboard (e.g. /cashier, /admin/dashboard, /kitchen)
+    const currentUser = await getOptionalUser()
+    if (currentUser) {
+        const landing = ROLE_LANDING[currentUser.role] || '/admin/dashboard'
+        redirect(landing)
+    }
+
     return (
         <div className="min-h-screen bg-transparent text-ink overflow-x-hidden font-sans">
             <MarketingNav />
