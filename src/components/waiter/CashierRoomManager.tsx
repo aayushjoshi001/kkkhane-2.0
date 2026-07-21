@@ -79,7 +79,7 @@ export default function CashierRoomManager({
     const [manualCharges, setManualCharges] = useState<any[]>([])
     const [linkedDiningOrders, setLinkedDiningOrders] = useState<any[]>([])
     const filteredLinkedDiningOrders = (() => {
-        return linkedDiningOrders.filter(o => !o.is_room_order)
+        return linkedDiningOrders.filter(o => !o.is_room_order && o.status !== 'cancelled')
     })()
     const [loadingCharges, setLoadingCharges] = useState(false)
     const [showAddChargeForm, setShowAddChargeForm] = useState(false)
@@ -283,7 +283,7 @@ export default function CashierRoomManager({
     const qrOrdersDetails = useMemo(() => {
         if (!selectedRoom || selectedRoom.status !== 'occupied' || !activeBooking) return null
 
-        const roomItems = linkedDiningOrders.filter(o => o.is_room_order)
+        const roomItems = linkedDiningOrders.filter(o => o.is_room_order && o.status !== 'cancelled')
         const items = roomItems.map(it => ({
             name: getItemDisplayName(it),
             quantity: it.quantity || 0,

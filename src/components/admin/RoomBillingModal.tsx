@@ -169,7 +169,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // order-item id so the displayed total matches what the server bills.
     const allServiceOrderItems = Array.from(
         new Map([...qrOrderItems, ...linkedDiningOrders].map(it => [it.id, it])).values()
-    )
+    ).filter((it: any) => it.status !== 'cancelled')
     const stayCost = booking ? calculateStayCost(room, booking) : 0
     const qrOrdersTotal = allServiceOrderItems.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
     const manualChargesTotal = charges.reduce((acc, c) => acc + Number(c.amount || 0), 0)

@@ -119,8 +119,13 @@ export default function OrderTracker({
         0
     ) || 0
 
-    const displayOrders = sessionOrders.length > 0 ? sessionOrders : [order]
-    const grandTotal = displayOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0)
+    const displayOrders = (sessionOrders.length > 0 ? sessionOrders : [order]).filter(o => o.status !== 'cancelled')
+    const grandTotal = displayOrders.reduce((sum, o) => {
+        const orderItemSum = (o.order_items || [])
+            .filter((i: any) => i.status !== 'cancelled')
+            .reduce((itemSum: number, item: any) => itemSum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
+        return sum + (orderItemSum > 0 ? orderItemSum : Number(o.total_amount || 0))
+    }, 0)
 
     if (activeShowSuccess) {
         return (

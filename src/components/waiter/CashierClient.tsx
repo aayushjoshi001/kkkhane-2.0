@@ -225,10 +225,10 @@ export default function CashierClient({
     const [billingRoomCharges, setBillingRoomCharges] = useState<any[]>([])
     const [billingLinkedOrders, setBillingLinkedOrders] = useState<any[]>([])
     const filteredRoomOrders = useMemo(() => {
-        return billingLinkedOrders.filter(o => o.is_room_order)
+        return billingLinkedOrders.filter(o => o.is_room_order && o.status !== 'cancelled')
     }, [billingLinkedOrders])
     const filteredLinkedOrders = useMemo(() => {
-        return billingLinkedOrders.filter(o => !o.is_room_order)
+        return billingLinkedOrders.filter(o => !o.is_room_order && o.status !== 'cancelled')
     }, [billingLinkedOrders])
     const [billingPaymentMethod, setBillingPaymentMethod] = useState<'cash' | 'qr_digital' | 'both' | 'credit'>('cash')
     const [splitCashAmount, setSplitCashAmount] = useState<string>('')
