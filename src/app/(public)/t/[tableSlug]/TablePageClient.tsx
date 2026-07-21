@@ -127,9 +127,8 @@ export default function TablePageClient({
         setIsMounted(true)
     }, [])
 
-    // Gated on isMounted so the (client-only) localStorage check never causes
-    // a hydration mismatch or a flash of the gate for a guest who already resolved it.
-    const showGuestGate = isMounted && businessMode === 'hotel' && !isRoomTable && !guestGateResolved
+    // Phone verification happens once upon entry (or room verify); disable redundant secondary popup so menu items open directly.
+    const showGuestGate = false
 
     const handleOutsideGuest = () => {
         localStorage.setItem(`guest-gate:${tableData.id}`, 'outside')

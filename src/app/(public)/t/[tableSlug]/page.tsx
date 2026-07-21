@@ -173,7 +173,6 @@ async function MenuDataLoader({
             isIpRestricted={false}
             initialHomepageConfig={homepageConfig}
         />
-        {roomCallPhone && <RoomServiceCallButton phone={roomCallPhone} />}
         </>
     )
 }

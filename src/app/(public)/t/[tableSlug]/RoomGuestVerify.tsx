@@ -94,22 +94,6 @@ export default function RoomGuestVerify({
                     </button>
                 </form>
 
-                {receptionPhone && (
-                    <div className="w-full flex flex-col items-center gap-3 pt-2">
-                        <div className="flex items-center gap-3 w-full">
-                            <div className="h-px bg-hairline flex-1" />
-                            <span className="text-[11px] font-bold text-ink-muted uppercase tracking-widest">or</span>
-                            <div className="h-px bg-hairline flex-1" />
-                        </div>
-                        <a
-                            href={`tel:${receptionPhone}`}
-                            className="h-13 w-full rounded-2xl border border-hairline bg-surface text-ink text-[15px] font-bold shadow-sm hover:bg-surface-muted transition-all flex items-center justify-center gap-2.5 py-3.5"
-                        >
-                            <Phone size={18} className="text-brand-600" /> Call for Service
-                        </a>
-                    </div>
-                )}
-
                 {restaurantName && (
                     <p className="text-xs font-bold text-ink-muted uppercase tracking-widest mt-1">
                         {restaurantName}
