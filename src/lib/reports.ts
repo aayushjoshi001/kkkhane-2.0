@@ -48,6 +48,17 @@ export async function generateEodReport(restaurantId: string, reportDate: string
     // Assuming voids are unpaid orders that got cancelled or deleted
     const voidsCount = allOrders.filter(o => o.payment_status === 'unpaid' && o.status === 'cancelled').length
 
+    // Value of orders cancelled today (posted as "Order Cancellation" expenses
+    // when cancelled from the Cashier panel) — the wasted-food-cost line.
+    const { data: cancellationExpenses } = await supabase
+        .from('expenses')
+        .select('amount, expense_categories!inner(name)')
+        .eq('restaurant_id', restaurantId)
+        .eq('expense_categories.name', 'Order Cancellation')
+        .gte('created_at', start)
+        .lte('created_at', end)
+    const totalCancellationCost = (cancellationExpenses || []).reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
+
     // 4. Unique Customers estimation (by session_id or separate order)
     const uniqueSessions = new Set(paidOrders.map(o => o.session_id).filter(Boolean))
     const ordersWithoutSession = paidOrders.filter(o => !o.session_id).length
@@ -254,6 +265,7 @@ export async function generateEodReport(restaurantId: string, reportDate: string
             total_voids: voidsCount,
             total_refunds: refundsCount,
             total_cancelled: cancelledCount,
+            total_cancellation_cost: totalCancellationCost,
             avg_order_value: avgOrderValue,
             total_cogs: totalCogs,
             gross_profit: grossProfit,

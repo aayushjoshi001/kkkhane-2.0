@@ -141,6 +141,7 @@ export default function ReportsViewer({ initialReports, restaurantId }: {
                                         <Stat label="Voids" value={String(r.total_voids)} />
                                         <Stat label="Refunds" value={String(r.total_refunds)} />
                                         <Stat label="Cancelled Orders" value={String(r.total_cancelled)} />
+                                        <Stat label="Cancellation Cost" value={fmt(r.total_cancellation_cost)} />
                                         <div>
                                             <p className="text-ink-subtle text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">Unverified Payments</p>
                                             <p className={`font-extrabold mt-1 tabular-nums ${(r.unverified_orders ?? 0) > 0 ? 'text-danger-fg' : 'text-ink'}`}>

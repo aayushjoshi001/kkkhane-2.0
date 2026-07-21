@@ -186,6 +186,9 @@ export default function ManualEntryClient({
     const activeCard = ENTRY_CARDS.find(c => c.type === activeType)
 
     const canManage = ['manager', 'super_admin'].includes(userRole)
+    // Inventory adjustments hit addStockMovementAction, which is manager/super_admin
+    // only server-side — hide the card for other roles instead of letting the submit fail.
+    const visibleCards = canManage ? ENTRY_CARDS : ENTRY_CARDS.filter(c => c.type !== 'inventory')
 
     function updateForm<T extends EntryType>(type: T, field: string, value: string) {
         setForms(prev => ({ ...prev, [type]: { ...prev[type], [field]: value } }))
@@ -506,7 +509,7 @@ export default function ManualEntryClient({
                 <div className="flex-1 min-w-0 w-full">
                     <p className="text-xs font-bold uppercase tracking-wider text-ink-subtle mb-4">Select Entry Type</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {ENTRY_CARDS.map((card) => {
+                        {visibleCards.map((card) => {
                             const Icon = card.icon
                             const isActive = activeType === card.type
                             const isSuccess = lastSuccess?.type === card.type

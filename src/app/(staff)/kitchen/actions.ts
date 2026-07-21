@@ -26,7 +26,7 @@ const KITCHEN_ORDER_SELECT = `
     )
   ),
   order_items (
-    id, menu_item_id, quantity, unit_price, special_request, status, station, claimed_by, claimed_at,
+    id, menu_item_id, quantity, unit_price, special_request, status, station, claimed_by, claimed_at, needs_confirmation,
     menu_items ( id, name, is_combo ),
     menu_item_variations:menu_item_variation_id ( id, name ),
     order_item_modifiers ( modifier_name, price_adjustment )
@@ -58,12 +58,22 @@ export async function getKitchenOrders(restaurantId: string) {
     }
 
     // Apply same filter as page.tsx:
-    //   dine_in  → exclude orders still awaiting waiter confirmation
+    //   dine_in  → item-granular: only items a cashier has confirmed are
+    //     visible (QR self-orders start with every item needs_confirmation:true;
+    //     the parent order can be partially confirmed, so this filters at the
+    //     item level rather than hiding/showing the whole order)
     //   takeout/delivery → exclude pending (not yet confirmed by cashier)
-    return (data || []).filter(o => {
-        if (o.order_type === 'dine_in') return !o.needs_confirmation
-        return o.status !== 'pending'
-    })
+    return (data || [])
+        .filter(o => {
+            if (o.order_type === 'dine_in') {
+                return (o.order_items || []).some(i => !i.needs_confirmation && i.status !== 'cancelled')
+            }
+            return o.status !== 'pending'
+        })
+        .map(o => o.order_type === 'dine_in'
+            ? { ...o, order_items: (o.order_items || []).filter(i => !i.needs_confirmation) }
+            : o
+        )
 }
 
 

@@ -553,3 +553,51 @@ export async function postBargainDiscountExpense(
     }
     return { success: true }
 }
+
+// Posts the value of a cancelled order as a visible cost — the food/stock was
+// already deducted and wasted, so the loss should show up in the books rather
+// than just silently disappearing from the room/table's bill. Mirrors
+// postBargainDiscountExpense: no cash left the drawer, so this never touches
+// the Day Book, and the category is found-or-created lazily per restaurant.
+export async function postOrderCancellationExpense(
+    supabase: SupabaseClient,
+    restaurantId: string,
+    userId: string | null,
+    input: { orderId: string; locationLabel: string; amount: number }
+): Promise<{ success: boolean; error?: string }> {
+    if (input.amount <= 0) return { success: true }
+
+    let categoryId: string | undefined
+    const { data: existingCategory } = await supabase
+        .from('expense_categories')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .eq('name', 'Order Cancellation')
+        .maybeSingle()
+
+    categoryId = existingCategory?.id
+    if (!categoryId) {
+        const { data: newCategory } = await supabase
+            .from('expense_categories')
+            .insert({ restaurant_id: restaurantId, name: 'Order Cancellation' })
+            .select('id')
+            .single()
+        categoryId = newCategory?.id
+    }
+    if (!categoryId) return { success: false, error: 'Failed to find/create Order Cancellation category' }
+
+    const { error } = await supabase.from('expenses').insert({
+        restaurant_id: restaurantId,
+        category_id: categoryId,
+        amount: input.amount,
+        description: `Order cancelled (${input.locationLabel}) — order #${input.orderId.slice(0, 8).toUpperCase()}`,
+        status: 'paid',
+        created_by: userId || null
+    })
+
+    if (error) {
+        console.error('Failed to post order cancellation expense:', error)
+        return { success: false, error: error.message }
+    }
+    return { success: true }
+}

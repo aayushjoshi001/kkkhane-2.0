@@ -143,6 +143,7 @@ const DEFAULT_UNGROUPED_CATEGORIES: { name: string; isStock?: boolean }[] = [
     { name: 'Packaging & Takeaway Supplies' },
     { name: 'Miscellaneous / Other' },
     { name: 'Others', isStock: true },
+    { name: 'Order Cancellation' },
 ]
 
 export async function provisionRestaurant(input: ProvisionInput): Promise<ProvisionResult> {

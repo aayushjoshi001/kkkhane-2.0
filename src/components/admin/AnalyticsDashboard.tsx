@@ -7,7 +7,7 @@ import { useBusinessMode, useFeatures, useFeatureEnabled } from '@/lib/contexts/
 import { toNepaliDate } from '@/lib/nepaliDate'
 
 interface DayBucket {
-    date: string; label: string; dayNum: number; monthStr: string; revenue: number; orders: number; bargainDiscount?: number; occupiedRoomsCount?: number
+    date: string; label: string; dayNum: number; monthStr: string; revenue: number; orders: number; bargainDiscount?: number; cancellationCost?: number; occupiedRoomsCount?: number
 }
 interface TopItem { name: string; count: number; revenue: number }
 interface CancelledOrder { id: string; note: string | null; placed_at: string; total: number }
@@ -155,6 +155,7 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
     const daysCount = period === '7d' ? 7 : 30
     const periodOccupiedCount = days.reduce((s, d) => s + (d.occupiedRoomsCount || 0), 0)
     const periodBargainLeakage = days.reduce((s, d) => s + (d.bargainDiscount || 0), 0)
+    const periodCancellationCost = days.reduce((s, d) => s + (d.cancellationCost || 0), 0)
     const occupancyRate = (periodOccupiedCount / (totalRooms * daysCount)) * 100
 
     const chartData = days.map(d => ({
@@ -237,6 +238,16 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
                         />
                     </>
                 )}
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard
+                    label="Order Cancellation Cost"
+                    value={fmt(periodCancellationCost)}
+                    hint={`${period === '7d' ? 'Last 7 days' : 'Last 30 days'} — cancelled orders`}
+                    icon={XCircle}
+                    tone="danger"
+                />
             </div>
 
             {isHotel && irdSyncEnabled && (

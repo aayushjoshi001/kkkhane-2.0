@@ -11,6 +11,8 @@ export type AuditAction =
     | 'order_cancelled'
     | 'order_confirmed'
     | 'order_rejected'
+    | 'order_items_confirmed'
+    | 'order_item_removed'
     | 'session_opened'
     | 'session_closed'
     | 'menu_item_toggled'

@@ -55,11 +55,16 @@ async function settleOrdersMatching(
 
     const now = new Date().toISOString()
 
+    // Items still awaiting cashier confirmation (QR self-order, Order
+    // Confirmation panel) were never sent to the kitchen or deducted stock —
+    // force-marking them served here would be factually wrong, so they're
+    // left untouched even though the order itself gets closed out below.
     await supabase
         .from('order_items')
         .update({ status: 'served' })
         .in('order_id', orderIds)
         .neq('status', 'cancelled')
+        .eq('needs_confirmation', false)
 
     await supabase
         .from('orders')
