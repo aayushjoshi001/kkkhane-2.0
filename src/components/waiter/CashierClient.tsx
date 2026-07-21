@@ -224,9 +224,12 @@ export default function CashierClient({
     const [billingStayBooking, setBillingStayBooking] = useState<any | null>(null)
     const [billingRoomCharges, setBillingRoomCharges] = useState<any[]>([])
     const [billingLinkedOrders, setBillingLinkedOrders] = useState<any[]>([])
-    const filteredLinkedOrders = (() => {
+    const filteredRoomOrders = useMemo(() => {
+        return billingLinkedOrders.filter(o => o.is_room_order)
+    }, [billingLinkedOrders])
+    const filteredLinkedOrders = useMemo(() => {
         return billingLinkedOrders.filter(o => !o.is_room_order)
-    })()
+    }, [billingLinkedOrders])
     const [billingPaymentMethod, setBillingPaymentMethod] = useState<'cash' | 'qr_digital' | 'both' | 'credit'>('cash')
     const [splitCashAmount, setSplitCashAmount] = useState<string>('')
     const [splitQrAmount, setSplitQrAmount] = useState<string>('')
@@ -492,35 +495,33 @@ export default function CashierClient({
 
     const getRoomQrOrders = (room: any) => {
         if (!room) return []
+        if (filteredRoomOrders.length > 0) {
+            return filteredRoomOrders.map(item => ({
+                name: getItemDisplayName(item),
+                quantity: item.quantity || 0,
+                unitPrice: Number(item.unit_price ?? 0),
+                status: 'active'
+            }))
+        }
         
-        // Find the active booking for the room
+        // Fallback for immediate UI responsiveness before API returns
         const booking = billingStayBooking ?? bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
         if (!booking) return []
 
-        // Fetch all active/unpaid orders that are directly linked to this booking
         const allActive = active.filter(o => o.booking_id === booking.id)
         const allUnpaid = unpaid.filter(o => o.booking_id === booking.id)
-        
-        // Also fallback to match by session in case booking_id is not set but matchingTable activeSession is
         const matchingTable = tablesState.find(t => t.room_id === room.id)
         const sessionId = matchingTable?.activeSession?.id
-        
         const additionalActive = sessionId ? active.filter(o => o.session_id === sessionId && o.booking_id !== booking.id) : []
         const additionalUnpaid = sessionId ? unpaid.filter(o => o.session_id === sessionId && o.booking_id !== booking.id) : []
 
         const combinedOrders = [...allActive, ...allUnpaid, ...additionalActive, ...additionalUnpaid]
-        
-        // De-duplicate orders by ID
         const uniqueOrdersMap = new Map<string, any>()
         for (const o of combinedOrders) {
             uniqueOrdersMap.set(o.id, o)
         }
-        const uniqueOrders = Array.from(uniqueOrdersMap.values()).filter(o => {
-            return o.sessions?.tables?.room_id !== null && o.sessions?.tables?.room_id !== undefined
-        })
-
         const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
-        for (const order of uniqueOrders) {
+        for (const order of Array.from(uniqueOrdersMap.values())) {
             const orderItems = order.order_items || []
             for (const item of orderItems) {
                 items.push({
@@ -535,8 +536,8 @@ export default function CashierClient({
     }
 
     const stayCost = selectedBillingRoom && billingStayBooking ? calculateStayCost(selectedBillingRoom, billingStayBooking) : 0
-    const qrOrdersTotal = selectedBillingRoom ? getRoomQrOrders(selectedBillingRoom).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0) : 0
-    const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+    const qrOrdersTotal = selectedBillingRoom ? filteredRoomOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0) : 0
+    const linkedOrdersTotal = selectedBillingRoom ? filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0) : 0
     const totalFoodOrders = qrOrdersTotal + linkedOrdersTotal
 
     const roomDiscountVal = roomDiscount.trim() !== '' ? parseFloat(roomDiscount) || 0 : 0
@@ -607,8 +608,8 @@ export default function CashierClient({
 
     const calculateGrandTotal = (room: any, booking: any) => {
         const stayCost = calculateStayCost(room, booking)
-        const qrOrdersTotal = getRoomQrOrders(room).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
-        const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+        const qrOrdersTotal = filteredRoomOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
+        const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
         const totalFoodOrders = qrOrdersTotal + linkedOrdersTotal
 
         const roomDiscountVal = roomDiscount.trim() !== '' ? parseFloat(roomDiscount) || 0 : 0
@@ -637,10 +638,19 @@ export default function CashierClient({
             const nights = calculateNights(booking.check_in, booking.check_out)
             const stayCost = price * nights
 
-            const sessionOrders = getRoomQrOrders(room)
-            const qrOrdersTotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
+            const sessionOrders = filteredRoomOrders.map(item => ({
+                name: getItemDisplayName(item),
+                quantity: item.quantity || 0,
+                unitPrice: Number(item.unit_price ?? 0)
+            }))
+            const qrOrdersTotal = filteredRoomOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
 
-            const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+            const linkedOrders = filteredLinkedOrders.map(item => ({
+                name: getItemDisplayName(item),
+                quantity: item.quantity || 0,
+                unitPrice: Number(item.unit_price ?? 0)
+            }))
+            const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
             const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
             const total = calculateGrandTotal(room, booking)
 
@@ -679,13 +689,9 @@ export default function CashierClient({
                 nights,
                 basePrice: price,
                 stayCost,
-                qrOrders: getRoomQrOrders(room),
+                qrOrders: sessionOrders,
                 qrOrdersTotal,
-                linkedOrders: filteredLinkedOrders.map(item => ({
-                    name: getItemDisplayName(item),
-                    quantity: item.quantity,
-                    unitPrice: Number(item.unit_price)
-                })),
+                linkedOrders,
                 linkedOrdersTotal,
                 manualCharges: billingRoomCharges,
                 manualChargesTotal,
