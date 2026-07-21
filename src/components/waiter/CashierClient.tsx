@@ -448,11 +448,12 @@ export default function CashierClient({
         const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
         const combinedOrders = [...allActive, ...allUnpaid]
 
-        const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
+        const items: { id: string; name: string; quantity: number; unitPrice: number; status: string }[] = []
         for (const order of combinedOrders) {
             const orderItems = order.order_items || []
             for (const item of orderItems) {
                 items.push({
+                    id: item.id || '',
                     name: item.menu_items?.name || 'Item',
                     quantity: item.quantity || 0,
                     unitPrice: Number(item.unit_price ?? 0),
@@ -1673,8 +1674,8 @@ export default function CashierClient({
                                             <div className="p-4 space-y-2">
                                                 <p className="font-extrabold text-xs text-indigo-650 font-semibold">Service Orders (QR + Dining)</p>
                                                 <div className="space-y-1.5 pl-3 border-l-2 border-indigo-100">
-                                                    {billingLinkedOrders.map((item, idx) => (
-                                                        <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
+                                                    {billingLinkedOrders.map((item) => (
+                                                        <div key={item.id} className="flex justify-between text-[10px] text-ink-muted">
                                                             <span>{item.menu_items?.name || 'Item'} ({item.quantity}×)</span>
                                                             <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
                                                         </div>
@@ -2024,8 +2025,8 @@ export default function CashierClient({
                             <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Session order items</h4>
                             {getTableSessionItems(selectedBillingTable).length > 0 ? (
                                 <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-gray-100 bg-surface p-4 space-y-2">
-                                    {getTableSessionItems(selectedBillingTable).map((item, idx) => (
-                                        <div key={idx} className="flex justify-between items-center py-1.5 text-xs">
+                                    {getTableSessionItems(selectedBillingTable).map((item) => (
+                                        <div key={item.id} className="flex justify-between items-center py-1.5 text-xs">
                                             <div>
                                                 <p className="font-extrabold text-ink">{item.name}</p>
                                                 <p className="text-[10px] text-ink-subtle">Qty: {item.quantity} × {money(item.unitPrice)}</p>
