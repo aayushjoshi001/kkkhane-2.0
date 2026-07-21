@@ -41,6 +41,7 @@ export type UnpaidOrder = {
     id: string
     status?: string
     total_amount: number
+    placed_at: string
     delivered_at: string | null
     payment_status: string
     payment_method: string | null
@@ -1042,7 +1043,7 @@ export default function CashierClient({
                 // Fetch full record to show in unpaid list
                 const { data } = await supabase
                     .from('orders')
-                    .select(`id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id, sessions ( id, seat_number, tables ( id, label, room_id ) ), order_items ( quantity, unit_price, menu_items ( name ) )`)
+                    .select(`id, total_amount, placed_at, delivered_at, payment_status, payment_method, session_id, booking_id, sessions ( id, seat_number, tables ( id, label, room_id ) ), order_items ( quantity, unit_price, menu_items ( name ) )`)
                     .eq('id', id)
                     .single()
                 if (data) {

@@ -197,9 +197,11 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
     }
 
     async function handleCancelOrder(order: AnyOrder) {
+        const timeStr = new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        const itemsSummary = (order.order_items || []).map(i => `${i.quantity}x ${i.menu_items?.name || 'Item'}`).join(', ')
         const ok = await confirm({
-            title: 'Cancel this order?',
-            message: `This removes the order from ${locationLabel(order, splitSessionIds)}'s bill and logs its value as an Order Cancellation expense. This cannot be undone.`,
+            title: 'Cancel this particular order?',
+            message: `This removes only the specific order placed at ${timeStr} (${itemsSummary}) from ${locationLabel(order, splitSessionIds)}'s bill, and logs its value as an Order Cancellation expense. Other orders on this bill are untouched. This cannot be undone.`,
             confirmText: 'Cancel Order',
             isDestructive: true,
         })
@@ -275,7 +277,7 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm font-bold text-ink truncate">{locationLabel(order, splitSessionIds)}</p>
                                             <p className="text-[11px] text-ink-subtle">
-                                                {isTakeoutPending
+                                                {new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {isTakeoutPending
                                                     ? 'Awaiting confirmation'
                                                     : `${pendingItems.length} item${pendingItems.length !== 1 ? 's' : ''} pending`}
                                             </p>
@@ -329,7 +331,7 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                                 >
                                     <div className="min-w-0">
                                         <p className="text-sm font-bold text-ink truncate">{locationLabel(order, splitSessionIds)}</p>
-                                        <p className="text-[11px] text-ink-subtle capitalize">{order.status} · {items.length} item{items.length !== 1 ? 's' : ''} · {money(Number(order.total_amount) || 0)}</p>
+                                        <p className="text-[11px] text-ink-subtle capitalize">{order.status} · {new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {items.length} item{items.length !== 1 ? 's' : ''} · {money(Number(order.total_amount) || 0)}</p>
                                     </div>
                                     <ChevronDown size={15} className={`text-ink-subtle shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                 </button>
