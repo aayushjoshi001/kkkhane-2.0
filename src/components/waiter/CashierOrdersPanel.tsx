@@ -13,7 +13,7 @@ import { usePrinter } from '@/lib/print/usePrinter'
 import { buildStationTicket } from '@/lib/print/templates/stationTicket'
 import {
     confirmOrderItems, deleteUnconfirmedOrderItem, cancelOrder,
-    markOrderItemsServed,
+    markOrderItemsServed, cancelOrderItem,
 } from '@/app/(staff)/waiter/order-actions'
 import { tableLabel, type ActiveOrder, type UnpaidOrder } from './CashierClient'
 import type { KitchenOrder } from '@/components/kitchen/OrderQueue'
@@ -27,6 +27,7 @@ interface Props {
     money: (n: number) => string
     onUpdateTakeoutStatus: (orderId: string, status: 'confirmed' | 'cancelled') => Promise<void>
     onCancelOrder?: (orderId: string) => void
+    onCancelOrderItem?: (orderId: string, itemId: string) => void
 }
 
 function locationLabel(order: AnyOrder, splitSessionIds: Set<string>): string {
@@ -58,7 +59,7 @@ function useSelection(ids: string[]) {
     return { selected, allSelected, toggleAll, toggle }
 }
 
-export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, money, onUpdateTakeoutStatus, onCancelOrder }: Props) {
+export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, money, onUpdateTakeoutStatus, onCancelOrder, onCancelOrderItem }: Props) {
     const { confirm } = useConfirmStore()
     const features = useFeatures()
     const { print: printKot } = usePrinter('kot')
@@ -218,6 +219,25 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
         toast.success('Order cancelled')
     }
 
+    async function handleCancelOrderItem(orderId: string, itemId: string, label: string) {
+        const ok = await confirm({
+            title: 'Cancel this item?',
+            message: `This removes "${label}" from this order's bill and logs its cost as wasted. This cannot be undone.`,
+            confirmText: 'Cancel Item',
+            isDestructive: true,
+        })
+        if (!ok) return
+        setBusyId(orderId)
+        const res = await cancelOrderItem(orderId, itemId, cancelReason)
+        setBusyId(null)
+        if (res.error) { toast.error(res.error); return }
+        setCancelReason('')
+        if (onCancelOrderItem) {
+            onCancelOrderItem(orderId, itemId)
+        }
+        toast.success('Item cancelled')
+    }
+
     return (
         <div className="flex flex-col gap-4 w-full">
             {/* Sub-tabs — same pattern as the Takeaway/Delivery toggle: only one
@@ -345,6 +365,7 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                                         onReasonChange={setCancelReason}
                                         onMarkServed={(ids) => handleMarkServed(order.id, ids)}
                                         onCancel={() => handleCancelOrder(order)}
+                                        onCancelItem={(itemId, label) => handleCancelOrderItem(order.id, itemId, label)}
                                         kotEnabled={features.kotEnabled}
                                     />
                                 )}
@@ -474,7 +495,7 @@ function TakeoutConfirmDetail({ order, money, busy, onConfirm, onCancel }: {
     )
 }
 
-function StatusDetail({ order, items, money, busy, reason, onReasonChange, onMarkServed, onCancel, kotEnabled }: {
+function StatusDetail({ order, items, money, busy, reason, onReasonChange, onMarkServed, onCancel, onCancelItem, kotEnabled }: {
     order: AnyOrder
     items: NonNullable<AnyOrder['order_items']>
     money: (n: number) => string
@@ -483,6 +504,7 @@ function StatusDetail({ order, items, money, busy, reason, onReasonChange, onMar
     onReasonChange: (v: string) => void
     onMarkServed: (itemIds: string[]) => void
     onCancel: () => void
+    onCancelItem?: (itemId: string, label: string) => void
     kotEnabled?: boolean
 }) {
     const readyIds = items.filter(i => i.status === 'ready' && i.id).map(i => i.id!)
@@ -516,6 +538,15 @@ function StatusDetail({ order, items, money, busy, reason, onReasonChange, onMar
                             <span className="text-[11px] font-semibold text-ink-muted tabular-nums shrink-0">
                                 {money((item.unit_price || 0) * item.quantity)}
                             </span>
+                            {item.id && item.status !== 'cancelled' && onCancelItem && (
+                                <button
+                                    onClick={() => item.id && onCancelItem(item.id, item.menu_items?.name || 'Item')}
+                                    disabled={busy}
+                                    className="shrink-0 p-1 rounded-lg text-ink-subtle hover:text-red-650 hover:bg-red-50 disabled:opacity-50 transition-colors"
+                                >
+                                    <Trash2 size={13} />
+                                </button>
+                            )}
                         </div>
                     )
                 })}

@@ -781,3 +781,123 @@ export async function cancelOrder(
     revalidatePath('/kitchen')
     return { success: true }
 }
+
+export async function cancelOrderItem(
+    orderId: string,
+    itemId: string,
+    reason: string
+): Promise<{ success?: boolean; error?: string; conflict?: boolean }> {
+    const currentUser = await requireRole('cashier', 'waiter', 'manager', 'super_admin')
+    const supabase = await createAdminClient()
+
+    const cleanReason = (reason || '').trim().slice(0, 200) || 'Item cancelled by cashier'
+
+    const { data: item, error: itemError } = await supabase
+        .from('order_items')
+        .select(`
+            id, quantity, unit_price, status, order_id,
+            orders!inner ( id, restaurant_id, status, subtotal_amount, discount_amount, tax_amount, total_amount )
+        `)
+        .eq('id', itemId)
+        .eq('order_id', orderId)
+        .neq('status', 'cancelled')
+        .single()
+
+    if (itemError || !item) {
+        return { conflict: true, error: 'This item was already cancelled or not found' }
+    }
+
+    const parentOrder = item.orders as unknown as {
+        id: string
+        restaurant_id: string
+        status: OrderStatus
+        subtotal_amount: number
+        discount_amount: number
+        tax_amount: number
+        total_amount: number
+    }
+
+    const { error: updateError } = await supabase
+        .from('order_items')
+        .update({ status: 'cancelled' })
+        .eq('id', itemId)
+        .neq('status', 'cancelled')
+
+    if (updateError) return { error: updateError.message }
+
+    const { data: modifiers } = await supabase
+        .from('order_item_modifiers')
+        .select('price_adjustment')
+        .eq('order_item_id', itemId)
+    
+    const modifierAdj = (modifiers || []).reduce((sum, m) => sum + Number(m.price_adjustment), 0)
+    const itemTotal = (Number(item.unit_price) + modifierAdj) * item.quantity
+
+    const { data: siblings } = await supabase
+        .from('order_items')
+        .select('status, quantity, unit_price, id')
+        .eq('order_id', orderId)
+
+    const rolledStatus = rollUpOrderStatus((siblings || []).map(i => i.status as OrderItemStatus))
+
+    const newSubtotal = Math.max(0, Number(parentOrder.subtotal_amount) - itemTotal)
+
+    const { data: settings } = await supabase
+        .from('settings')
+        .select('features_v2')
+        .eq('restaurant_id', parentOrder.restaurant_id)
+        .single()
+    
+    const taxRate = Number(settings?.features_v2?.defaultTaxRate ?? 0)
+    const newDiscount = Math.min(newSubtotal, Number(parentOrder.discount_amount))
+    const newTax = Math.round((newSubtotal - newDiscount) * taxRate) / 100
+    const newTotal = newSubtotal - newDiscount + newTax
+
+    const orderPatch: {
+        subtotal_amount: number
+        discount_amount: number
+        tax_amount: number
+        total_amount: number
+        status?: OrderStatus
+    } = {
+        subtotal_amount: newSubtotal,
+        discount_amount: newDiscount,
+        tax_amount: newTax,
+        total_amount: newTotal,
+    }
+    if (rolledStatus) {
+        orderPatch.status = rolledStatus
+    }
+
+    const { error: orderUpdateError } = await supabase
+        .from('orders')
+        .update(orderPatch)
+        .eq('id', orderId)
+
+    if (orderUpdateError) return { error: orderUpdateError.message }
+
+    if (item.status !== 'pending') {
+        const locationLabel = `${parentOrder.id.slice(0, 8).toUpperCase()} (Item Cancelled)`
+        const expenseResult = await postOrderCancellationExpense(supabase, parentOrder.restaurant_id, currentUser.id, {
+            orderId,
+            locationLabel,
+            amount: itemTotal,
+        })
+        if (!expenseResult.success) {
+            console.error('[cancelOrderItem] failed to post cancellation expense:', expenseResult.error)
+        }
+    }
+
+    void logAudit({
+        restaurantId: parentOrder.restaurant_id,
+        userId: currentUser.id,
+        action: 'order_item_removed',
+        entityType: 'order_item',
+        entityId: itemId,
+        newValue: { orderId, reason: cleanReason, amount: itemTotal },
+    })
+
+    revalidatePath('/cashier')
+    revalidatePath('/kitchen')
+    return { success: true }
+}

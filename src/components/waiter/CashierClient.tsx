@@ -1588,6 +1588,17 @@ export default function CashierClient({
                             setActive(prev => prev.filter(o => o.id !== orderId))
                             setUnpaid(prev => prev.filter(o => o.id !== orderId))
                         }}
+                        onCancelOrderItem={(orderId, itemId) => {
+                            const updateItems = (orders: any[]) => orders.map(o => {
+                                if (o.id !== orderId) return o
+                                return {
+                                    ...o,
+                                    order_items: (o.order_items || []).map((i: any) => i.id === itemId ? { ...i, status: 'cancelled' } : i)
+                                }
+                            })
+                            setActive(prev => updateItems(prev))
+                            setUnpaid(prev => updateItems(prev))
+                        }}
                     />
                 )}
             </div>
