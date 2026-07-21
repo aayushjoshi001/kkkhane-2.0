@@ -26,6 +26,7 @@ interface Props {
     splitSessionIds: Set<string>
     money: (n: number) => string
     onUpdateTakeoutStatus: (orderId: string, status: 'confirmed' | 'cancelled') => Promise<void>
+    onCancelOrder?: (orderId: string) => void
 }
 
 function locationLabel(order: AnyOrder, splitSessionIds: Set<string>): string {
@@ -57,7 +58,7 @@ function useSelection(ids: string[]) {
     return { selected, allSelected, toggleAll, toggle }
 }
 
-export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, money, onUpdateTakeoutStatus }: Props) {
+export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, money, onUpdateTakeoutStatus, onCancelOrder }: Props) {
     const { confirm } = useConfirmStore()
     const features = useFeatures()
     const { print: printKot } = usePrinter('kot')
@@ -209,6 +210,9 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
         if (res.error) { toast.error(res.error); return }
         setCancelReason('')
         setExpandedStatusId(null)
+        if (onCancelOrder) {
+            onCancelOrder(order.id)
+        }
         toast.success('Order cancelled')
     }
 

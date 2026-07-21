@@ -1583,6 +1583,10 @@ export default function CashierClient({
                         splitSessionIds={splitSessionIds}
                         money={money}
                         onUpdateTakeoutStatus={handleUpdateStatus}
+                        onCancelOrder={(orderId) => {
+                            setActive(prev => prev.filter(o => o.id !== orderId))
+                            setUnpaid(prev => prev.filter(o => o.id !== orderId))
+                        }}
                     />
                 )}
             </div>
