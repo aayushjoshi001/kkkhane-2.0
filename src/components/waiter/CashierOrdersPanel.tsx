@@ -379,42 +379,46 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
             )}
 
             {mounted && cancelItemModal && createPortal(
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className="bg-surface w-full max-w-sm rounded-[28px] shadow-2xl border border-hairline p-6 flex flex-col gap-5 animate-in zoom-in-95 duration-150">
-                        <div className="flex flex-col gap-1">
-                            <h3 className="text-base font-extrabold text-ink">Cancel Item</h3>
-                            <p className="text-xs text-ink-subtle">
-                                Select plates of <span className="font-bold text-ink">{cancelItemModal.label}</span> to cancel:
-                            </p>
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-surface w-full max-w-sm rounded-[24px] shadow-2xl border border-hairline p-6 space-y-4 animate-in zoom-in-95 duration-150">
+                        <div>
+                            <h3 className="text-lg font-black text-ink">Cancel Item</h3>
+                            <p className="text-xs text-ink-subtle mt-0.5">Select plates of <span className="font-bold text-ink">{cancelItemModal.label}</span> to cancel:</p>
                         </div>
 
                         {/* Quantity Counter */}
-                        <div className="flex items-center justify-center gap-6 py-2">
+                        <div className="flex items-center justify-center gap-6 py-1">
                             <button
                                 type="button"
                                 onClick={() => setCancelQty(prev => Math.max(1, prev - 1))}
                                 disabled={cancelQty <= 1}
-                                className="w-11 h-11 rounded-full border border-hairline flex items-center justify-center text-ink hover:bg-surface-muted/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                className="w-10 h-10 rounded-full border border-hairline flex items-center justify-center text-ink hover:bg-surface-muted transition disabled:opacity-40 disabled:cursor-not-allowed"
                             >
-                                <Minus size={18} />
+                                <Minus size={16} />
                             </button>
-                            <span className="text-3xl font-black text-ink tabular-nums w-12 text-center">
+                            <span className="text-3xl font-black text-ink tabular-nums w-12 text-center select-none">
                                 {cancelQty}
                             </span>
                             <button
                                 type="button"
                                 onClick={() => setCancelQty(prev => Math.min(cancelItemModal.maxQty, prev + 1))}
                                 disabled={cancelQty >= cancelItemModal.maxQty}
-                                className="w-11 h-11 rounded-full border border-hairline flex items-center justify-center text-ink hover:bg-surface-muted/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                className="w-10 h-10 rounded-full border border-hairline flex items-center justify-center text-ink hover:bg-surface-muted transition disabled:opacity-40 disabled:cursor-not-allowed"
                             >
-                                <Plus size={18} />
+                                <Plus size={16} />
                             </button>
                         </div>
 
-                        <div className="text-[11px] text-red-600 bg-red-50 dark:bg-red-950/20 border border-red-200/50 rounded-xl px-3 py-2 leading-relaxed flex flex-col gap-0.5">
-                            <span className="font-bold">This will remove:</span>
-                            <span>{cancelQty}x {cancelItemModal.label} (Value: {money(cancelItemModal.unitPrice * cancelQty)})</span>
-                            <span className="text-ink-subtle text-[10px] mt-0.5">This action is logged as stock waste and cannot be undone.</span>
+                        {/* Waste breakdown banner */}
+                        <div className="border border-red-100 dark:border-red-950/30 bg-red-50/50 dark:bg-red-950/10 rounded-xl p-3.5 space-y-1 text-xs">
+                            <span className="font-extrabold text-red-600 block">This will remove:</span>
+                            <div className="flex justify-between font-bold text-ink">
+                                <span>{cancelQty}x {cancelItemModal.label}</span>
+                                <span className="tabular-nums">{money(cancelItemModal.unitPrice * cancelQty)}</span>
+                            </div>
+                            <p className="text-[10px] text-ink-subtle leading-relaxed pt-1 border-t border-red-100/50 dark:border-red-950/20">
+                                This action is logged as stock waste and cannot be undone.
+                            </p>
                         </div>
 
                         <input
@@ -422,14 +426,14 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                             value={cancelReasonInput}
                             onChange={e => setCancelReasonInput(e.target.value)}
                             placeholder="Cancellation reason (optional)"
-                            className="w-full text-xs border-hairline rounded-lg px-3 py-2 border bg-surface text-ink placeholder:text-ink-subtle"
+                            className="w-full px-3 py-2.5 border border-hairline rounded-xl text-xs font-semibold bg-surface placeholder:text-ink-subtle focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all"
                         />
 
-                        <div className="flex gap-3">
+                        <div className="flex gap-2.5 pt-1">
                             <button
                                 type="button"
                                 onClick={() => setCancelItemModal(null)}
-                                className="flex-1 rounded-2xl py-3 text-xs font-bold border border-hairline hover:bg-surface-muted/50 text-ink transition-colors"
+                                className="flex-1 px-4 py-2.5 border border-hairline rounded-xl text-xs font-bold hover:bg-surface-muted text-ink transition-all"
                             >
                                 Keep Item
                             </button>
@@ -448,7 +452,7 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                                     }
                                     toast.success(`${cancelQty}x ${label} cancelled`)
                                 }}
-                                className="flex-1 rounded-2xl py-3 text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-sm transition-colors"
+                                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-sm transition-all"
                             >
                                 Cancel {cancelQty} Plate{cancelQty !== 1 ? 's' : ''}
                             </button>
