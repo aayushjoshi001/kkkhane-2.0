@@ -2024,7 +2024,7 @@ export default function CashierClient({
                                                                 loading={isDirectCheckingOut}
                                                                 disabled={discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
                                                                 onClick={() => handleCloseGuestDirectly(selectedBillingRoom)}
-                                                                className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                                className="px-6 text-xs animate-scale-in"
                                                             >
                                                                 Close Guest
                                                             </Button>
@@ -2033,7 +2033,7 @@ export default function CashierClient({
                                                                 variant="primary"
                                                                 disabled={discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
                                                                 onClick={() => compileInvoice('room', selectedBillingRoom)}
-                                                                className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                                className="px-6 text-xs animate-scale-in"
                                                             >
                                                                 Generate Invoice
                                                             </Button>
@@ -2114,6 +2114,12 @@ export default function CashierClient({
                                         <div className="flex justify-between items-center px-1 text-xs">
                                             <span className="text-ink-subtle font-semibold">Tax / Service charge</span>
                                             <span className="font-bold text-ink-muted tabular-nums">{money(taxOrServiceAdjustment)}</span>
+                                        </div>
+                                    )}
+                                    {tableDiscountAmount > 0 && (
+                                        <div className="flex justify-between items-center px-1 text-xs text-rose-600">
+                                            <span className="font-semibold">Food Discount</span>
+                                            <span className="font-extrabold tabular-nums">− {money(tableDiscountAmount)}</span>
                                         </div>
                                     )}
 
@@ -2307,7 +2313,7 @@ export default function CashierClient({
                                                             setActiveInvoice(data)
                                                         }
                                                     }}
-                                                    className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                    className="px-6 text-xs animate-scale-in"
                                                  >
                                                      Close Guest
                                                  </Button>
@@ -2319,7 +2325,7 @@ export default function CashierClient({
                                                         (tableDiscountAmount > 0 && !tableDiscountReason.trim())
                                                     }
                                                     onClick={() => compileInvoice('table', selectedBillingTable)}
-                                                    className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                    className="px-6 text-xs animate-scale-in"
                                                 >
                                                     Generate Invoice
                                                 </Button>
