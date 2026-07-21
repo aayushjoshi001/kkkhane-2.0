@@ -410,13 +410,13 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                         </div>
 
                         {/* Waste breakdown banner */}
-                        <div className="border border-red-100 dark:border-red-950/30 bg-red-50/50 dark:bg-red-950/10 rounded-xl p-3.5 space-y-1 text-xs">
-                            <span className="font-extrabold text-red-600 block">This will remove:</span>
+                        <div className="border border-brand-200/60 dark:border-brand-900/30 bg-brand-100/10 dark:bg-brand-900/10 rounded-xl p-3.5 space-y-1 text-xs">
+                            <span className="font-extrabold text-brand-600 dark:text-brand-400 block">This will remove:</span>
                             <div className="flex justify-between font-bold text-ink">
                                 <span>{cancelQty}x {cancelItemModal.label}</span>
                                 <span className="tabular-nums">{money(cancelItemModal.unitPrice * cancelQty)}</span>
                             </div>
-                            <p className="text-[10px] text-ink-subtle leading-relaxed pt-1 border-t border-red-100/50 dark:border-red-950/20">
+                            <p className="text-[10px] text-ink-subtle leading-relaxed pt-1 border-t border-brand-200/30 dark:border-brand-900/20">
                                 This action is logged as stock waste and cannot be undone.
                             </p>
                         </div>
@@ -452,7 +452,7 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                                     }
                                     toast.success(`${cancelQty}x ${label} cancelled`)
                                 }}
-                                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-sm transition-all"
+                                className="flex-1 px-4 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-bold rounded-xl text-xs shadow-sm transition-all"
                             >
                                 Cancel {cancelQty} Plate{cancelQty !== 1 ? 's' : ''}
                             </button>
