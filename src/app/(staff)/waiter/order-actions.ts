@@ -777,6 +777,199 @@ export async function cancelOrder(
         newValue: { reason: cleanReason, amount },
     })
 
+    if (order.session_id) {
+        const { data: activeOrders } = await supabase
+            .from('orders')
+            .select('id')
+            .eq('session_id', order.session_id)
+            .neq('status', 'cancelled')
+
+        if (!activeOrders || activeOrders.length === 0) {
+            await supabase
+                .from('sessions')
+                .update({
+                    status: 'closed',
+                    closed_at: new Date().toISOString()
+                })
+                .eq('id', order.session_id)
+
+            await markTableDirtyForSession(supabase, order.session_id)
+        }
+    }
+
+    revalidatePath('/cashier')
+    revalidatePath('/kitchen')
+    return { success: true }
+}
+
+export async function cancelOrderItem(
+    orderId: string,
+    itemId: string,
+    cancelQuantity: number,
+    reason: string
+): Promise<{ success?: boolean; error?: string; conflict?: boolean }> {
+    const currentUser = await requireRole('cashier', 'waiter', 'manager', 'super_admin')
+    const supabase = await createAdminClient()
+
+    const cleanReason = (reason || '').trim().slice(0, 200) || 'Item cancelled by cashier'
+
+    const { data: item, error: itemError } = await supabase
+        .from('order_items')
+        .select(`
+            id, quantity, unit_price, status, order_id, menu_item_id, menu_item_variation_id, special_request, station, needs_confirmation,
+            orders!inner ( id, restaurant_id, status, session_id, subtotal_amount, discount_amount, tax_amount, total_amount )
+        `)
+        .eq('id', itemId)
+        .eq('order_id', orderId)
+        .neq('status', 'cancelled')
+        .single()
+
+    if (itemError || !item) {
+        return { conflict: true, error: 'This item was already cancelled or not found' }
+    }
+
+    if (cancelQuantity <= 0 || cancelQuantity > item.quantity) {
+        return { error: `Invalid cancel quantity ${cancelQuantity} (item quantity is ${item.quantity})` }
+    }
+
+    const parentOrder = item.orders as unknown as {
+        id: string
+        restaurant_id: string
+        status: OrderStatus
+        session_id: string | null
+        subtotal_amount: number
+        discount_amount: number
+        tax_amount: number
+        total_amount: number
+    }
+
+    if (cancelQuantity === item.quantity) {
+        // Full cancellation of the item
+        const { error: updateError } = await supabase
+            .from('order_items')
+            .update({ status: 'cancelled' })
+            .eq('id', itemId)
+            .neq('status', 'cancelled')
+
+        if (updateError) return { error: updateError.message }
+    } else {
+        // Partial cancellation: decrement the original item quantity and insert a new cancelled item
+        const { error: updateError } = await supabase
+            .from('order_items')
+            .update({ quantity: item.quantity - cancelQuantity })
+            .eq('id', itemId)
+
+        if (updateError) return { error: updateError.message }
+
+        const { error: insertError } = await supabase
+            .from('order_items')
+            .insert({
+                order_id: orderId,
+                menu_item_id: item.menu_item_id,
+                menu_item_variation_id: item.menu_item_variation_id,
+                quantity: cancelQuantity,
+                unit_price: item.unit_price,
+                special_request: item.special_request,
+                needs_confirmation: false,
+                status: 'cancelled',
+                station: item.station
+            })
+
+        if (insertError) return { error: insertError.message }
+    }
+
+    const { data: modifiers } = await supabase
+        .from('order_item_modifiers')
+        .select('price_adjustment')
+        .eq('order_item_id', itemId)
+    
+    const modifierAdj = (modifiers || []).reduce((sum, m) => sum + Number(m.price_adjustment), 0)
+    const itemTotal = (Number(item.unit_price) + modifierAdj) * cancelQuantity
+
+    const { data: siblings } = await supabase
+        .from('order_items')
+        .select('status, quantity, unit_price, id')
+        .eq('order_id', orderId)
+
+    const rolledStatus = rollUpOrderStatus((siblings || []).map(i => i.status as OrderItemStatus))
+
+    const newSubtotal = Math.max(0, Number(parentOrder.subtotal_amount) - itemTotal)
+
+    const { data: settings } = await supabase
+        .from('settings')
+        .select('features_v2')
+        .eq('restaurant_id', parentOrder.restaurant_id)
+        .single()
+    
+    const taxRate = Number(settings?.features_v2?.defaultTaxRate ?? 0)
+    const newDiscount = Math.min(newSubtotal, Number(parentOrder.discount_amount))
+    const newTax = Math.round((newSubtotal - newDiscount) * taxRate) / 100
+    const newTotal = newSubtotal - newDiscount + newTax
+
+    const orderPatch: {
+        subtotal_amount: number
+        discount_amount: number
+        tax_amount: number
+        total_amount: number
+        status?: OrderStatus
+    } = {
+        subtotal_amount: newSubtotal,
+        discount_amount: newDiscount,
+        tax_amount: newTax,
+        total_amount: newTotal,
+    }
+    if (rolledStatus) {
+        orderPatch.status = rolledStatus
+    }
+
+    const { error: orderUpdateError } = await supabase
+        .from('orders')
+        .update(orderPatch)
+        .eq('id', orderId)
+
+    if (orderUpdateError) return { error: orderUpdateError.message }
+
+    if (item.status !== 'pending') {
+        const locationLabel = `${parentOrder.id.slice(0, 8).toUpperCase()} (Item Cancelled)`
+        const expenseResult = await postOrderCancellationExpense(supabase, parentOrder.restaurant_id, currentUser.id, {
+            orderId,
+            locationLabel,
+            amount: itemTotal,
+        })
+        if (!expenseResult.success) {
+            console.error('[cancelOrderItem] failed to post cancellation expense:', expenseResult.error)
+        }
+    }
+
+    void logAudit({
+        restaurantId: parentOrder.restaurant_id,
+        userId: currentUser.id,
+        action: 'order_item_removed',
+        entityType: 'order_item',
+        entityId: itemId,
+        newValue: { orderId, reason: cleanReason, amount: itemTotal, cancelQuantity },
+    })
+
+    if (parentOrder.session_id) {
+        const { data: activeOrders } = await supabase
+            .from('orders')
+            .select('id')
+            .eq('session_id', parentOrder.session_id)
+            .neq('status', 'cancelled')
+
+        if (!activeOrders || activeOrders.length === 0) {
+            await supabase
+                .from('sessions')
+                .update({
+                    status: 'closed',
+                    closed_at: new Date().toISOString()
+                })
+                .eq('id', parentOrder.session_id)
+
+            await markTableDirtyForSession(supabase, parentOrder.session_id)
+        }
+    }
+
     revalidatePath('/cashier')
     revalidatePath('/kitchen')
     return { success: true }

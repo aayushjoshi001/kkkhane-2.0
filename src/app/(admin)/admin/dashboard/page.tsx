@@ -197,7 +197,7 @@ async function KpiCardsSection({ restaurantId, money, isHotel = false }: { resta
         activeShiftCountRes,
     ] = await Promise.all([
         adminSupabase.from('orders').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).gte('placed_at', today.toISOString()),
-        adminSupabase.from('sessions').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).eq('status', 'active').gt('expires_at', now),
+        adminSupabase.from('sessions').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).eq('status', 'active'),
         adminSupabase.from('orders').select('total_amount, status').eq('restaurant_id', restaurantId).gte('placed_at', today.toISOString()),
         adminSupabase.from('staff_shifts').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).is('clock_out', null),
     ])

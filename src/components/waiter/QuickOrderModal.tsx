@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { X, Search, Plus, Minus, Trash2, Loader2, ShoppingCart, Utensils, MessageSquare, CheckCircle2, ArrowLeft } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { getStaffMenu, placeStaffOrder, placeRoomOrderDirect } from '@/app/(staff)/waiter/actions'
+import { createTakeoutOrder, createDeliveryOrder } from '@/app/api/takeout/actions'
 import { toast } from 'react-hot-toast'
 import Select from '@/components/ui/Select'
 
@@ -51,6 +52,7 @@ interface QuickOrderModalProps {
     activeTables?: any[]
     bookingId?: string
     onSuccess?: (orderId: string) => void
+    isManualTakeoutDelivery?: boolean
 }
 
 interface CartItem {
@@ -78,7 +80,8 @@ export default function QuickOrderModal({
     restaurantId,
     activeTables,
     bookingId,
-    onSuccess
+    onSuccess,
+    isManualTakeoutDelivery = false
 }: QuickOrderModalProps) {
     const [mounted, setMounted] = useState(false)
     const [loading, setLoading] = useState(true)
@@ -93,7 +96,26 @@ export default function QuickOrderModal({
     const [customerNote, setCustomerNote] = useState('')
     const [selectedSession, setSelectedSession] = useState<{ id: string; token: string; label: string } | null>(null)
     const [showMobileCart, setShowMobileCart] = useState(false)
-    const [orderType, setOrderType] = useState<'dine_in' | 'takeout'>('dine_in')
+    const [orderType, setOrderType] = useState<'dine_in' | 'takeout' | 'delivery'>(
+        isManualTakeoutDelivery ? 'takeout' : 'dine_in'
+    )
+
+    // Manual Takeaway/Delivery states
+    const [takeoutCustomerName, setTakeoutCustomerName] = useState('')
+    const [takeoutCustomerPhone, setTakeoutCustomerPhone] = useState('')
+    const [deliveryAddress, setDeliveryAddress] = useState('')
+
+    // Reset customer info on modal close or open
+    useEffect(() => {
+        if (!isOpen) {
+            setTakeoutCustomerName('')
+            setTakeoutCustomerPhone('')
+            setDeliveryAddress('')
+            setCart([])
+        } else {
+            setOrderType(isManualTakeoutDelivery ? 'takeout' : 'dine_in')
+        }
+    }, [isOpen, isManualTakeoutDelivery])
 
     // Modifier/Variation Configuration State
     const [configuringItem, setConfiguringItem] = useState<MenuItem | null>(null)
@@ -197,7 +219,9 @@ export default function QuickOrderModal({
 
         // Unique key for matching same items in cart
         const modifierIds = modifiers.map(m => m.id).sort().join(',')
-        const cartItemId = `${item.id}-${variationId || 'none'}-${modifierIds}-${note}-${orderType}`
+        const cartItemId = isManualTakeoutDelivery
+            ? `${item.id}-${variationId || 'none'}-${modifierIds}-${note}`
+            : `${item.id}-${variationId || 'none'}-${modifierIds}-${note}-${orderType}`
 
         setCart(prev => {
             const existingIndex = prev.findIndex(i => i.id === cartItemId)
@@ -216,7 +240,7 @@ export default function QuickOrderModal({
                 specialRequest: note,
                 variationId,
                 variationName,
-                isPacking: orderType === 'takeout',
+                isPacking: isManualTakeoutDelivery ? false : orderType === 'takeout',
                 modifiers: modifiers.map(m => ({
                     modifierId: m.id,
                     name: m.name,
@@ -292,13 +316,13 @@ export default function QuickOrderModal({
     }
 
     const getCartItemQuantity = (menuItemId: string, variationId?: string) => {
-        const match = cart.find(ci => ci.menuItemId === menuItemId && ci.variationId === variationId && ((orderType === 'takeout') === !!ci.isPacking))
+        const match = cart.find(ci => ci.menuItemId === menuItemId && ci.variationId === variationId && (isManualTakeoutDelivery ? true : ((orderType === 'takeout') === !!ci.isPacking)))
         return match ? match.quantity : 0
     }
 
     const handleQuantityChange = (menuItem: MenuItem, variation?: Variation | null, change: number = 1) => {
         const variationId = variation ? variation.id : undefined
-        const existing = cart.find(ci => ci.menuItemId === menuItem.id && ci.variationId === variationId && ((orderType === 'takeout') === !!ci.isPacking))
+        const existing = cart.find(ci => ci.menuItemId === menuItem.id && ci.variationId === variationId && (isManualTakeoutDelivery ? true : ((orderType === 'takeout') === !!ci.isPacking)))
         if (existing) {
             updateQuantity(existing.id, change)
         } else if (change > 0) {
@@ -312,30 +336,84 @@ export default function QuickOrderModal({
             return
         }
 
-        if (!selectedSession && !bookingId) {
-            toast.error('No table session or room stay selected')
-            return
+        if (!isManualTakeoutDelivery) {
+            if (!selectedSession && !bookingId) {
+                toast.error('No table session or room stay selected')
+                return
+            }
         }
 
         setShowConfirmDialog(false)
         setSubmitting(true)
         try {
-            const cartWithPacking = cart.map(item => {
-                if (item.isPacking) {
-                    const cleanRequest = item.specialRequest ? item.specialRequest.replace('(Packing)', '').replace('[Packing]', '').trim() : ''
-                    return {
-                        ...item,
-                        specialRequest: cleanRequest ? `${cleanRequest} (Packing)` : '(Packing)'
+            let res: { success?: boolean; orderId?: string; total?: number; error?: string } = { error: 'Invalid state' }
+
+            if (isManualTakeoutDelivery) {
+                const payloadItems = cart.map(item => ({
+                    menuItemId: item.menuItemId,
+                    name: item.name,
+                    price: item.price,
+                    quantity: item.quantity,
+                    specialRequest: item.specialRequest,
+                    variationId: item.variationId,
+                    variationName: item.variationName,
+                    modifiers: item.modifiers.map(m => ({
+                        modifierId: m.modifierId,
+                        name: m.name,
+                        priceAdjustment: m.priceAdjustment
+                    }))
+                }))
+
+                if (orderType === 'takeout') {
+                    const takeoutRes = await createTakeoutOrder({
+                        restaurantId,
+                        customerName: takeoutCustomerName.trim() || 'Walk-in Customer',
+                        customerPhone: takeoutCustomerPhone.trim(),
+                        pickupTime: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+                        items: payloadItems,
+                        customerNote
+                    })
+                    res = {
+                        success: !takeoutRes.error,
+                        orderId: takeoutRes.orderId,
+                        total: takeoutRes.total,
+                        error: takeoutRes.error
+                    }
+                } else if (orderType === 'delivery') {
+                    const deliveryRes = await createDeliveryOrder({
+                        restaurantId,
+                        customerName: takeoutCustomerName.trim() || 'Walk-in Customer',
+                        customerPhone: takeoutCustomerPhone.trim(),
+                        deliveryAddress: deliveryAddress.trim() || 'N/A',
+                        items: payloadItems,
+                        customerNote
+                    })
+                    res = {
+                        success: !deliveryRes.error,
+                        orderId: deliveryRes.orderId,
+                        total: deliveryRes.total,
+                        error: deliveryRes.error
                     }
                 }
-                return item
-            })
+            } else {
+                const cartWithPacking = cart.map(item => {
+                    if (item.isPacking) {
+                        const cleanRequest = item.specialRequest ? item.specialRequest.replace('(Packing)', '').replace('[Packing]', '').trim() : ''
+                        return {
+                            ...item,
+                            specialRequest: cleanRequest ? `${cleanRequest} (Packing)` : '(Packing)'
+                        }
+                    }
+                    return item
+                })
 
-            const res = bookingId && !selectedSession
-                ? await placeRoomOrderDirect(bookingId, cartWithPacking, customerNote)
-                : selectedSession
-                    ? await placeStaffOrder(selectedSession.token, cartWithPacking, customerNote)
-                    : { error: 'No active session found.' }
+                res = bookingId && !selectedSession
+                    ? await placeRoomOrderDirect(bookingId, cartWithPacking, customerNote)
+                    : selectedSession
+                        ? await placeStaffOrder(selectedSession.token, cartWithPacking, customerNote)
+                        : { error: 'No active session found.' }
+            }
+
             if (res && res.success) {
                 if (res.orderId) {
                     onSuccess?.(res.orderId)
@@ -343,10 +421,15 @@ export default function QuickOrderModal({
                 setOrderConfirmation({
                     itemCount: cart.reduce((sum, item) => sum + item.quantity, 0),
                     total: cartTotal,
-                    label: bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`
+                    label: isManualTakeoutDelivery
+                        ? (orderType === 'delivery' ? 'Delivery Queue' : 'Takeaway Queue')
+                        : (bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`)
                 })
                 setCart([])
                 setCustomerNote('')
+                setTakeoutCustomerName('')
+                setTakeoutCustomerPhone('')
+                setDeliveryAddress('')
                 setShowMobileCart(false)
             } else {
                 const errMsg = res?.error || 'Failed to place order'
@@ -541,28 +624,69 @@ export default function QuickOrderModal({
                                 </div>
 
                                 <div className="flex bg-surface-muted p-1 rounded-xl border border-hairline select-none">
-                                    <button
-                                        type="button"
-                                        onClick={() => setOrderType('dine_in')}
-                                        className={`flex-1 py-1.5 text-center text-caption font-bold rounded-lg transition-all ${
-                                            orderType === 'dine_in'
-                                                ? 'bg-surface text-brand-500 shadow-sm border border-hairline font-extrabold'
-                                                : 'text-ink-subtle hover:text-ink'
-                                        }`}
-                                    >
-                                        Dine In
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setOrderType('takeout')}
-                                        className={`flex-1 py-1.5 text-center text-caption font-bold rounded-lg transition-all ${
-                                            orderType === 'takeout'
-                                                ? 'bg-surface text-brand-500 shadow-sm border border-hairline font-extrabold'
-                                                : 'text-ink-subtle hover:text-ink'
-                                        }`}
-                                    >
-                                        Packing
-                                    </button>
+                                    {isManualTakeoutDelivery ? (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (cart.length > 0 && orderType !== 'takeout') {
+                                                        toast.error('Clear the cart before changing order type')
+                                                        return
+                                                    }
+                                                    setOrderType('takeout')
+                                                }}
+                                                className={`flex-1 py-1.5 text-center text-caption font-bold rounded-lg transition-all ${
+                                                    orderType === 'takeout'
+                                                        ? 'bg-surface text-brand-500 shadow-sm border border-hairline font-extrabold font-mono'
+                                                        : 'text-ink-subtle hover:text-ink'
+                                                } ${cart.length > 0 && orderType !== 'takeout' ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                            >
+                                                Takeaway
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (cart.length > 0 && orderType !== 'delivery') {
+                                                        toast.error('Clear the cart before changing order type')
+                                                        return
+                                                    }
+                                                    setOrderType('delivery')
+                                                }}
+                                                className={`flex-1 py-1.5 text-center text-caption font-bold rounded-lg transition-all ${
+                                                    orderType === 'delivery'
+                                                        ? 'bg-surface text-brand-500 shadow-sm border border-hairline font-extrabold font-mono'
+                                                        : 'text-ink-subtle hover:text-ink'
+                                                } ${cart.length > 0 && orderType !== 'delivery' ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                            >
+                                                Delivery
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => setOrderType('dine_in')}
+                                                className={`flex-1 py-1.5 text-center text-caption font-bold rounded-lg transition-all ${
+                                                    orderType === 'dine_in'
+                                                        ? 'bg-surface text-brand-500 shadow-sm border border-hairline font-extrabold font-mono'
+                                                        : 'text-ink-subtle hover:text-ink'
+                                                }`}
+                                            >
+                                                Dine In
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setOrderType('takeout')}
+                                                className={`flex-1 py-1.5 text-center text-caption font-bold rounded-lg transition-all ${
+                                                    orderType === 'takeout'
+                                                        ? 'bg-surface text-brand-500 shadow-sm border border-hairline font-extrabold font-mono'
+                                                        : 'text-ink-subtle hover:text-ink'
+                                                }`}
+                                            >
+                                                Packing
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
 
                                 {/* Horizontal Categories Selector (Mobile Only) */}
@@ -760,7 +884,7 @@ export default function QuickOrderModal({
                                             <div className="flex justify-between items-start gap-1">
                                                 <div className="min-w-0">
                                                     <p className="text-body font-bold text-ink truncate">
-                                                         {item.name}{item.isPacking && ' (Packing)'}
+                                                         {item.name}{item.isPacking && !isManualTakeoutDelivery && ' (Packing)'}
                                                     </p>
                                                     {item.variationName && (
                                                         <p className="text-[10px] text-brand-500 font-extrabold mt-0.5">Size: {item.variationName}</p>
@@ -1012,24 +1136,72 @@ export default function QuickOrderModal({
                 layer="top"
                 backdropClassName="!z-[9999999]"
                 ariaLabel="Confirm order"
-                className="flex flex-col overflow-hidden max-h-[80vh]"
+                className="flex flex-col overflow-hidden max-h-[90vh]"
             >
                 <div className="px-5 py-4 border-b border-hairline bg-surface-muted/50">
                     <h4 className="text-body font-black text-ink">Confirm order</h4>
                     <p className="text-[10px] text-ink-subtle mt-0.5">
-                        Sends to the kitchen and adds to {bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`} ({orderType === 'takeout' ? 'Packing' : 'Dine In'}).
+                        {isManualTakeoutDelivery
+                            ? `Sends to kitchen and creates manual ${orderType === 'delivery' ? 'Delivery' : 'Takeaway'} order.`
+                            : `Sends to the kitchen and adds to ${bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`} (${orderType === 'takeout' ? 'Packing' : 'Dine In'}).`
+                        }
                     </p>
                 </div>
 
-                <div className="p-5 overflow-y-auto space-y-1.5 flex-1">
-                    {cart.map(item => (
-                        <div key={item.id} className="flex justify-between text-caption text-ink-muted">
-                            <span>{item.name}{item.isPacking && ' (Packing)'} <span className="text-brand-500 font-bold">×{item.quantity}</span></span>
-                            <span className="font-semibold tabular-nums">
-                                Rs. {(item.price + item.modifiers.reduce((s, m) => s + m.priceAdjustment, 0)) * item.quantity}
-                            </span>
+                <div className="p-5 overflow-y-auto space-y-4 flex-1">
+                    {isManualTakeoutDelivery && (
+                        <div className="space-y-3 bg-amber-50/40 p-4 border border-amber-200 rounded-2xl">
+                            <p className="text-xs font-black text-amber-800 uppercase tracking-wider font-mono">Customer Details</p>
+                            
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <label className="block text-[9px] font-black text-amber-700 uppercase">Customer Name (Optional)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Ram Bahadur"
+                                        value={takeoutCustomerName}
+                                        onChange={e => setTakeoutCustomerName(e.target.value)}
+                                        className="w-full px-3 py-2 border-2 border-amber-200 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white focus:outline-none"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="block text-[9px] font-black text-amber-700 uppercase">Phone Number (Optional)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. 98xxxxxxxx"
+                                        value={takeoutCustomerPhone}
+                                        onChange={e => setTakeoutCustomerPhone(e.target.value)}
+                                        className="w-full px-3 py-2 border-2 border-amber-200 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="block text-[9px] font-black text-amber-700 uppercase">
+                                    Delivery Address (Optional)
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Tinkune, Kathmandu (Optional)"
+                                    value={deliveryAddress}
+                                    onChange={e => setDeliveryAddress(e.target.value)}
+                                    className="w-full px-3 py-2 border-2 border-amber-200 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white focus:outline-none"
+                                />
+                            </div>
                         </div>
-                    ))}
+                    )}
+
+                    <div className="space-y-1.5">
+                        <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1">Items list</p>
+                        {cart.map(item => (
+                            <div key={item.id} className="flex justify-between text-caption text-ink-muted">
+                                <span>{item.name}{item.isPacking && !isManualTakeoutDelivery && ' (Packing)'} <span className="text-brand-500 font-bold">×{item.quantity}</span></span>
+                                <span className="font-semibold tabular-nums">
+                                    Rs. {(item.price + item.modifiers.reduce((s, m) => s + m.priceAdjustment, 0)) * item.quantity}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
                 </div>
 
                 <div className="px-5 py-3 border-t border-hairline flex justify-between items-center bg-surface-muted/20">

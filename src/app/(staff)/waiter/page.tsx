@@ -75,7 +75,6 @@ export default async function WaiterPage() {
             .select('id, table_id, restaurant_id, opened_by, session_token, status, opened_at, closed_at, expires_at, guest_count, max_seats, seat_number, notes')
             .eq('restaurant_id', restaurantId)
             .eq('status', 'active')
-            .gt('expires_at', now)
             .order('seat_number', { ascending: true }),
     ])
 

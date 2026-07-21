@@ -1,10 +1,11 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { toast } from 'react-hot-toast'
 import {
     ClipboardCheck, ClipboardList, ChevronDown, CheckSquare, Square,
-    Trash2, Loader2, Send, CheckCircle2, XCircle, Phone, MapPin,
+    Trash2, Loader2, Send, CheckCircle2, XCircle, Phone, MapPin, Plus, Minus,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useConfirmStore } from '@/lib/stores/confirm'
@@ -13,7 +14,7 @@ import { usePrinter } from '@/lib/print/usePrinter'
 import { buildStationTicket } from '@/lib/print/templates/stationTicket'
 import {
     confirmOrderItems, deleteUnconfirmedOrderItem, cancelOrder,
-    markOrderItemsServed,
+    markOrderItemsServed, cancelOrderItem,
 } from '@/app/(staff)/waiter/order-actions'
 import { tableLabel, type ActiveOrder, type UnpaidOrder } from './CashierClient'
 import type { KitchenOrder } from '@/components/kitchen/OrderQueue'
@@ -27,6 +28,8 @@ interface Props {
     money: (n: number) => string
     onUpdateTakeoutStatus: (orderId: string, status: 'confirmed' | 'cancelled') => Promise<void>
     restaurantName: string
+    onCancelOrder?: (orderId: string) => void
+    onCancelOrderItem?: (orderId: string, itemId: string, cancelQuantity: number) => void
 }
 
 function locationLabel(order: AnyOrder, splitSessionIds: Set<string>): string {
@@ -58,12 +61,27 @@ function useSelection(ids: string[]) {
     return { selected, allSelected, toggleAll, toggle }
 }
 
-export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, money, onUpdateTakeoutStatus, restaurantName }: Props) {
+export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, money, onUpdateTakeoutStatus, restaurantName, onCancelOrder, onCancelOrderItem }: Props) {
     const { confirm } = useConfirmStore()
     const features = useFeatures()
     const { print: printKot } = usePrinter('kot')
     const { print: printBot } = usePrinter('bot')
     const supabaseRef = useRef(createClient())
+
+    const [mounted, setMounted] = useState(false)
+    const [cancelItemModal, setCancelItemModal] = useState<{
+        orderId: string
+        itemId: string
+        label: string
+        maxQty: number
+        unitPrice: number
+    } | null>(null)
+    const [cancelQty, setCancelQty] = useState(1)
+    const [cancelReasonInput, setCancelReasonInput] = useState('')
+
+    useEffect(() => {
+        setMounted(true)
+    }, [])
 
     const [ordersSubTab, setOrdersSubTab] = useState<'confirmation' | 'status'>('confirmation')
     const [expandedConfirmId, setExpandedConfirmId] = useState<string | null>(null)
@@ -84,11 +102,56 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
         [active]
     )
 
-    // ── Order Status — every open order regardless of origin ───────────────────
-    const statusOrders = useMemo(
-        () => [...active, ...unpaid].filter(o => o.status !== 'cancelled'),
-        [active, unpaid]
-    )
+    // ── Grouped Order Status — grouped by location/session/booking ───────────────────
+    const groupedStatusCards = useMemo(() => {
+        const groups: Record<string, {
+            key: string
+            title: string
+            orderType: string
+            placedAt: string
+            orders: AnyOrder[]
+            totalAmount: number
+        }> = {}
+
+        const allOrders = [...active, ...unpaid].filter(o => o.status !== 'cancelled')
+
+        for (const order of allOrders) {
+            let key = ''
+            let title = ''
+            if (order.session_id) {
+                key = `session-${order.session_id}`
+                title = `Table ${tableLabel(order.sessions, splitSessionIds)}`
+            } else if (order.booking_id) {
+                key = `booking-${order.booking_id}`
+                title = order.bookings?.rooms?.room_number ? `Room ${order.bookings.rooms.room_number}` : 'Room Service'
+            } else {
+                key = `order-${order.id}`
+                title = order.order_type === 'takeout'
+                    ? `Takeaway · ${order.customer_name || 'Customer'}`
+                    : `Delivery · ${order.customer_name || 'Customer'}`
+            }
+
+            if (!groups[key]) {
+                groups[key] = {
+                    key,
+                    title,
+                    orderType: order.order_type || 'dine_in',
+                    placedAt: order.placed_at,
+                    orders: [],
+                    totalAmount: 0
+                }
+            }
+
+            const group = groups[key]
+            group.orders.push(order)
+            group.totalAmount += Number(order.total_amount) || 0
+            if (new Date(order.placed_at) < new Date(group.placedAt)) {
+                group.placedAt = order.placed_at
+            }
+        }
+
+        return Object.values(groups).sort((a, b) => new Date(a.placedAt).getTime() - new Date(b.placedAt).getTime())
+    }, [active, unpaid, splitSessionIds])
 
     function expandConfirm(id: string) {
         const next = expandedConfirmId === id ? null : id
@@ -98,11 +161,11 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
         }
     }
 
-    function expandStatus(id: string) {
-        const next = expandedStatusId === id ? null : id
+    function expandStatus(key: string) {
+        const next = expandedStatusId === key ? null : key
         setExpandedStatusId(next)
         if (next) {
-            requestAnimationFrame(() => statusRowRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))
+            requestAnimationFrame(() => statusRowRefs.current[key]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))
         }
     }
 
@@ -197,9 +260,11 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
     }
 
     async function handleCancelOrder(order: AnyOrder) {
+        const timeStr = new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        const itemsSummary = (order.order_items || []).map(i => `${i.quantity}x ${i.menu_items?.name || 'Item'}`).join(', ')
         const ok = await confirm({
-            title: 'Cancel this order?',
-            message: `This removes the order from ${locationLabel(order, splitSessionIds)}'s bill and logs its value as an Order Cancellation expense. This cannot be undone.`,
+            title: 'Cancel this particular order?',
+            message: `This removes only the specific order placed at ${timeStr} (${itemsSummary}) from ${locationLabel(order, splitSessionIds)}'s bill, and logs its value as an Order Cancellation expense. Other orders on this bill are untouched. This cannot be undone.`,
             confirmText: 'Cancel Order',
             isDestructive: true,
         })
@@ -210,7 +275,16 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
         if (res.error) { toast.error(res.error); return }
         setCancelReason('')
         setExpandedStatusId(null)
+        if (onCancelOrder) {
+            onCancelOrder(order.id)
+        }
         toast.success('Order cancelled')
+    }
+
+    function handleCancelOrderItem(orderId: string, itemId: string, label: string, maxQty: number, unitPrice: number) {
+        setCancelQty(1)
+        setCancelReasonInput('')
+        setCancelItemModal({ orderId, itemId, label, maxQty, unitPrice })
     }
 
     return (
@@ -221,7 +295,7 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                 <div className="grid grid-cols-2 gap-2 sm:gap-4 w-full">
                     {([
                         { key: 'confirmation', label: 'Order Confirmation', count: confirmationOrders.length, icon: ClipboardCheck },
-                        { key: 'status', label: 'Order Status', count: statusOrders.length, icon: ClipboardList },
+                        { key: 'status', label: 'Order Status', count: groupedStatusCards.length, icon: ClipboardList },
                     ] as const).map(({ key, label, count, icon: Icon }) => {
                         const isActive = ordersSubTab === key
                         const activeColors = {
@@ -272,7 +346,7 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm font-bold text-ink truncate">{locationLabel(order, splitSessionIds)}</p>
                                             <p className="text-[11px] text-ink-subtle">
-                                                {isTakeoutPending
+                                                {new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {isTakeoutPending
                                                     ? 'Awaiting confirmation'
                                                     : `${pendingItems.length} item${pendingItems.length !== 1 ? 's' : ''} pending`}
                                             </p>
@@ -307,43 +381,134 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
             )}
 
             {ordersSubTab === 'status' && (
-                <div className="bg-surface rounded-[24px] border border-hairline shadow-sm overflow-hidden">
-                    <div className="divide-y divide-gray-50">
-                        {statusOrders.length === 0 && (
-                            <p className="px-4 py-12 text-center text-xs text-ink-subtle font-semibold">No open orders right now.</p>
-                        )}
-                        {statusOrders.map(order => {
-                            const items = order.order_items || []
-                            const isExpanded = expandedStatusId === order.id
-                            return (
-                                <div key={order.id} ref={el => { statusRowRefs.current[order.id] = el }}>
-                                    <button
-                                        onClick={() => expandStatus(order.id)}
-                                        className="w-full flex items-center gap-2.5 px-4 py-3.5 text-left hover:bg-surface-muted/50 transition-colors"
-                                    >
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-bold text-ink truncate">{locationLabel(order, splitSessionIds)}</p>
-                                            <p className="text-[11px] text-ink-subtle capitalize">{order.status} · {items.length} item{items.length !== 1 ? 's' : ''} · {money(Number(order.total_amount) || 0)}</p>
-                                        </div>
-                                        <ChevronDown size={15} className={`text-ink-subtle shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                                    </button>
-                                    {isExpanded && (
-                                        <StatusDetail
-                                            order={order}
-                                            items={items}
-                                            money={money}
-                                            busy={busyId === order.id}
-                                            reason={cancelReason}
-                                            onReasonChange={setCancelReason}
-                                            onMarkServed={(ids) => handleMarkServed(order.id, ids)}
-                                            onCancel={() => handleCancelOrder(order)}
-                                        />
-                                    )}
-                                </div>
-                            )
-                        })}
-                    </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
+                    {groupedStatusCards.length === 0 && (
+                        <p className="col-span-full py-12 text-center text-xs text-ink-subtle font-semibold bg-surface rounded-2xl border border-hairline shadow-sm">No open orders right now.</p>
+                    )}
+                    {groupedStatusCards.map(card => {
+                        const totalItems = card.orders.flatMap(o => o.order_items || []).filter(i => i.status !== 'cancelled').length
+                        const isExpanded = expandedStatusId === card.key
+                        const earliestTime = new Date(card.placedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+                        return (
+                            <div 
+                                key={card.key} 
+                                ref={el => { statusRowRefs.current[card.key] = el }}
+                                className="bg-surface rounded-2xl border border-hairline shadow-sm overflow-hidden flex flex-col h-fit"
+                            >
+                                <button
+                                    onClick={() => expandStatus(card.key)}
+                                    className="w-full flex items-center justify-between p-4 text-left hover:bg-surface-muted/50 transition-colors"
+                                >
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-bold text-ink truncate">{card.title}</p>
+                                        <p className="text-[11px] text-ink-subtle capitalize">
+                                            {card.orders.length} order{card.orders.length !== 1 ? 's' : ''} · {earliestTime} · {totalItems} item{totalItems !== 1 ? 's' : ''} · {money(card.totalAmount)}
+                                        </p>
+                                    </div>
+                                    <ChevronDown size={15} className={`text-ink-subtle shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                </button>
+                                {isExpanded && (
+                                    <StatusDetail
+                                        orders={card.orders}
+                                        money={money}
+                                        busyId={busyId}
+                                        cancelReason={cancelReason}
+                                        onReasonChange={setCancelReason}
+                                        onMarkServed={(orderId, ids) => handleMarkServed(orderId, ids)}
+                                        onCancelOrder={(order) => handleCancelOrder(order)}
+                                        onCancelItem={(orderId, itemId, label, maxQty, unitPrice) => handleCancelOrderItem(orderId, itemId, label, maxQty, unitPrice)}
+                                        kotEnabled={features.kotEnabled}
+                                    />
+                                )}
+                            </div>
+                        )
+                    })}
                 </div>
+            )}
+
+            {mounted && cancelItemModal && createPortal(
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-surface w-full max-w-sm rounded-[24px] shadow-2xl border border-hairline p-6 space-y-4 animate-in zoom-in-95 duration-150">
+                        <div>
+                            <h3 className="text-lg font-black text-ink">Cancel Item</h3>
+                            <p className="text-xs text-ink-subtle mt-0.5">Select plates of <span className="font-bold text-ink">{cancelItemModal.label}</span> to cancel:</p>
+                        </div>
+
+                        {/* Quantity Counter */}
+                        <div className="flex items-center justify-center gap-6 py-1">
+                            <button
+                                type="button"
+                                onClick={() => setCancelQty(prev => Math.max(1, prev - 1))}
+                                disabled={cancelQty <= 1}
+                                className="w-10 h-10 rounded-full border border-hairline flex items-center justify-center text-ink hover:bg-surface-muted transition disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                <Minus size={16} />
+                            </button>
+                            <span className="text-3xl font-black text-ink tabular-nums w-12 text-center select-none">
+                                {cancelQty}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setCancelQty(prev => Math.min(cancelItemModal.maxQty, prev + 1))}
+                                disabled={cancelQty >= cancelItemModal.maxQty}
+                                className="w-10 h-10 rounded-full border border-hairline flex items-center justify-center text-ink hover:bg-surface-muted transition disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                <Plus size={16} />
+                            </button>
+                        </div>
+
+                        {/* Waste breakdown banner */}
+                        <div className="border border-brand-200/60 dark:border-brand-900/30 bg-brand-100/10 dark:bg-brand-900/10 rounded-xl p-3.5 space-y-1 text-xs">
+                            <span className="font-extrabold text-brand-600 dark:text-brand-400 block">This will remove:</span>
+                            <div className="flex justify-between font-bold text-ink">
+                                <span>{cancelQty}x {cancelItemModal.label}</span>
+                                <span className="tabular-nums">{money(cancelItemModal.unitPrice * cancelQty)}</span>
+                            </div>
+                            <p className="text-[10px] text-ink-subtle leading-relaxed pt-1 border-t border-brand-200/30 dark:border-brand-900/20">
+                                This action is logged as stock waste and cannot be undone.
+                            </p>
+                        </div>
+
+                        <input
+                            type="text"
+                            value={cancelReasonInput}
+                            onChange={e => setCancelReasonInput(e.target.value)}
+                            placeholder="Cancellation reason (optional)"
+                            className="w-full px-3 py-2.5 border border-hairline rounded-xl text-xs font-semibold bg-surface placeholder:text-ink-subtle focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all"
+                        />
+
+                        <div className="flex gap-2.5 pt-1">
+                            <button
+                                type="button"
+                                onClick={() => setCancelItemModal(null)}
+                                className="flex-1 px-4 py-2.5 border border-hairline rounded-xl text-xs font-bold hover:bg-surface-muted text-ink transition-all"
+                            >
+                                Keep Item
+                            </button>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    const { orderId, itemId, label } = cancelItemModal
+                                    setBusyId(orderId)
+                                    setCancelItemModal(null)
+                                    const res = await cancelOrderItem(orderId, itemId, cancelQty, cancelReasonInput)
+                                    setBusyId(null)
+                                    if (res.error) { toast.error(res.error); return }
+                                    setCancelReasonInput('')
+                                    if (onCancelOrderItem) {
+                                        onCancelOrderItem(orderId, itemId, cancelQty)
+                                    }
+                                    toast.success(`${cancelQty}x ${label} cancelled`)
+                                }}
+                                className="flex-1 px-4 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-bold rounded-xl text-xs shadow-sm transition-all"
+                            >
+                                Cancel {cancelQty} Plate{cancelQty !== 1 ? 's' : ''}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
             )}
         </div>
     )
@@ -466,80 +631,118 @@ function TakeoutConfirmDetail({ order, money, busy, onConfirm, onCancel }: {
     )
 }
 
-function StatusDetail({ order, items, money, busy, reason, onReasonChange, onMarkServed, onCancel }: {
-    order: AnyOrder
-    items: NonNullable<AnyOrder['order_items']>
+function StatusDetail({
+    orders,
+    money,
+    busyId,
+    cancelReason,
+    onReasonChange,
+    onMarkServed,
+    onCancelOrder,
+    onCancelItem,
+    kotEnabled
+}: {
+    orders: AnyOrder[]
     money: (n: number) => string
-    busy: boolean
-    reason: string
+    busyId: string | null
+    cancelReason: string
     onReasonChange: (v: string) => void
-    onMarkServed: (itemIds: string[]) => void
-    onCancel: () => void
+    onMarkServed: (orderId: string, itemIds: string[]) => void
+    onCancelOrder: (order: AnyOrder) => void
+    onCancelItem: (orderId: string, itemId: string, label: string, maxQty: number, unitPrice: number) => void
+    kotEnabled?: boolean
 }) {
-    const readyIds = items.filter(i => i.status === 'ready' && i.id).map(i => i.id!)
-    const { selected, allSelected, toggleAll, toggle } = useSelection(readyIds)
-
     return (
-        <div className="px-4 pb-4 pt-1 bg-surface-muted/30 space-y-2.5">
-            {readyIds.length > 0 && (
-                <button
-                    onClick={toggleAll}
-                    className="flex items-center gap-1.5 text-[11px] font-bold text-ink-subtle hover:text-ink transition-colors"
-                >
-                    {allSelected ? <CheckSquare size={13} /> : <Square size={13} />}
-                    Select All Ready
-                </button>
-            )}
-            <div className="space-y-1.5">
-                {items.map(item => {
-                    const canServe = item.status === 'ready' && item.id
-                    return (
-                        <div key={item.id} className="flex items-center gap-2.5 bg-surface rounded-xl border border-hairline px-3 py-2">
-                            {canServe ? (
-                                <button onClick={() => item.id && toggle(item.id)} className="shrink-0 text-brand-500">
-                                    {item.id && selected.has(item.id) ? <CheckSquare size={16} /> : <Square size={16} className="text-ink-subtle" />}
-                                </button>
-                            ) : (
-                                <span className="shrink-0 w-4" />
-                            )}
-                            <div className="flex-1 min-w-0">
-                                <p className="text-xs font-bold text-ink truncate">{item.quantity}× {item.menu_items?.name || 'Item'}</p>
-                                <p className="text-[10px] text-ink-subtle capitalize">{item.status}</p>
-                            </div>
-                            <span className="text-[11px] font-semibold text-ink-muted tabular-nums shrink-0">
-                                {money((item.unit_price || 0) * item.quantity)}
-                            </span>
-                        </div>
-                    )
-                })}
-            </div>
-            {readyIds.length > 0 && (
-                <button
-                    onClick={() => onMarkServed(Array.from(selected))}
-                    disabled={busy || selected.size === 0}
-                    className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                    {busy ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
-                    Mark Served ({selected.size})
-                </button>
-            )}
+        <div className="px-4 pb-4 pt-1 bg-surface-muted/30 divide-y divide-hairline divide-dashed">
+            {orders.map((order) => {
+                const items = (order.order_items || []).filter(i => i.status !== 'cancelled')
+                if (items.length === 0) return null
 
-            <div className="pt-2 border-t border-dashed border-hairline space-y-2">
+                const readyIds = items.filter(i => i.status === 'ready' && i.id).map(i => i.id!)
+                const { selected, allSelected, toggleAll, toggle } = useSelection(readyIds)
+                const isBusy = busyId === order.id
+                const timeStr = new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+                return (
+                    <div key={order.id} className="py-3 first:pt-1.5 last:pb-1.5 space-y-2.5">
+                        {/* Subheader for the order */}
+                        <div className="flex items-center justify-between text-[11px] font-bold text-ink-subtle">
+                            <span>Placed at {timeStr} · {money(Number(order.total_amount) || 0)}</span>
+                            <button
+                                onClick={() => onCancelOrder(order)}
+                                disabled={isBusy}
+                                className="text-red-500 hover:text-red-700 font-extrabold transition-colors flex items-center gap-1.5"
+                            >
+                                <XCircle size={12} />
+                                Cancel Order
+                            </button>
+                        </div>
+
+                        {/* Items checkboxes/serving logic */}
+                        {!kotEnabled && readyIds.length > 0 && (
+                            <button
+                                onClick={toggleAll}
+                                className="flex items-center gap-1.5 text-[11px] font-bold text-ink-subtle hover:text-ink transition-colors"
+                            >
+                                {allSelected ? <CheckSquare size={13} /> : <Square size={13} />}
+                                Select All Ready
+                            </button>
+                        )}
+
+                        <div className="space-y-1.5">
+                            {items.map(item => {
+                                const canServe = !kotEnabled && item.status === 'ready' && item.id
+                                return (
+                                    <div key={item.id} className="flex items-center gap-2.5 bg-surface rounded-xl border border-hairline px-3 py-2">
+                                        {canServe ? (
+                                            <button onClick={() => item.id && toggle(item.id)} className="shrink-0 text-brand-500">
+                                                {item.id && selected.has(item.id) ? <CheckSquare size={16} /> : <Square size={16} className="text-ink-subtle" />}
+                                            </button>
+                                        ) : null}
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-xs font-bold text-ink truncate">{item.quantity}× {item.menu_items?.name || 'Item'}</p>
+                                            {!kotEnabled && <p className="text-[10px] text-ink-subtle capitalize">{item.status}</p>}
+                                        </div>
+                                        <span className="text-[11px] font-semibold text-ink-muted tabular-nums shrink-0">
+                                            {money((item.unit_price || 0) * item.quantity)}
+                                        </span>
+                                        {item.id && onCancelItem && (
+                                            <button
+                                                onClick={() => item.id && onCancelItem(order.id, item.id, item.menu_items?.name || 'Item', item.quantity, Number(item.unit_price) || 0)}
+                                                disabled={isBusy}
+                                                className="shrink-0 p-1 rounded-lg text-ink-subtle hover:text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
+                                            >
+                                                <Trash2 size={13} />
+                                            </button>
+                                        )}
+                                    </div>
+                                )
+                            })}
+                        </div>
+
+                        {!kotEnabled && readyIds.length > 0 && (
+                            <button
+                                onClick={() => onMarkServed(order.id, Array.from(selected))}
+                                disabled={isBusy || selected.size === 0}
+                                className="w-full flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                {isBusy ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                                Mark Served ({selected.size})
+                            </button>
+                        )}
+                    </div>
+                )
+            })}
+
+            {/* Cancel Reason footer input (shared or order level) */}
+            <div className="pt-3 space-y-2">
                 <input
                     type="text"
-                    value={reason}
+                    value={cancelReason}
                     onChange={e => onReasonChange(e.target.value)}
                     placeholder="Cancellation reason (optional)"
-                    className="w-full text-xs border-hairline rounded-lg px-3 py-2 border bg-surface text-ink placeholder:text-ink-subtle"
+                    className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-semibold bg-surface placeholder:text-ink-subtle focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all"
                 />
-                <button
-                    onClick={onCancel}
-                    disabled={busy}
-                    className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                    {busy ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />}
-                    Cancel Order
-                </button>
             </div>
         </div>
     )

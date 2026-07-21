@@ -21,6 +21,7 @@ import type { KitchenOrder } from '@/components/kitchen/OrderQueue'
 import ManualEntryClient from '@/app/(admin)/admin/manual-entry/ManualEntryClient'
 import CashierOrdersPanel from './CashierOrdersPanel'
 import type { BankAccount, ExpenseCategory, Supplier, Session } from '@/types/database'
+import QuickOrderModal from './QuickOrderModal'
 
 
 import { formatDateTime, calculateNights, advanceMethodLabel } from '@/lib/utils'
@@ -41,6 +42,7 @@ export type UnpaidOrder = {
     id: string
     status?: string
     total_amount: number
+    placed_at: string
     delivered_at: string | null
     payment_status: string
     payment_method: string | null
@@ -225,11 +227,15 @@ export default function CashierClient({
     const [splitCashAmount, setSplitCashAmount] = useState<string>('')
     const [splitQrAmount, setSplitQrAmount] = useState<string>('')
     const [billingQrCodeId, setBillingQrCodeId] = useState<string>('')
-    // Table bargain rate: blank means "no change", same convention as
-    // RoomBillingModal's bargainRate — the input holds the new desired total,
-    // not the discount amount itself.
+    const [showTakeoutQuickOrder, setShowTakeoutQuickOrder] = useState<boolean>(false)
+    // Bargain rate for the takeaway/delivery order billing panel (PR #96). The
+    // table billing panel uses foodDiscount below instead; only one panel is
+    // ever open at a time, so this state is dedicated to takeaway/delivery.
     const [tableBargainRate, setTableBargainRate] = useState<string>('')
     const [tableBargainReason, setTableBargainReason] = useState<string>('')
+    // Table Food Discount: entered directly (like foodDiscount in room service)
+    const [tableDiscount, setTableDiscount] = useState<string>('')
+    const [tableDiscountReason, setTableDiscountReason] = useState<string>('')
     const [roomDiscount, setRoomDiscount] = useState<string>('')
     const [foodDiscount, setFoodDiscount] = useState<string>('')
     const [discountReason, setDiscountReason] = useState<string>('')
@@ -453,8 +459,8 @@ export default function CashierClient({
         setSplitCashAmount('')
         setSplitQrAmount('')
         setBillingQrCodeId('')
-        setTableBargainRate('')
-        setTableBargainReason('')
+        setTableDiscount('')
+        setTableDiscountReason('')
         setCreditCustomerName('')
         setCreditCustomerPhone('')
     }, [selectedBillingTable?.id])
@@ -551,19 +557,30 @@ export default function CashierClient({
         const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
         const combinedOrders = [...allActive, ...allUnpaid]
 
-        const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
+        const itemsMap: Record<string, { id: string; name: string; quantity: number; unitPrice: number; status: string }> = {}
         for (const order of combinedOrders) {
+            if (order.status === 'cancelled') continue
             const orderItems = order.order_items || []
             for (const item of orderItems) {
-                items.push({
-                    name: item.menu_items?.name || 'Item',
-                    quantity: item.quantity || 0,
-                    unitPrice: Number(item.unit_price ?? 0),
-                    status: item.status || order.status || 'unknown'
-                })
+                if (item.status === 'cancelled') continue
+                const name = item.menu_items?.name || 'Item'
+                const unitPrice = Number(item.unit_price ?? 0)
+                
+                const key = `${name}-${unitPrice}`
+                if (itemsMap[key]) {
+                    itemsMap[key].quantity += item.quantity || 0
+                } else {
+                    itemsMap[key] = {
+                        id: item.id || '',
+                        name,
+                        quantity: item.quantity || 0,
+                        unitPrice,
+                        status: item.status || order.status || 'unknown'
+                    }
+                }
             }
         }
-        return items
+        return Object.values(itemsMap)
     }
 
     // The authoritative bill for a table session — sums each order's own
@@ -579,7 +596,9 @@ export default function CashierClient({
         const sessionId = table.activeSession.id
         const allActive = active.filter(o => o.session_id === sessionId)
         const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
-        return [...allActive, ...allUnpaid].reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0)
+        return [...allActive, ...allUnpaid]
+            .filter(o => o.status !== 'cancelled')
+            .reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0)
     }
 
     const calculateGrandTotal = (room: any, booking: any) => {
@@ -694,13 +713,9 @@ export default function CashierClient({
             // is pre-tax and would understate what's actually charged).
             const subtotal = getTableSessionOrdersTotal(table)
 
-            // Bargain rate: blank input = no change, standard subtotal stands
-            // (same convention as RoomBillingModal's bargainRate) — the input
-            // holds the new desired total, not the discount amount itself.
-            const bargainRateEntered = tableBargainRate.trim() !== ''
-            const bargainRateValue = bargainRateEntered ? parseFloat(tableBargainRate) || 0 : subtotal
-            const discountAmount = bargainRateEntered ? Math.max(0, subtotal - bargainRateValue) : 0
-            const total = subtotal - discountAmount
+            // Food Discount: discount amount entered directly
+            const discountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
+            const total = Math.max(0, subtotal - discountAmount)
 
             const resolvedCash = billingPaymentMethod === 'cash' ? total
                 : billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0)
@@ -730,7 +745,7 @@ export default function CashierClient({
                 manualChargesTotal: 0,
                 total,
                 discountAmount,
-                discountReason: discountAmount > 0 ? tableBargainReason.trim() : '',
+                discountReason: discountAmount > 0 ? tableDiscountReason.trim() : '',
                 sessionId: table.activeSession.id,
                 paymentMethod: billingPaymentMethod,
                 cashPaid: resolvedCash,
@@ -1214,7 +1229,7 @@ export default function CashierClient({
                 // Fetch full record to show in unpaid list
                 const { data, error } = await supabase
                     .from('orders')
-                    .select(`id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, seat_number, tables ( id, label, room_id ) ), order_items ( id, quantity, status, unit_price, needs_confirmation, menu_items ( name ) )`)
+                    .select(`id, total_amount, placed_at, delivered_at, payment_status, payment_method, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, seat_number, tables ( id, label, room_id ) ), order_items ( id, quantity, status, unit_price, needs_confirmation, menu_items ( name ) )`)
                     .eq('id', id)
                     .single()
                 if (error) console.error('[Cashier orders realtime] UPDATE (unpaid) fetch failed:', error)
@@ -1370,13 +1385,7 @@ export default function CashierClient({
 
                 <div className="flex items-center gap-2 shrink-0">
                     <button
-                        onClick={() => {
-                            if (restaurantSlug) {
-                                window.open(`/takeout/${restaurantSlug}`, '_blank')
-                            } else {
-                                toast.error('Restaurant slug not found')
-                            }
-                        }}
+                        onClick={() => setShowTakeoutQuickOrder(true)}
                         className="flex items-center gap-2 text-sm font-bold text-ink-muted bg-surface border border-hairline hover:bg-surface-muted px-4 py-2.5 rounded-xl transition-colors shadow-sm"
                     >
                         <ShoppingBag size={15} />
@@ -1904,6 +1913,53 @@ export default function CashierClient({
                         money={money}
                         onUpdateTakeoutStatus={handleUpdateStatus}
                         restaurantName={restaurantName}
+                        onCancelOrder={(orderId) => {
+                            setActive(prev => prev.filter(o => o.id !== orderId))
+                            setUnpaid(prev => prev.filter(o => o.id !== orderId))
+                        }}
+                        onCancelOrderItem={(orderId, itemId, cancelQuantity) => {
+                            const updateItems = (orders: any[]) => {
+                                return orders.map(o => {
+                                    if (o.id !== orderId) return o
+                                    const targetItem = (o.order_items || []).find((i: any) => i.id === itemId)
+                                    if (!targetItem) return o
+
+                                    let updatedItems: any[]
+                                    if (cancelQuantity >= targetItem.quantity) {
+                                        updatedItems = (o.order_items || []).map((i: any) => i.id === itemId ? { ...i, status: 'cancelled' } : i)
+                                    } else {
+                                        updatedItems = []
+                                        for (const i of o.order_items || []) {
+                                            if (i.id === itemId) {
+                                                updatedItems.push({
+                                                    ...i,
+                                                    quantity: i.quantity - cancelQuantity
+                                                })
+                                                updatedItems.push({
+                                                    ...i,
+                                                    id: `${itemId}-cancelled`,
+                                                    quantity: cancelQuantity,
+                                                    status: 'cancelled'
+                                                })
+                                            } else {
+                                                updatedItems.push(i)
+                                            }
+                                        }
+                                    }
+                                    return {
+                                        ...o,
+                                        order_items: updatedItems
+                                    }
+                                }).filter(o => {
+                                    if (o.id === orderId) {
+                                        return (o.order_items || []).some((i: any) => i.status !== 'cancelled')
+                                    }
+                                    return true
+                                })
+                            }
+                            setActive(prev => updateItems(prev))
+                            setUnpaid(prev => updateItems(prev))
+                        }}
                     />
                 )}
             </div>
@@ -1995,8 +2051,8 @@ export default function CashierClient({
                                             <div className="p-4 space-y-2">
                                                 <p className="font-extrabold text-xs text-indigo-650 font-semibold">Service Orders (QR + Dining)</p>
                                                 <div className="space-y-1.5 pl-3 border-l-2 border-indigo-100">
-                                                    {billingLinkedOrders.map((item, idx) => (
-                                                        <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
+                                                    {billingLinkedOrders.map((item) => (
+                                                        <div key={item.id} className="flex justify-between text-[10px] text-ink-muted">
                                                             <span>{item.menu_items?.name || 'Item'} ({item.quantity}×)</span>
                                                             <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
                                                         </div>
@@ -2291,7 +2347,7 @@ export default function CashierClient({
                                                                 loading={isDirectCheckingOut}
                                                                 disabled={discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
                                                                 onClick={() => handleCloseGuestDirectly(selectedBillingRoom)}
-                                                                className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                                className="px-6 text-xs animate-scale-in"
                                                             >
                                                                 Close Guest
                                                             </Button>
@@ -2300,7 +2356,7 @@ export default function CashierClient({
                                                                 variant="primary"
                                                                 disabled={discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
                                                                 onClick={() => compileInvoice('room', selectedBillingRoom)}
-                                                                className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                                className="px-6 text-xs animate-scale-in"
                                                             >
                                                                 Generate Invoice
                                                             </Button>
@@ -2331,10 +2387,10 @@ export default function CashierClient({
                     onClick={() => setSelectedBillingTable(null)}
                 >
                     <div 
-                        className="bg-surface w-full max-w-2xl rounded-[28px] shadow-2xl overflow-hidden border border-hairline p-6 space-y-6 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+                        className="bg-surface w-full max-w-2xl rounded-[28px] shadow-2xl overflow-hidden border border-hairline flex flex-col max-h-[90vh] md:max-h-[85vh] animate-in zoom-in-95 duration-200"
                         onClick={e => e.stopPropagation()}
                     >
-                        <div className="flex items-center justify-between border-b border-hairline pb-4">
+                        <div className="flex items-center justify-between border-b border-hairline px-6 py-4 bg-surface-muted/50 flex-shrink-0">
                             <div>
                                 <h3 className="text-lg font-black text-ink">Table {selectedBillingTable.label} details</h3>
                                 <p className="text-xs text-ink-subtle mt-0.5">Capacity: {selectedBillingTable.capacity} Seats</p>
@@ -2342,260 +2398,275 @@ export default function CashierClient({
                             <button onClick={() => setSelectedBillingTable(null)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink"><X size={16} /></button>
                         </div>
 
-                        <div className="space-y-4">
-                            <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Session order items</h4>
-                            {getTableSessionItems(selectedBillingTable).length > 0 ? (
-                                <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-gray-100 bg-surface p-4 space-y-2">
-                                    {getTableSessionItems(selectedBillingTable).map((item, idx) => (
-                                        <div key={idx} className="flex justify-between items-center py-1.5 text-xs">
-                                            <div>
-                                                <p className="font-extrabold text-ink">{item.name}</p>
-                                                <p className="text-[10px] text-ink-subtle">Qty: {item.quantity} × {money(item.unitPrice)}</p>
-                                            </div>
-                                            <span className="font-extrabold text-ink-muted tabular-nums">{money(item.unitPrice * item.quantity)}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="p-8 text-center border border-dashed border-hairline-strong rounded-xl text-xs text-ink-subtle font-semibold">
-                                    No items ordered in this session yet
-                                </div>
-                            )}
-                        </div>
-
-                        {(() => {
-                            // The authoritative, tax-inclusive total — matches
-                            // exactly what /api/tables/checkout bills off
-                            // (orders.total_amount), unlike the raw item list
-                            // above which is pre-tax and would understate it.
-                            const itemsSubtotal = getTableSessionItems(selectedBillingTable).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
-                            const tableSubtotal = getTableSessionOrdersTotal(selectedBillingTable)
-                            const taxOrServiceAdjustment = tableSubtotal - itemsSubtotal
-                            const bargainRateEntered = tableBargainRate.trim() !== ''
-                            const bargainRateValue = bargainRateEntered ? parseFloat(tableBargainRate) || 0 : tableSubtotal
-                            const tableDiscountAmount = bargainRateEntered ? Math.max(0, tableSubtotal - bargainRateValue) : 0
-                            const tableDiscountInvalid = bargainRateEntered && (bargainRateValue < 0 || bargainRateValue > tableSubtotal)
-                            const tableTotal = tableSubtotal - tableDiscountAmount
-
-                            return (
-                                <>
-                                    {Math.abs(taxOrServiceAdjustment) > 0.01 && (
-                                        <div className="flex justify-between items-center px-1 text-xs">
-                                            <span className="text-ink-subtle font-semibold">Tax / Service charge</span>
-                                            <span className="font-bold text-ink-muted tabular-nums">{money(taxOrServiceAdjustment)}</span>
-                                        </div>
-                                    )}
-
-                                    {/* Bargain rate */}
-                                    <div className="border-2 border-amber-200 rounded-2xl p-4 space-y-3 bg-amber-50/60 shadow-sm">
-                                        <div className="flex items-center justify-between gap-3">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
-                                                    <Percent size={14} className="text-amber-700" />
-                                                </div>
+                        <div className="space-y-6 p-6 overflow-y-auto flex-1">
+                            <div className="space-y-4">
+                                <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Session order items</h4>
+                                {getTableSessionItems(selectedBillingTable).length > 0 ? (
+                                    <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-gray-100 bg-surface p-4 space-y-2">
+                                        {getTableSessionItems(selectedBillingTable).map((item) => (
+                                            <div key={item.id} className="flex justify-between items-center py-1.5 text-xs">
                                                 <div>
-                                                    <p className="text-xs font-black text-amber-800 uppercase tracking-wider">Bargain Rate</p>
-                                                    <p className="text-[10px] text-amber-700/70 font-semibold">Standard total: {money(tableSubtotal)}</p>
+                                                    <p className="font-extrabold text-ink">{item.name}</p>
+                                                    <p className="text-[10px] text-ink-subtle">Qty: {item.quantity} × {money(item.unitPrice)}</p>
                                                 </div>
+                                                <span className="font-extrabold text-ink-muted tabular-nums">{money(item.unitPrice * item.quantity)}</span>
                                             </div>
-                                            <div className="relative w-32">
-                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-700">Rs.</span>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    max={tableSubtotal}
-                                                    placeholder={tableSubtotal.toFixed(2)}
-                                                    value={tableBargainRate}
-                                                    onChange={e => setTableBargainRate(e.target.value)}
-                                                    className={`w-full pl-7 pr-2 py-2 border-2 rounded-xl text-xs font-bold bg-white focus:outline-none ${tableDiscountInvalid ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
-                                                />
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="p-8 text-center border border-dashed border-hairline-strong rounded-xl text-xs text-ink-subtle font-semibold">
+                                        No items ordered in this session yet
+                                    </div>
+                                )}
+                            </div>
+
+                            {(() => {
+                                // The authoritative, tax-inclusive total — matches
+                                // exactly what /api/tables/checkout bills off
+                                // (orders.total_amount), unlike the raw item list
+                                // above which is pre-tax and would understate it.
+                                const itemsSubtotal = getTableSessionItems(selectedBillingTable).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
+                                const tableSubtotal = getTableSessionOrdersTotal(selectedBillingTable)
+                                const taxOrServiceAdjustment = tableSubtotal - itemsSubtotal
+                                const tableDiscountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
+                                const tableDiscountInvalid = tableDiscountAmount < 0 || tableDiscountAmount > tableSubtotal
+
+                                return (
+                                    <div className="space-y-6">
+                                        {Math.abs(taxOrServiceAdjustment) > 0.01 && (
+                                            <div className="flex justify-between items-center px-1 text-xs">
+                                                <span className="text-ink-subtle font-semibold">Tax / Service charge</span>
+                                                <span className="font-bold text-ink-muted tabular-nums">{money(taxOrServiceAdjustment)}</span>
                                             </div>
-                                        </div>
-                                        {tableDiscountInvalid && (
-                                            <p className="text-[9px] text-rose-500 font-bold">Rate must be between Rs. 0 and the standard total.</p>
                                         )}
                                         {tableDiscountAmount > 0 && (
-                                            <div>
-                                                <label className="block text-[9px] font-black text-amber-700 uppercase mb-1">Reason (required)</label>
-                                                <input
-                                                    type="text"
-                                                    value={tableBargainReason}
-                                                    onChange={e => setTableBargainReason(e.target.value)}
-                                                    placeholder="e.g. Repeat guest, manager approved"
-                                                    className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-amber-500"
-                                                />
+                                            <div className="flex justify-between items-center px-1 text-xs text-rose-600">
+                                                <span className="font-semibold">Food Discount</span>
+                                                <span className="font-extrabold tabular-nums">− {money(tableDiscountAmount)}</span>
                                             </div>
                                         )}
-                                    </div>
 
-                                    {/* Payment Method Selector */}
-                                    {irdSyncEnabled && (
-                                    <div>
-                                        <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Payment Method</p>
-                                        <div className="grid grid-cols-4 gap-2">
-                                            <button
-                                                onClick={() => setBillingPaymentMethod('cash')}
-                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
-                                                    billingPaymentMethod === 'cash'
-                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
-                                                        : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
-                                                }`}
-                                            >
-                                                <Banknote size={15} />
-                                                Cash
-                                            </button>
-                                            <button
-                                                onClick={() => setBillingPaymentMethod('qr_digital')}
-                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
-                                                    billingPaymentMethod === 'qr_digital'
-                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
-                                                        : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
-                                                }`}
-                                            >
-                                                <CreditCard size={15} />
-                                                QR / Digital
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    setBillingPaymentMethod('both')
-                                                    setSplitCashAmount('')
-                                                    setSplitQrAmount('')
-                                                }}
-                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
-                                                    billingPaymentMethod === 'both'
-                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
-                                                        : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
-                                                }`}
-                                            >
-                                                <Receipt size={15} />
-                                                Both
-                                            </button>
-                                            <button
-                                                onClick={() => setBillingPaymentMethod('credit')}
-                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
-                                                    billingPaymentMethod === 'credit'
-                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
-                                                        : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
-                                                }`}
-                                            >
-                                                <ShoppingBag size={15} />
-                                                Credit
-                                            </button>
-                                        </div>
-
-                                        {billingPaymentMethod === 'both' && (
-                                            <div className="mt-3 grid grid-cols-2 gap-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl">
-                                                <div>
-                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash Amount</label>
-                                                    <div className="relative">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            max={tableTotal}
-                                                            placeholder="0.00"
-                                                            value={splitCashAmount}
-                                                            onChange={e => setSplitCashAmount(e.target.value)}
-                                                            className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
-                                                        />
+                                        {/* Food Discount */}
+                                        <div className="border-2 border-amber-200 rounded-2xl p-4 space-y-3 bg-amber-50/60 shadow-sm">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                                                        <Percent size={14} className="text-amber-700" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-xs font-black text-amber-800 uppercase tracking-wider">Food Discount</p>
+                                                        <p className="text-[10px] text-amber-700/70 font-semibold">Standard total: {money(tableSubtotal)}</p>
                                                     </div>
                                                 </div>
-                                                <div>
-                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">QR / Digital Amount</label>
-                                                    <div className="relative">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            max={tableTotal}
-                                                            placeholder="0.00"
-                                                            value={splitQrAmount}
-                                                            onChange={e => setSplitQrAmount(e.target.value)}
-                                                            className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
-                                                        />
-                                                    </div>
+                                                <div className="relative w-32">
+                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-700">Rs.</span>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        max={tableSubtotal}
+                                                        placeholder="0.00"
+                                                        value={tableDiscount}
+                                                        onChange={e => setTableDiscount(e.target.value)}
+                                                        className={`w-full pl-7 pr-2 py-2 border-2 rounded-xl text-xs font-bold bg-white focus:outline-none ${tableDiscountInvalid ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
+                                                    />
                                                 </div>
-                                                {(() => {
-                                                    const cash = parseFloat(splitCashAmount) || 0
-                                                    const qr = parseFloat(splitQrAmount) || 0
-                                                    const remainder = tableTotal - cash - qr
-                                                    if (remainder > 0.01) return (
-                                                        <p className="col-span-2 text-[9px] text-amber-600 font-bold text-center">
-                                                            Rs. {remainder.toFixed(2)} left over will go on customer credit
-                                                        </p>
-                                                    )
-                                                    if (remainder < -0.01) return (
-                                                        <p className="col-span-2 text-[9px] text-rose-500 font-bold text-center">
-                                                            ⚠ Cash + QR exceeds the bill by {money(Math.abs(remainder))}
-                                                        </p>
-                                                    )
-                                                    return (
-                                                        <p className="col-span-2 text-[9px] text-emerald-600 font-bold text-center">✓ Amounts balanced</p>
-                                                    )
-                                                })()}
                                             </div>
-                                        )}
-
-                                        {billingPaymentMethod === 'qr_digital' && qrCodes.length > 1 && (
-                                            <div className="mt-3">
-                                                <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
-                                                <Select
-                                                    value={billingQrCodeId}
-                                                    onChange={e => setBillingQrCodeId(e.target.value)}
-                                                    className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
-                                                >
-                                                    <option value="">Select QR code…</option>
-                                                    {qrCodes.map(qr => (
-                                                        <option key={qr.id} value={qr.id}>{qr.label}</option>
-                                                    ))}
-                                                </Select>
-                                            </div>
-                                        )}
-
-                                        {billingPaymentMethod === 'credit' && (
-                                            <p className="mt-3 text-[10px] text-ink-subtle font-semibold text-center">
-                                                You&apos;ll confirm the customer&apos;s name and phone in the next step.
-                                            </p>
-                                        )}
-                                    </div>
-                                    )}
-
-                                    <div className="border-t border-hairline pt-4 flex items-center justify-between mt-2">
-                                        <div>
-                                            <span className="text-[10px] font-bold text-ink-subtle uppercase">Total session bill</span>
-                                            <p className="text-2xl font-black text-brand-600 tabular-nums">{money(tableTotal)}</p>
-                                        </div>
-                                        <div className="flex gap-2 items-center">
-                                            <Button variant="secondary" onClick={() => setSelectedBillingTable(null)}>Close</Button>
-                                            {!irdSyncEnabled ? (
-                                                <Button
-                                                    variant="primary"
-                                                    onClick={() => {
-                                                        const data = buildInvoiceData('table', selectedBillingTable)
-                                                        if (data) {
-                                                            setActiveInvoice(data)
-                                                        }
-                                                    }}
-                                                    className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
-                                                 >
-                                                     Close Guest
-                                                 </Button>
-                                            ) : (
-                                                <Button
-                                                    variant="primary"
-                                                    disabled={
-                                                        tableDiscountInvalid ||
-                                                        (tableDiscountAmount > 0 && !tableBargainReason.trim())
-                                                    }
-                                                    onClick={() => compileInvoice('table', selectedBillingTable)}
-                                                    className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
-                                                >
-                                                    Generate Invoice
-                                                </Button>
+                                            {tableDiscountInvalid && (
+                                                <p className="text-[9px] text-rose-500 font-bold">Discount must be between Rs. 0 and the standard total.</p>
+                                            )}
+                                            {tableDiscountAmount > 0 && (
+                                                <div>
+                                                    <label className="block text-[9px] font-black text-amber-700 uppercase mb-1">Reason (required)</label>
+                                                    <input
+                                                        type="text"
+                                                        value={tableDiscountReason}
+                                                        onChange={e => setTableDiscountReason(e.target.value)}
+                                                        placeholder="e.g. Repeat guest, manager approved"
+                                                        className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-amber-500"
+                                                    />
+                                                </div>
                                             )}
                                         </div>
+
+                                        {/* Payment Method Selector */}
+                                        {irdSyncEnabled && (
+                                        <div>
+                                            <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Payment Method</p>
+                                            <div className="grid grid-cols-4 gap-2">
+                                                <button
+                                                    onClick={() => setBillingPaymentMethod('cash')}
+                                                    className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                        billingPaymentMethod === 'cash'
+                                                            ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                            : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                    }`}
+                                                >
+                                                    <Banknote size={15} />
+                                                    Cash
+                                                </button>
+                                                <button
+                                                    onClick={() => setBillingPaymentMethod('qr_digital')}
+                                                    className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                        billingPaymentMethod === 'qr_digital'
+                                                            ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                            : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                    }`}
+                                                >
+                                                    <CreditCard size={15} />
+                                                    QR / Digital
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setBillingPaymentMethod('both')
+                                                        setSplitCashAmount('')
+                                                        setSplitQrAmount('')
+                                                    }}
+                                                    className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                        billingPaymentMethod === 'both'
+                                                            ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                            : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                    }`}
+                                                >
+                                                    <Receipt size={15} />
+                                                    Both
+                                                </button>
+                                                <button
+                                                    onClick={() => setBillingPaymentMethod('credit')}
+                                                    className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                        billingPaymentMethod === 'credit'
+                                                            ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                            : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                    }`}
+                                                >
+                                                    <ShoppingBag size={15} />
+                                                    Credit
+                                                </button>
+                                            </div>
+
+                                            {billingPaymentMethod === 'both' && (
+                                                <div className="mt-3 grid grid-cols-2 gap-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl">
+                                                    <div>
+                                                        <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash Amount</label>
+                                                        <div className="relative">
+                                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                max={tableSubtotal - tableDiscountAmount}
+                                                                placeholder="0.00"
+                                                                value={splitCashAmount}
+                                                                onChange={e => setSplitCashAmount(e.target.value)}
+                                                                className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">QR / Digital Amount</label>
+                                                        <div className="relative">
+                                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                max={tableSubtotal - tableDiscountAmount}
+                                                                placeholder="0.00"
+                                                                value={splitQrAmount}
+                                                                onChange={e => setSplitQrAmount(e.target.value)}
+                                                                className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    {(() => {
+                                                        const cash = parseFloat(splitCashAmount) || 0
+                                                        const qr = parseFloat(splitQrAmount) || 0
+                                                        const remainder = (tableSubtotal - tableDiscountAmount) - cash - qr
+                                                        if (remainder > 0.01) return (
+                                                            <p className="col-span-2 text-[9px] text-amber-600 font-bold text-center">
+                                                                Rs. {remainder.toFixed(2)} left over will go on customer credit
+                                                            </p>
+                                                        )
+                                                        if (remainder < -0.01) return (
+                                                            <p className="col-span-2 text-[9px] text-rose-500 font-bold text-center">
+                                                                ⚠ Cash + QR exceeds the bill by {money(Math.abs(remainder))}
+                                                            </p>
+                                                        )
+                                                        return (
+                                                            <p className="col-span-2 text-[9px] text-emerald-600 font-bold text-center">✓ Amounts balanced</p>
+                                                        )
+                                                    })()}
+                                                </div>
+                                            )}
+
+                                            {billingPaymentMethod === 'qr_digital' && qrCodes.length > 1 && (
+                                                <div className="mt-3">
+                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
+                                                    <Select
+                                                        value={billingQrCodeId}
+                                                        onChange={e => setBillingQrCodeId(e.target.value)}
+                                                        className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                    >
+                                                        <option value="">Select QR code…</option>
+                                                        {qrCodes.map(qr => (
+                                                            <option key={qr.id} value={qr.id}>{qr.label}</option>
+                                                        ))}
+                                                    </Select>
+                                                </div>
+                                            )}
+
+                                            {billingPaymentMethod === 'credit' && (
+                                                <p className="mt-3 text-[10px] text-ink-subtle font-semibold text-center">
+                                                    You&apos;ll confirm the customer&apos;s name and phone in the next step.
+                                                </p>
+                                            )}
+                                        </div>
+                                        )}
                                     </div>
-                                </>
+                                )
+                            })()}
+                        </div>
+
+                        {/* Fixed Footer */}
+                        {(() => {
+                            const tableSubtotal = getTableSessionOrdersTotal(selectedBillingTable)
+                            const tableDiscountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
+                            const tableDiscountInvalid = tableDiscountAmount < 0 || tableDiscountAmount > tableSubtotal
+                            const tableTotal = Math.max(0, tableSubtotal - tableDiscountAmount)
+
+                            return (
+                                <div className="border-t border-hairline px-6 py-4 flex-shrink-0 bg-surface flex items-center justify-between">
+                                    <div>
+                                        <span className="text-[10px] font-bold text-ink-subtle uppercase">Total session bill</span>
+                                        <p className="text-2xl font-black text-brand-600 tabular-nums">{money(tableTotal)}</p>
+                                    </div>
+                                    <div className="flex gap-2 items-center">
+                                        <Button variant="secondary" onClick={() => setSelectedBillingTable(null)}>Close</Button>
+                                        {!irdSyncEnabled ? (
+                                            <Button
+                                                variant="primary"
+                                                onClick={() => {
+                                                    const data = buildInvoiceData('table', selectedBillingTable)
+                                                    if (data) {
+                                                        setActiveInvoice(data)
+                                                    }
+                                                }}
+                                                className="px-6 text-xs animate-scale-in"
+                                             >
+                                                 Close Guest
+                                             </Button>
+                                        ) : (
+                                            <Button
+                                                variant="primary"
+                                                disabled={
+                                                    tableDiscountInvalid ||
+                                                    (tableDiscountAmount > 0 && !tableDiscountReason.trim())
+                                                }
+                                                onClick={() => compileInvoice('table', selectedBillingTable)}
+                                                className="px-6 text-xs animate-scale-in"
+                                            >
+                                                Generate Invoice
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
                             )
                         })()}
                     </div>
@@ -3070,6 +3141,15 @@ export default function CashierClient({
                     </div>
                 </div>,
                 document.body
+            )}
+
+            {showTakeoutQuickOrder && (
+                <QuickOrderModal
+                    isOpen={showTakeoutQuickOrder}
+                    onClose={() => setShowTakeoutQuickOrder(false)}
+                    restaurantId={restaurantId}
+                    isManualTakeoutDelivery={true}
+                />
             )}
 
         </div>
