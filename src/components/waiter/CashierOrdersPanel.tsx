@@ -1,10 +1,11 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { toast } from 'react-hot-toast'
 import {
     ClipboardCheck, ClipboardList, ChevronDown, CheckSquare, Square,
-    Trash2, Loader2, Send, CheckCircle2, XCircle, Phone, MapPin,
+    Trash2, Loader2, Send, CheckCircle2, XCircle, Phone, MapPin, Plus, Minus,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useConfirmStore } from '@/lib/stores/confirm'
@@ -65,6 +66,21 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
     const { print: printKot } = usePrinter('kot')
     const { print: printBot } = usePrinter('bot')
     const supabaseRef = useRef(createClient())
+
+    const [mounted, setMounted] = useState(false)
+    const [cancelItemModal, setCancelItemModal] = useState<{
+        orderId: string
+        itemId: string
+        label: string
+        maxQty: number
+        unitPrice: number
+    } | null>(null)
+    const [cancelQty, setCancelQty] = useState(1)
+    const [cancelReasonInput, setCancelReasonInput] = useState('')
+
+    useEffect(() => {
+        setMounted(true)
+    }, [])
 
     const [ordersSubTab, setOrdersSubTab] = useState<'confirmation' | 'status'>('confirmation')
     const [expandedConfirmId, setExpandedConfirmId] = useState<string | null>(null)
@@ -219,35 +235,10 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
         toast.success('Order cancelled')
     }
 
-    async function handleCancelOrderItem(orderId: string, itemId: string, label: string, maxQty: number) {
-        let cancelQty = 1
-        if (maxQty > 1) {
-            const input = prompt(`You are cancelling "${label}" (Order Quantity: ${maxQty}).\nEnter quantity to cancel (1 - ${maxQty}):`, "1")
-            if (input === null) return
-            const parsed = parseInt(input, 10)
-            if (isNaN(parsed) || parsed < 1 || parsed > maxQty) {
-                toast.error(`Invalid quantity. Please enter a number between 1 and ${maxQty}.`)
-                return
-            }
-            cancelQty = parsed
-        }
-
-        const ok = await confirm({
-            title: 'Cancel this item?',
-            message: `This removes ${cancelQty}x "${label}" from this order's bill and logs its cost as wasted. This cannot be undone.`,
-            confirmText: 'Cancel Item',
-            isDestructive: true,
-        })
-        if (!ok) return
-        setBusyId(orderId)
-        const res = await cancelOrderItem(orderId, itemId, cancelQty, cancelReason)
-        setBusyId(null)
-        if (res.error) { toast.error(res.error); return }
-        setCancelReason('')
-        if (onCancelOrderItem) {
-            onCancelOrderItem(orderId, itemId, cancelQty)
-        }
-        toast.success(`${cancelQty}x ${label} cancelled`)
+    function handleCancelOrderItem(orderId: string, itemId: string, label: string, maxQty: number, unitPrice: number) {
+        setCancelQty(1)
+        setCancelReasonInput('')
+        setCancelItemModal({ orderId, itemId, label, maxQty, unitPrice })
     }
 
     return (
@@ -377,7 +368,7 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                                         onReasonChange={setCancelReason}
                                         onMarkServed={(ids) => handleMarkServed(order.id, ids)}
                                         onCancel={() => handleCancelOrder(order)}
-                                        onCancelItem={(itemId, label, maxQty) => handleCancelOrderItem(order.id, itemId, label, maxQty)}
+                                        onCancelItem={(itemId, label, maxQty, unitPrice) => handleCancelOrderItem(order.id, itemId, label, maxQty, unitPrice)}
                                         kotEnabled={features.kotEnabled}
                                     />
                                 )}
@@ -385,6 +376,86 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                         )
                     })}
                 </div>
+            )}
+
+            {mounted && cancelItemModal && createPortal(
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-surface w-full max-w-sm rounded-[28px] shadow-2xl border border-hairline p-6 flex flex-col gap-5 animate-in zoom-in-95 duration-150">
+                        <div className="flex flex-col gap-1">
+                            <h3 className="text-base font-extrabold text-ink">Cancel Item</h3>
+                            <p className="text-xs text-ink-subtle">
+                                Select plates of <span className="font-bold text-ink">{cancelItemModal.label}</span> to cancel:
+                            </p>
+                        </div>
+
+                        {/* Quantity Counter */}
+                        <div className="flex items-center justify-center gap-6 py-2">
+                            <button
+                                type="button"
+                                onClick={() => setCancelQty(prev => Math.max(1, prev - 1))}
+                                disabled={cancelQty <= 1}
+                                className="w-11 h-11 rounded-full border border-hairline flex items-center justify-center text-ink hover:bg-surface-muted/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            >
+                                <Minus size={18} />
+                            </button>
+                            <span className="text-3xl font-black text-ink tabular-nums w-12 text-center">
+                                {cancelQty}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setCancelQty(prev => Math.min(cancelItemModal.maxQty, prev + 1))}
+                                disabled={cancelQty >= cancelItemModal.maxQty}
+                                className="w-11 h-11 rounded-full border border-hairline flex items-center justify-center text-ink hover:bg-surface-muted/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            >
+                                <Plus size={18} />
+                            </button>
+                        </div>
+
+                        <div className="text-[11px] text-red-600 bg-red-50 dark:bg-red-950/20 border border-red-200/50 rounded-xl px-3 py-2 leading-relaxed flex flex-col gap-0.5">
+                            <span className="font-bold">This will remove:</span>
+                            <span>{cancelQty}x {cancelItemModal.label} (Value: {money(cancelItemModal.unitPrice * cancelQty)})</span>
+                            <span className="text-ink-subtle text-[10px] mt-0.5">This action is logged as stock waste and cannot be undone.</span>
+                        </div>
+
+                        <input
+                            type="text"
+                            value={cancelReasonInput}
+                            onChange={e => setCancelReasonInput(e.target.value)}
+                            placeholder="Cancellation reason (optional)"
+                            className="w-full text-xs border-hairline rounded-lg px-3 py-2 border bg-surface text-ink placeholder:text-ink-subtle"
+                        />
+
+                        <div className="flex gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setCancelItemModal(null)}
+                                className="flex-1 rounded-2xl py-3 text-xs font-bold border border-hairline hover:bg-surface-muted/50 text-ink transition-colors"
+                            >
+                                Keep Item
+                            </button>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    const { orderId, itemId, label } = cancelItemModal
+                                    setBusyId(orderId)
+                                    setCancelItemModal(null)
+                                    const res = await cancelOrderItem(orderId, itemId, cancelQty, cancelReasonInput)
+                                    setBusyId(null)
+                                    if (res.error) { toast.error(res.error); return }
+                                    setCancelReasonInput('')
+                                    if (onCancelOrderItem) {
+                                        onCancelOrderItem(orderId, itemId, cancelQty)
+                                    }
+                                    toast.success(`${cancelQty}x ${label} cancelled`)
+                                }}
+                                className="flex-1 rounded-2xl py-3 text-xs font-bold bg-red-650 hover:bg-red-750 text-white shadow-sm transition-colors"
+                            >
+                                Cancel {cancelQty} Plate{cancelQty !== 1 ? 's' : ''}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
             )}
         </div>
     )
@@ -516,7 +587,7 @@ function StatusDetail({ order, items, money, busy, reason, onReasonChange, onMar
     onReasonChange: (v: string) => void
     onMarkServed: (itemIds: string[]) => void
     onCancel: () => void
-    onCancelItem?: (itemId: string, label: string, maxQty: number) => void
+    onCancelItem?: (itemId: string, label: string, maxQty: number, unitPrice: number) => void
     kotEnabled?: boolean
 }) {
     const readyIds = items.filter(i => i.status === 'ready' && i.id).map(i => i.id!)
@@ -552,7 +623,7 @@ function StatusDetail({ order, items, money, busy, reason, onReasonChange, onMar
                             </span>
                             {item.id && item.status !== 'cancelled' && onCancelItem && (
                                 <button
-                                    onClick={() => item.id && onCancelItem(item.id, item.menu_items?.name || 'Item', item.quantity)}
+                                    onClick={() => item.id && onCancelItem(item.id, item.menu_items?.name || 'Item', item.quantity, Number(item.unit_price) || 0)}
                                     disabled={busy}
                                     className="shrink-0 p-1 rounded-lg text-ink-subtle hover:text-red-650 hover:bg-red-50 disabled:opacity-50 transition-colors"
                                 >
