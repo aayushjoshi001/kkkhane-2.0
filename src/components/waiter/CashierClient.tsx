@@ -21,6 +21,7 @@ import type { KitchenOrder } from '@/components/kitchen/OrderQueue'
 import ManualEntryClient from '@/app/(admin)/admin/manual-entry/ManualEntryClient'
 import CashierOrdersPanel from './CashierOrdersPanel'
 import type { BankAccount, ExpenseCategory, Supplier } from '@/types/database'
+import QuickOrderModal from './QuickOrderModal'
 
 
 import { formatDateTime, calculateNights, advanceMethodLabel } from '@/lib/utils'
@@ -219,6 +220,7 @@ export default function CashierClient({
     const [splitCashAmount, setSplitCashAmount] = useState<string>('')
     const [splitQrAmount, setSplitQrAmount] = useState<string>('')
     const [billingQrCodeId, setBillingQrCodeId] = useState<string>('')
+    const [showTakeoutQuickOrder, setShowTakeoutQuickOrder] = useState<boolean>(false)
     // Table Food Discount: entered directly (like foodDiscount in room service)
     const [tableDiscount, setTableDiscount] = useState<string>('')
     const [tableDiscountReason, setTableDiscountReason] = useState<string>('')
@@ -1189,13 +1191,7 @@ export default function CashierClient({
 
                 <div className="flex items-center gap-2 shrink-0">
                     <button
-                        onClick={() => {
-                            if (restaurantSlug) {
-                                window.open(`/takeout/${restaurantSlug}`, '_blank')
-                            } else {
-                                toast.error('Restaurant slug not found')
-                            }
-                        }}
+                        onClick={() => setShowTakeoutQuickOrder(true)}
                         className="flex items-center gap-2 text-sm font-bold text-ink-muted bg-surface border border-hairline hover:bg-surface-muted px-4 py-2.5 rounded-xl transition-colors shadow-sm"
                     >
                         <ShoppingBag size={15} />
@@ -2543,6 +2539,15 @@ export default function CashierClient({
                     </div>
                 </div>,
                 document.body
+            )}
+
+            {showTakeoutQuickOrder && (
+                <QuickOrderModal
+                    isOpen={showTakeoutQuickOrder}
+                    onClose={() => setShowTakeoutQuickOrder(false)}
+                    restaurantId={restaurantId}
+                    isManualTakeoutDelivery={true}
+                />
             )}
 
         </div>
