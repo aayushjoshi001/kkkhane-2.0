@@ -7,6 +7,7 @@ import { EscPosBuilder } from '../escpos'
 import type { KitchenOrder, KitchenOrderItem } from '@/components/kitchen/OrderQueue'
 import { STATION_META, itemsForStation, type StationKind } from '@/lib/stations'
 import { getKOTSourceLabel, getItemKOTDisplay } from '@/lib/utils'
+import { appendBrandFooter } from './brandFooter'
 
 export function buildStationTicket(
     order: KitchenOrder,
@@ -50,6 +51,8 @@ export function buildStationTicket(
 
     b.divider()
     b.line(station === 'bar' ? 'Bartender: __________' : 'Chef: ______________')
+
+    appendBrandFooter(b)
 
     return b.cut().build()
 }

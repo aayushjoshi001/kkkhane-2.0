@@ -1368,6 +1368,7 @@ export default function RoomsClient({
                     booking={billingStay.booking}
                     tables={tables}
                     activeOrders={activeOrders}
+                    restaurantName={restaurantName || 'KKKhane'}
                     onClose={() => setBillingStay(null)}
                     onSettled={result => {
                         setRooms(prev => prev.map(r => r.id === result.roomId ? { ...r, status: 'dirty' } : r))

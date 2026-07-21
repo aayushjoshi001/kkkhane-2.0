@@ -1,7 +1,7 @@
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import OrderQueue, { type KitchenOrder, type ComboItemRow } from '@/components/kitchen/OrderQueue'
-import { getRestaurantFeatures } from '@/lib/features'
+import { getRestaurantFeatures, getRestaurantName } from '@/lib/features'
 
 export const revalidate = 0
 
@@ -11,9 +11,11 @@ export default async function KitchenPage() {
 
     const [
         features,
+        restaurantName,
         { data: activeOrders },
     ] = await Promise.all([
         getRestaurantFeatures(restaurantId),
+        getRestaurantName(restaurantId),
         adminSupabase
             .from('orders')
             .select(`
@@ -104,6 +106,7 @@ export default async function KitchenPage() {
                     comboItems={comboItems}
                     userId={userId}
                     staffNames={staffNames}
+                    restaurantName={restaurantName}
                 />
             </div>
         </div>

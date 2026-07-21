@@ -233,6 +233,13 @@ export default function InvoiceReceipt({
                 <p>*** THANK YOU! ***</p>
                 <p>WE HOPE TO SEE YOU AGAIN</p>
             </div>
+
+            {/* Brand footer — mirrors the ESC/POS templates' appendBrandFooter */}
+            <div className="text-center pt-1 pb-1 flex flex-col items-center gap-1">
+                {/* eslint-disable-next-line @next/next/no-img-element -- print-only receipt, next/image adds no value here */}
+                <img src="/brand/kkkhane-k-logo.jpg" alt="" className="w-6 h-6" />
+                <p className="text-[8px] text-gray-500 uppercase tracking-widest">Powered by KKKhane</p>
+            </div>
         </div>
     )
 }

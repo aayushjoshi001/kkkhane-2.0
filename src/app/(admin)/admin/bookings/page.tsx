@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import type { BillingTable, BillingOrder } from '@/components/admin/RoomBillingModal'
 import { getCurrentUser } from '@/lib/auth'
+import { getRestaurantName } from '@/lib/features'
 import BookingsClient from './BookingsClient'
 import type { Booking, Room } from '@/types/database'
 
@@ -11,7 +12,8 @@ export default async function BookingsPage() {
     const { restaurantId } = currentUser
 
     const adminSupabase = await createAdminClient()
-    
+    const restaurantName = await getRestaurantName(restaurantId)
+
     // Fetch bookings, rooms, tables, sessions and active orders with safety
     let bookings: Booking[] = []
     let rooms: Room[] = []
@@ -85,10 +87,11 @@ export default async function BookingsPage() {
     }
 
     return (
-        <BookingsClient 
-            initialBookings={bookings} 
+        <BookingsClient
+            initialBookings={bookings}
             rooms={rooms}
-            restaurantId={restaurantId} 
+            restaurantId={restaurantId}
+            restaurantName={restaurantName}
             tables={tablesMapped}
             activeOrders={activeOrders}
         />

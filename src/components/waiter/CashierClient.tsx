@@ -20,7 +20,7 @@ import { itemsForStation } from '@/lib/stations'
 import type { KitchenOrder } from '@/components/kitchen/OrderQueue'
 import ManualEntryClient from '@/app/(admin)/admin/manual-entry/ManualEntryClient'
 import CashierOrdersPanel from './CashierOrdersPanel'
-import type { BankAccount, ExpenseCategory, Supplier } from '@/types/database'
+import type { BankAccount, ExpenseCategory, Supplier, Session } from '@/types/database'
 
 
 import { formatDateTime, calculateNights, advanceMethodLabel } from '@/lib/utils'
@@ -80,6 +80,7 @@ import Select from '@/components/ui/Select'
 interface Props {
     restaurantId: string
     restaurantSlug: string
+    restaurantName: string
     userId: string
     initialUnpaid: UnpaidOrder[]
     initialActive: ActiveOrder[]
@@ -110,10 +111,11 @@ export function tableLabel(
     return base
 }
 
-export default function CashierClient({ 
-    restaurantId, 
-    restaurantSlug, 
-    userId, 
+export default function CashierClient({
+    restaurantId,
+    restaurantSlug,
+    restaurantName,
+    userId,
     initialUnpaid, 
     initialActive,
     tables,
@@ -155,6 +157,10 @@ export default function CashierClient({
 
     // Stays and Billing states
     const [roomsState, setRoomsState] = useState<any[]>(rooms)
+    // Local, realtime-patchable copy of the `tables` prop — table sessions
+    // opening/closing needs to reflect live in the Billing tab (a newly
+    // seated table, or one just paid off) without a page refresh.
+    const [tablesState, setTablesState] = useState<TableWithSession[]>(tables)
     const [roomTypeFilter, setRoomTypeFilter] = useState<string>('all')
     const [billingRoomTypeFilter, setBillingRoomTypeFilter] = useState<string>('all')
 
@@ -175,9 +181,10 @@ export default function CashierClient({
     }, [roomsState, billingRoomTypeFilter])
 
     const [bookings, setBookings] = useState<any[]>(initialBookings)
-    const [billingSubTab, setBillingSubTab] = useState<'rooms' | 'tables'>('rooms')
+    const [billingSubTab, setBillingSubTab] = useState<'all' | 'rooms' | 'tables' | 'takeout' | 'delivery'>('rooms')
     const [selectedBillingRoom, setSelectedBillingRoom] = useState<any | null>(null)
     const [selectedBillingTable, setSelectedBillingTable] = useState<any | null>(null)
+    const [selectedBillingOrder, setSelectedBillingOrder] = useState<UnpaidOrder | null>(null)
     const [activeInvoice, setActiveInvoice] = useState<any | null>(null)
     const [isSettlingInvoice, setIsSettlingInvoice] = useState(false)
     // Synchronous re-entry guard: state updates from setIsSettlingInvoice are
@@ -250,7 +257,7 @@ export default function CashierClient({
     // confirmation popup — protects against a cashier's typo in the split
     // amounts, and is where a credit portion's name/phone gets collected.
     const [showSettlementConfirm, setShowSettlementConfirm] = useState(false)
-    const [pendingInvoice, setPendingInvoice] = useState<{ type: 'room' | 'table'; item: any; data: any } | null>(null)
+    const [pendingInvoice, setPendingInvoice] = useState<{ type: 'room' | 'table' | 'takeout' | 'delivery'; item: any; data: any } | null>(null)
     const [isDirectCheckingOut, setIsDirectCheckingOut] = useState(false)
     const qrCodes = useQrCodes()
 
@@ -261,6 +268,22 @@ export default function CashierClient({
     useEffect(() => {
         setRoomsState(rooms)
     }, [rooms])
+
+    // Sync tables state when prop changes
+    useEffect(() => {
+        setTablesState(tables)
+    }, [tables])
+
+    // Sync unpaid/active order state when props change — previously missing,
+    // unlike rooms/bookings/tables above, so a server refresh (e.g. the
+    // realtime reconnect catch-up below) never actually reached these two.
+    useEffect(() => {
+        setUnpaid(initialUnpaid)
+    }, [initialUnpaid])
+
+    useEffect(() => {
+        setActive(initialActive)
+    }, [initialActive])
 
     // Sync bookings state when prop changes (e.g. on server reload or catch up)
     useEffect(() => {
@@ -290,6 +313,72 @@ export default function CashierClient({
                 setBillingStayBooking(b)
             }
         }
+    })
+
+    // Realtime subscriptions for table sessions — a table becoming newly
+    // occupied (or its session closing once paid) needs to show up in/drop
+    // out of the Billing tab's Tables grid without a manual refresh.
+    // Mirrors CashierTableManager.tsx's identical patch logic exactly.
+    useRestaurantTable(restaurantId, 'sessions', (payload) => {
+        if (payload.eventType === 'INSERT') {
+            const s = payload.new as Session
+            const seatNumber = s.seat_number ?? 1
+            const patch = seatNumber === 1
+                ? { activeSession: s }
+                : (t: TableWithSession) => ({ otherActiveSessions: [...(t.otherActiveSessions || []).filter(x => x.id !== s.id), s] })
+
+            setTablesState(prev => prev.map(t => t.id === s.table_id
+                ? { ...t, ...(typeof patch === 'function' ? patch(t) : patch) }
+                : t))
+            setSelectedBillingTable((prev: any) => prev?.id === s.table_id
+                ? { ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) }
+                : prev)
+        } else if (payload.eventType === 'UPDATE') {
+            const s = payload.new as Session
+            const isClosed = s.status === 'closed' || s.status === 'expired'
+
+            setTablesState(prev => prev.map(t => {
+                if (t.activeSession?.id === s.id) {
+                    return { ...t, activeSession: isClosed ? null : s }
+                }
+                if (t.otherActiveSessions?.some(x => x.id === s.id)) {
+                    return {
+                        ...t,
+                        otherActiveSessions: isClosed
+                            ? t.otherActiveSessions.filter(x => x.id !== s.id)
+                            : t.otherActiveSessions.map(x => x.id === s.id ? s : x)
+                    }
+                }
+                return t
+            }))
+            setSelectedBillingTable((prev: any) => {
+                if (!prev) return null
+                if (prev.activeSession?.id === s.id) {
+                    return { ...prev, activeSession: isClosed ? null : s }
+                }
+                if (prev.otherActiveSessions?.some((x: Session) => x.id === s.id)) {
+                    return {
+                        ...prev,
+                        otherActiveSessions: isClosed
+                            ? prev.otherActiveSessions.filter((x: Session) => x.id !== s.id)
+                            : prev.otherActiveSessions.map((x: Session) => x.id === s.id ? s : x)
+                    }
+                }
+                return prev
+            })
+        }
+    })
+
+    useRestaurantTable(restaurantId, 'tables', (payload) => {
+        if (payload.eventType !== 'UPDATE') return
+        const u = payload.new as TableWithSession
+        const patch = {
+            table_status: u.table_status,
+            cleaning_claimed_by: u.cleaning_claimed_by ?? null,
+            cleaning_claimed_at: u.cleaning_claimed_at ?? null,
+        }
+        setTablesState(prev => prev.map(t => t.id === u.id ? { ...t, ...patch } : t))
+        setSelectedBillingTable((prev: any) => prev?.id === u.id ? { ...prev, ...patch } : prev)
     })
 
     // Load booking stay details, manual charges, and linked dining orders concurrently when room is selected
@@ -370,6 +459,20 @@ export default function CashierClient({
         setCreditCustomerPhone('')
     }, [selectedBillingTable?.id])
 
+    // Same reset for the takeaway/delivery order billing panel — shares the
+    // table panel's bargain-rate/payment-method state since only one of the
+    // two panels is ever open at a time.
+    useEffect(() => {
+        setBillingPaymentMethod('cash')
+        setSplitCashAmount('')
+        setSplitQrAmount('')
+        setBillingQrCodeId('')
+        setTableBargainRate('')
+        setTableBargainReason('')
+        setCreditCustomerName(selectedBillingOrder?.customer_name || '')
+        setCreditCustomerPhone(selectedBillingOrder?.customer_phone || '')
+    }, [selectedBillingOrder?.id])
+
     const calculateStayCost = (room: any, booking: any) => {
         if (!room || !booking) return 0
         const price = room.room_types?.base_price || 0
@@ -389,7 +492,7 @@ export default function CashierClient({
         const allUnpaid = unpaid.filter(o => o.booking_id === booking.id)
         
         // Also fallback to match by session in case booking_id is not set but matchingTable activeSession is
-        const matchingTable = tables.find(t => t.room_id === room.id)
+        const matchingTable = tablesState.find(t => t.room_id === room.id)
         const sessionId = matchingTable?.activeSession?.id
         
         const additionalActive = sessionId ? active.filter(o => o.session_id === sessionId && o.booking_id !== booking.id) : []
@@ -499,7 +602,7 @@ export default function CashierClient({
     // the result (does this settlement involve credit? is it overpaid?) before
     // deciding whether to open the confirmation popup or go straight to the
     // invoice preview.
-    const buildInvoiceData = (type: 'room' | 'table', item: any): any => {
+    const buildInvoiceData = (type: 'room' | 'table' | 'takeout' | 'delivery', item: any): any => {
         if (type === 'room') {
             const room = item
             // Prefer the freshly fetched billingStayBooking (newest checked_in via API)
@@ -581,7 +684,7 @@ export default function CashierClient({
                 discountReason: discountReason,
                 extraHourCharge: extraHourChargeVal,
             }
-        } else {
+        } else if (type === 'table') {
             const table = item
             const sessionOrders = getTableSessionItems(table)
             const itemsSubtotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
@@ -638,6 +741,62 @@ export default function CashierClient({
                 customerName: undefined,
                 customerPhone: undefined,
             }
+        } else {
+            // Takeaway ('takeout') or delivery — a single standalone order,
+            // no session to draw items/total from. order.total_amount is the
+            // same already-tax/promo/loyalty-adjusted authoritative figure
+            // the new /api/orders/checkout route bills off.
+            const order: UnpaidOrder = item
+            const lineItems = (order.order_items || []).map(oi => ({
+                name: oi.menu_items?.name || 'Item',
+                quantity: oi.quantity,
+                unitPrice: Number(oi.unit_price) || 0,
+            }))
+            const itemsSubtotal = lineItems.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
+            const subtotal = Number(order.total_amount) || 0
+
+            const bargainRateEntered = tableBargainRate.trim() !== ''
+            const bargainRateValue = bargainRateEntered ? parseFloat(tableBargainRate) || 0 : subtotal
+            const discountAmount = bargainRateEntered ? Math.max(0, subtotal - bargainRateValue) : 0
+            const total = subtotal - discountAmount
+
+            const resolvedCash = billingPaymentMethod === 'cash' ? total
+                : billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0)
+                : 0
+            const resolvedQr = billingPaymentMethod === 'qr_digital' ? total
+                : billingPaymentMethod === 'both' ? (parseFloat(splitQrAmount) || 0)
+                : 0
+            const resolvedCredit = billingPaymentMethod === 'credit' ? total
+                : billingPaymentMethod === 'both' ? Math.max(0, total - resolvedCash - resolvedQr)
+                : 0
+            const overpaid = billingPaymentMethod === 'both' && (resolvedCash + resolvedQr) > total + 0.01
+
+            return {
+                type,
+                id: order.id,
+                orderId: order.id,
+                label: order.customer_name || (type === 'delivery' ? 'Delivery Guest' : 'Takeaway Guest'),
+                guestName: order.customer_name || 'Walk-in Customer',
+                guestPhone: order.customer_phone || null,
+                nights: 0,
+                basePrice: 0,
+                stayCost: 0,
+                qrOrders: lineItems,
+                qrOrdersTotal: itemsSubtotal,
+                manualCharges: [],
+                manualChargesTotal: 0,
+                total,
+                discountAmount,
+                discountReason: discountAmount > 0 ? tableBargainReason.trim() : '',
+                paymentMethod: billingPaymentMethod,
+                cashPaid: resolvedCash,
+                qrPaid: resolvedQr,
+                creditPaid: resolvedCredit,
+                overpaid,
+                qrCodeId: (resolvedQr > 0) ? (billingQrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined)) : undefined,
+                customerName: order.customer_name || undefined,
+                customerPhone: order.customer_phone || undefined,
+            }
         }
     }
 
@@ -647,7 +806,7 @@ export default function CashierClient({
     // split fields would otherwise silently under- or over-charge, 'credit'
     // (whether the whole bill or a leftover from 'both') because it needs a
     // customer name + phone to post against.
-    const compileInvoice = (type: 'room' | 'table', item: any) => {
+    const compileInvoice = (type: 'room' | 'table' | 'takeout' | 'delivery', item: any) => {
         const data = buildInvoiceData(type, item)
         if (!data) return
 
@@ -705,7 +864,7 @@ export default function CashierClient({
             const total = calculateGrandTotal(room, booking)
             const advancePaid = Number(booking.paid_amount) || 0
             const balanceDue = Math.max(0, total - advancePaid)
-            const matchingTable = tables.find(t => t.room_id === room.id)
+            const matchingTable = tablesState.find(t => t.room_id === room.id)
             const sessionId = matchingTable?.activeSession?.id
 
             // Settle all unpaid orders associated with this booking's session
@@ -768,7 +927,7 @@ export default function CashierClient({
                 // idempotently, but doing it here records exactly what the
                 // cashier selected (Cash / QR / Both) per order for the EOD
                 // report's cash-vs-digital breakdown.
-                const sessionId = tables.find(t => t.room_id === invoice.roomId)?.activeSession?.id
+                const sessionId = tablesState.find(t => t.room_id === invoice.roomId)?.activeSession?.id
 
                 if (sessionId) {
                     const sessionOrders = active.filter(o => o.session_id === sessionId)
@@ -850,7 +1009,7 @@ export default function CashierClient({
                 // orders paid in the DB. Without this, the next guest booked into the
                 // room would still see the previous guest's now-settled orders here.
                 router.refresh()
-            } else {
+            } else if (invoice.type === 'table') {
                 // The dine-in equivalent — /api/tables/checkout does its own
                 // order settling, session closing, and ledger/credit posting
                 // server-side (no client-side pre-settle loop needed).
@@ -873,37 +1032,48 @@ export default function CashierClient({
                 if (!res.ok) throw new Error(data.error || 'Failed to checkout table')
 
                 toast.success('Table session settled and closed successfully!')
+            } else {
+                // Takeaway/delivery — a single standalone order, no session.
+                const res = await fetch(`/api/orders/checkout`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        order_id: invoice.orderId,
+                        cash_paid: invoice.cashPaid,
+                        qr_paid: invoice.qrPaid,
+                        credit_amount: invoice.creditPaid || 0,
+                        qr_code_id: invoice.qrCodeId,
+                        discount_amount: invoice.discountAmount || 0,
+                        discount_reason: invoice.discountReason,
+                        customer_name: invoice.customerName,
+                        customer_phone: invoice.customerPhone,
+                    })
+                })
+                const data = await res.json()
+                if (!res.ok) throw new Error(data.error || 'Failed to checkout order')
+
+                toast.success(`${invoice.type === 'delivery' ? 'Delivery' : 'Takeaway'} order settled successfully!`)
             }
 
-            // The bill is settled in the database at this point — the cashier
-            // sees "Paid" immediately rather than a spinner that looks stuck for
-            // as long as printing takes (which can block on a native browser
-            // print dialog if no printer is configured for this till).
+            // The bill is settled in the database at this point already — what
+            // happens next is purely about paper. window.print() opens the
+            // browser's own print dialog (pick a printer, preview, cancel);
+            // it's a blocking call, so this line doesn't return until the
+            // cashier closes that dialog one way or the other. Whether they
+            // print or cancel makes no difference to the settlement above —
+            // it already happened.
             isSettlingRef.current = false
             setIsSettlingInvoice(false)
             setInvoiceSettled(true)
 
-            // Auto-print the invoice via QZ Tray as raw ESC/POS (same path as
-            // the kitchen KOT printer). Only fall back to the browser dialog
-            // when QZ is actually unreachable — not when no printer is picked,
-            // since a thermal roll on a driverless raw queue can't be rasterized
-            // by the browser anyway, and that just surfaced a confusing
-            // "printer not available" dialog after a bill was already settled.
             if (printInvoiceEnabled && printBillEnabled) {
-                const printResult = await printInvoice(buildInvoiceTicket(invoice, money))
-                if (!printResult.ok) {
-                    toast.error(
-                        printResult.status === 'no-printer-selected'
-                            ? 'Bill settled, but no printer is set for this till — pick one in Printer Settings.'
-                            : 'Bill settled, but the printer isn’t connected — opening browser print instead.'
-                    )
-                    if (printResult.status !== 'no-printer-selected') window.print()
-                }
+                window.print()
             }
 
             setActiveInvoice(null)
             setSelectedBillingRoom(null)
             setSelectedBillingTable(null)
+            setSelectedBillingOrder(null)
             setInvoiceSettled(false)
             window.location.reload()
         } catch (e: any) {
@@ -921,7 +1091,7 @@ export default function CashierClient({
     // we fall back to the browser print dialog for driver-based printers.
     const handlePrintBill = async () => {
         if (!activeInvoice) return
-        const result = await printInvoice(buildInvoiceTicket(activeInvoice, money))
+        const result = await printInvoice(buildInvoiceTicket(activeInvoice, money, restaurantName))
         if (!result.ok) {
             toast.error(
                 result.status === 'no-printer-selected'
@@ -944,12 +1114,12 @@ export default function CashierClient({
     }, [isHotel])
 
     const spaceCounts = useMemo(() => {
-        let all = tables.length
+        let all = tablesState.length
         let available = 0
         let reserved = 0
         let occupied = 0
         let dirty = 0
-        for (const t of tables) {
+        for (const t of tablesState) {
             const rawStatus = t.activeSession ? 'active' : (t.table_status || 'available')
             const status = (isHotel && rawStatus === 'dirty') ? 'available' : rawStatus
             if (status === 'active') occupied++
@@ -958,7 +1128,7 @@ export default function CashierClient({
             else available++
         }
         return { all, available, reserved, occupied, dirty }
-    }, [tables])
+    }, [tablesState, isHotel])
 
     const roomsCounts = useMemo(() => {
         let all = rooms.length
@@ -992,7 +1162,7 @@ export default function CashierClient({
         }
 
         if (payload.eventType === 'INSERT') {
-            const { data } = await supabase
+            const { data, error } = await supabase
                 .from('orders')
                 .select(`
                     id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address,
@@ -1007,6 +1177,9 @@ export default function CashierClient({
                 `)
                 .eq('id', payload.new.id)
                 .single()
+            // Previously silent — if this fetch fails (RLS, network, ...) the new
+            // order just never shows up anywhere in Billing/Orders, with no sign why.
+            if (error) console.error('[Cashier orders realtime] INSERT fetch failed:', error)
             if (data) {
                 setActive(prev => [...prev, data as unknown as ActiveOrder])
 
@@ -1019,7 +1192,7 @@ export default function CashierClient({
                     // 1. KOT (Kitchen Ticket) auto-print
                     const kitchenItems = itemsForStation(confirmedOrder.order_items, 'kitchen')
                     if (kitchenItems.length > 0) {
-                        const ticketBytes = buildStationTicket(confirmedOrder, 'kitchen')
+                        const ticketBytes = buildStationTicket(confirmedOrder, 'kitchen', restaurantName)
                         void printKot(ticketBytes).then((result) => {
                             if (!result.ok) console.error('[Cashier KOT Auto-print Failed]:', result.status, result.error)
                         }).catch(err => console.error('[Cashier KOT Auto-print Failed]:', err))
@@ -1028,7 +1201,7 @@ export default function CashierClient({
                     // 2. BOT (Bar Ticket) auto-print
                     const barItems = itemsForStation(confirmedOrder.order_items, 'bar')
                     if (barItems.length > 0) {
-                        const ticketBytes = buildStationTicket(confirmedOrder, 'bar')
+                        const ticketBytes = buildStationTicket(confirmedOrder, 'bar', restaurantName)
                         void printBot(ticketBytes).then((result) => {
                             if (!result.ok) console.error('[Cashier BOT Auto-print Failed]:', result.status, result.error)
                         }).catch(err => console.error('[Cashier BOT Auto-print Failed]:', err))
@@ -1039,11 +1212,12 @@ export default function CashierClient({
             const { id, status, payment_status } = payload.new
             if (status === 'delivered' && payment_status === 'unpaid') {
                 // Fetch full record to show in unpaid list
-                const { data } = await supabase
+                const { data, error } = await supabase
                     .from('orders')
-                    .select(`id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id, sessions ( id, seat_number, tables ( id, label, room_id ) ), order_items ( quantity, unit_price, menu_items ( name ) )`)
+                    .select(`id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, seat_number, tables ( id, label, room_id ) ), order_items ( id, quantity, status, unit_price, needs_confirmation, menu_items ( name ) )`)
                     .eq('id', id)
                     .single()
+                if (error) console.error('[Cashier orders realtime] UPDATE (unpaid) fetch failed:', error)
                 if (data) {
                     setUnpaid(prev => [...prev, data as unknown as UnpaidOrder])
                 }
@@ -1064,6 +1238,16 @@ export default function CashierClient({
                 } : o))
             }
         }
+    }, () => {
+        // Fires whenever the shared realtime channel (re)connects, including
+        // after a drop (laptop sleep, network blip, a backgrounded tab) — the
+        // one gap incremental postgres_changes patches can never close, since
+        // anything that happened while disconnected was never delivered.
+        // router.refresh() re-runs the server fetch; the resync effects above
+        // (initialUnpaid/initialActive/rooms/bookings/tables) pick the fresh
+        // props back up.
+        console.log('[CashierClient] Realtime reconnected — refreshing to catch up on any missed updates')
+        router.refresh()
     })
 
     const handleCashPay = async (orderId: string) => {
@@ -1081,11 +1265,11 @@ export default function CashierClient({
     // even though seat 1 alone can't tell it belongs to a split table.
     const splitSessionIds = useMemo(() => {
         const ids = new Set<string>()
-        for (const t of tables as any[]) {
+        for (const t of tablesState as any[]) {
             if (t.activeSession && (t.otherActiveSessions?.length ?? 0) > 0) ids.add(t.activeSession.id)
         }
         return ids
-    }, [tables])
+    }, [tablesState])
 
     // One billing card per active session — a split table (Table 4-1, 4-2, ...)
     // settles each seat as its own independent bill, so each seat session becomes
@@ -1093,7 +1277,7 @@ export default function CashierClient({
     // `activeSession` (which is all the downstream items/total/checkout code reads).
     const billingTableEntries = useMemo(() => {
         const entries: any[] = []
-        for (const t of tables as any[]) {
+        for (const t of tablesState as any[]) {
             const tableSessions = [t.activeSession, ...(t.otherActiveSessions || [])].filter(Boolean)
             for (const s of tableSessions) {
                 if (s.booking_id) continue
@@ -1108,7 +1292,12 @@ export default function CashierClient({
             }
         }
         return entries
-    }, [tables])
+    }, [tablesState])
+
+    // Unpaid takeaway/delivery orders — each is its own billing target (no
+    // session to group by, unlike dine-in tables).
+    const billingTakeoutEntries = useMemo(() => unpaid.filter(o => o.order_type === 'takeout'), [unpaid])
+    const billingDeliveryEntries = useMemo(() => unpaid.filter(o => o.order_type === 'delivery'), [unpaid])
 
     // Group unpaid by session
     const unpaidBySession = useMemo(() => {
@@ -1313,7 +1502,7 @@ export default function CashierClient({
                             partnerRestaurantId={partnerRestaurantId}
                             roomsFilter={roomsFilter}
                             roomTypeFilter={roomTypeFilter}
-                            tables={tables}
+                            tables={tablesState}
                             activeOrders={active}
                             unpaidOrders={unpaid}
                             onGoToBilling={(room) => {
@@ -1389,7 +1578,7 @@ export default function CashierClient({
                         </div>
 
                         <CashierTableManager
-                            initialTables={tables}
+                            initialTables={tablesState}
                             restaurantId={restaurantId}
                             activeOrders={active}
                             unpaidOrders={unpaid}
@@ -1408,29 +1597,40 @@ export default function CashierClient({
                     <div className="space-y-5">
                         {/* Awaiting Payment section */}
                         <div>
-                            {isHotel && (
-                                <div className="border-b border-hairline pb-3 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                    <h2 className="text-sm font-semibold text-ink-muted flex items-center gap-2">
-                                        <Receipt size={14} className="text-red-400" />
-                                        Awaiting Settlement
-                                    </h2>
-                                    <div className="flex items-center gap-3">
-                                        {billingSubTab === 'rooms' && (
-                                            <div className="flex items-center gap-1.5">
-                                                <span className="text-[10px] font-black text-ink-subtle uppercase shrink-0">Type:</span>
-                                                <Select
-                                                    value={billingRoomTypeFilter}
-                                                    onChange={(e) => setBillingRoomTypeFilter(e.target.value)}
-                                                    className="w-48 text-xs"
-                                                >
-                                                    <option value="all">All Room Types</option>
-                                                    {roomTypesList.map(type => (
-                                                        <option key={type.id} value={type.id}>{type.name}</option>
-                                                    ))}
-                                                </Select>
-                                            </div>
-                                        )}
-                                        <div className="flex bg-surface-muted p-1 rounded-xl border border-hairline shrink-0">
+                            <div className="border-b border-hairline pb-3 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <h2 className="text-sm font-semibold text-ink-muted flex items-center gap-2">
+                                    <Receipt size={14} className="text-red-400" />
+                                    Awaiting Payment
+                                </h2>
+                                <div className="flex items-center gap-3">
+                                    {billingSubTab === 'rooms' && (
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-[10px] font-black text-ink-subtle uppercase shrink-0">Type:</span>
+                                            <Select
+                                                value={billingRoomTypeFilter}
+                                                onChange={(e) => setBillingRoomTypeFilter(e.target.value)}
+                                                className="w-48 text-xs"
+                                            >
+                                                <option value="all">All Room Types</option>
+                                                {roomTypesList.map(type => (
+                                                    <option key={type.id} value={type.id}>{type.name}</option>
+                                                ))}
+                                            </Select>
+                                        </div>
+                                    )}
+                                    <div className="flex bg-surface-muted p-1 rounded-xl border border-hairline shrink-0 flex-wrap">
+                                        <button
+                                            onClick={() => setBillingSubTab('all')}
+                                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                                billingSubTab === 'all' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
+                                            }`}
+                                        >
+                                            All ({
+                                                (isHotel ? roomsState.filter(r => r.status === 'occupied').length : 0)
+                                                + billingTableEntries.length + billingTakeoutEntries.length + billingDeliveryEntries.length
+                                            })
+                                        </button>
+                                        {isHotel && (
                                             <button
                                                 onClick={() => setBillingSubTab('rooms')}
                                                 className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
@@ -1439,43 +1639,131 @@ export default function CashierClient({
                                             >
                                                 Rooms ({roomsState.filter(r => r.status === 'occupied').length})
                                             </button>
-                                            <button
-                                                onClick={() => setBillingSubTab('tables')}
-                                                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                                    billingSubTab === 'tables' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
-                                                }`}
-                                            >
-                                                Tables ({billingTableEntries.length})
-                                            </button>
-                                        </div>
+                                        )}
+                                        <button
+                                            onClick={() => setBillingSubTab('tables')}
+                                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                                billingSubTab === 'tables' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
+                                            }`}
+                                        >
+                                            Tables ({billingTableEntries.length})
+                                        </button>
+                                        <button
+                                            onClick={() => setBillingSubTab('takeout')}
+                                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                                billingSubTab === 'takeout' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
+                                            }`}
+                                        >
+                                            Takeaway ({billingTakeoutEntries.length})
+                                        </button>
+                                        <button
+                                            onClick={() => setBillingSubTab('delivery')}
+                                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                                billingSubTab === 'delivery' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
+                                            }`}
+                                        >
+                                            Delivery ({billingDeliveryEntries.length})
+                                        </button>
                                     </div>
                                 </div>
-                            )}
+                            </div>
 
-                            {!isHotel && (
-                                <h2 className="text-sm font-semibold text-ink-muted mb-4 flex items-center gap-2">
-                                    <Receipt size={14} className="text-red-400" />
-                                    Awaiting Payment
-                                </h2>
-                            )}
+                            {(() => {
+                                const occupiedRooms = isHotel ? roomsState.filter((r: any) => r.status === 'occupied') : []
+                                const activeList = billingSubTab === 'all' ? [...occupiedRooms, ...billingTableEntries, ...billingTakeoutEntries, ...billingDeliveryEntries]
+                                    : billingSubTab === 'rooms' ? filteredBillingRooms
+                                    : billingSubTab === 'tables' ? billingTableEntries
+                                    : billingSubTab === 'takeout' ? billingTakeoutEntries
+                                    : billingDeliveryEntries
 
-                            {((isHotel && billingSubTab === 'rooms') ? filteredBillingRooms : billingTableEntries).length === 0 ? (
-                                <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-10 text-center">
-                                    <CheckCircle size={32} className="mx-auto text-emerald-300 mb-2" />
-                                    <p className="text-sm font-medium text-ink-subtle">All bills settled</p>
-                                    <p className="text-xs text-gray-300 mt-1">No pending payments in this category</p>
-                                </div>
-                            ) : (
-                                <div>
-                                    {isHotel && billingSubTab === 'rooms' ? (
+                                if (activeList.length === 0) {
+                                    return (
+                                        <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-10 text-center">
+                                            <CheckCircle size={32} className="mx-auto text-emerald-300 mb-2" />
+                                            <p className="text-sm font-medium text-ink-subtle">All bills settled</p>
+                                            <p className="text-xs text-gray-300 mt-1">No pending payments in this category</p>
+                                        </div>
+                                    )
+                                }
+
+                                if (billingSubTab === 'all') {
+                                    // Combined grid — each card renders per its own kind
+                                    // (room / table / takeaway / delivery) but routes to
+                                    // the same selection handlers the dedicated tabs use.
+                                    return (
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                            {occupiedRooms.map((room: any) => {
+                                                const booking = bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
+                                                return (
+                                                    <button
+                                                        key={`room:${room.id}`}
+                                                        onClick={() => setSelectedBillingRoom(room)}
+                                                        className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
+                                                    >
+                                                        <span className="text-lg font-black text-ink block leading-tight truncate max-w-full px-1">
+                                                            Room {room.room_number}
+                                                        </span>
+                                                        {booking && (
+                                                            <span className="text-[10px] font-bold text-ink-subtle mt-1.5 truncate max-w-full">
+                                                                {booking.guest_name}
+                                                            </span>
+                                                        )}
+                                                        <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">
+                                                            Awaiting Pay
+                                                        </span>
+                                                    </button>
+                                                )
+                                            })}
+                                            {billingTableEntries.map(table => {
+                                                const sessionItems = getTableSessionItems(table)
+                                                return (
+                                                    <button
+                                                        key={`table:${table.uiKey}`}
+                                                        onClick={() => setSelectedBillingTable(table)}
+                                                        className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
+                                                    >
+                                                        <span className="text-lg font-black text-ink block leading-tight truncate max-w-full px-1">
+                                                            Table {table.label}
+                                                        </span>
+                                                        <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">
+                                                            {sessionItems.length} items unpaid
+                                                        </span>
+                                                    </button>
+                                                )
+                                            })}
+                                            {[...billingTakeoutEntries, ...billingDeliveryEntries].map(order => (
+                                                <button
+                                                    key={`order:${order.id}`}
+                                                    onClick={() => setSelectedBillingOrder(order)}
+                                                    className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
+                                                >
+                                                    <span className="text-lg font-black text-ink block leading-tight truncate max-w-full px-1">
+                                                        {order.customer_name || 'Walk-in'}
+                                                    </span>
+                                                    <span className="text-[10px] font-bold text-ink-subtle mt-1.5 truncate max-w-full">
+                                                        #{order.id.slice(0, 8).toUpperCase()}
+                                                    </span>
+                                                    {order.customer_phone && (
+                                                        <span className="text-[10px] font-bold text-ink-subtle truncate max-w-full">
+                                                            {order.customer_phone}
+                                                        </span>
+                                                    )}
+                                                    <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">
+                                                        {order.order_type === 'delivery' ? 'Delivery' : 'Takeaway'}
+                                                    </span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )
+                                }
+
+                                if (billingSubTab === 'rooms') {
+                                    return (
                                         // Occupied Rooms Grid
                                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                                             {filteredBillingRooms.map(room => {
                                                 const booking = bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
-                                                const stayCost = calculateStayCost(room, booking)
-                                                const qrOrdersTotal = getRoomQrOrders(room).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
-                                                const total = stayCost + qrOrdersTotal
-                                                
+
                                                 return (
                                                     <button
                                                         key={room.id}
@@ -1497,12 +1785,15 @@ export default function CashierClient({
                                                 )
                                             })}
                                         </div>
-                                    ) : (
+                                    )
+                                }
+
+                                if (billingSubTab === 'tables') {
+                                    return (
                                         // Occupied Tables Grid
                                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                                             {billingTableEntries.map(table => {
                                                 const sessionItems = getTableSessionItems(table)
-                                                const total = sessionItems.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
 
                                                 return (
                                                     <button
@@ -1520,9 +1811,39 @@ export default function CashierClient({
                                                 )
                                             })}
                                         </div>
-                                    )}
-                                </div>
-                            )}
+                                    )
+                                }
+
+                                // Takeaway / Delivery Grid — one box per unpaid order, no
+                                // session grouping. Customer name, short order id, phone.
+                                const orderEntries = billingSubTab === 'takeout' ? billingTakeoutEntries : billingDeliveryEntries
+                                return (
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                        {orderEntries.map(order => (
+                                            <button
+                                                key={order.id}
+                                                onClick={() => setSelectedBillingOrder(order)}
+                                                className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
+                                            >
+                                                <span className="text-lg font-black text-ink block leading-tight truncate max-w-full px-1">
+                                                    {order.customer_name || 'Walk-in'}
+                                                </span>
+                                                <span className="text-[10px] font-bold text-ink-subtle mt-1.5 truncate max-w-full">
+                                                    #{order.id.slice(0, 8).toUpperCase()}
+                                                </span>
+                                                {order.customer_phone && (
+                                                    <span className="text-[10px] font-bold text-ink-subtle truncate max-w-full">
+                                                        {order.customer_phone}
+                                                    </span>
+                                                )}
+                                                <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">
+                                                    Awaiting Pay
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )
+                            })()}
                         </div>
 
 
@@ -1582,6 +1903,7 @@ export default function CashierClient({
                         splitSessionIds={splitSessionIds}
                         money={money}
                         onUpdateTakeoutStatus={handleUpdateStatus}
+                        restaurantName={restaurantName}
                     />
                 )}
             </div>
@@ -2281,6 +2603,281 @@ export default function CashierClient({
                 document.body
             )}
 
+            {/* Takeaway/delivery order details modal — same structure as the
+                table one above, but a single standalone order (no session,
+                no getTableSessionItems). */}
+            {mounted && selectedBillingOrder && createPortal(
+                <div
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-300"
+                    onClick={() => setSelectedBillingOrder(null)}
+                >
+                    <div
+                        className="bg-surface w-full max-w-2xl rounded-[28px] shadow-2xl overflow-hidden border border-hairline p-6 space-y-6 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between border-b border-hairline pb-4">
+                            <div>
+                                <h3 className="text-lg font-black text-ink">{selectedBillingOrder.customer_name || 'Walk-in Customer'}</h3>
+                                <p className="text-xs text-ink-subtle mt-0.5">
+                                    #{selectedBillingOrder.id.slice(0, 8).toUpperCase()}
+                                    {selectedBillingOrder.customer_phone && <> · {selectedBillingOrder.customer_phone}</>}
+                                </p>
+                                {selectedBillingOrder.order_type === 'delivery' && selectedBillingOrder.delivery_address && (
+                                    <p className="text-xs text-ink-subtle mt-0.5">{selectedBillingOrder.delivery_address}</p>
+                                )}
+                            </div>
+                            <button onClick={() => setSelectedBillingOrder(null)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink"><X size={16} /></button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Order items</h4>
+                            {(selectedBillingOrder.order_items || []).length > 0 ? (
+                                <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-gray-100 bg-surface p-4 space-y-2">
+                                    {selectedBillingOrder.order_items.map((oi, idx) => (
+                                        <div key={oi.id || idx} className="flex justify-between items-center py-1.5 text-xs">
+                                            <div>
+                                                <p className="font-extrabold text-ink">{oi.menu_items?.name || 'Item'}</p>
+                                                <p className="text-[10px] text-ink-subtle">Qty: {oi.quantity} × {money(Number(oi.unit_price) || 0)}</p>
+                                            </div>
+                                            <span className="font-extrabold text-ink-muted tabular-nums">{money((Number(oi.unit_price) || 0) * oi.quantity)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="p-8 text-center border border-dashed border-hairline-strong rounded-xl text-xs text-ink-subtle font-semibold">
+                                    No items on this order
+                                </div>
+                            )}
+                        </div>
+
+                        {(() => {
+                            const orderSubtotal = Number(selectedBillingOrder.total_amount) || 0
+                            const bargainRateEntered = tableBargainRate.trim() !== ''
+                            const bargainRateValue = bargainRateEntered ? parseFloat(tableBargainRate) || 0 : orderSubtotal
+                            const orderDiscountAmount = bargainRateEntered ? Math.max(0, orderSubtotal - bargainRateValue) : 0
+                            const orderDiscountInvalid = bargainRateEntered && (bargainRateValue < 0 || bargainRateValue > orderSubtotal)
+                            const orderTotal = orderSubtotal - orderDiscountAmount
+                            const invoiceType = selectedBillingOrder.order_type === 'delivery' ? 'delivery' : 'takeout'
+
+                            return (
+                                <>
+                                    {/* Bargain rate */}
+                                    <div className="border-2 border-amber-200 rounded-2xl p-4 space-y-3 bg-amber-50/60 shadow-sm">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                                                    <Percent size={14} className="text-amber-700" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-black text-amber-800 uppercase tracking-wider">Bargain Rate</p>
+                                                    <p className="text-[10px] text-amber-700/70 font-semibold">Standard total: {money(orderSubtotal)}</p>
+                                                </div>
+                                            </div>
+                                            <div className="relative w-32">
+                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-700">Rs.</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max={orderSubtotal}
+                                                    placeholder={orderSubtotal.toFixed(2)}
+                                                    value={tableBargainRate}
+                                                    onChange={e => setTableBargainRate(e.target.value)}
+                                                    className={`w-full pl-7 pr-2 py-2 border-2 rounded-xl text-xs font-bold bg-white focus:outline-none ${orderDiscountInvalid ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
+                                                />
+                                            </div>
+                                        </div>
+                                        {orderDiscountInvalid && (
+                                            <p className="text-[9px] text-rose-500 font-bold">Rate must be between Rs. 0 and the standard total.</p>
+                                        )}
+                                        {orderDiscountAmount > 0 && (
+                                            <div>
+                                                <label className="block text-[9px] font-black text-amber-700 uppercase mb-1">Reason (required)</label>
+                                                <input
+                                                    type="text"
+                                                    value={tableBargainReason}
+                                                    onChange={e => setTableBargainReason(e.target.value)}
+                                                    placeholder="e.g. Repeat guest, manager approved"
+                                                    className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-amber-500"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Payment Method Selector */}
+                                    {irdSyncEnabled && (
+                                    <div>
+                                        <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Payment Method</p>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            <button
+                                                onClick={() => setBillingPaymentMethod('cash')}
+                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                    billingPaymentMethod === 'cash'
+                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                        : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                }`}
+                                            >
+                                                <Banknote size={15} />
+                                                Cash
+                                            </button>
+                                            <button
+                                                onClick={() => setBillingPaymentMethod('qr_digital')}
+                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                    billingPaymentMethod === 'qr_digital'
+                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                        : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                }`}
+                                            >
+                                                <CreditCard size={15} />
+                                                QR / Digital
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setBillingPaymentMethod('both')
+                                                    setSplitCashAmount('')
+                                                    setSplitQrAmount('')
+                                                }}
+                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                    billingPaymentMethod === 'both'
+                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                        : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                }`}
+                                            >
+                                                <Receipt size={15} />
+                                                Both
+                                            </button>
+                                            <button
+                                                onClick={() => setBillingPaymentMethod('credit')}
+                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                    billingPaymentMethod === 'credit'
+                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                        : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                }`}
+                                            >
+                                                <ShoppingBag size={15} />
+                                                Credit
+                                            </button>
+                                        </div>
+
+                                        {billingPaymentMethod === 'both' && (
+                                            <div className="mt-3 grid grid-cols-2 gap-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl">
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash Amount</label>
+                                                    <div className="relative">
+                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max={orderTotal}
+                                                            placeholder="0.00"
+                                                            value={splitCashAmount}
+                                                            onChange={e => setSplitCashAmount(e.target.value)}
+                                                            className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">QR / Digital Amount</label>
+                                                    <div className="relative">
+                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max={orderTotal}
+                                                            placeholder="0.00"
+                                                            value={splitQrAmount}
+                                                            onChange={e => setSplitQrAmount(e.target.value)}
+                                                            className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                {(() => {
+                                                    const cash = parseFloat(splitCashAmount) || 0
+                                                    const qr = parseFloat(splitQrAmount) || 0
+                                                    const remainder = orderTotal - cash - qr
+                                                    if (remainder > 0.01) return (
+                                                        <p className="col-span-2 text-[9px] text-amber-600 font-bold text-center">
+                                                            Rs. {remainder.toFixed(2)} left over will go on customer credit
+                                                        </p>
+                                                    )
+                                                    if (remainder < -0.01) return (
+                                                        <p className="col-span-2 text-[9px] text-rose-500 font-bold text-center">
+                                                            ⚠ Cash + QR exceeds the bill by {money(Math.abs(remainder))}
+                                                        </p>
+                                                    )
+                                                    return (
+                                                        <p className="col-span-2 text-[9px] text-emerald-600 font-bold text-center">✓ Amounts balanced</p>
+                                                    )
+                                                })()}
+                                            </div>
+                                        )}
+
+                                        {billingPaymentMethod === 'qr_digital' && qrCodes.length > 1 && (
+                                            <div className="mt-3">
+                                                <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
+                                                <Select
+                                                    value={billingQrCodeId}
+                                                    onChange={e => setBillingQrCodeId(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                >
+                                                    <option value="">Select QR code…</option>
+                                                    {qrCodes.map(qr => (
+                                                        <option key={qr.id} value={qr.id}>{qr.label}</option>
+                                                    ))}
+                                                </Select>
+                                            </div>
+                                        )}
+
+                                        {billingPaymentMethod === 'credit' && (
+                                            <p className="mt-3 text-[10px] text-ink-subtle font-semibold text-center">
+                                                You&apos;ll confirm the customer&apos;s name and phone in the next step.
+                                            </p>
+                                        )}
+                                    </div>
+                                    )}
+
+                                    <div className="border-t border-hairline pt-4 flex items-center justify-between mt-2">
+                                        <div>
+                                            <span className="text-[10px] font-bold text-ink-subtle uppercase">Total bill</span>
+                                            <p className="text-2xl font-black text-brand-600 tabular-nums">{money(orderTotal)}</p>
+                                        </div>
+                                        <div className="flex gap-2 items-center">
+                                            <Button variant="secondary" onClick={() => setSelectedBillingOrder(null)}>Close</Button>
+                                            {!irdSyncEnabled ? (
+                                                <Button
+                                                    variant="primary"
+                                                    onClick={() => {
+                                                        const data = buildInvoiceData(invoiceType, selectedBillingOrder)
+                                                        if (data) {
+                                                            setActiveInvoice(data)
+                                                        }
+                                                    }}
+                                                    className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                >
+                                                    Close Order
+                                                </Button>
+                                            ) : (
+                                                <Button
+                                                    variant="primary"
+                                                    disabled={
+                                                        orderDiscountInvalid ||
+                                                        (orderDiscountAmount > 0 && !tableBargainReason.trim())
+                                                    }
+                                                    onClick={() => compileInvoice(invoiceType, selectedBillingOrder)}
+                                                    className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                >
+                                                    Generate Invoice
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </>
+                            )
+                        })()}
+                    </div>
+                </div>,
+                document.body
+            )}
+
             {/* Settlement Confirmation modal — gates every 'both' or 'credit'
                 settlement (room or table) behind one explicit confirm step,
                 showing the exact Cash/QR/Credit breakdown so a typo in the
@@ -2387,14 +2984,14 @@ export default function CashierClient({
                         className="bg-white w-full max-w-sm p-5 space-y-4 shadow-2xl relative border-t-8 border-brand-500"
                         onClick={e => e.stopPropagation()}
                     >
-                        <InvoiceReceipt invoice={activeInvoice} money={money} formatDate={formatDate} />
+                        <InvoiceReceipt invoice={activeInvoice} money={money} formatDate={formatDate} restaurantName={restaurantName} />
 
                         {/* Invoice Footer Actions (Print, Mark Paid, Close) */}
                         <div className="flex gap-2 pt-3 border-t border-gray-100 print-actions flex-wrap">
                             {invoiceSettled ? (
                                 <div className="flex-1 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold flex items-center justify-center gap-1.5">
                                     <CheckCircle size={13} />
-                                    Paid — printing receipt…
+                                    Paid
                                 </div>
                             ) : (
                                 <>
@@ -2417,7 +3014,7 @@ export default function CashierClient({
                                         <Button
                                             variant="primary"
                                             loading={isSettlingInvoice}
-                                            onClick={handleMarkPaid}
+                                            onClick={() => handleMarkPaid()}
                                             className="font-bold flex-1 bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 text-[10px] text-white py-1.5 min-w-[70px] animate-scale-in"
                                         >
                                             Close Guest
@@ -2426,7 +3023,7 @@ export default function CashierClient({
                                         <Button
                                             variant="primary"
                                             loading={isSettlingInvoice}
-                                            onClick={handleMarkPaid}
+                                            onClick={() => handleMarkPaid()}
                                             className="font-bold flex-1 bg-emerald-600 hover:bg-emerald-700 border-emerald-600 hover:border-emerald-700 text-[10px] text-white py-1.5 min-w-[70px] animate-scale-in"
                                         >
                                             Mark Paid

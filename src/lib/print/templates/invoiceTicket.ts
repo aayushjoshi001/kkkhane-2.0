@@ -6,6 +6,7 @@
 import { EscPosBuilder, LINE_WIDTH } from '../escpos'
 import { advanceMethodLabel } from '@/lib/utils'
 import type { AdvancePaymentMethod } from '@/types/database'
+import { appendBrandFooter } from './brandFooter'
 
 export interface InvoiceLineItem {
     name: string
@@ -21,8 +22,10 @@ export interface InvoiceManualCharge {
 }
 
 export interface ActiveInvoice {
-    type: 'room' | 'table'
+    type: 'room' | 'table' | 'takeout' | 'delivery'
     id: string
+    /** Set for 'takeout'/'delivery' — the order being settled (no session for these). */
+    orderId?: string
     label: string
     roomType?: string
     guestName: string
@@ -163,6 +166,8 @@ export function buildInvoiceTicket(
     b.align('center')
     b.line('*** THANK YOU! ***')
     b.line('WE HOPE TO SEE YOU AGAIN')
+
+    appendBrandFooter(b)
 
     return b.cut().build()
 }
