@@ -1,13 +1,13 @@
 import { requireRole } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import CashierClient, { type UnpaidOrder, type ActiveOrder } from '@/components/waiter/CashierClient'
-import { type PaymentClaim } from '@/components/waiter/PaymentVerificationFeed'
 import { getRestaurantMode } from '@/lib/features'
+import { resolveActiveDayBookSession } from '@/lib/ledger'
 
 export const revalidate = 0
 
 export default async function CashierPage() {
-    const { id: userId, restaurantId } = await requireRole('cashier', 'waiter', 'manager', 'super_admin')
+    const { id: userId, restaurantId, role } = await requireRole('cashier', 'waiter', 'manager', 'super_admin')
     const adminSupabase = await createAdminClient()
 
     const [
@@ -15,19 +15,25 @@ export default async function CashierPage() {
         { data: activeOrders },
         { data: tables },
         { data: activeSessions },
-        { data: paymentClaims },
         restaurantData,
         { data: rooms },
         mode,
         { data: bookings },
+        { data: bankAccounts },
+        { data: suppliers },
+        { data: staff },
+        { data: expenseCategories },
+        { data: ingredients },
+        openSession,
     ] = await Promise.all([
         // Delivered but not yet paid — ready for cashier
         adminSupabase
             .from('orders')
             .select(`
-                id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id,
+                id, total_amount, delivered_at, payment_status, payment_method, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address,
                 sessions ( id, booking_id, seat_number, tables ( id, label, room_id ) ),
-                order_items ( quantity, unit_price, menu_items ( name ) )
+                bookings ( id, rooms ( id, room_number ) ),
+                order_items ( id, quantity, status, unit_price, needs_confirmation, menu_items ( name ) )
             `)
             .eq('restaurant_id', restaurantId)
             .eq('status', 'delivered')
@@ -40,7 +46,8 @@ export default async function CashierPage() {
             .select(`
                 id, status, total_amount, placed_at, session_id, order_type, customer_name, customer_phone, delivery_address, payment_status, booking_id,
                 sessions ( id, booking_id, seat_number, tables ( id, label, room_id ) ),
-                order_items ( id, quantity, status, unit_price, menu_items ( name ) )
+                bookings ( id, rooms ( id, room_number ) ),
+                order_items ( id, quantity, status, unit_price, needs_confirmation, menu_items ( name ) )
             `)
             .eq('restaurant_id', restaurantId)
             .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
@@ -61,14 +68,6 @@ export default async function CashierPage() {
             .eq('restaurant_id', restaurantId)
             .eq('status', 'active')
             .order('seat_number', { ascending: true }),
-
-        // Online payment claims (UPI/card) awaiting staff verification
-        adminSupabase
-            .from('payment_verifications')
-            .select('*')
-            .eq('restaurant_id', restaurantId)
-            .order('created_at', { ascending: false })
-            .limit(20),
 
         // Restaurant slug for manual takeaway/delivery redirect
         adminSupabase
@@ -93,7 +92,40 @@ export default async function CashierPage() {
             .from('bookings')
             .select('*')
             .eq('restaurant_id', restaurantId)
-            .eq('status', 'checked_in')
+            .eq('status', 'checked_in'),
+
+        // ── Manual Entry seed data (rendered inline in the dashboard) ──────────
+        adminSupabase
+            .from('bank_accounts')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
+            .order('name', { ascending: true }),
+        adminSupabase
+            .from('suppliers')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
+            .order('name', { ascending: true }),
+        adminSupabase
+            .from('users')
+            .select('id, full_name')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
+            .order('full_name', { ascending: true }),
+        adminSupabase
+            .from('expense_categories')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
+            .order('name', { ascending: true }),
+        adminSupabase
+            .from('ingredients')
+            .select('id, name, unit, stock_quantity')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
+            .order('name', { ascending: true }),
+        resolveActiveDayBookSession(adminSupabase, restaurantId, userId),
     ])
 
     // A split table carries one active session per seat — keep them all, not just
@@ -124,11 +156,18 @@ export default async function CashierPage() {
             userId={userId}
             initialUnpaid={(unpaidOrders || []) as unknown as UnpaidOrder[]}
             initialActive={(activeOrders || []) as unknown as ActiveOrder[]}
-            initialClaims={(paymentClaims || []) as unknown as PaymentClaim[]}
             tables={mappedTables as any}
             rooms={rooms || []}
             isHotel={isHotel}
             initialBookings={(bookings || [])}
+            userRole={role}
+            manualEntryBankAccounts={bankAccounts || []}
+            manualEntrySuppliers={suppliers || []}
+            manualEntryStaffList={staff || []}
+            manualEntryExpenseCategories={expenseCategories || []}
+            manualEntryIngredients={ingredients || []}
+            manualEntryHasOpenSession={!!openSession}
+            manualEntrySessionId={openSession?.id ?? null}
         />
     )
 }

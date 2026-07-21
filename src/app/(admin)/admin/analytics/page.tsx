@@ -25,7 +25,8 @@ export default async function AnalyticsPage() {
         { data: recentFeedback },
         { count: totalRoomsCount },
         { data: bookings30d },
-        { data: bargainExpenses }
+        { data: bargainExpenses },
+        { data: cancellationExpenses }
     ] = await Promise.all([
         supabase.from('orders').select('id, total_amount, placed_at')
             .eq('restaurant_id', restaurantId).eq('status', 'delivered')
@@ -55,6 +56,11 @@ export default async function AnalyticsPage() {
         supabase.from('expenses').select('amount, created_at, expense_categories!inner(name)')
             .eq('restaurant_id', restaurantId)
             .eq('expense_categories.name', 'Bargain Discounts')
+            .gte('created_at', d30.toISOString()),
+
+        supabase.from('expenses').select('amount, created_at, expense_categories!inner(name)')
+            .eq('restaurant_id', restaurantId)
+            .eq('expense_categories.name', 'Order Cancellation')
             .gte('created_at', d30.toISOString())
     ])
 
@@ -105,9 +111,10 @@ export default async function AnalyticsPage() {
             label: DAY_NAMES[d.getDay()],
             dayNum: d.getDate(),
             monthStr: MONTH_SHORT[d.getMonth()],
-            revenue: 0, 
+            revenue: 0,
             orders: 0,
             bargainDiscount: 0,
+            cancellationCost: 0,
             occupiedRoomsCount: 0
         }
     })
@@ -124,6 +131,15 @@ export default async function AnalyticsPage() {
         const b = daily.find(d => d.date === dateStr)
         if (b) {
             b.bargainDiscount += Number(exp.amount)
+        }
+    }
+
+    // Map order cancellation costs to daily buckets
+    for (const exp of cancellationExpenses ?? []) {
+        const dateStr = exp.created_at.slice(0, 10)
+        const b = daily.find(d => d.date === dateStr)
+        if (b) {
+            b.cancellationCost += Number(exp.amount)
         }
     }
 

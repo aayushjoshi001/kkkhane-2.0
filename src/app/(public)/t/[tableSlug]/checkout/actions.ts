@@ -9,7 +9,6 @@ import { Redis } from '@upstash/redis'
 import { validateInput, OrderItemSchema } from '@/lib/validation'
 import { z } from 'zod'
 import { sendOrderConfirmationSms, sendLoyaltyPointsSms } from '@/lib/sms'
-import { checkAndAlertLowStock } from '@/app/(admin)/admin/ingredients/actions'
 import { getRestaurantFeatures } from '@/lib/features'
 import { verifyClientIp } from '@/lib/ip-check'
 import { getRoomContextForTable } from '@/lib/rooms'
@@ -186,7 +185,9 @@ export async function placeOrder(
         }
     }
 
-    // Call the ACID-safe RPC (returns JSONB with breakdown)
+    // Call the ACID-safe RPC (returns JSONB with breakdown). Every guest
+    // self-order needs cashier confirmation before it reaches the kitchen —
+    // p_needs_confirmation defers stock deduction to confirm time too.
     const { data, error } = await supabase.rpc('place_order', {
         p_session_id: sessionUuid,
         p_items: payload,
@@ -194,6 +195,7 @@ export async function placeOrder(
         p_promo_code: promoCode || null,
         p_loyalty_member_id: loyaltyMemberId || null,
         p_client_request_id: clientRequestId || null,
+        p_needs_confirmation: true,
     })
 
     if (error) {
@@ -419,29 +421,13 @@ export async function placeOrder(
             result.total = finalOrderTotal
         }
 
-        // Pricing is always normalised. Stock deduction + kitchen visibility depend
-        // on the restaurant's order mode:
-        //   • Mode 1 (direct): deduct stock now; the kitchen sees the order immediately.
-        //   • Mode 2 (waiter confirmation): flag the order as needs_confirmation so the
-        //     kitchen hides it, and defer stock deduction until a waiter confirms.
-        const requireConfirmation = false
-
+        // Pricing is always normalised. Stock is NOT deducted yet — place_order()
+        // was called with p_needs_confirmation:true, so the order sits hidden
+        // from the kitchen until a cashier confirms it (Order Confirmation panel);
+        // deduction + checkAndAlertLowStock happen there instead, item by item.
         const pricingResult = await supabase.rpc('apply_pricing_rules_to_order', { p_order_id: result.order_id })
         if (pricingResult.error) {
             console.error('[order]', result.order_id, 'apply_pricing_rules failed:', pricingResult.error)
-        }
-
-        if (requireConfirmation) {
-            await supabase
-                .from('orders')
-                .update({ needs_confirmation: true })
-                .eq('id', result.order_id)
-        } else {
-            // place_order() already deducted stock/ingredients inline for every item —
-            // do not call deduct_ingredients_for_order here, it would double-deduct.
-            if (sessionData.restaurant_id) {
-                void checkAndAlertLowStock(sessionData.restaurant_id)
-            }
         }
 
         // SMS notifications — best-effort, never block the order
@@ -558,7 +544,9 @@ async function placeOrderFallback(
         }
     }
 
-    // Create pending order first
+    // Create pending order first — needs_confirmation:true, same as the
+    // primary place_order() RPC path: hidden from the kitchen and no stock
+    // deducted until a cashier confirms it.
     const { data: orderRow, error: orderInsertError } = await supabase
         .from('orders')
         .insert({
@@ -569,6 +557,7 @@ async function placeOrderFallback(
             status: 'pending',
             payment_status: 'unpaid',
             client_request_id: clientRequestId,
+            needs_confirmation: true,
         })
         .select('id')
         .single()
@@ -616,6 +605,7 @@ async function placeOrderFallback(
                 quantity: item.quantity,
                 unit_price: unitPrice,
                 special_request: item.special_request,
+                needs_confirmation: true,
             })
             .select('id')
             .single()
@@ -682,6 +672,7 @@ async function placeOrderFallback(
                     await supabase.from('order_items').insert({
                         order_id: orderId, menu_item_id: promo.free_item_id,
                         quantity: 1, unit_price: 0, special_request: 'FREE (promo)',
+                        needs_confirmation: true,
                     })
                 } else if (promo.promo_type === 'bogo' && promo.bogo_buy_item_id && promo.bogo_get_item_id) {
                     // Customer gets bogo_get_item free for every bogo_buy_item ordered.
@@ -691,6 +682,7 @@ async function placeOrderFallback(
                         await supabase.from('order_items').insert({
                             order_id: orderId, menu_item_id: promo.bogo_get_item_id,
                             quantity: buyItemInOrder.quantity, unit_price: 0, special_request: 'BOGO FREE',
+                            needs_confirmation: true,
                         })
                     }
                 }
@@ -738,13 +730,10 @@ async function placeOrderFallback(
         console.error('Fallback order totals update failed:', totalsUpdateError)
     }
 
-    const [pricingFb, deductFb] = await Promise.allSettled([
-        supabase.rpc('apply_pricing_rules_to_order', { p_order_id: orderId }),
-        supabase.rpc('deduct_ingredients_for_order',  { p_order_id: orderId }),
-    ])
-    if (pricingFb.status === 'rejected') console.error('[fallback]', orderId, 'apply_pricing failed:', pricingFb.reason)
-    if (deductFb.status === 'rejected') console.error('[fallback]', orderId, 'deduct_ingredients failed:', deductFb.reason)
-    else if (deductFb.status === 'fulfilled' && deductFb.value?.error) console.error('[fallback]', orderId, 'deduct_ingredients RPC error:', deductFb.value.error)
+    // Stock is deferred to cashier-confirm time (needs_confirmation:true above) —
+    // no deduct_ingredients_for_order call here, unlike the pre-confirmation version.
+    const pricingFb = await supabase.rpc('apply_pricing_rules_to_order', { p_order_id: orderId })
+    if (pricingFb.error) console.error('[fallback]', orderId, 'apply_pricing failed:', pricingFb.error)
 
     return {
         orderId,

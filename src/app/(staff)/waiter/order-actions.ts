@@ -7,6 +7,8 @@ import { requireRole } from '@/lib/auth'
 import { rollUpOrderStatus } from '@/lib/orderRollup'
 import { markTableDirtyForSession } from '@/lib/tableLifecycle'
 import { checkAndAlertLowStock } from '@/app/(admin)/admin/ingredients/actions'
+import { postOrderCancellationExpense } from '@/lib/ledger'
+import { getKOTSourceLabel } from '@/lib/utils'
 import type { OrderStatus, OrderItemStatus } from '@/types/database'
 
 /**
@@ -580,5 +582,202 @@ export async function releaseOrderItems(
         .eq('id', orderId)
 
     revalidatePath('/waiter')
+    return { success: true }
+}
+
+/**
+ * Cashier "Order Confirmation" panel — item-granular counterpart to
+ * confirmOrder() above. Confirms just the given items (a cashier can confirm
+ * some now, leave the rest pending): flips their needs_confirmation off,
+ * deducts stock for just those items (deferred at placement time), and
+ * recomputes the parent order's needs_confirmation flag from its remaining
+ * siblings so it only leaves the kitchen-hidden state once every item is
+ * either confirmed or explicitly removed.
+ */
+export async function confirmOrderItems(
+    orderId: string,
+    itemIds: string[]
+): Promise<{ success?: boolean; error?: string; conflict?: boolean }> {
+    if (itemIds.length === 0) return { error: 'No items selected' }
+    const currentUser = await requireRole('cashier', 'waiter', 'manager', 'super_admin')
+    const supabase = await createAdminClient()
+
+    const { data: confirmed, error } = await supabase
+        .from('order_items')
+        .update({ needs_confirmation: false })
+        .eq('order_id', orderId)
+        .in('id', itemIds)
+        .eq('needs_confirmation', true)
+        .select('id')
+
+    if (error) return { error: error.message }
+    if (!confirmed || confirmed.length === 0) {
+        return { conflict: true, error: 'Those items were already confirmed or removed' }
+    }
+    const confirmedIds = confirmed.map(i => i.id)
+
+    const { error: deductError } = await supabase.rpc('deduct_ingredients_for_order_items', { p_order_item_ids: confirmedIds })
+    if (deductError) console.error('[confirmOrderItems] deduct_ingredients failed:', deductError)
+
+    const { data: siblings } = await supabase
+        .from('order_items')
+        .select('needs_confirmation')
+        .eq('order_id', orderId)
+    const stillPending = (siblings || []).some(i => i.needs_confirmation)
+
+    const { data: orderRow } = await supabase
+        .from('orders')
+        .update({ needs_confirmation: stillPending })
+        .eq('id', orderId)
+        .select('restaurant_id')
+        .single()
+
+    if (orderRow?.restaurant_id) {
+        if (!deductError) void checkAndAlertLowStock(orderRow.restaurant_id)
+        void logAudit({
+            restaurantId: orderRow.restaurant_id,
+            userId: currentUser.id,
+            action: 'order_items_confirmed',
+            entityType: 'order',
+            entityId: orderId,
+            newValue: { itemIds: confirmedIds },
+        })
+    }
+
+    revalidatePath('/cashier')
+    revalidatePath('/kitchen')
+    return { success: true }
+}
+
+/**
+ * Removes an item that's still awaiting confirmation (never sent to the
+ * kitchen, never deducted stock) — a pure removal, not a cancellation with a
+ * cost. If it was the last item awaiting/active on the order, the order
+ * itself rolls up to 'cancelled' via rollUpOrderStatus.
+ */
+export async function deleteUnconfirmedOrderItem(
+    orderId: string,
+    itemId: string
+): Promise<{ success?: boolean; error?: string; conflict?: boolean }> {
+    const currentUser = await requireRole('cashier', 'waiter', 'manager', 'super_admin')
+    const supabase = await createAdminClient()
+
+    const { data: removed, error } = await supabase
+        .from('order_items')
+        .update({ status: 'cancelled', needs_confirmation: false })
+        .eq('id', itemId)
+        .eq('order_id', orderId)
+        .eq('needs_confirmation', true)
+        .select('id')
+
+    if (error) return { error: error.message }
+    if (!removed || removed.length === 0) {
+        return { conflict: true, error: 'This item was already confirmed or removed' }
+    }
+
+    const { data: siblings } = await supabase
+        .from('order_items')
+        .select('status, needs_confirmation')
+        .eq('order_id', orderId)
+
+    const stillPending = (siblings || []).some(i => i.needs_confirmation)
+    const rolled = rollUpOrderStatus((siblings || []).map(i => i.status as OrderItemStatus))
+
+    const patch: { needs_confirmation: boolean; status?: OrderStatus } = { needs_confirmation: stillPending }
+    if (rolled) patch.status = rolled
+
+    const { data: orderRow } = await supabase
+        .from('orders')
+        .update(patch)
+        .eq('id', orderId)
+        .select('restaurant_id')
+        .single()
+
+    if (orderRow?.restaurant_id) {
+        void logAudit({
+            restaurantId: orderRow.restaurant_id,
+            userId: currentUser.id,
+            action: 'order_item_removed',
+            entityType: 'order_item',
+            entityId: itemId,
+            newValue: { orderId },
+        })
+    }
+
+    revalidatePath('/cashier')
+    return { success: true }
+}
+
+/**
+ * Cashier "Order Status" panel — whole-order cancel for an already-confirmed
+ * (in-kitchen or later) order, regardless of who placed it. Excludes the
+ * order from its room/table's bill (the existing active/unpaid realtime
+ * filters already drop status:'cancelled' orders) and posts its value as an
+ * "Order Cancellation" expense — the food/stock was already deducted and is
+ * now wasted, so the loss stays visible in the books instead of just
+ * vanishing from the bill. Stock is intentionally not restored.
+ */
+export async function cancelOrder(
+    orderId: string,
+    reason: string
+): Promise<{ success?: boolean; error?: string; conflict?: boolean }> {
+    const currentUser = await requireRole('cashier', 'waiter', 'manager', 'super_admin')
+    const supabase = await createAdminClient()
+
+    const cleanReason = (reason || '').trim().slice(0, 200) || 'Cancelled by cashier'
+
+    const { data: order, error: fetchError } = await supabase
+        .from('orders')
+        .select(`
+            id, restaurant_id, total_amount, order_type, session_id, booking_id,
+            sessions ( seat_number, tables ( label, room_id, rooms ( room_number ) ) ),
+            bookings ( rooms ( room_number ) )
+        `)
+        .eq('id', orderId)
+        .neq('status', 'cancelled')
+        .single()
+
+    if (fetchError || !order) {
+        return { conflict: true, error: 'This order was already cancelled or not found' }
+    }
+
+    const { error: updateError } = await supabase
+        .from('orders')
+        .update({ status: 'cancelled', cancellation_reason: cleanReason })
+        .eq('id', orderId)
+        .neq('status', 'cancelled')
+
+    if (updateError) return { error: updateError.message }
+
+    await supabase
+        .from('order_items')
+        .update({ status: 'cancelled' })
+        .eq('order_id', orderId)
+        .neq('status', 'cancelled')
+
+    const locationLabel = getKOTSourceLabel(order as unknown as Parameters<typeof getKOTSourceLabel>[0])
+    const amount = Number(order.total_amount) || 0
+    if (amount > 0) {
+        const expenseResult = await postOrderCancellationExpense(supabase, order.restaurant_id, currentUser.id, {
+            orderId,
+            locationLabel,
+            amount,
+        })
+        if (!expenseResult.success) {
+            console.error('[cancelOrder] failed to post cancellation expense:', expenseResult.error)
+        }
+    }
+
+    void logAudit({
+        restaurantId: order.restaurant_id,
+        userId: currentUser.id,
+        action: 'order_cancelled',
+        entityType: 'order',
+        entityId: orderId,
+        newValue: { reason: cleanReason, amount },
+    })
+
+    revalidatePath('/cashier')
+    revalidatePath('/kitchen')
     return { success: true }
 }

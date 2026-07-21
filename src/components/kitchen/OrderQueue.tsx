@@ -81,7 +81,7 @@ const ORDER_SELECT = `
     )
   ),
   order_items (
-    id, menu_item_id, quantity, unit_price, special_request, status, station, claimed_by, claimed_at,
+    id, menu_item_id, quantity, unit_price, special_request, status, station, claimed_by, claimed_at, needs_confirmation,
     menu_items ( id, name, is_combo ),
     menu_item_variations:menu_item_variation_id ( id, name ),
     order_item_modifiers ( modifier_name, price_adjustment )
@@ -110,9 +110,13 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     // Project an order down to just this station's lines. Orders with none of
     // our lines (e.g. an all-food order on the bar board) drop out entirely, so
     // the kitchen never sees a drink and the bar never sees a burger.
+    // Items still awaiting cashier confirmation (QR self-orders) are excluded
+    // here too — an order can be partially confirmed, so this filters at the
+    // item level rather than hiding/showing the whole order.
     const projectStation = useCallback((list: KitchenOrder[]): KitchenOrder[] =>
         list.reduce<KitchenOrder[]>((acc, o) => {
-            const mine = itemsForStation(o.order_items, station)
+            const confirmedItems = (o.order_items || []).filter(i => !i.needs_confirmation)
+            const mine = itemsForStation(confirmedItems, station)
             if (mine.length) acc.push({ ...o, order_items: mine })
             return acc
         }, []), [station])
@@ -165,11 +169,13 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     const ordersRef = useRef<KitchenOrder[]>(orders)
     useEffect(() => { ordersRef.current = orders }, [orders])
 
-    // Orders already sent to the printer — dedupes the ticket across the INSERT
-    // event, any confirming UPDATE, and reconnect resyncs, so each KOT prints
-    // exactly once. Seeded with the initial board so existing tickets never
-    // reprint when the kitchen screen loads.
-    const printedRef = useRef<Set<string>>(new Set((initialOrders || []).map(o => o.id)))
+    // Items already sent to the printer — dedupes per item id (not per order
+    // id) across the INSERT event, any confirming UPDATE, and reconnect
+    // resyncs, so a QR self-order confirmed in several batches gets exactly
+    // one printed line per item, no matter which batch it was confirmed in.
+    // Seeded with the initial board's items so existing tickets never reprint
+    // when the kitchen screen loads.
+    const printedRef = useRef<Set<string>>(new Set((initialOrders || []).flatMap(o => (o.order_items || []).map(it => it.id))))
 
     // Auto-print the KOT. Falls back to a browser print if QZ Tray isn't
     // connected/trusted on this kitchen screen yet. Called as a plain
@@ -210,12 +216,15 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
         attemptPrint(0)
     }, [printKot, station, stationMeta.ticketAbbr, networkPrinter])
 
-    // Print a KOT exactly once per order id, regardless of whether the INSERT
-    // event or a later confirming UPDATE surfaced it first.
+    // Print a KOT for whichever of this order's items haven't been printed
+    // yet — a QR self-order confirmed in multiple batches gets one ticket per
+    // batch, scoped to just the newly-confirmed items; a no-op if there's
+    // nothing new (already printed, or still awaiting confirmation).
     const maybePrintKot = useCallback((order: KitchenOrder) => {
-        if (printedRef.current.has(order.id)) return
-        printedRef.current.add(order.id)
-        printKotWithFallback(order)
+        const newItems = (order.order_items || []).filter(it => !printedRef.current.has(it.id))
+        if (newItems.length === 0) return
+        newItems.forEach(it => printedRef.current.add(it.id))
+        printKotWithFallback({ ...order, order_items: newItems })
     }, [printKotWithFallback])
 
     // Resync: fetch fresh orders from DB on mount and whenever the realtime
@@ -238,22 +247,24 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     useRestaurantTable(restaurantId, 'orders', async (payload) => {
         const orderType = (payload.new as { order_type?: string } | null)?.order_type
         const isTakeoutDelivery = orderType === 'takeout' || orderType === 'delivery'
-        const needsConfirmation = (payload.new as { needs_confirmation?: boolean } | null)?.needs_confirmation === true
-        
+
         if (payload.eventType === 'INSERT') {
-            // Skip unconfirmed or takeout/delivery pending orders.
-            if (needsConfirmation || (isTakeoutDelivery && payload.new.status === 'pending')) return
+            // Skip takeout/delivery orders still pending cashier confirmation.
+            // Dine-in QR self-orders are handled below by projectStation, which
+            // drops an order entirely while every item is still unconfirmed.
+            if (isTakeoutDelivery && payload.new.status === 'pending') return
             const { data } = await supabaseRef.current.from('orders').select(ORDER_SELECT).eq('id', payload.new.id).single()
             if (!data) return
             const [order] = projectStation([data as unknown as KitchenOrder])
-            // No lines for this station (e.g. an all-food order on the bar board).
+            // No lines for this station (e.g. an all-food order on the bar
+            // board), or every item is still awaiting cashier confirmation.
             if (!order) return
             setOrders(prev => prev.some(o => o.id === order.id) ? prev : [...prev, order])
-            // Delay sound + toast + print 400ms to avoid false alarms: if
-            // needs_confirmation=true arrives on a follow-up UPDATE the order is
-            // removed before the 400ms fires. Presence is read from ordersRef (the
-            // committed board) rather than a setState-updater flag, so the print
-            // actually fires; maybePrintKot dedupes it to exactly one ticket.
+            // Delay sound + toast + print 400ms to avoid false alarms: if a
+            // follow-up UPDATE (e.g. a cancel) removes the order before the
+            // 400ms fires, it's a false alarm. Presence is read from ordersRef
+            // (the committed board) rather than a setState-updater flag, so the
+            // print actually fires; maybePrintKot dedupes per item id.
             setTimeout(() => {
                 if (!ordersRef.current.some(o => o.id === order.id)) return // removed — false alarm
                 playNewOrder().catch(() => {})
@@ -272,8 +283,8 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
         } else if (payload.eventType === 'UPDATE') {
             const newStatus = payload.new.status as string
             const isTakeoutDeliveryPending = isTakeoutDelivery && newStatus === 'pending'
-            
-            if (newStatus === 'delivered' || newStatus === 'cancelled' || needsConfirmation || isTakeoutDeliveryPending) {
+
+            if (newStatus === 'delivered' || newStatus === 'cancelled' || isTakeoutDeliveryPending) {
                 setOrders(prev => prev.filter(o => o.id !== payload.new.id))
                 return
             }
@@ -281,7 +292,8 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             if (!data) return
             const [fresh] = projectStation([data as unknown as KitchenOrder])
             if (!fresh) {
-                // Order lost its lines for this station — drop it from the board.
+                // Order lost its lines for this station, or every remaining item
+                // is still awaiting confirmation — drop it from the board.
                 setOrders(prev => prev.filter(o => o.id !== payload.new.id))
                 return
             }
@@ -302,11 +314,12 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
                         </div>
                     </div>
                 ), { duration: 6000, position: 'top-right' })
-                // Covers orders that only become kitchen-visible via an UPDATE
-                // (e.g. leaving needs_confirmation). maybePrintKot dedupes against
-                // the INSERT path so a single order never prints twice.
-                maybePrintKot(fresh)
             }
+            // Always check for newly-confirmed items to print, even when the
+            // order was already on the board (a second confirmation batch on
+            // a QR self-order that was partially confirmed earlier).
+            // maybePrintKot dedupes per item id so nothing double-prints.
+            maybePrintKot(fresh)
         }
     }, resync)
 

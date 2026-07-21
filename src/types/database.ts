@@ -313,6 +313,10 @@ export interface OrderItem {
     unit_price: number
     special_request: string | null
     status: OrderItemStatus
+    // True while this line is a QR self-order item awaiting cashier review
+    // in the Cashier "Order Confirmation" panel — hidden from the kitchen
+    // and stock is not yet deducted until a cashier confirms it.
+    needs_confirmation: boolean
     // Per-dish chef ownership: set when a chef clicks Cook; only this chef may
     // mark the dish ready. Null until cooking starts (or for legacy rows).
     claimed_by?: string | null
@@ -585,6 +589,7 @@ export interface EodReport {
     total_voids: number
     total_refunds: number
     total_cancelled: number
+    total_cancellation_cost: number
     avg_order_value: number
     total_cogs: number
     gross_profit: number

@@ -244,7 +244,10 @@ export default async function WaiterPage() {
 
     const tablesContent = spaceContent
 
-    const dineInCount = (activeOrders || []).filter(o => o.status === 'ready').length + (ordersToConfirm?.length || 0)
+    // ordersToConfirm (Mode 2) intentionally excluded — QR order confirmation
+    // is handled exclusively in the Cashier panel's Order Confirmation card,
+    // not surfaced here.
+    const dineInCount = (activeOrders || []).filter(o => o.status === 'ready').length
     const takeawayCount = (readyTakeouts || []).length + readyDeliveries.length
 
     const ordersContent = (
