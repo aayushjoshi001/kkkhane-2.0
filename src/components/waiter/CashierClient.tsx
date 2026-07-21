@@ -16,6 +16,7 @@ import Button from '@/components/ui/Button'
 import { usePrinter } from '@/lib/print/usePrinter'
 import { buildInvoiceTicket } from '@/lib/print/templates/invoiceTicket'
 import { buildStationTicket } from '@/lib/print/templates/stationTicket'
+import { itemsForStation } from '@/lib/stations'
 import type { KitchenOrder } from '@/components/kitchen/OrderQueue'
 import ManualEntryClient from '@/app/(admin)/admin/manual-entry/ManualEntryClient'
 import CashierOrdersPanel from './CashierOrdersPanel'
@@ -998,7 +999,7 @@ export default function CashierClient({
                     sessions ( id, seat_number, tables ( id, label, room_id, rooms ( id, room_number ) ) ),
                     bookings ( id, rooms ( id, room_number ) ),
                     order_items (
-                        id, quantity, status, unit_price, special_request, needs_confirmation,
+                        id, quantity, status, unit_price, special_request, needs_confirmation, station,
                         menu_items ( id, name, station, is_combo ),
                         menu_item_variations:menu_item_variation_id ( id, name ),
                         order_item_modifiers ( modifier_name, price_adjustment )
@@ -1016,17 +1017,21 @@ export default function CashierClient({
                     const confirmedOrder = { ...(data as unknown as KitchenOrder), order_items: (data as unknown as KitchenOrder).order_items?.filter(i => !i.needs_confirmation) }
 
                     // 1. KOT (Kitchen Ticket) auto-print
-                    const kitchenItems = (confirmedOrder.order_items || []).filter(i => i.menu_items?.station === 'kitchen')
+                    const kitchenItems = itemsForStation(confirmedOrder.order_items, 'kitchen')
                     if (kitchenItems.length > 0) {
                         const ticketBytes = buildStationTicket(confirmedOrder, 'kitchen')
-                        void printKot(ticketBytes).catch(err => console.error('[Cashier KOT Auto-print Failed]:', err))
+                        void printKot(ticketBytes).then((result) => {
+                            if (!result.ok) console.error('[Cashier KOT Auto-print Failed]:', result.status, result.error)
+                        }).catch(err => console.error('[Cashier KOT Auto-print Failed]:', err))
                     }
 
                     // 2. BOT (Bar Ticket) auto-print
-                    const barItems = (confirmedOrder.order_items || []).filter(i => i.menu_items?.station === 'bar')
+                    const barItems = itemsForStation(confirmedOrder.order_items, 'bar')
                     if (barItems.length > 0) {
                         const ticketBytes = buildStationTicket(confirmedOrder, 'bar')
-                        void printBot(ticketBytes).catch(err => console.error('[Cashier BOT Auto-print Failed]:', err))
+                        void printBot(ticketBytes).then((result) => {
+                            if (!result.ok) console.error('[Cashier BOT Auto-print Failed]:', result.status, result.error)
+                        }).catch(err => console.error('[Cashier BOT Auto-print Failed]:', err))
                     }
                 }
             }
