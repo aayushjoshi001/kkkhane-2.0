@@ -451,8 +451,10 @@ export default function CashierClient({
 
         const items: { id: string; name: string; quantity: number; unitPrice: number; status: string }[] = []
         for (const order of combinedOrders) {
+            if (order.status === 'cancelled') continue
             const orderItems = order.order_items || []
             for (const item of orderItems) {
+                if (item.status === 'cancelled') continue
                 items.push({
                     id: item.id || '',
                     name: item.menu_items?.name || 'Item',
@@ -478,7 +480,9 @@ export default function CashierClient({
         const sessionId = table.activeSession.id
         const allActive = active.filter(o => o.session_id === sessionId)
         const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
-        return [...allActive, ...allUnpaid].reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0)
+        return [...allActive, ...allUnpaid]
+            .filter(o => o.status !== 'cancelled')
+            .reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0)
     }
 
     const calculateGrandTotal = (room: any, booking: any) => {
