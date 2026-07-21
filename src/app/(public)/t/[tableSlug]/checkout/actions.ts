@@ -185,9 +185,10 @@ export async function placeOrder(
         }
     }
 
-    // Call the ACID-safe RPC (returns JSONB with breakdown). Every guest
-    // self-order needs cashier confirmation before it reaches the kitchen —
-    // p_needs_confirmation defers stock deduction to confirm time too.
+    // Call the ACID-safe RPC (returns JSONB with breakdown).
+    // Dine-in QR self-orders stay pending for cashier confirmation (needs_confirmation:true).
+    // In-room QR orders go straight to the kitchen — the cashier doesn't need to
+    // approve them; the stay folio will collect the charge at checkout.
     const { data, error } = await supabase.rpc('place_order', {
         p_session_id: sessionUuid,
         p_items: payload,
@@ -195,7 +196,7 @@ export async function placeOrder(
         p_promo_code: promoCode || null,
         p_loyalty_member_id: loyaltyMemberId || null,
         p_client_request_id: clientRequestId || null,
-        p_needs_confirmation: true,
+        p_needs_confirmation: !isHotelRoom,
     })
 
     if (error) {
@@ -223,7 +224,8 @@ export async function placeOrder(
             loyaltyMemberId || null,
             promoCode || null,
             clientRequestId || null,
-            loyaltyDiscount
+            loyaltyDiscount,
+            !isHotelRoom
         )
 
         if (fallback) {
@@ -502,7 +504,8 @@ async function placeOrderFallback(
     loyaltyMemberId: string | null,
     promoCode: string | null = null,
     clientRequestId: string | null = null,
-    loyaltyDiscount?: number | null
+    loyaltyDiscount?: number | null,
+    needsConfirmation = true
 ): Promise<{
     orderId: string
     subtotal: number
@@ -544,9 +547,9 @@ async function placeOrderFallback(
         }
     }
 
-    // Create pending order first — needs_confirmation:true, same as the
-    // primary place_order() RPC path: hidden from the kitchen and no stock
-    // deducted until a cashier confirms it.
+    // Create the order. For room QR orders (needsConfirmation:false) it goes
+    // straight to the kitchen; for dine-in self-orders it parks as pending
+    // until a cashier confirms it.
     const { data: orderRow, error: orderInsertError } = await supabase
         .from('orders')
         .insert({
@@ -554,10 +557,10 @@ async function placeOrderFallback(
             restaurant_id: restaurantId,
             customer_note: customerNote,
             loyalty_member_id: loyaltyMemberId,
-            status: 'pending',
+            status: needsConfirmation ? 'pending' : 'confirmed',
             payment_status: 'unpaid',
             client_request_id: clientRequestId,
-            needs_confirmation: true,
+            needs_confirmation: needsConfirmation,
         })
         .select('id')
         .single()
@@ -605,7 +608,7 @@ async function placeOrderFallback(
                 quantity: item.quantity,
                 unit_price: unitPrice,
                 special_request: item.special_request,
-                needs_confirmation: true,
+                needs_confirmation: needsConfirmation,
             })
             .select('id')
             .single()

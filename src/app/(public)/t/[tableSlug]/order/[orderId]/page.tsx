@@ -85,33 +85,58 @@ export default async function OrderPage(props: {
     // 2. Fetch all active sibling orders placed in this session/stay
     let sessionOrders: any[] = []
     if (order) {
-        let query: any = adminSupabase
-            .from('orders')
-            .select(`
-              *,
-              order_items (
-                *,
-                menu_items (name),
-                menu_item_variations:menu_item_variation_id (id, name),
-                order_item_modifiers (*)
-              )
-            `)
-            .neq('status', 'cancelled')
-
         if (order.booking_id) {
-            query = query.eq('booking_id', order.booking_id)
-        } else if (order.session_id) {
-            query = query.eq('session_id', order.session_id)
-        } else {
-            query = null
-        }
+            // Room stay: collect every order that belongs to this booking.
+            // This covers:
+            //   a) Orders placed directly with booking_id (cashier manual room orders, waiter room orders, room QR orders)
+            //   b) Orders from restaurant table sessions that a waiter linked to this booking
+            //      (session.booking_id = bookingId, but order.booking_id may be null)
+            const [directRes, sessionRes] = await Promise.all([
+                // (a) Direct booking_id orders
+                adminSupabase
+                    .from('orders')
+                    .select(`*, order_items(*, menu_items(name), menu_item_variations:menu_item_variation_id(id, name), order_item_modifiers(*))`)
+                    .eq('booking_id', order.booking_id)
+                    .neq('status', 'cancelled')
+                    .order('placed_at', { ascending: true }),
+                // (b) Orders via sessions linked to this booking
+                adminSupabase
+                    .from('sessions')
+                    .select('id')
+                    .eq('booking_id', order.booking_id)
+            ])
 
-        if (query) {
-            const { data: siblingData, error: siblingError } = await query
+            const linkedSessionIds = (sessionRes.data || []).map((s: any) => s.id)
+
+            let linkedSessionOrders: any[] = []
+            if (linkedSessionIds.length > 0) {
+                const { data: sessData } = await adminSupabase
+                    .from('orders')
+                    .select(`*, order_items(*, menu_items(name), menu_item_variations:menu_item_variation_id(id, name), order_item_modifiers(*))`)
+                    .in('session_id', linkedSessionIds)
+                    .neq('status', 'cancelled')
+                    .order('placed_at', { ascending: true })
+                linkedSessionOrders = sessData || []
+            }
+
+            // Merge & deduplicate by order id
+            const allById = new Map<string, any>()
+            for (const o of [...(directRes.data || []), ...linkedSessionOrders]) {
+                allById.set(o.id, o)
+            }
+            sessionOrders = [...allById.values()].sort(
+                (a, b) => new Date(a.placed_at).getTime() - new Date(b.placed_at).getTime()
+            )
+        } else if (order.session_id) {
+            const { data: siblingData, error: siblingError } = await adminSupabase
+                .from('orders')
+                .select(`*, order_items(*, menu_items(name), menu_item_variations:menu_item_variation_id(id, name), order_item_modifiers(*))`)
+                .eq('session_id', order.session_id)
+                .neq('status', 'cancelled')
                 .order('placed_at', { ascending: true })
 
             if (siblingError) {
-                console.error("Sibling orders fetch error:", siblingError)
+                console.error('Sibling orders fetch error:', siblingError)
             } else {
                 sessionOrders = siblingData || []
             }

@@ -150,6 +150,7 @@ export async function createDeliveryOrder(
     revalidatePath('/kitchen')
     revalidatePath('/waiter')
     revalidatePath('/admin/takeout')
+    revalidatePath('/cashier')
 
     return { orderId: result.order_id, total: result.total, code: result.code }
 }
@@ -217,6 +218,7 @@ export async function createTakeoutOrder(
     revalidatePath('/kitchen')
     revalidatePath('/waiter')
     revalidatePath('/admin/takeout')
+    revalidatePath('/cashier')
 
     return { orderId: result.order_id, total: result.total }
 }

@@ -10,8 +10,16 @@ export default async function CashierPage() {
     const { id: userId, restaurantId, role } = await requireRole('cashier', 'waiter', 'manager', 'super_admin')
     const adminSupabase = await createAdminClient()
 
+    const ORDER_SELECT = `
+        id, total_amount, placed_at, delivered_at, payment_status, payment_method, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address,
+        sessions ( id, booking_id, seat_number, tables ( id, label, room_id ) ),
+        bookings ( id, rooms ( id, room_number ) ),
+        order_items ( id, quantity, status, unit_price, special_request, needs_confirmation, menu_items ( name ), menu_item_variations:menu_item_variation_id ( id, name ) )
+    `
+
     const [
-        { data: unpaidOrders },
+        { data: deliveredUnpaidOrders },
+        { data: takeoutUnpaidOrders },
         { data: activeOrders },
         { data: tables },
         { data: activeSessions },
@@ -26,19 +34,27 @@ export default async function CashierPage() {
         { data: ingredients },
         openSession,
     ] = await Promise.all([
-        // Delivered but not yet paid — ready for cashier
+        // (1) Delivered but not yet paid — all order types (dine-in, room service, etc.)
         adminSupabase
             .from('orders')
-            .select(`
-                id, total_amount, placed_at, delivered_at, payment_status, payment_method, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address,
-                sessions ( id, booking_id, seat_number, tables ( id, label, room_id ) ),
-                bookings ( id, rooms ( id, room_number ) ),
-                order_items ( id, quantity, status, unit_price, special_request, needs_confirmation, menu_items ( name ), menu_item_variations:menu_item_variation_id ( id, name ) )
-            `)
+            .select(ORDER_SELECT)
             .eq('restaurant_id', restaurantId)
             .eq('status', 'delivered')
             .eq('payment_status', 'unpaid')
             .order('delivered_at', { ascending: true })
+            .limit(50),
+
+        // (2) Unpaid takeout/delivery orders at any kitchen status — so manual
+        //     cashier takeaway/delivery bills appear in billing immediately after
+        //     creation without waiting for the kitchen to mark them delivered.
+        adminSupabase
+            .from('orders')
+            .select(ORDER_SELECT)
+            .eq('restaurant_id', restaurantId)
+            .in('order_type', ['takeout', 'delivery'])
+            .in('status', ['confirmed', 'preparing', 'ready', 'delivered'])
+            .eq('payment_status', 'unpaid')
+            .order('placed_at', { ascending: true })
             .limit(50),
 
         adminSupabase
@@ -127,6 +143,15 @@ export default async function CashierPage() {
             .order('name', { ascending: true }),
         resolveActiveDayBookSession(adminSupabase, restaurantId, userId),
     ])
+
+    // Merge delivered unpaid + takeout/delivery unpaid, deduplicating by order id
+    const unpaidMap = new Map<string, any>()
+    for (const o of [...(deliveredUnpaidOrders || []), ...(takeoutUnpaidOrders || [])]) {
+        unpaidMap.set(o.id, o)
+    }
+    const unpaidOrders = [...unpaidMap.values()].sort(
+        (a, b) => new Date(a.placed_at).getTime() - new Date(b.placed_at).getTime()
+    )
 
     // A split table carries one active session per seat — keep them all, not just
     // one, so the cashier can bill each seat (Table 4-1, 4-2, ...) independently.
