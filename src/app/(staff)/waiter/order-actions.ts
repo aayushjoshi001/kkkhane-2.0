@@ -785,6 +785,7 @@ export async function cancelOrder(
 export async function cancelOrderItem(
     orderId: string,
     itemId: string,
+    cancelQuantity: number,
     reason: string
 ): Promise<{ success?: boolean; error?: string; conflict?: boolean }> {
     const currentUser = await requireRole('cashier', 'waiter', 'manager', 'super_admin')
@@ -795,7 +796,7 @@ export async function cancelOrderItem(
     const { data: item, error: itemError } = await supabase
         .from('order_items')
         .select(`
-            id, quantity, unit_price, status, order_id,
+            id, quantity, unit_price, status, order_id, menu_item_id, menu_item_variation_id, special_request, station, needs_confirmation,
             orders!inner ( id, restaurant_id, status, subtotal_amount, discount_amount, tax_amount, total_amount )
         `)
         .eq('id', itemId)
@@ -805,6 +806,10 @@ export async function cancelOrderItem(
 
     if (itemError || !item) {
         return { conflict: true, error: 'This item was already cancelled or not found' }
+    }
+
+    if (cancelQuantity <= 0 || cancelQuantity > item.quantity) {
+        return { error: `Invalid cancel quantity ${cancelQuantity} (item quantity is ${item.quantity})` }
     }
 
     const parentOrder = item.orders as unknown as {
@@ -817,13 +822,40 @@ export async function cancelOrderItem(
         total_amount: number
     }
 
-    const { error: updateError } = await supabase
-        .from('order_items')
-        .update({ status: 'cancelled' })
-        .eq('id', itemId)
-        .neq('status', 'cancelled')
+    if (cancelQuantity === item.quantity) {
+        // Full cancellation of the item
+        const { error: updateError } = await supabase
+            .from('order_items')
+            .update({ status: 'cancelled' })
+            .eq('id', itemId)
+            .neq('status', 'cancelled')
 
-    if (updateError) return { error: updateError.message }
+        if (updateError) return { error: updateError.message }
+    } else {
+        // Partial cancellation: decrement the original item quantity and insert a new cancelled item
+        const { error: updateError } = await supabase
+            .from('order_items')
+            .update({ quantity: item.quantity - cancelQuantity })
+            .eq('id', itemId)
+
+        if (updateError) return { error: updateError.message }
+
+        const { error: insertError } = await supabase
+            .from('order_items')
+            .insert({
+                order_id: orderId,
+                menu_item_id: item.menu_item_id,
+                menu_item_variation_id: item.menu_item_variation_id,
+                quantity: cancelQuantity,
+                unit_price: item.unit_price,
+                special_request: item.special_request,
+                needs_confirmation: false,
+                status: 'cancelled',
+                station: item.station
+            })
+
+        if (insertError) return { error: insertError.message }
+    }
 
     const { data: modifiers } = await supabase
         .from('order_item_modifiers')
@@ -831,7 +863,7 @@ export async function cancelOrderItem(
         .eq('order_item_id', itemId)
     
     const modifierAdj = (modifiers || []).reduce((sum, m) => sum + Number(m.price_adjustment), 0)
-    const itemTotal = (Number(item.unit_price) + modifierAdj) * item.quantity
+    const itemTotal = (Number(item.unit_price) + modifierAdj) * cancelQuantity
 
     const { data: siblings } = await supabase
         .from('order_items')
@@ -894,7 +926,7 @@ export async function cancelOrderItem(
         action: 'order_item_removed',
         entityType: 'order_item',
         entityId: itemId,
-        newValue: { orderId, reason: cleanReason, amount: itemTotal },
+        newValue: { orderId, reason: cleanReason, amount: itemTotal, cancelQuantity },
     })
 
     revalidatePath('/cashier')

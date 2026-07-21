@@ -27,7 +27,7 @@ interface Props {
     money: (n: number) => string
     onUpdateTakeoutStatus: (orderId: string, status: 'confirmed' | 'cancelled') => Promise<void>
     onCancelOrder?: (orderId: string) => void
-    onCancelOrderItem?: (orderId: string, itemId: string) => void
+    onCancelOrderItem?: (orderId: string, itemId: string, cancelQuantity: number) => void
 }
 
 function locationLabel(order: AnyOrder, splitSessionIds: Set<string>): string {
@@ -219,23 +219,35 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
         toast.success('Order cancelled')
     }
 
-    async function handleCancelOrderItem(orderId: string, itemId: string, label: string) {
+    async function handleCancelOrderItem(orderId: string, itemId: string, label: string, maxQty: number) {
+        let cancelQty = 1
+        if (maxQty > 1) {
+            const input = prompt(`You are cancelling "${label}" (Order Quantity: ${maxQty}).\nEnter quantity to cancel (1 - ${maxQty}):`, "1")
+            if (input === null) return
+            const parsed = parseInt(input, 10)
+            if (isNaN(parsed) || parsed < 1 || parsed > maxQty) {
+                toast.error(`Invalid quantity. Please enter a number between 1 and ${maxQty}.`)
+                return
+            }
+            cancelQty = parsed
+        }
+
         const ok = await confirm({
             title: 'Cancel this item?',
-            message: `This removes "${label}" from this order's bill and logs its cost as wasted. This cannot be undone.`,
+            message: `This removes ${cancelQty}x "${label}" from this order's bill and logs its cost as wasted. This cannot be undone.`,
             confirmText: 'Cancel Item',
             isDestructive: true,
         })
         if (!ok) return
         setBusyId(orderId)
-        const res = await cancelOrderItem(orderId, itemId, cancelReason)
+        const res = await cancelOrderItem(orderId, itemId, cancelQty, cancelReason)
         setBusyId(null)
         if (res.error) { toast.error(res.error); return }
         setCancelReason('')
         if (onCancelOrderItem) {
-            onCancelOrderItem(orderId, itemId)
+            onCancelOrderItem(orderId, itemId, cancelQty)
         }
-        toast.success('Item cancelled')
+        toast.success(`${cancelQty}x ${label} cancelled`)
     }
 
     return (
@@ -365,7 +377,7 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                                         onReasonChange={setCancelReason}
                                         onMarkServed={(ids) => handleMarkServed(order.id, ids)}
                                         onCancel={() => handleCancelOrder(order)}
-                                        onCancelItem={(itemId, label) => handleCancelOrderItem(order.id, itemId, label)}
+                                        onCancelItem={(itemId, label, maxQty) => handleCancelOrderItem(order.id, itemId, label, maxQty)}
                                         kotEnabled={features.kotEnabled}
                                     />
                                 )}
@@ -504,7 +516,7 @@ function StatusDetail({ order, items, money, busy, reason, onReasonChange, onMar
     onReasonChange: (v: string) => void
     onMarkServed: (itemIds: string[]) => void
     onCancel: () => void
-    onCancelItem?: (itemId: string, label: string) => void
+    onCancelItem?: (itemId: string, label: string, maxQty: number) => void
     kotEnabled?: boolean
 }) {
     const readyIds = items.filter(i => i.status === 'ready' && i.id).map(i => i.id!)
@@ -540,7 +552,7 @@ function StatusDetail({ order, items, money, busy, reason, onReasonChange, onMar
                             </span>
                             {item.id && item.status !== 'cancelled' && onCancelItem && (
                                 <button
-                                    onClick={() => item.id && onCancelItem(item.id, item.menu_items?.name || 'Item')}
+                                    onClick={() => item.id && onCancelItem(item.id, item.menu_items?.name || 'Item', item.quantity)}
                                     disabled={busy}
                                     className="shrink-0 p-1 rounded-lg text-ink-subtle hover:text-red-650 hover:bg-red-50 disabled:opacity-50 transition-colors"
                                 >
