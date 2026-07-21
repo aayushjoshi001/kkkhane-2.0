@@ -200,18 +200,20 @@ export async function computeFolioTotal(
 
     const orderTotals = new Map<string, FolioOrderLine>()
     const addOrders = (
-        rows: Array<{ id: string; placed_at: string; order_items?: Array<{ quantity: number; unit_price: number }> }> | null
+        rows: Array<{ id: string; placed_at: string; order_items?: Array<{ status?: string; quantity: number; unit_price: number }> }> | null
     ) => {
         for (const o of rows || []) {
-            const sum = (o.order_items || []).reduce(
-                (s, it) => s + (Number(it.unit_price) || 0) * (Number(it.quantity) || 0), 0)
+            const sum = (o.order_items || [])
+                .filter((it: any) => it.status !== 'cancelled')
+                .reduce(
+                    (s, it) => s + (Number(it.unit_price) || 0) * (Number(it.quantity) || 0), 0)
             orderTotals.set(o.id, { id: o.id, total: sum, placedAt: o.placed_at })
         }
     }
 
     const { data: byBooking } = await supabase
         .from('orders')
-        .select('id, placed_at, order_items(quantity, unit_price)')
+        .select('id, placed_at, order_items(status, quantity, unit_price)')
         .in('restaurant_id', targetRestaurantIds)
         .eq('booking_id', bookingId)
         .neq('status', 'cancelled')
@@ -221,7 +223,7 @@ export async function computeFolioTotal(
     if (sessionIds.size > 0) {
         const { data: bySession } = await supabase
             .from('orders')
-            .select('id, placed_at, order_items(quantity, unit_price)')
+            .select('id, placed_at, order_items(status, quantity, unit_price)')
             .in('restaurant_id', targetRestaurantIds)
             .in('session_id', Array.from(sessionIds))
             .neq('status', 'cancelled')

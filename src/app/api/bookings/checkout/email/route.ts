@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { computeFolioTotal } from '@/lib/folio'
 import { sendEmail } from '@/lib/email'
+import { formatInvoiceAddress } from '@/lib/utils'
 
 const fmt = (n: number) => `Rs. ${new Intl.NumberFormat('en-IN').format(Math.round(n))}`
 
@@ -59,11 +60,12 @@ export async function POST(req: Request) {
         // 3. Fetch restaurant name
         const { data: rest } = await supabase
             .from('restaurants')
-            .select('name')
+            .select('name, address, contact_phone')
             .eq('id', currentUser.restaurantId)
             .single()
 
         const restaurantName = rest?.name || 'KKHANE HOTEL & RESTAURANT'
+        const formattedAddress = formatInvoiceAddress(rest?.address)
 
         // 4. Construct beautiful HTML receipt template
         const chargesRows = folio.charges.map(c => 
@@ -167,7 +169,7 @@ export async function POST(req: Request) {
             <div class="receipt-container">
                 <div class="header">
                     <h1>${restaurantName}</h1>
-                    <p>Lalitpur, Nepal · Tel: 01-5500000</p>
+                    ${formattedAddress ? `<p>${formattedAddress}</p>` : ''}
                     <div class="divider"></div>
                     <p style="font-weight: bold; font-size: 14px;">ROOM BILL RECEIPT</p>
                     <p style="font-size: 11px;">Invoice No: INV-${booking.id.slice(0, 8).toUpperCase()}</p>

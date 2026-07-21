@@ -16,6 +16,7 @@ import {
     confirmOrderItems, deleteUnconfirmedOrderItem, cancelOrder,
     markOrderItemsServed, cancelOrderItem,
 } from '@/app/(staff)/waiter/order-actions'
+import { getItemDisplayName } from '@/lib/utils'
 import { tableLabel, type ActiveOrder, type UnpaidOrder } from './CashierClient'
 import type { KitchenOrder } from '@/components/kitchen/OrderQueue'
 
@@ -261,7 +262,7 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
 
     async function handleCancelOrder(order: AnyOrder) {
         const timeStr = new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        const itemsSummary = (order.order_items || []).map(i => `${i.quantity}x ${i.menu_items?.name || 'Item'}`).join(', ')
+        const itemsSummary = (order.order_items || []).map(i => `${i.quantity}x ${getItemDisplayName(i)}`).join(', ')
         const ok = await confirm({
             title: 'Cancel this particular order?',
             message: `This removes only the specific order placed at ${timeStr} (${itemsSummary}) from ${locationLabel(order, splitSessionIds)}'s bill, and logs its value as an Order Cancellation expense. Other orders on this bill are untouched. This cannot be undone.`,
@@ -541,13 +542,13 @@ function ConfirmationDetail({ order, items, money, busy, onConfirm, onDelete }: 
                             {item.id && selected.has(item.id) ? <CheckSquare size={16} /> : <Square size={16} className="text-ink-subtle" />}
                         </button>
                         <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-ink truncate">{item.quantity}× {item.menu_items?.name || 'Item'}</p>
+                            <p className="text-xs font-bold text-ink truncate">{item.quantity}× {getItemDisplayName(item)}</p>
                         </div>
                         <span className="text-[11px] font-semibold text-ink-muted tabular-nums shrink-0">
                             {money((item.unit_price || 0) * item.quantity)}
                         </span>
                         <button
-                            onClick={() => item.id && onDelete(item.id, item.menu_items?.name || 'Item')}
+                            onClick={() => item.id && onDelete(item.id, getItemDisplayName(item))}
                             className="shrink-0 p-1 rounded-lg text-ink-subtle hover:text-red-600 hover:bg-red-50 transition-colors"
                         >
                             <Trash2 size={13} />
@@ -597,7 +598,7 @@ function TakeoutConfirmDetail({ order, money, busy, onConfirm, onCancel }: {
                 {items.map(item => (
                     <div key={item.id} className="flex items-center gap-2.5 bg-surface rounded-xl border border-hairline px-3 py-2">
                         <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-ink truncate">{item.quantity}× {item.menu_items?.name || 'Item'}</p>
+                            <p className="text-xs font-bold text-ink truncate">{item.quantity}× {getItemDisplayName(item)}</p>
                         </div>
                         <span className="text-[11px] font-semibold text-ink-muted tabular-nums shrink-0">
                             {money((item.unit_price || 0) * item.quantity)}
@@ -700,7 +701,7 @@ function StatusDetail({
                                             </button>
                                         ) : null}
                                         <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-bold text-ink truncate">{item.quantity}× {item.menu_items?.name || 'Item'}</p>
+                                            <p className="text-xs font-bold text-ink truncate">{item.quantity}× {getItemDisplayName(item)}</p>
                                             {!kotEnabled && <p className="text-[10px] text-ink-subtle capitalize">{item.status}</p>}
                                         </div>
                                         <span className="text-[11px] font-semibold text-ink-muted tabular-nums shrink-0">
@@ -708,7 +709,7 @@ function StatusDetail({
                                         </span>
                                         {item.id && onCancelItem && (
                                             <button
-                                                onClick={() => item.id && onCancelItem(order.id, item.id, item.menu_items?.name || 'Item', item.quantity, Number(item.unit_price) || 0)}
+                                                onClick={() => item.id && onCancelItem(order.id, item.id, getItemDisplayName(item), item.quantity, Number(item.unit_price) || 0)}
                                                 disabled={isBusy}
                                                 className="shrink-0 p-1 rounded-lg text-ink-subtle hover:text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
                                             >

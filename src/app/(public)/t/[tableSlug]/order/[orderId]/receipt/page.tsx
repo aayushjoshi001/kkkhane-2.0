@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { getRestaurantFeatures } from '@/lib/features'
 import { notFound } from 'next/navigation'
+import { getItemDisplayName } from '@/lib/utils'
 import PrintButton from './PrintButton'
 
 export const revalidate = 0
@@ -75,7 +76,7 @@ export default async function ReceiptPage(props: {
                 </div>
 
                 {order.order_items?.map((item, idx) => {
-                    const name = (item.menu_items as unknown as { name: string } | null)?.name ?? 'Item'
+                    const name = getItemDisplayName(item as any)
                     const lineTotal = item.unit_price * item.quantity
                     const mods = item.order_item_modifiers as unknown as Array<{ modifier_name: string; price_adjustment: number }>
                     return (

@@ -61,10 +61,9 @@ function buildChannel(restaurantId: string, entry: RestaurantEntry): RealtimeCha
     }
 
     channel.subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-            // Previously silent — a failed/dropped connection here means every
-            // subscribed component (Billing, kitchen, waiter boards, ...) just
-            // stops receiving updates with no visible sign why.
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            // Log actual connection failures/timeouts.
+            // CLOSED is normal teardown when a component unmounts or unsubscribes.
             console.error(`[restaurantChannel] restaurant-rt-${restaurantId} ${status}`, err)
         }
         if (status === 'SUBSCRIBED') {

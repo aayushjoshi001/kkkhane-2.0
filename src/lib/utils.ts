@@ -341,3 +341,46 @@ export function getItemKOTDisplay(
     return { name, note }
 }
 
+/**
+ * Resolves the full display name for an order item including its variation (e.g. "Chilli Momo (Veg)").
+ */
+export function getItemDisplayName(item: {
+    name?: string
+    menu_items?: { name: string } | null
+    menu_item_variations?: { name: string } | null
+    variation_name?: string | null
+    special_request?: string | null
+} | null | undefined): string {
+    if (!item) return 'Item'
+
+    let name = item.name || item.menu_items?.name || 'Item'
+    let variationName = item.variation_name || item.menu_item_variations?.name
+
+    // If variationName wasn't joined directly, try parsing from special_request "[VariationName]"
+    if (!variationName && item.special_request) {
+        const match = item.special_request.match(/^\[(.*?)\]/)
+        if (match) {
+            variationName = match[1]
+        }
+    }
+
+    if (variationName) {
+        const lowerName = name.toLowerCase()
+        const lowerVar = variationName.toLowerCase()
+        if (!lowerName.includes(`(${lowerVar})`) && !lowerName.includes(`[${lowerVar}]`) && !lowerName.startsWith(lowerVar)) {
+            name = `${name} (${variationName})`
+        }
+    }
+
+    return name
+}
+
+/**
+ * Formats a restaurant address into Nepal standard invoice location format:
+ * "metropolitan city name - ward number, district name"
+ * e.g., "Kathmandu Metropolitan City - 10, Kathmandu"
+ */
+export function formatInvoiceAddress(address?: string | null): string {
+    return address?.trim() || ''
+}
+

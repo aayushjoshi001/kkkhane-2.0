@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
             .from('orders')
             .select(`
                 id, session_id, status, payment_status, 
-                order_items(id, quantity, unit_price, menu_items(name)),
+                order_items(id, status, quantity, unit_price, special_request, menu_items(name), menu_item_variations:menu_item_variation_id(id, name)),
                 sessions(id, table_id, tables:table_id(room_id))
             `)
             .in('restaurant_id', targetRestaurantIds)
@@ -93,19 +93,23 @@ export async function GET(req: NextRequest) {
             return tbl?.room_id ?? null
         }
 
-        type LinkedOrderItem = { id: string; quantity: number; unit_price: number; menu_items: unknown }
+        type LinkedOrderItem = { id: string; status?: string; quantity: number; unit_price: number; special_request?: string | null; menu_items: unknown; menu_item_variations?: unknown }
         type LinkedOrder = { id: string; session_id: string | null; sessions: any; order_items?: LinkedOrderItem[] }
         const items = ((orders || []) as LinkedOrder[]).flatMap((o) => {
             const roomId = getRoomId(o.sessions)
             const isRoomOrder = roomId !== null || o.session_id === null
-            return (o.order_items || []).map((item) => ({
-                id: item.id,
-                quantity: item.quantity,
-                unit_price: item.unit_price,
-                menu_items: item.menu_items,
-                session_id: o.session_id,
-                is_room_order: isRoomOrder
-            }))
+            return (o.order_items || [])
+                .filter((item: any) => item.status !== 'cancelled')
+                .map((item) => ({
+                    id: item.id,
+                    quantity: item.quantity,
+                    unit_price: item.unit_price,
+                    special_request: item.special_request,
+                    menu_items: item.menu_items,
+                    menu_item_variations: item.menu_item_variations,
+                    session_id: o.session_id,
+                    is_room_order: isRoomOrder
+                }))
         })
 
         console.log('[linked-orders API] Flattened items to return:', items)

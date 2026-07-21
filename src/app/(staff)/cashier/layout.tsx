@@ -20,7 +20,7 @@ export default async function CashierLayout({ children }: { children: ReactNode 
 
     const [{ data: user }, { data: restaurant }, features, mode] = await Promise.all([
         adminSupabase.from('users').select('full_name').eq('id', userId).single(),
-        adminSupabase.from('restaurants').select('name').eq('id', restaurantId).single(),
+        adminSupabase.from('restaurants').select('name, address, contact_phone').eq('id', restaurantId).single(),
         getRestaurantFeatures(restaurantId),
         getRestaurantMode(restaurantId),
     ])

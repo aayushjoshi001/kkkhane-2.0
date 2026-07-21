@@ -5,6 +5,7 @@
 // rewriting every takeout component.
 
 import type { TakeoutOrder, TakeoutStatus, PaymentStatus, CartItem } from '@/types/database'
+import { getItemDisplayName } from '@/lib/utils'
 
 export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled'
 
@@ -35,7 +36,7 @@ export const TAKEOUT_ORDER_SELECT = `
     stripe_payment_intent_id, promo_code_id, discount_amount, customer_note,
     placed_at, confirmed_at, ready_at, delivered_at,
     order_type, delivery_address, delivery_verification_code,
-    order_items ( menu_item_id, quantity, unit_price, special_request, menu_items ( name ) )
+    order_items ( menu_item_id, quantity, unit_price, special_request, menu_items ( name ), menu_item_variations:menu_item_variation_id ( id, name ) )
 `
 
 interface OrderItemRow {
@@ -44,6 +45,7 @@ interface OrderItemRow {
     unit_price: number | string | null
     special_request: string | null
     menu_items: { name: string } | { name: string }[] | null
+    menu_item_variations?: { name: string } | { name: string }[] | null
 }
 
 export interface TakeoutOrderRow {
@@ -83,7 +85,11 @@ function itemName(mi: OrderItemRow['menu_items']): string {
 export function mapOrderRowToTakeout(row: TakeoutOrderRow): TakeoutOrder {
     const items: CartItem[] = (row.order_items || []).map(oi => ({
         menuItemId: oi.menu_item_id,
-        name: itemName(oi.menu_items),
+        name: getItemDisplayName({
+            name: itemName(oi.menu_items),
+            menu_item_variations: Array.isArray(oi.menu_item_variations) ? oi.menu_item_variations[0] : oi.menu_item_variations,
+            special_request: oi.special_request
+        }),
         price: Number(oi.unit_price ?? 0),
         quantity: oi.quantity,
         specialRequest: oi.special_request ?? undefined,

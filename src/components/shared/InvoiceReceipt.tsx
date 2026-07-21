@@ -4,12 +4,14 @@
 // lib/print/templates/invoiceTicket.ts mirrors this layout; keep both in sync.
 
 import type { ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
-import { advanceMethodLabel } from '@/lib/utils'
+import { advanceMethodLabel, formatInvoiceAddress } from '@/lib/utils'
 
 export default function InvoiceReceipt({
     invoice,
     money,
     restaurantName = 'KKHANE HOTEL & RESTAURANT',
+    restaurantAddress = '',
+    restaurantPhone = '',
     className = '',
     formatDate,
 }: {
@@ -17,9 +19,15 @@ export default function InvoiceReceipt({
     money: (amount: number) => string
     formatDate?: (date: Date | string) => string
     restaurantName?: string
+    restaurantAddress?: string
+    restaurantPhone?: string
     className?: string
 }) {
     const now = new Date()
+    const locationLine = [restaurantAddress.trim(), restaurantPhone.trim() ? `Tel: ${restaurantPhone.trim()}` : '']
+        .filter(Boolean)
+        .join(' · ')
+
     return (
         <div className={`bg-white text-black print-container font-mono text-[11px] ${className}`}>
             {/* CSS media print override for POS thermal printer */}
@@ -67,7 +75,9 @@ export default function InvoiceReceipt({
             {/* Invoice Header */}
             <div className="text-center space-y-0.5">
                 <h2 className="text-sm font-black tracking-tight text-black uppercase">{restaurantName}</h2>
-                <p className="text-[10px] text-gray-600">Lalitpur, Nepal · Tel: 01-5500000</p>
+                {locationLine ? (
+                    <p className="text-[10px] text-gray-600">{locationLine}</p>
+                ) : null}
                 <div className="border-t border-dashed border-black my-1.5" />
                 <p className="font-bold text-[11px] uppercase tracking-wider">*** INVOICE ***</p>
                 <p className="text-[9px] text-gray-500 font-mono">No: INV-{invoice.id.slice(0, 8).toUpperCase()}</p>

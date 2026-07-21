@@ -24,7 +24,7 @@ import type { BankAccount, ExpenseCategory, Supplier, Session } from '@/types/da
 import QuickOrderModal from './QuickOrderModal'
 
 
-import { formatDateTime, calculateNights, advanceMethodLabel } from '@/lib/utils'
+import { formatDateTime, calculateNights, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 
 type OrderItem = {
@@ -83,6 +83,8 @@ interface Props {
     restaurantId: string
     restaurantSlug: string
     restaurantName: string
+    restaurantAddress?: string
+    restaurantPhone?: string
     userId: string
     initialUnpaid: UnpaidOrder[]
     initialActive: ActiveOrder[]
@@ -117,6 +119,8 @@ export default function CashierClient({
     restaurantId,
     restaurantSlug,
     restaurantName,
+    restaurantAddress = '',
+    restaurantPhone = '',
     userId,
     initialUnpaid, 
     initialActive,
@@ -220,9 +224,12 @@ export default function CashierClient({
     const [billingStayBooking, setBillingStayBooking] = useState<any | null>(null)
     const [billingRoomCharges, setBillingRoomCharges] = useState<any[]>([])
     const [billingLinkedOrders, setBillingLinkedOrders] = useState<any[]>([])
-    const filteredLinkedOrders = (() => {
-        return billingLinkedOrders.filter(o => !o.is_room_order)
-    })()
+    const filteredRoomOrders = useMemo(() => {
+        return billingLinkedOrders.filter(o => o.is_room_order && o.status !== 'cancelled')
+    }, [billingLinkedOrders])
+    const filteredLinkedOrders = useMemo(() => {
+        return billingLinkedOrders.filter(o => !o.is_room_order && o.status !== 'cancelled')
+    }, [billingLinkedOrders])
     const [billingPaymentMethod, setBillingPaymentMethod] = useState<'cash' | 'qr_digital' | 'both' | 'credit'>('cash')
     const [splitCashAmount, setSplitCashAmount] = useState<string>('')
     const [splitQrAmount, setSplitQrAmount] = useState<string>('')
@@ -488,39 +495,37 @@ export default function CashierClient({
 
     const getRoomQrOrders = (room: any) => {
         if (!room) return []
+        if (filteredRoomOrders.length > 0) {
+            return filteredRoomOrders.map(item => ({
+                name: getItemDisplayName(item),
+                quantity: item.quantity || 0,
+                unitPrice: Number(item.unit_price ?? 0),
+                status: 'active'
+            }))
+        }
         
-        // Find the active booking for the room
+        // Fallback for immediate UI responsiveness before API returns
         const booking = billingStayBooking ?? bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
         if (!booking) return []
 
-        // Fetch all active/unpaid orders that are directly linked to this booking
         const allActive = active.filter(o => o.booking_id === booking.id)
         const allUnpaid = unpaid.filter(o => o.booking_id === booking.id)
-        
-        // Also fallback to match by session in case booking_id is not set but matchingTable activeSession is
         const matchingTable = tablesState.find(t => t.room_id === room.id)
         const sessionId = matchingTable?.activeSession?.id
-        
         const additionalActive = sessionId ? active.filter(o => o.session_id === sessionId && o.booking_id !== booking.id) : []
         const additionalUnpaid = sessionId ? unpaid.filter(o => o.session_id === sessionId && o.booking_id !== booking.id) : []
 
         const combinedOrders = [...allActive, ...allUnpaid, ...additionalActive, ...additionalUnpaid]
-        
-        // De-duplicate orders by ID
         const uniqueOrdersMap = new Map<string, any>()
         for (const o of combinedOrders) {
             uniqueOrdersMap.set(o.id, o)
         }
-        const uniqueOrders = Array.from(uniqueOrdersMap.values()).filter(o => {
-            return o.sessions?.tables?.room_id !== null && o.sessions?.tables?.room_id !== undefined
-        })
-
         const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
-        for (const order of uniqueOrders) {
+        for (const order of Array.from(uniqueOrdersMap.values())) {
             const orderItems = order.order_items || []
             for (const item of orderItems) {
                 items.push({
-                    name: item.menu_items?.name || 'Item',
+                    name: getItemDisplayName(item),
                     quantity: item.quantity || 0,
                     unitPrice: Number(item.unit_price ?? 0),
                     status: item.status || order.status || 'unknown'
@@ -531,8 +536,8 @@ export default function CashierClient({
     }
 
     const stayCost = selectedBillingRoom && billingStayBooking ? calculateStayCost(selectedBillingRoom, billingStayBooking) : 0
-    const qrOrdersTotal = selectedBillingRoom ? getRoomQrOrders(selectedBillingRoom).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0) : 0
-    const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+    const qrOrdersTotal = selectedBillingRoom ? filteredRoomOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0) : 0
+    const linkedOrdersTotal = selectedBillingRoom ? filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0) : 0
     const totalFoodOrders = qrOrdersTotal + linkedOrdersTotal
 
     const roomDiscountVal = roomDiscount.trim() !== '' ? parseFloat(roomDiscount) || 0 : 0
@@ -563,7 +568,7 @@ export default function CashierClient({
             const orderItems = order.order_items || []
             for (const item of orderItems) {
                 if (item.status === 'cancelled') continue
-                const name = item.menu_items?.name || 'Item'
+                const name = getItemDisplayName(item)
                 const unitPrice = Number(item.unit_price ?? 0)
                 
                 const key = `${name}-${unitPrice}`
@@ -603,8 +608,8 @@ export default function CashierClient({
 
     const calculateGrandTotal = (room: any, booking: any) => {
         const stayCost = calculateStayCost(room, booking)
-        const qrOrdersTotal = getRoomQrOrders(room).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
-        const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+        const qrOrdersTotal = filteredRoomOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
+        const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
         const totalFoodOrders = qrOrdersTotal + linkedOrdersTotal
 
         const roomDiscountVal = roomDiscount.trim() !== '' ? parseFloat(roomDiscount) || 0 : 0
@@ -633,10 +638,19 @@ export default function CashierClient({
             const nights = calculateNights(booking.check_in, booking.check_out)
             const stayCost = price * nights
 
-            const sessionOrders = getRoomQrOrders(room)
-            const qrOrdersTotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
+            const sessionOrders = filteredRoomOrders.map(item => ({
+                name: getItemDisplayName(item),
+                quantity: item.quantity || 0,
+                unitPrice: Number(item.unit_price ?? 0)
+            }))
+            const qrOrdersTotal = filteredRoomOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
 
-            const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+            const linkedOrders = filteredLinkedOrders.map(item => ({
+                name: getItemDisplayName(item),
+                quantity: item.quantity || 0,
+                unitPrice: Number(item.unit_price ?? 0)
+            }))
+            const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
             const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
             const total = calculateGrandTotal(room, booking)
 
@@ -675,13 +689,9 @@ export default function CashierClient({
                 nights,
                 basePrice: price,
                 stayCost,
-                qrOrders: getRoomQrOrders(room),
+                qrOrders: sessionOrders,
                 qrOrdersTotal,
-                linkedOrders: filteredLinkedOrders.map(item => ({
-                    name: item.menu_items?.name || 'Item',
-                    quantity: item.quantity,
-                    unitPrice: Number(item.unit_price)
-                })),
+                linkedOrders,
                 linkedOrdersTotal,
                 manualCharges: billingRoomCharges,
                 manualChargesTotal,
@@ -763,7 +773,7 @@ export default function CashierClient({
             // the new /api/orders/checkout route bills off.
             const order: UnpaidOrder = item
             const lineItems = (order.order_items || []).map(oi => ({
-                name: oi.menu_items?.name || 'Item',
+                name: getItemDisplayName(oi),
                 quantity: oi.quantity,
                 unitPrice: Number(oi.unit_price) || 0,
             }))
@@ -1106,7 +1116,7 @@ export default function CashierClient({
     // we fall back to the browser print dialog for driver-based printers.
     const handlePrintBill = async () => {
         if (!activeInvoice) return
-        const result = await printInvoice(buildInvoiceTicket(activeInvoice, money, restaurantName))
+        const result = await printInvoice(buildInvoiceTicket(activeInvoice, money, restaurantName, restaurantAddress, restaurantPhone))
         if (!result.ok) {
             toast.error(
                 result.status === 'no-printer-selected'
@@ -2053,7 +2063,7 @@ export default function CashierClient({
                                                 <div className="space-y-1.5 pl-3 border-l-2 border-indigo-100">
                                                     {billingLinkedOrders.map((item) => (
                                                         <div key={item.id} className="flex justify-between text-[10px] text-ink-muted">
-                                                            <span>{item.menu_items?.name || 'Item'} ({item.quantity}×)</span>
+                                                            <span>{getItemDisplayName(item)} ({item.quantity}×)</span>
                                                             <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
                                                         </div>
                                                     ))}
@@ -2707,7 +2717,7 @@ export default function CashierClient({
                                     {selectedBillingOrder.order_items.map((oi, idx) => (
                                         <div key={oi.id || idx} className="flex justify-between items-center py-1.5 text-xs">
                                             <div>
-                                                <p className="font-extrabold text-ink">{oi.menu_items?.name || 'Item'}</p>
+                                                <p className="font-extrabold text-ink">{getItemDisplayName(oi)}</p>
                                                 <p className="text-[10px] text-ink-subtle">Qty: {oi.quantity} × {money(Number(oi.unit_price) || 0)}</p>
                                             </div>
                                             <span className="font-extrabold text-ink-muted tabular-nums">{money((Number(oi.unit_price) || 0) * oi.quantity)}</span>
@@ -3055,7 +3065,7 @@ export default function CashierClient({
                         className="bg-white w-full max-w-sm p-5 space-y-4 shadow-2xl relative border-t-8 border-brand-500"
                         onClick={e => e.stopPropagation()}
                     >
-                        <InvoiceReceipt invoice={activeInvoice} money={money} formatDate={formatDate} restaurantName={restaurantName} />
+                        <InvoiceReceipt invoice={activeInvoice} money={money} formatDate={formatDate} restaurantName={restaurantName} restaurantAddress={restaurantAddress} restaurantPhone={restaurantPhone} />
 
                         {/* Invoice Footer Actions (Print, Mark Paid, Close) */}
                         <div className="flex gap-2 pt-3 border-t border-gray-100 print-actions flex-wrap">

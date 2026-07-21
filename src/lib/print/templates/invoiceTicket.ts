@@ -4,7 +4,7 @@
 // changes, mirror the change here too.
 
 import { EscPosBuilder, LINE_WIDTH } from '../escpos'
-import { advanceMethodLabel } from '@/lib/utils'
+import { advanceMethodLabel, formatInvoiceAddress } from '@/lib/utils'
 import type { AdvancePaymentMethod } from '@/types/database'
 import { appendBrandFooter } from './brandFooter'
 
@@ -57,11 +57,17 @@ const COL = { desc: 18, qty: 4, rate: 9, amt: 11 }
 export function buildInvoiceTicket(
     invoice: ActiveInvoice,
     money: (amount: number) => string,
-    restaurantName = 'KKHANE HOTEL & RESTAURANT'
+    restaurantName = 'KKHANE HOTEL & RESTAURANT',
+    restaurantAddress = '',
+    restaurantPhone = ''
 ): Uint8Array {
     const b = new EscPosBuilder().init()
 
     b.align('center').bold(true).line(restaurantName).bold(false)
+    const formattedAddress = formatInvoiceAddress(restaurantAddress)
+    if (formattedAddress) {
+        b.line(formattedAddress)
+    }
     b.line('*** INVOICE ***')
     b.line(`No: INV-${invoice.id.slice(0, 8).toUpperCase()}`)
     b.line(`Date: ${new Date().toLocaleString()}`)
