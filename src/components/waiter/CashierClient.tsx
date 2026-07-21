@@ -449,22 +449,30 @@ export default function CashierClient({
         const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
         const combinedOrders = [...allActive, ...allUnpaid]
 
-        const items: { id: string; name: string; quantity: number; unitPrice: number; status: string }[] = []
+        const itemsMap: Record<string, { id: string; name: string; quantity: number; unitPrice: number; status: string }> = {}
         for (const order of combinedOrders) {
             if (order.status === 'cancelled') continue
             const orderItems = order.order_items || []
             for (const item of orderItems) {
                 if (item.status === 'cancelled') continue
-                items.push({
-                    id: item.id || '',
-                    name: item.menu_items?.name || 'Item',
-                    quantity: item.quantity || 0,
-                    unitPrice: Number(item.unit_price ?? 0),
-                    status: item.status || order.status || 'unknown'
-                })
+                const name = item.menu_items?.name || 'Item'
+                const unitPrice = Number(item.unit_price ?? 0)
+                
+                const key = `${name}-${unitPrice}`
+                if (itemsMap[key]) {
+                    itemsMap[key].quantity += item.quantity || 0
+                } else {
+                    itemsMap[key] = {
+                        id: item.id || '',
+                        name,
+                        quantity: item.quantity || 0,
+                        unitPrice,
+                        status: item.status || order.status || 'unknown'
+                    }
+                }
             }
         }
-        return items
+        return Object.values(itemsMap)
     }
 
     // The authoritative bill for a table session — sums each order's own
