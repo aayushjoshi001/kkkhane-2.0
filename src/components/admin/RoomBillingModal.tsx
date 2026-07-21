@@ -7,8 +7,7 @@ import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
 import { formatDateTime, calculateNights, advanceMethodLabel } from '@/lib/utils'
-import { usePrinter } from '@/lib/print/usePrinter'
-import { buildInvoiceTicket, type ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
+import type { ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 import { useFeatureEnabled, useDateFormatter } from '@/lib/contexts/FeatureContext'
@@ -57,6 +56,7 @@ interface RoomBillingModalProps {
     booking: Booking | null
     tables: BillingTable[]
     activeOrders: BillingOrder[]
+    restaurantName: string
     onClose: () => void
     /** Called after the server confirms the checkout so the caller can update its local state. */
     onSettled: (result: SettlementResult) => void
@@ -77,7 +77,7 @@ const calculateStayCost = (room: Room, booking: Booking) => {
  * charges fetch and the call to /api/bookings/checkout; callers only react
  * to onSettled/onClose. Shared by the admin Bookings and Rooms pages.
  */
-export default function RoomBillingModal({ room, booking, tables, activeOrders, onClose, onSettled }: RoomBillingModalProps) {
+export default function RoomBillingModal({ room, booking, tables, activeOrders, restaurantName, onClose, onSettled }: RoomBillingModalProps) {
     // true after hydration (portals can't render during SSR)
     const mounted = useSyncExternalStore(() => () => {}, () => true, () => false)
     const formatDate = useDateFormatter()
@@ -117,7 +117,6 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // happens after this, so the manager sees "Settled" immediately instead
     // of waiting on a printer that may be slow or not configured.
     const [invoiceSettled, setInvoiceSettled] = useState(false)
-    const { print: printInvoice } = usePrinter('invoice')
 
     useEffect(() => {
         if (!booking) return
@@ -326,18 +325,13 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                 })
             }
 
-            // Printing runs after the bill is already settled in the database,
-            // so a slow/unconfigured printer never blocks the checkout itself.
-            if (invoiceData && printInvoiceEnabled && printBillEnabled) {
-                const printResult = await printInvoice(buildInvoiceTicket(invoiceData, money))
-                if (!printResult.ok) {
-                    toast.error(
-                        printResult.status === 'no-printer-selected'
-                            ? 'No invoice printer set — opening browser print instead.'
-                            : 'Invoice printer not connected — opening browser print instead.'
-                    )
-                    window.print()
-                }
+            // The booking is already settled in the database at this point —
+            // window.print() just opens the browser's own print dialog (pick a
+            // printer, preview, cancel); it's a blocking call, so whether the
+            // manager prints or cancels here has no bearing on the settlement
+            // above, which already happened.
+            if (printInvoiceEnabled && printBillEnabled) {
+                window.print()
             }
 
             const paidAmount = advancePaid + resolvedCash + resolvedQr
@@ -736,7 +730,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                     {invoiceSettled ? (
                                         <div className="px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold flex items-center gap-1.5">
                                             <CheckCircle2 size={14} />
-                                            Settled — printing receipt…
+                                            Settled
                                         </div>
                                     ) : (
                                         <>
@@ -877,7 +871,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                     print-container to target (see InvoiceReceipt's print CSS). */}
                 {invoiceData && (
                     <div className="fixed -left-[9999px] top-0" aria-hidden>
-                        <InvoiceReceipt invoice={invoiceData} money={money} formatDate={formatDate} />
+                        <InvoiceReceipt invoice={invoiceData} money={money} formatDate={formatDate} restaurantName={restaurantName} />
                     </div>
                 )}
         </Modal>

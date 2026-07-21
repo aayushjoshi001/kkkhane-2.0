@@ -26,6 +26,7 @@ interface Props {
     splitSessionIds: Set<string>
     money: (n: number) => string
     onUpdateTakeoutStatus: (orderId: string, status: 'confirmed' | 'cancelled') => Promise<void>
+    restaurantName: string
 }
 
 function locationLabel(order: AnyOrder, splitSessionIds: Set<string>): string {
@@ -57,7 +58,7 @@ function useSelection(ids: string[]) {
     return { selected, allSelected, toggleAll, toggle }
 }
 
-export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, money, onUpdateTakeoutStatus }: Props) {
+export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, money, onUpdateTakeoutStatus, restaurantName }: Props) {
     const { confirm } = useConfirmStore()
     const features = useFeatures()
     const { print: printKot } = usePrinter('kot')
@@ -128,11 +129,11 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
         const barItems = items.filter(i => i.menu_items?.station === 'bar')
 
         if (foodItems.length > 0) {
-            void printKot(buildStationTicket(printableOrder, 'kitchen'))
+            void printKot(buildStationTicket(printableOrder, 'kitchen', restaurantName))
                 .catch(err => console.error('[Order Confirmation] KOT print failed:', err))
         }
         if (barItems.length > 0) {
-            void printBot(buildStationTicket(printableOrder, 'bar'))
+            void printBot(buildStationTicket(printableOrder, 'bar', restaurantName))
                 .catch(err => console.error('[Order Confirmation] BOT print failed:', err))
         }
     }

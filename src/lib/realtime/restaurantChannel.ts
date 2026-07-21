@@ -60,7 +60,13 @@ function buildChannel(restaurantId: string, entry: RestaurantEntry): RealtimeCha
         )
     }
 
-    channel.subscribe((status) => {
+    channel.subscribe((status, err) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            // Previously silent — a failed/dropped connection here means every
+            // subscribed component (Billing, kitchen, waiter boards, ...) just
+            // stops receiving updates with no visible sign why.
+            console.error(`[restaurantChannel] restaurant-rt-${restaurantId} ${status}`, err)
+        }
         if (status === 'SUBSCRIBED') {
             // Channel connected or reconnected — fire all catch-up callbacks so
             // components can refetch from the DB and recover any missed events.

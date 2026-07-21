@@ -24,6 +24,7 @@ export type AuditAction =
     | 'report_generated'
     | 'booking_checked_out'
     | 'table_session_checked_out'
+    | 'order_checked_out'
     | 'financial_event_created'
     | 'financial_event_status_changed'
     | 'financial_event_retried'

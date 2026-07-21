@@ -69,10 +69,10 @@ export default async function CashierPage() {
             .eq('status', 'active')
             .order('seat_number', { ascending: true }),
 
-        // Restaurant slug for manual takeaway/delivery redirect
+        // Restaurant slug (manual takeaway/delivery redirect) + name (print tickets)
         adminSupabase
             .from('restaurants')
-            .select('slug')
+            .select('slug, name')
             .eq('id', restaurantId)
             .single(),
 
@@ -147,12 +147,14 @@ export default async function CashierPage() {
     }) || []
 
     const restaurantSlug = restaurantData?.data?.slug || ''
+    const restaurantName = restaurantData?.data?.name || 'Restaurant'
     const isHotel = mode === 'hotel'
 
     return (
         <CashierClient
             restaurantId={restaurantId}
             restaurantSlug={restaurantSlug}
+            restaurantName={restaurantName}
             userId={userId}
             initialUnpaid={(unpaidOrders || []) as unknown as UnpaidOrder[]}
             initialActive={(activeOrders || []) as unknown as ActiveOrder[]}

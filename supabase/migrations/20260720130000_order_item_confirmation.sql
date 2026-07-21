@@ -53,6 +53,13 @@ $$;
 -- deduct_ingredients_for_order_items(), called at cashier-confirm time).
 -- Default is false, so every existing caller (waiter/staff order placement)
 -- is unaffected — only the QR self-order checkout flow passes true.
+--
+-- Adding a parameter via CREATE OR REPLACE creates a new overload rather
+-- than replacing the existing 7-arg function (Postgres matches on the full
+-- argument signature), which leaves two ambiguous candidates for any named
+-- RPC call that omits p_needs_confirmation. Drop the old signature first.
+DROP FUNCTION IF EXISTS "public"."place_order"("p_session_id" "uuid", "p_items" "jsonb", "p_customer_note" "text", "p_seat_id" "uuid", "p_promo_code" "text", "p_loyalty_member_id" "uuid", "p_client_request_id" "text");
+
 CREATE OR REPLACE FUNCTION "public"."place_order"("p_session_id" "uuid", "p_items" "jsonb", "p_customer_note" "text" DEFAULT NULL::"text", "p_seat_id" "uuid" DEFAULT NULL::"uuid", "p_promo_code" "text" DEFAULT NULL::"text", "p_loyalty_member_id" "uuid" DEFAULT NULL::"uuid", "p_client_request_id" "text" DEFAULT NULL::"text", "p_needs_confirmation" boolean DEFAULT false) RETURNS "jsonb"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'

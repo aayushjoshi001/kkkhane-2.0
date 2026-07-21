@@ -97,7 +97,7 @@ const TAB_META: Record<TabKey, { label: string; icon: typeof Bell; accent: strin
     cooking: { label: 'Cooking',    icon: Flame,     accent: '#ef4444', soft: '#FEE2E2', border: '#FCA5A5' },
 }
 
-export default function OrderQueue({ initialOrders, restaurantId, comboItems = [], userId, staffNames = {}, station = 'kitchen' }: {
+export default function OrderQueue({ initialOrders, restaurantId, comboItems = [], userId, staffNames = {}, station = 'kitchen', restaurantName }: {
     initialOrders: KitchenOrder[]
     restaurantId: string
     comboItems?: ComboItemRow[]
@@ -105,6 +105,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     staffNames?: Record<string, string>
     /** Which station this board serves. Kitchen sees food lines, bar sees drinks. */
     station?: StationKind
+    restaurantName: string
 }) {
     const stationMeta = STATION_META[station]
     // Project an order down to just this station's lines. Orders with none of
@@ -188,7 +189,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
         // Hoisted function declaration so it can recurse for retries without a
         // use-before-declared reference to the surrounding useCallback.
         function attemptPrint(attempt: number) {
-            void printKot(buildStationTicket(order, station)).then((result) => {
+            void printKot(buildStationTicket(order, station, restaurantName)).then((result) => {
                 if (result.ok) return
                 // Retry transient failures on a LAN printer before falling back to
                 // the local browser print (which prints at this desktop, not the

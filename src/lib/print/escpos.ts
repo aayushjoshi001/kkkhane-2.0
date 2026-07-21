@@ -115,6 +115,22 @@ export class EscPosBuilder {
         return this.line(parts.join(''))
     }
 
+    /**
+     * Print a monochrome raster image via GS v 0 — the standard Epson raster
+     * command, with the broadest support across generic 80mm clone printers.
+     * `data` must be row-major, MSB-first packed 1bpp bits (1 = ink), with
+     * `data.length === widthBytes * heightDots`.
+     */
+    image({ widthBytes, heightDots, data }: { widthBytes: number; heightDots: number; data: Uint8Array }): this {
+        this.bytes.push(
+            GS, 0x76, 0x30, 0x00,
+            widthBytes & 0xff, (widthBytes >> 8) & 0xff,
+            heightDots & 0xff, (heightDots >> 8) & 0xff,
+        )
+        for (let i = 0; i < data.length; i++) this.bytes.push(data[i])
+        return this
+    }
+
     /** Feed a few lines then cut the paper. Call last. */
     cut(): this {
         this.bytes.push(LF, LF, LF)

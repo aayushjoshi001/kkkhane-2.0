@@ -65,6 +65,29 @@ export async function getRestaurantMode(restaurantId: string): Promise<BusinessM
 }
 
 /**
+ * Fetch the restaurant/hotel's display name, for print tickets and the like.
+ * Cached for a day — same rationale as getRestaurantMode.
+ */
+export async function getRestaurantName(restaurantId: string): Promise<string> {
+    const fetcher = unstable_cache(
+        async () => {
+            return fetchWithCache(`restaurant-name:${restaurantId}`, async () => {
+                const supabase = await createAdminClient()
+                const { data } = await supabase
+                    .from('restaurants')
+                    .select('name')
+                    .eq('id', restaurantId)
+                    .single()
+                return data?.name ?? 'Restaurant'
+            }, 86400)
+        },
+        [`restaurant-name-${restaurantId}`],
+        { tags: [`restaurant-name-${restaurantId}`], revalidate: 3600 }
+    )
+    return fetcher()
+}
+
+/**
  * Fetch the customer-facing menu layout ('grid' | 'list') from settings.theme.
  * Cached for 30 seconds — changes rarely and rides a hot customer page path.
  */

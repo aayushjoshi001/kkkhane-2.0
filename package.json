@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "generate:logo-raster": "node scripts/generate-logo-raster.mjs",
     "test": "npx playwright test --project=chromium",
     "test:manager": "npx playwright test tests/daily-manager-flow-advanced.spec.ts --project=chromium",
     "test:manager:headed": "npx playwright test tests/daily-manager-flow-advanced.spec.ts --project=chromium --headed",

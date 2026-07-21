@@ -14,11 +14,12 @@ interface BookingsClientProps {
     initialBookings: Booking[]
     rooms: Room[]
     restaurantId: string
+    restaurantName: string
     tables?: BillingTable[]
     activeOrders?: BillingOrder[]
 }
 
-export default function BookingsClient({ initialBookings, tables = [], activeOrders = [] }: BookingsClientProps) {
+export default function BookingsClient({ initialBookings, restaurantName, tables = [], activeOrders = [] }: BookingsClientProps) {
     const router = useRouter()
     const [bookings, setBookings] = useState<Booking[]>(initialBookings)
     const [filterStatus, setFilterStatus] = useState<string>('all')
@@ -220,6 +221,7 @@ export default function BookingsClient({ initialBookings, tables = [], activeOrd
                     booking={billingBooking}
                     tables={tables}
                     activeOrders={activeOrders}
+                    restaurantName={restaurantName}
                     onClose={() => setBillingBooking(null)}
                     onSettled={result => {
                         setBookings(prev => prev.map(b =>
