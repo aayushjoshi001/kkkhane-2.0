@@ -777,6 +777,26 @@ export async function cancelOrder(
         newValue: { reason: cleanReason, amount },
     })
 
+    if (order.session_id) {
+        const { data: activeOrders } = await supabase
+            .from('orders')
+            .select('id')
+            .eq('session_id', order.session_id)
+            .neq('status', 'cancelled')
+
+        if (!activeOrders || activeOrders.length === 0) {
+            await supabase
+                .from('sessions')
+                .update({
+                    status: 'closed',
+                    closed_at: new Date().toISOString()
+                })
+                .eq('id', order.session_id)
+
+            await markTableDirtyForSession(supabase, order.session_id)
+        }
+    }
+
     revalidatePath('/cashier')
     revalidatePath('/kitchen')
     return { success: true }
@@ -797,7 +817,7 @@ export async function cancelOrderItem(
         .from('order_items')
         .select(`
             id, quantity, unit_price, status, order_id, menu_item_id, menu_item_variation_id, special_request, station, needs_confirmation,
-            orders!inner ( id, restaurant_id, status, subtotal_amount, discount_amount, tax_amount, total_amount )
+            orders!inner ( id, restaurant_id, status, session_id, subtotal_amount, discount_amount, tax_amount, total_amount )
         `)
         .eq('id', itemId)
         .eq('order_id', orderId)
@@ -816,6 +836,7 @@ export async function cancelOrderItem(
         id: string
         restaurant_id: string
         status: OrderStatus
+        session_id: string | null
         subtotal_amount: number
         discount_amount: number
         tax_amount: number
@@ -928,6 +949,26 @@ export async function cancelOrderItem(
         entityId: itemId,
         newValue: { orderId, reason: cleanReason, amount: itemTotal, cancelQuantity },
     })
+
+    if (parentOrder.session_id) {
+        const { data: activeOrders } = await supabase
+            .from('orders')
+            .select('id')
+            .eq('session_id', parentOrder.session_id)
+            .neq('status', 'cancelled')
+
+        if (!activeOrders || activeOrders.length === 0) {
+            await supabase
+                .from('sessions')
+                .update({
+                    status: 'closed',
+                    closed_at: new Date().toISOString()
+                })
+                .eq('id', parentOrder.session_id)
+
+            await markTableDirtyForSession(supabase, parentOrder.session_id)
+        }
+    }
 
     revalidatePath('/cashier')
     revalidatePath('/kitchen')
