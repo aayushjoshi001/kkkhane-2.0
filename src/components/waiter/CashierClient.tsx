@@ -219,11 +219,9 @@ export default function CashierClient({
     const [splitCashAmount, setSplitCashAmount] = useState<string>('')
     const [splitQrAmount, setSplitQrAmount] = useState<string>('')
     const [billingQrCodeId, setBillingQrCodeId] = useState<string>('')
-    // Table bargain rate: blank means "no change", same convention as
-    // RoomBillingModal's bargainRate — the input holds the new desired total,
-    // not the discount amount itself.
-    const [tableBargainRate, setTableBargainRate] = useState<string>('')
-    const [tableBargainReason, setTableBargainReason] = useState<string>('')
+    // Table Food Discount: entered directly (like foodDiscount in room service)
+    const [tableDiscount, setTableDiscount] = useState<string>('')
+    const [tableDiscountReason, setTableDiscountReason] = useState<string>('')
     const [roomDiscount, setRoomDiscount] = useState<string>('')
     const [foodDiscount, setFoodDiscount] = useState<string>('')
     const [discountReason, setDiscountReason] = useState<string>('')
@@ -365,8 +363,8 @@ export default function CashierClient({
         setSplitCashAmount('')
         setSplitQrAmount('')
         setBillingQrCodeId('')
-        setTableBargainRate('')
-        setTableBargainReason('')
+        setTableDiscount('')
+        setTableDiscountReason('')
         setCreditCustomerName('')
         setCreditCustomerPhone('')
     }, [selectedBillingTable?.id])
@@ -605,13 +603,9 @@ export default function CashierClient({
             // is pre-tax and would understate what's actually charged).
             const subtotal = getTableSessionOrdersTotal(table)
 
-            // Bargain rate: blank input = no change, standard subtotal stands
-            // (same convention as RoomBillingModal's bargainRate) — the input
-            // holds the new desired total, not the discount amount itself.
-            const bargainRateEntered = tableBargainRate.trim() !== ''
-            const bargainRateValue = bargainRateEntered ? parseFloat(tableBargainRate) || 0 : subtotal
-            const discountAmount = bargainRateEntered ? Math.max(0, subtotal - bargainRateValue) : 0
-            const total = subtotal - discountAmount
+            // Food Discount: discount amount entered directly
+            const discountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
+            const total = Math.max(0, subtotal - discountAmount)
 
             const resolvedCash = billingPaymentMethod === 'cash' ? total
                 : billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0)
@@ -641,7 +635,7 @@ export default function CashierClient({
                 manualChargesTotal: 0,
                 total,
                 discountAmount,
-                discountReason: discountAmount > 0 ? tableBargainReason.trim() : '',
+                discountReason: discountAmount > 0 ? tableDiscountReason.trim() : '',
                 sessionId: table.activeSession.id,
                 paymentMethod: billingPaymentMethod,
                 cashPaid: resolvedCash,
@@ -2110,11 +2104,9 @@ export default function CashierClient({
                             const itemsSubtotal = getTableSessionItems(selectedBillingTable).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
                             const tableSubtotal = getTableSessionOrdersTotal(selectedBillingTable)
                             const taxOrServiceAdjustment = tableSubtotal - itemsSubtotal
-                            const bargainRateEntered = tableBargainRate.trim() !== ''
-                            const bargainRateValue = bargainRateEntered ? parseFloat(tableBargainRate) || 0 : tableSubtotal
-                            const tableDiscountAmount = bargainRateEntered ? Math.max(0, tableSubtotal - bargainRateValue) : 0
-                            const tableDiscountInvalid = bargainRateEntered && (bargainRateValue < 0 || bargainRateValue > tableSubtotal)
-                            const tableTotal = tableSubtotal - tableDiscountAmount
+                            const tableDiscountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
+                            const tableDiscountInvalid = tableDiscountAmount < 0 || tableDiscountAmount > tableSubtotal
+                            const tableTotal = Math.max(0, tableSubtotal - tableDiscountAmount)
 
                             return (
                                 <>
@@ -2125,7 +2117,7 @@ export default function CashierClient({
                                         </div>
                                     )}
 
-                                    {/* Bargain rate */}
+                                    {/* Food Discount */}
                                     <div className="border-2 border-amber-200 rounded-2xl p-4 space-y-3 bg-amber-50/60 shadow-sm">
                                         <div className="flex items-center justify-between gap-3">
                                             <div className="flex items-center gap-2">
@@ -2133,7 +2125,7 @@ export default function CashierClient({
                                                     <Percent size={14} className="text-amber-700" />
                                                 </div>
                                                 <div>
-                                                    <p className="text-xs font-black text-amber-800 uppercase tracking-wider">Bargain Rate</p>
+                                                    <p className="text-xs font-black text-amber-800 uppercase tracking-wider">Food Discount</p>
                                                     <p className="text-[10px] text-amber-700/70 font-semibold">Standard total: {money(tableSubtotal)}</p>
                                                 </div>
                                             </div>
@@ -2143,23 +2135,23 @@ export default function CashierClient({
                                                     type="number"
                                                     min="0"
                                                     max={tableSubtotal}
-                                                    placeholder={tableSubtotal.toFixed(2)}
-                                                    value={tableBargainRate}
-                                                    onChange={e => setTableBargainRate(e.target.value)}
+                                                    placeholder="0.00"
+                                                    value={tableDiscount}
+                                                    onChange={e => setTableDiscount(e.target.value)}
                                                     className={`w-full pl-7 pr-2 py-2 border-2 rounded-xl text-xs font-bold bg-white focus:outline-none ${tableDiscountInvalid ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
                                                 />
                                             </div>
                                         </div>
                                         {tableDiscountInvalid && (
-                                            <p className="text-[9px] text-rose-500 font-bold">Rate must be between Rs. 0 and the standard total.</p>
+                                            <p className="text-[9px] text-rose-500 font-bold">Discount must be between Rs. 0 and the standard total.</p>
                                         )}
                                         {tableDiscountAmount > 0 && (
                                             <div>
                                                 <label className="block text-[9px] font-black text-amber-700 uppercase mb-1">Reason (required)</label>
                                                 <input
                                                     type="text"
-                                                    value={tableBargainReason}
-                                                    onChange={e => setTableBargainReason(e.target.value)}
+                                                    value={tableDiscountReason}
+                                                    onChange={e => setTableDiscountReason(e.target.value)}
                                                     placeholder="e.g. Repeat guest, manager approved"
                                                     className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-amber-500"
                                                 />
@@ -2324,7 +2316,7 @@ export default function CashierClient({
                                                     variant="primary"
                                                     disabled={
                                                         tableDiscountInvalid ||
-                                                        (tableDiscountAmount > 0 && !tableBargainReason.trim())
+                                                        (tableDiscountAmount > 0 && !tableDiscountReason.trim())
                                                     }
                                                     onClick={() => compileInvoice('table', selectedBillingTable)}
                                                     className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
