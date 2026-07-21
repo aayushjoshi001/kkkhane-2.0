@@ -1589,38 +1589,45 @@ export default function CashierClient({
                             setUnpaid(prev => prev.filter(o => o.id !== orderId))
                         }}
                         onCancelOrderItem={(orderId, itemId, cancelQuantity) => {
-                            const updateItems = (orders: any[]) => orders.map(o => {
-                                if (o.id !== orderId) return o
-                                const targetItem = (o.order_items || []).find((i: any) => i.id === itemId)
-                                if (!targetItem) return o
+                            const updateItems = (orders: any[]) => {
+                                return orders.map(o => {
+                                    if (o.id !== orderId) return o
+                                    const targetItem = (o.order_items || []).find((i: any) => i.id === itemId)
+                                    if (!targetItem) return o
 
-                                let updatedItems: any[]
-                                if (cancelQuantity >= targetItem.quantity) {
-                                    updatedItems = (o.order_items || []).map((i: any) => i.id === itemId ? { ...i, status: 'cancelled' } : i)
-                                } else {
-                                    updatedItems = []
-                                    for (const i of o.order_items || []) {
-                                        if (i.id === itemId) {
-                                            updatedItems.push({
-                                                ...i,
-                                                quantity: i.quantity - cancelQuantity
-                                            })
-                                            updatedItems.push({
-                                                ...i,
-                                                id: `${itemId}-cancelled`,
-                                                quantity: cancelQuantity,
-                                                status: 'cancelled'
-                                            })
-                                        } else {
-                                            updatedItems.push(i)
+                                    let updatedItems: any[]
+                                    if (cancelQuantity >= targetItem.quantity) {
+                                        updatedItems = (o.order_items || []).map((i: any) => i.id === itemId ? { ...i, status: 'cancelled' } : i)
+                                    } else {
+                                        updatedItems = []
+                                        for (const i of o.order_items || []) {
+                                            if (i.id === itemId) {
+                                                updatedItems.push({
+                                                    ...i,
+                                                    quantity: i.quantity - cancelQuantity
+                                                })
+                                                updatedItems.push({
+                                                    ...i,
+                                                    id: `${itemId}-cancelled`,
+                                                    quantity: cancelQuantity,
+                                                    status: 'cancelled'
+                                                })
+                                            } else {
+                                                updatedItems.push(i)
+                                            }
                                         }
                                     }
-                                }
-                                return {
-                                    ...o,
-                                    order_items: updatedItems
-                                }
-                            })
+                                    return {
+                                        ...o,
+                                        order_items: updatedItems
+                                    }
+                                }).filter(o => {
+                                    if (o.id === orderId) {
+                                        return (o.order_items || []).some((i: any) => i.status !== 'cancelled')
+                                    }
+                                    return true
+                                })
+                            }
                             setActive(prev => updateItems(prev))
                             setUnpaid(prev => updateItems(prev))
                         }}

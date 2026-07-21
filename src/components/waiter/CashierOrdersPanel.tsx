@@ -448,7 +448,7 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                                     }
                                     toast.success(`${cancelQty}x ${label} cancelled`)
                                 }}
-                                className="flex-1 rounded-2xl py-3 text-xs font-bold bg-red-650 hover:bg-red-750 text-white shadow-sm transition-colors"
+                                className="flex-1 rounded-2xl py-3 text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-sm transition-colors"
                             >
                                 Cancel {cancelQty} Plate{cancelQty !== 1 ? 's' : ''}
                             </button>
@@ -605,7 +605,7 @@ function StatusDetail({ order, items, money, busy, reason, onReasonChange, onMar
                 </button>
             )}
             <div className="space-y-1.5">
-                {items.map(item => {
+                {items.filter(item => item.status !== 'cancelled').map(item => {
                     const canServe = !kotEnabled && item.status === 'ready' && item.id
                     return (
                         <div key={item.id} className="flex items-center gap-2.5 bg-surface rounded-xl border border-hairline px-3 py-2">
