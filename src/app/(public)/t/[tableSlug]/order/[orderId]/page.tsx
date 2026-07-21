@@ -27,6 +27,7 @@ export default async function OrderPage(props: {
           order_items (
             *,
             menu_items (name),
+            menu_item_variations:menu_item_variation_id (id, name),
             order_item_modifiers (*)
           )
         `)
@@ -91,6 +92,7 @@ export default async function OrderPage(props: {
               order_items (
                 *,
                 menu_items (name),
+                menu_item_variations:menu_item_variation_id (id, name),
                 order_item_modifiers (*)
               )
             `)

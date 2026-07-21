@@ -33,7 +33,7 @@ export default async function CashierPage() {
                 id, total_amount, placed_at, delivered_at, payment_status, payment_method, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address,
                 sessions ( id, booking_id, seat_number, tables ( id, label, room_id ) ),
                 bookings ( id, rooms ( id, room_number ) ),
-                order_items ( id, quantity, status, unit_price, needs_confirmation, menu_items ( name ) )
+                order_items ( id, quantity, status, unit_price, special_request, needs_confirmation, menu_items ( name ), menu_item_variations:menu_item_variation_id ( id, name ) )
             `)
             .eq('restaurant_id', restaurantId)
             .eq('status', 'delivered')
@@ -47,7 +47,7 @@ export default async function CashierPage() {
                 id, status, total_amount, placed_at, session_id, order_type, customer_name, customer_phone, delivery_address, payment_status, booking_id,
                 sessions ( id, booking_id, seat_number, tables ( id, label, room_id ) ),
                 bookings ( id, rooms ( id, room_number ) ),
-                order_items ( id, quantity, status, unit_price, needs_confirmation, menu_items ( name ) )
+                order_items ( id, quantity, status, unit_price, special_request, needs_confirmation, menu_items ( name ), menu_item_variations:menu_item_variation_id ( id, name ) )
             `)
             .eq('restaurant_id', restaurantId)
             .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
@@ -72,7 +72,7 @@ export default async function CashierPage() {
         // Restaurant slug (manual takeaway/delivery redirect) + name (print tickets)
         adminSupabase
             .from('restaurants')
-            .select('slug, name')
+            .select('slug, name, address, contact_phone')
             .eq('id', restaurantId)
             .single(),
 
@@ -148,6 +148,8 @@ export default async function CashierPage() {
 
     const restaurantSlug = restaurantData?.data?.slug || ''
     const restaurantName = restaurantData?.data?.name || 'Restaurant'
+    const restaurantAddress = restaurantData?.data?.address || ''
+    const restaurantPhone = restaurantData?.data?.contact_phone || ''
     const isHotel = mode === 'hotel'
 
     return (
@@ -155,6 +157,8 @@ export default async function CashierPage() {
             restaurantId={restaurantId}
             restaurantSlug={restaurantSlug}
             restaurantName={restaurantName}
+            restaurantAddress={restaurantAddress}
+            restaurantPhone={restaurantPhone}
             userId={userId}
             initialUnpaid={(unpaidOrders || []) as unknown as UnpaidOrder[]}
             initialActive={(activeOrders || []) as unknown as ActiveOrder[]}

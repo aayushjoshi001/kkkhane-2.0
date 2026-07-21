@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { playStatusUpdate } from '@/lib/audio'
 import { playVoice } from '@/lib/voice'
 import { toast } from 'react-hot-toast'
-import { timeAgo } from '@/lib/utils'
+import { timeAgo, getItemDisplayName } from '@/lib/utils'
 import { useCurrency, useBusinessMode } from '@/lib/contexts/FeatureContext'
 import { CheckCircle, Clock, ChefHat, Package, PartyPopper, ChevronLeft, MapPin, Plus } from 'lucide-react'
 import type { Order, OrderItem, MenuItem, OrderItemModifier } from '@/types/database'
@@ -174,7 +174,7 @@ export default function OrderTracker({
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-baseline gap-1">
                                                         <span className="font-bold text-ink-subtle tabular-nums text-[10px]">{item.quantity}×</span>
-                                                        <span className="font-bold text-ink leading-snug">{item.menu_items?.name}</span>
+                                                        <span className="font-bold text-ink leading-snug">{getItemDisplayName(item)}</span>
                                                     </div>
                                                     {item.order_item_modifiers && item.order_item_modifiers.length > 0 && (
                                                         <div className="flex flex-wrap gap-1 mt-1">
@@ -359,7 +359,7 @@ export default function OrderTracker({
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-baseline gap-1.5">
                                         <span className="text-xs font-bold text-ink-subtle tabular-nums">{item.quantity}×</span>
-                                        <span className="text-xs font-bold text-ink leading-snug">{item.menu_items?.name}</span>
+                                        <span className="text-xs font-bold text-ink leading-snug">{getItemDisplayName(item)}</span>
                                     </div>
                                     {item.order_item_modifiers && item.order_item_modifiers.length > 0 && (
                                         <div className="flex flex-wrap gap-1 mt-1">

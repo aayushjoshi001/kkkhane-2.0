@@ -11,6 +11,7 @@ import CashPaymentChoice from './CashPaymentChoice'
 import OrderSplitBillSection from './OrderSplitBillSection'
 import SplitBillModal from './SplitBillModal'
 import { updateOrderPaymentDetails } from '@/app/(public)/t/[tableSlug]/order/[orderId]/payment/actions'
+import { getItemDisplayName } from '@/lib/utils'
 import { toast } from 'react-hot-toast'
 import type { LoyaltyMember, PromoCode } from '@/types/database'
 
@@ -134,7 +135,7 @@ export default function PaymentPageClient({
                                 <li key={item.id} className="p-4 flex gap-4 bg-surface justify-between">
                                     <div className="flex-1">
                                         <h3 className="font-bold text-sm text-ink">
-                                            {item.quantity}× {item.menu_items?.name || 'Item'}
+                                            {item.quantity}× {getItemDisplayName(item)}
                                         </h3>
                                         {item.order_item_modifiers && item.order_item_modifiers.length > 0 && (
                                             <p className="text-xs text-ink-subtle font-semibold mt-0.5">

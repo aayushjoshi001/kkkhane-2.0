@@ -6,7 +6,7 @@ import { X, Loader2, CheckCircle2, Percent, Clock } from 'lucide-react'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
-import { formatDateTime, calculateNights, advanceMethodLabel } from '@/lib/utils'
+import { formatDateTime, calculateNights, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
 import type { ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
@@ -57,6 +57,8 @@ interface RoomBillingModalProps {
     tables: BillingTable[]
     activeOrders: BillingOrder[]
     restaurantName: string
+    restaurantAddress?: string
+    restaurantPhone?: string
     onClose: () => void
     /** Called after the server confirms the checkout so the caller can update its local state. */
     onSettled: (result: SettlementResult) => void
@@ -77,7 +79,7 @@ const calculateStayCost = (room: Room, booking: Booking) => {
  * charges fetch and the call to /api/bookings/checkout; callers only react
  * to onSettled/onClose. Shared by the admin Bookings and Rooms pages.
  */
-export default function RoomBillingModal({ room, booking, tables, activeOrders, restaurantName, onClose, onSettled }: RoomBillingModalProps) {
+export default function RoomBillingModal({ room, booking, tables, activeOrders, restaurantName, restaurantAddress = '', restaurantPhone = '', onClose, onSettled }: RoomBillingModalProps) {
     // true after hydration (portals can't render during SSR)
     const mounted = useSyncExternalStore(() => () => {}, () => true, () => false)
     const formatDate = useDateFormatter()
@@ -228,7 +230,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         basePrice: room.room_types?.base_price || 0,
         stayCost: stayCost,
         qrOrders: allServiceOrderItems.map(item => ({
-            name: item.menu_items?.name || 'Item',
+            name: getItemDisplayName(item),
             quantity: item.quantity,
             unitPrice: Number(item.unit_price),
         })),
@@ -443,7 +445,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                             <div className="space-y-1.5 pl-3 border-l-2 border-indigo-100">
                                                 {allServiceOrderItems.map((item, idx) => (
                                                     <div key={`service-item-${item.id || 'item'}-${idx}`} className="flex justify-between text-[10px] text-ink-subtle">
-                                                        <span>{item.menu_items?.name || 'Item'} ({item.quantity}×)</span>
+                                                        <span>{getItemDisplayName(item)} ({item.quantity}×)</span>
                                                         <span className="tabular-nums font-semibold">{money(item.unit_price * item.quantity)}</span>
                                                     </div>
                                                 ))}
@@ -871,7 +873,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                     print-container to target (see InvoiceReceipt's print CSS). */}
                 {invoiceData && (
                     <div className="fixed -left-[9999px] top-0" aria-hidden>
-                        <InvoiceReceipt invoice={invoiceData} money={money} formatDate={formatDate} restaurantName={restaurantName} />
+                        <InvoiceReceipt invoice={invoiceData} money={money} formatDate={formatDate} restaurantName={restaurantName} restaurantAddress={restaurantAddress} restaurantPhone={restaurantPhone} />
                     </div>
                 )}
         </Modal>

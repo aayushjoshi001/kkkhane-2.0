@@ -24,7 +24,7 @@ import type { BankAccount, ExpenseCategory, Supplier, Session } from '@/types/da
 import QuickOrderModal from './QuickOrderModal'
 
 
-import { formatDateTime, calculateNights, advanceMethodLabel } from '@/lib/utils'
+import { formatDateTime, calculateNights, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 
 type OrderItem = {
@@ -83,6 +83,8 @@ interface Props {
     restaurantId: string
     restaurantSlug: string
     restaurantName: string
+    restaurantAddress?: string
+    restaurantPhone?: string
     userId: string
     initialUnpaid: UnpaidOrder[]
     initialActive: ActiveOrder[]
@@ -117,6 +119,8 @@ export default function CashierClient({
     restaurantId,
     restaurantSlug,
     restaurantName,
+    restaurantAddress = '',
+    restaurantPhone = '',
     userId,
     initialUnpaid, 
     initialActive,
@@ -520,7 +524,7 @@ export default function CashierClient({
             const orderItems = order.order_items || []
             for (const item of orderItems) {
                 items.push({
-                    name: item.menu_items?.name || 'Item',
+                    name: getItemDisplayName(item),
                     quantity: item.quantity || 0,
                     unitPrice: Number(item.unit_price ?? 0),
                     status: item.status || order.status || 'unknown'
@@ -563,7 +567,7 @@ export default function CashierClient({
             const orderItems = order.order_items || []
             for (const item of orderItems) {
                 if (item.status === 'cancelled') continue
-                const name = item.menu_items?.name || 'Item'
+                const name = getItemDisplayName(item)
                 const unitPrice = Number(item.unit_price ?? 0)
                 
                 const key = `${name}-${unitPrice}`
@@ -678,7 +682,7 @@ export default function CashierClient({
                 qrOrders: getRoomQrOrders(room),
                 qrOrdersTotal,
                 linkedOrders: filteredLinkedOrders.map(item => ({
-                    name: item.menu_items?.name || 'Item',
+                    name: getItemDisplayName(item),
                     quantity: item.quantity,
                     unitPrice: Number(item.unit_price)
                 })),
@@ -763,7 +767,7 @@ export default function CashierClient({
             // the new /api/orders/checkout route bills off.
             const order: UnpaidOrder = item
             const lineItems = (order.order_items || []).map(oi => ({
-                name: oi.menu_items?.name || 'Item',
+                name: getItemDisplayName(oi),
                 quantity: oi.quantity,
                 unitPrice: Number(oi.unit_price) || 0,
             }))
@@ -1106,7 +1110,7 @@ export default function CashierClient({
     // we fall back to the browser print dialog for driver-based printers.
     const handlePrintBill = async () => {
         if (!activeInvoice) return
-        const result = await printInvoice(buildInvoiceTicket(activeInvoice, money, restaurantName))
+        const result = await printInvoice(buildInvoiceTicket(activeInvoice, money, restaurantName, restaurantAddress, restaurantPhone))
         if (!result.ok) {
             toast.error(
                 result.status === 'no-printer-selected'
@@ -2053,7 +2057,7 @@ export default function CashierClient({
                                                 <div className="space-y-1.5 pl-3 border-l-2 border-indigo-100">
                                                     {billingLinkedOrders.map((item) => (
                                                         <div key={item.id} className="flex justify-between text-[10px] text-ink-muted">
-                                                            <span>{item.menu_items?.name || 'Item'} ({item.quantity}×)</span>
+                                                            <span>{getItemDisplayName(item)} ({item.quantity}×)</span>
                                                             <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
                                                         </div>
                                                     ))}
@@ -2707,7 +2711,7 @@ export default function CashierClient({
                                     {selectedBillingOrder.order_items.map((oi, idx) => (
                                         <div key={oi.id || idx} className="flex justify-between items-center py-1.5 text-xs">
                                             <div>
-                                                <p className="font-extrabold text-ink">{oi.menu_items?.name || 'Item'}</p>
+                                                <p className="font-extrabold text-ink">{getItemDisplayName(oi)}</p>
                                                 <p className="text-[10px] text-ink-subtle">Qty: {oi.quantity} × {money(Number(oi.unit_price) || 0)}</p>
                                             </div>
                                             <span className="font-extrabold text-ink-muted tabular-nums">{money((Number(oi.unit_price) || 0) * oi.quantity)}</span>
@@ -3055,7 +3059,7 @@ export default function CashierClient({
                         className="bg-white w-full max-w-sm p-5 space-y-4 shadow-2xl relative border-t-8 border-brand-500"
                         onClick={e => e.stopPropagation()}
                     >
-                        <InvoiceReceipt invoice={activeInvoice} money={money} formatDate={formatDate} restaurantName={restaurantName} />
+                        <InvoiceReceipt invoice={activeInvoice} money={money} formatDate={formatDate} restaurantName={restaurantName} restaurantAddress={restaurantAddress} restaurantPhone={restaurantPhone} />
 
                         {/* Invoice Footer Actions (Print, Mark Paid, Close) */}
                         <div className="flex gap-2 pt-3 border-t border-gray-100 print-actions flex-wrap">

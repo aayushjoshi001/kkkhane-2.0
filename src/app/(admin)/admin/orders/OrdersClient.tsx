@@ -6,6 +6,7 @@ import { useCurrency, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { toNepaliDate } from '@/lib/nepaliDate'
 import RefundOrderButton from './RefundOrderButton'
 import Select from '@/components/ui/Select'
+import { getItemDisplayName } from '@/lib/utils'
 
 export type AdminOrder = {
     id: string
@@ -144,7 +145,7 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                         {filtered.map((order) => {
                             const tableLabel = order.sessions?.tables?.label || '—'
                             const itemCount = order.order_items?.length || 0
-                            const itemNames = order.order_items?.map((i) => `${i.quantity}x ${i.menu_items?.name}`).join(', ') || '—'
+                            const itemNames = order.order_items?.map((i) => `${i.quantity}x ${getItemDisplayName(i)}`).join(', ') || '—'
                             const refundable = canRefund && ['paid', 'unpaid'].includes(order.payment_status) && order.status !== 'cancelled'
 
                             return (
@@ -197,7 +198,7 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
             <div className="md:hidden divide-y divide-hairline">
                 {filtered.map((order) => {
                     const tableLabel = order.sessions?.tables?.label || '—'
-                    const itemNames = order.order_items?.map((i) => `${i.quantity}x ${i.menu_items?.name}`).join(', ') || ''
+                    const itemNames = order.order_items?.map((i) => `${i.quantity}x ${getItemDisplayName(i)}`).join(', ') || ''
                     const refundable = canRefund && ['paid', 'unpaid'].includes(order.payment_status) && order.status !== 'cancelled'
 
                     return (

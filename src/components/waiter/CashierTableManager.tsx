@@ -10,6 +10,7 @@ import type { Table, Session } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCurrency, useFeatures } from '@/lib/contexts/FeatureContext'
+import { getItemDisplayName } from '@/lib/utils'
 import QuickOrderModal from './QuickOrderModal'
 
 export type TableWithSession = Table & { activeSession?: Session | null; otherActiveSessions?: Session[] }
@@ -222,7 +223,7 @@ export default function CashierTableManager({
         for (const order of combinedOrders) {
             const orderItems = order.order_items || []
             for (const item of orderItems) {
-                const name = item.menu_items?.name || 'Item'
+                const name = getItemDisplayName(item)
                 const qty = item.quantity || 0
                 const price = Number(item.unit_price ?? 0)
                 const status = item.status || order.status || 'unknown'

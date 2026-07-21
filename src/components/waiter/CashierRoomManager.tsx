@@ -9,7 +9,7 @@ import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCurrency, useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { type TableWithSession } from './CashierTableManager'
-import { formatDateTime, calculateNights, advanceMethodLabel } from '@/lib/utils'
+import { formatDateTime, calculateNights, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
 import QuickOrderModal from './QuickOrderModal'
 import { openSession } from '@/app/(staff)/waiter/actions'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
@@ -285,7 +285,7 @@ export default function CashierRoomManager({
 
         const roomItems = linkedDiningOrders.filter(o => o.is_room_order)
         const items = roomItems.map(it => ({
-            name: (it.menu_items as any)?.name || 'Item',
+            name: getItemDisplayName(it),
             quantity: it.quantity || 0,
             unitPrice: Number(it.unit_price ?? 0),
         }))
@@ -992,7 +992,7 @@ export default function CashierRoomManager({
                                                 <div className="space-y-1.5 pl-3 border-l-2 border-emerald-100 max-h-28 overflow-y-auto">
                                                     {filteredLinkedDiningOrders.map((item, idx) => (
                                                         <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
-                                                            <span>{item.menu_items?.name || 'Item'} <span className="text-[9px] text-brand-500">({item.quantity}×)</span></span>
+                                                            <span>{getItemDisplayName(item)} <span className="text-[9px] text-brand-500">({item.quantity}×)</span></span>
                                                             <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
                                                         </div>
                                                     ))}
@@ -1022,78 +1022,14 @@ export default function CashierRoomManager({
                                     </div>
                                 </div>
 
-                                {/* Add Manual Charge Form / Toggle — sticky so it stays reachable without scrolling past a long billing list */}
+                                {/* Add Food/Restaurant Order Button */}
                                 <div className="sticky bottom-0 z-10 border border-dashed border-hairline-strong rounded-2xl p-4 bg-surface shadow-lg">
-                                    {!showAddChargeForm ? (
-                                        <div className="flex flex-col sm:flex-row gap-2 md:gap-2.5 items-center justify-center">
-                                            <button 
-                                                onClick={() => setShowAddChargeForm(true)}
-                                                className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-brand-500 font-extrabold hover:text-brand-600 hover:scale-[1.01] transition-all border border-brand-500/10 hover:border-brand-500/30 rounded-xl bg-surface"
-                                            >
-                                                <Plus size={14} /> Add Manual Purchase (Minibar, Laundry, etc.)
-                                            </button>
-                                            <button 
-                                                onClick={handleOpenFoodOrder}
-                                                className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-emerald-600 font-extrabold hover:text-emerald-700 hover:scale-[1.01] transition-all border border-emerald-500/10 hover:border-emerald-500/30 rounded-xl bg-surface"
-                                            >
-                                                <Utensils size={14} /> Add Food/Restaurant Order
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-3.5 animate-in slide-in-from-top duration-200">
-                                            <div className="flex items-center justify-between border-b border-hairline pb-2">
-                                                <span className="text-xs font-extrabold text-ink-muted">Add purchase detail</span>
-                                                <button onClick={() => setShowAddChargeForm(false)} className="text-[10px] text-rose-500 font-bold hover:underline">Cancel</button>
-                                            </div>
-                                            <div className="grid grid-cols-3 gap-2.5">
-                                                <div>
-                                                    <label className="block text-[8px] font-bold text-ink-subtle uppercase mb-1">Type</label>
-                                                    <Select
-                                                        value={newCharge.charge_type}
-                                                        onChange={e => setNewCharge(c => ({ ...c, charge_type: e.target.value }))}
-                                                        className="w-full px-2.5 py-2 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
-                                                    >
-                                                        <option value="minibar">Minibar</option>
-                                                        <option value="laundry">Laundry</option>
-                                                        <option value="spa">Spa</option>
-                                                        <option value="parking">Parking</option>
-                                                        <option value="room_service">Room Service</option>
-                                                        <option value="other">Other</option>
-                                                    </Select>
-                                                </div>
-                                                <div className="col-span-2">
-                                                    <label className="block text-[8px] font-bold text-ink-subtle uppercase mb-1">Description</label>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="e.g. 2 Beers, Ironing Service"
-                                                        value={newCharge.description}
-                                                        onChange={e => setNewCharge(c => ({ ...c, description: e.target.value }))}
-                                                        className="w-full px-2.5 py-2 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div className="flex items-end gap-3">
-                                                <div className="flex-1">
-                                                    <label className="block text-[8px] font-bold text-ink-subtle uppercase mb-1">Amount (Rs.)</label>
-                                                    <input
-                                                        type="number"
-                                                        placeholder="0.00"
-                                                        value={newCharge.amount}
-                                                        onChange={e => setNewCharge(c => ({ ...c, amount: e.target.value }))}
-                                                        className="w-full px-2.5 py-2 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
-                                                    />
-                                                </div>
-                                                <Button
-                                                    variant="secondary"
-                                                    loading={isProcessing}
-                                                    onClick={handleAddManualCharge}
-                                                    className="font-bold shrink-0 text-xs py-2 bg-brand-500 text-white hover:bg-brand-600 hover:border-brand-600"
-                                                >
-                                                    Add Item
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    )}
+                                    <button 
+                                        onClick={handleOpenFoodOrder}
+                                        className="w-full flex items-center justify-center gap-1.5 py-2.5 text-xs text-emerald-600 font-extrabold hover:text-emerald-700 hover:scale-[1.01] transition-all border border-emerald-500/10 hover:border-emerald-500/30 rounded-xl bg-surface"
+                                    >
+                                        <Utensils size={15} /> Add Food/Restaurant Order
+                                    </button>
                                 </div>
                             </div>
                         ) : (
