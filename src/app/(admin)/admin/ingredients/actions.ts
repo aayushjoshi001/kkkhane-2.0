@@ -157,7 +157,7 @@ export async function addStockMovementAction(input: {
     notes?: string
     performed_by?: string | null
 }) {
-    await requireRole('manager', 'super_admin')
+    await requireRole('manager', 'super_admin', 'cashier')
     const supabase = await createAdminClient()
 
     // Insert movement record

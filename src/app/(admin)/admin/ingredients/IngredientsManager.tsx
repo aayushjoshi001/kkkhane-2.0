@@ -12,7 +12,7 @@ import { fetchIngredientsData } from '@/lib/swr-fetchers'
 import { formatCurrency, orderCategoriesForDisplay, findMainCategory } from '@/lib/utils'
 import SupplierPaymentFields, {
     EMPTY_SUPPLIER_PAYMENT, validateSupplierPayment, isUnderpaidSplit, underpaidSplitConfirmMessage,
-    UNSPECIFIED_SUPPLIER_NAME, OTHERS_SUPPLIER_ID, type SupplierPaymentValue
+    UNSPECIFIED_SUPPLIER_NAME, OTHERS_SUPPLIER_ID, buildChequeDetailsFromSupplierPayment, type SupplierPaymentValue
 } from '@/components/admin/SupplierPaymentFields'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
@@ -168,10 +168,13 @@ export default function IngredientsManager({
                     bank_name: createPayment.payment_source !== 'cash' ? createPayment.bank_name.trim() : undefined,
                     cash_portion: createPayment.payment_source === 'cash_qr' ? (parseFloat(createPayment.cash_portion) || 0) : undefined,
                     qr_portion: createPayment.payment_source === 'cash_qr' ? (parseFloat(createPayment.qr_portion) || 0) : undefined,
+                    cheque_details: createPayment.payment_source === 'cheque' ? buildChequeDetailsFromSupplierPayment(createPayment) : undefined,
                 })
                 setSaving(false)
                 if (billRes.error) {
                     toast.error(`Stock item added, but the supplier bill wasn't recorded: ${billRes.error}`)
+                } else if (billRes.pendingApproval) {
+                    toast.success('Stock item added. Cheque payment held pending manager approval.', { duration: 6000 })
                 } else {
                     toast.success('Stock item added and supplier bill recorded!')
                     if (billRes.warning) toast.error(billRes.warning)
@@ -413,6 +416,7 @@ export default function IngredientsManager({
                 bank_name: movePayment.payment_source !== 'cash' ? movePayment.bank_name.trim() : undefined,
                 cash_portion: movePayment.payment_source === 'cash_qr' ? (parseFloat(movePayment.cash_portion) || 0) : undefined,
                 qr_portion: movePayment.payment_source === 'cash_qr' ? (parseFloat(movePayment.qr_portion) || 0) : undefined,
+                cheque_details: movePayment.payment_source === 'cheque' ? buildChequeDetailsFromSupplierPayment(movePayment) : undefined,
             })
 
             // Keep cost_per_unit in sync with the latest purchase price so
@@ -429,8 +433,12 @@ export default function IngredientsManager({
                 closeStockModal()
                 return
             }
-            toast.success('Stock and supplier bill updated!')
-            if (billRes.warning) toast.error(billRes.warning)
+            if (billRes.pendingApproval) {
+                toast.success('Stock updated. Cheque payment held pending manager approval.', { duration: 6000 })
+            } else {
+                toast.success('Stock and supplier bill updated!')
+                if (billRes.warning) toast.error(billRes.warning)
+            }
         } else {
             setSaving(false)
             toast.success('Stock updated!')

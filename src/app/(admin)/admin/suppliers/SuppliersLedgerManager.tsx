@@ -5,14 +5,14 @@ import {
     Plus, X, Search, Loader2, Trash2, Edit2, FileText, Phone, DollarSign, Truck, Tag,
     Download, Printer, Banknote
 } from 'lucide-react'
-import { createSupplierAction, updateSupplierAction, deleteSupplierAction, createSupplierBillAction } from './actions'
+import { createSupplierAction, updateSupplierAction, deleteSupplierAction, createSupplierBillAction, approveChequeBillAction, rejectChequeBillAction } from './actions'
 import { createCategoryAction } from '../income-expenses/actions'
 import { toast } from 'react-hot-toast'
 import { formatCurrency, parseExpenseDescription, type SupplierBillDetails } from '@/lib/utils'
 import { downloadCsv } from '@/lib/exportCsv'
 import PrintableReport, { type PrintableReportHandle } from '@/components/admin/PrintableReport'
 import { useDateFormatter, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
-import SupplierPaymentFields, { EMPTY_SUPPLIER_PAYMENT, validateSupplierPayment, isUnderpaidSplit, underpaidSplitConfirmMessage, type SupplierPaymentValue } from '@/components/admin/SupplierPaymentFields'
+import SupplierPaymentFields, { EMPTY_SUPPLIER_PAYMENT, validateSupplierPayment, isUnderpaidSplit, underpaidSplitConfirmMessage, buildChequeDetailsFromSupplierPayment, type SupplierPaymentValue } from '@/components/admin/SupplierPaymentFields'
 import PayPartyModal, { type PayPartyResult } from '@/components/admin/PayPartyModal'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
@@ -270,6 +270,7 @@ export default function SuppliersLedgerManager({
                 bank_name: billPayment.payment_source !== 'cash' ? billPayment.bank_name.trim() : undefined,
                 cash_portion: billPayment.payment_source === 'cash_qr' ? (parseFloat(billPayment.cash_portion) || 0) : undefined,
                 qr_portion: billPayment.payment_source === 'cash_qr' ? (parseFloat(billPayment.qr_portion) || 0) : undefined,
+                cheque_details: billPayment.payment_source === 'cheque' ? buildChequeDetailsFromSupplierPayment(billPayment) : undefined,
             })
 
             if (res.error) {
@@ -289,8 +290,12 @@ export default function SuppliersLedgerManager({
                 setBillCategory('')
                 setBillPaidAmount('')
                 setBillPayment(EMPTY_SUPPLIER_PAYMENT)
-                toast.success('Bill logged successfully!')
-                if ('warning' in res && res.warning) toast.error(res.warning)
+                if ('pendingApproval' in res && res.pendingApproval) {
+                    toast.success('Bill logged. Cheque payment held pending manager approval.', { duration: 6000 })
+                } else {
+                    toast.success('Bill logged successfully!')
+                    if ('warning' in res && res.warning) toast.error(res.warning)
+                }
             }
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'Failed to record bill')
@@ -310,6 +315,60 @@ export default function SuppliersLedgerManager({
             const parsed = parseExpenseDescription(e.description)
             return { ...e, description: JSON.stringify({ ...parsed, paid_amount: settled.paid_amount }) }
         }))
+    }
+
+    // Bills currently holding a cheque payment awaiting manager approval —
+    // derived straight from the already-loaded list, no separate fetch needed.
+    const pendingChequeBills = useMemo(
+        () => expensesList.filter(e => parseExpenseDescription(e.description).cheque_status === 'pending_approval'),
+        [expensesList],
+    )
+    const [processingChequeId, setProcessingChequeId] = useState<string | null>(null)
+
+    const handleApproveCheque = async (expenseId: string) => {
+        setProcessingChequeId(expenseId)
+        try {
+            const res = await approveChequeBillAction(expenseId)
+            if (res.error) {
+                toast.error(res.error)
+                return
+            }
+            toast.success('Cheque approved and posted to the Day Book!')
+            if (res.warning) toast.error(res.warning)
+            const bill = expensesList.find(e => e.id === expenseId)
+            if (bill) {
+                const parsed = parseExpenseDescription(bill.description)
+                const approvedAmount = parsed.pending_cheque?.amount ?? 0
+                setExpensesList(prev => prev.map(e => e.id === expenseId
+                    ? { ...e, description: JSON.stringify({ ...parsed, paid_amount: (parsed.paid_amount ?? 0) + approvedAmount, cheque_status: 'approved', pending_cheque: undefined }) }
+                    : e))
+            }
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Failed to approve cheque')
+        } finally {
+            setProcessingChequeId(null)
+        }
+    }
+
+    const handleRejectCheque = async (expenseId: string) => {
+        setProcessingChequeId(expenseId)
+        try {
+            const res = await rejectChequeBillAction(expenseId)
+            if (res.error) {
+                toast.error(res.error)
+                return
+            }
+            toast.success('Cheque rejected — bill remains due for that amount.')
+            setExpensesList(prev => prev.map(e => {
+                if (e.id !== expenseId) return e
+                const parsed = parseExpenseDescription(e.description)
+                return { ...e, description: JSON.stringify({ ...parsed, cheque_status: 'rejected', pending_cheque: undefined }) }
+            }))
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Failed to reject cheque')
+        } finally {
+            setProcessingChequeId(null)
+        }
     }
 
     // Search query filtering
@@ -435,6 +494,54 @@ export default function SuppliersLedgerManager({
                         </button>
                     </div>
                 </div>
+
+                {/* Pending Cheque Approvals — hidden entirely when empty */}
+                {pendingChequeBills.length > 0 && (
+                    <div className="bg-purple-50 border border-purple-200 rounded-2xl shadow-sm overflow-hidden">
+                        <div className="p-4 border-b border-purple-200 bg-purple-100/50">
+                            <p className="text-xs font-black text-purple-800 uppercase tracking-wider">
+                                Pending Cheque Approvals ({pendingChequeBills.length})
+                            </p>
+                            <p className="text-[11px] text-purple-700 mt-0.5">
+                                These bills&apos; cheque payments aren&apos;t reflected in any balance until approved.
+                            </p>
+                        </div>
+                        <div className="divide-y divide-purple-100">
+                            {pendingChequeBills.map(bill => {
+                                const parsed = parseExpenseDescription(bill.description)
+                                const pending = parsed.pending_cheque
+                                const isProcessing = processingChequeId === bill.id
+                                return (
+                                    <div key={bill.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-bold text-ink truncate">{bill.vendor_name} — {parsed.text_desc}</p>
+                                            <p className="text-[11px] text-ink-subtle mt-0.5">
+                                                Rs. {formatCurrency(pending?.amount ?? 0)} · Cheque #{pending?.cheque_details.cheque_number} · {pending?.cheque_details.bank_cheque} · Dated {pending?.cheque_details.cheque_date} · Given by {pending?.cheque_details.written_name}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <button
+                                                onClick={() => handleRejectCheque(bill.id)}
+                                                disabled={isProcessing}
+                                                className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-hairline text-ink-subtle hover:bg-surface-muted transition disabled:opacity-50"
+                                            >
+                                                Reject
+                                            </button>
+                                            <button
+                                                onClick={() => handleApproveCheque(bill.id)}
+                                                disabled={isProcessing}
+                                                className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-purple-600 hover:bg-purple-700 text-white transition disabled:opacity-50 flex items-center gap-1.5"
+                                            >
+                                                {isProcessing ? <Loader2 size={12} className="animate-spin" /> : null}
+                                                Approve
+                                            </button>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </div>
+                )}
 
                 {/* Directory table is always full width for spacious listing */}
                 <div className="bg-surface border border-hairline rounded-2xl shadow-sm overflow-hidden">

@@ -10,6 +10,14 @@ export interface SupplierPaymentValue {
     bank_name: string
     cash_portion: string
     qr_portion: string
+    // Only meaningful when payment_source === 'cheque' — a cheque payment is
+    // held pending manager approval server-side, so it never affects a
+    // balance until these details are captured and the cheque is approved.
+    cheque_written_name: string
+    cheque_bank: string
+    cheque_number: string
+    cheque_date: string
+    cheque_type: 'ac_payee' | 'normal'
 }
 
 export const EMPTY_SUPPLIER_PAYMENT: SupplierPaymentValue = {
@@ -17,6 +25,11 @@ export const EMPTY_SUPPLIER_PAYMENT: SupplierPaymentValue = {
     bank_name: '',
     cash_portion: '',
     qr_portion: '',
+    cheque_written_name: '',
+    cheque_bank: '',
+    cheque_number: '',
+    cheque_date: '',
+    cheque_type: 'ac_payee',
 }
 
 // Used as the bill's vendor_name whenever a purchase is logged with no named
@@ -40,12 +53,30 @@ export function validateSupplierPayment(value: SupplierPaymentValue, paidAmount:
     if ((value.payment_source === 'qr' || value.payment_source === 'cheque') && !value.bank_name.trim()) {
         return 'Select a bank account for this payment method.'
     }
+    if (value.payment_source === 'cheque') {
+        if (!value.cheque_written_name.trim()) return 'Cheque written name is required.'
+        if (!value.cheque_bank.trim()) return 'Issuer bank is required.'
+        if (!value.cheque_number.trim()) return 'Cheque number is required.'
+        if (!value.cheque_date.trim()) return 'Cheque date is required.'
+    }
     if (value.payment_source === 'cash_qr') {
         if (!value.bank_name.trim()) return 'Select a bank account for the QR portion.'
         const sum = (parseFloat(value.cash_portion) || 0) + (parseFloat(value.qr_portion) || 0)
         if (Math.abs(sum - paidAmount) > 0.01) return 'Cash + QR amounts must add up to the amount paid.'
     }
     return null
+}
+
+// Builds the cheque_details payload the backend actions expect, from this
+// component's raw string state.
+export function buildChequeDetailsFromSupplierPayment(value: SupplierPaymentValue) {
+    return {
+        written_name: value.cheque_written_name.trim(),
+        bank_cheque: value.cheque_bank.trim(),
+        cheque_number: value.cheque_number.trim(),
+        cheque_date: value.cheque_date.trim(),
+        cheque_type: value.cheque_type,
+    }
 }
 
 // True when a Cash+QR split leaves part of the bill unpaid — callers should
@@ -169,6 +200,74 @@ export default function SupplierPaymentFields({ value, onChange, bankAccounts, p
                         ))}
                         {bankAccounts.length === 0 && <option value="General Bank">General Bank</option>}
                     </Select>
+                </div>
+            )}
+
+            {value.payment_source === 'cheque' && (
+                <div className="space-y-3 border-t border-hairline pt-3 animate-in slide-in-from-top-1 duration-150">
+                    <p className="text-[10px] font-black text-purple-700 uppercase tracking-wider">
+                        Cheque Specifications — held pending manager approval
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Written Name (Given By)</label>
+                            <input
+                                type="text"
+                                value={value.cheque_written_name}
+                                onChange={e => onChange({ ...value, cheque_written_name: e.target.value })}
+                                className="w-full px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Issuer Bank</label>
+                            <input
+                                type="text"
+                                placeholder="Which bank the cheque is drawn on"
+                                value={value.cheque_bank}
+                                onChange={e => onChange({ ...value, cheque_bank: e.target.value })}
+                                className="w-full px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                            />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Cheque Number</label>
+                            <input
+                                type="text"
+                                value={value.cheque_number}
+                                onChange={e => onChange({ ...value, cheque_number: e.target.value })}
+                                className="w-full px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Cheque Date</label>
+                            <input
+                                type="date"
+                                value={value.cheque_date}
+                                onChange={e => onChange({ ...value, cheque_date: e.target.value })}
+                                className="w-full px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Cheque Type</label>
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => onChange({ ...value, cheque_type: 'ac_payee' })}
+                                className={`py-2 rounded-xl text-[10px] font-black uppercase tracking-wider border transition ${value.cheque_type === 'ac_payee' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-surface border-hairline text-ink-subtle hover:bg-surface-muted'}`}
+                            >
+                                A/C Payee (Company)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onChange({ ...value, cheque_type: 'normal' })}
+                                className={`py-2 rounded-xl text-[10px] font-black uppercase tracking-wider border transition ${value.cheque_type === 'normal' ? 'bg-amber-50 border-amber-500 text-amber-700' : 'bg-surface border-hairline text-ink-subtle hover:bg-surface-muted'}`}
+                            >
+                                Normal Person Cheque
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
