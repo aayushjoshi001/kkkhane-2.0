@@ -13,9 +13,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const SRC = path.join(__dirname, '..', 'public', 'brand', 'kkkhane-k-logo.jpg')
 const OUT = path.join(__dirname, '..', 'src', 'lib', 'print', 'logoRaster.ts')
 
-// 192px is divisible by 8 (24 bytes/row) and prints at ~24mm wide on 80mm
-// paper at 203dpi — a sensible footer size.
-const SIZE = 192
+// 64px is divisible by 8 (8 bytes/row) and prints at ~8mm wide on 80mm
+// paper at 203dpi — a compact footer mark that wastes minimal paper.
+const SIZE = 64
 const WIDTH_BYTES = SIZE / 8
 
 // The logo is a solid-color mark (orange circle, white "K" cutout) on a

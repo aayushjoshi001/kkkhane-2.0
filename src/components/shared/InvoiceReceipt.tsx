@@ -48,9 +48,10 @@ export default function InvoiceReceipt({
                     }
                     .print-container, .print-container * {
                         visibility: visible !important;
+                        color: #000 !important;
                     }
                     .print-container {
-                        position: absolute !important;
+                        position: fixed !important;
                         left: 0 !important;
                         top: 0 !important;
                         width: 72mm !important; /* standard safe area for 80mm roll */
@@ -76,12 +77,12 @@ export default function InvoiceReceipt({
             <div className="text-center space-y-0.5">
                 <h2 className="text-sm font-black tracking-tight text-black uppercase">{restaurantName}</h2>
                 {locationLine ? (
-                    <p className="text-[10px] text-gray-600">{locationLine}</p>
+                    <p className="text-[10px]" style={{ color: '#000' }}>{locationLine}</p>
                 ) : null}
                 <div className="border-t border-dashed border-black my-1.5" />
                 <p className="font-bold text-[11px] uppercase tracking-wider">*** INVOICE ***</p>
-                <p className="text-[9px] text-gray-500 font-mono">No: INV-{invoice.id.slice(0, 8).toUpperCase()}</p>
-                <p className="text-[9px] text-gray-500 font-mono">Date: {formatDate ? formatDate(now) : now.toLocaleString()}</p>
+                <p className="text-[9px] font-mono" style={{ color: '#000' }}>No: INV-{invoice.id.slice(0, 8).toUpperCase()}</p>
+                <p className="text-[9px] font-mono" style={{ color: '#000' }}>Date: {formatDate ? formatDate(now) : now.toLocaleString()}</p>
             </div>
 
             <div className="border-t border-dashed border-black my-1.5" />
@@ -169,13 +170,13 @@ export default function InvoiceReceipt({
             {/* Invoice Total + Advance + Balance */}
             <div className="space-y-0.5 text-[10px]">
                 {!!invoice.extraHourCharge && invoice.extraHourCharge > 0 && (
-                    <div className="flex justify-between text-gray-600">
+                    <div className="flex justify-between" style={{ color: '#000' }}>
                         <span>Extra Hour Charge</span>
                         <span className="tabular-nums">{money(invoice.extraHourCharge)}</span>
                     </div>
                 )}
                 {!!invoice.discountAmount && invoice.discountAmount > 0 && (
-                    <div className="flex justify-between text-gray-600">
+                    <div className="flex justify-between" style={{ color: '#000' }}>
                         <span>Total Discount</span>
                         <span className="tabular-nums">- {money(invoice.discountAmount)}</span>
                     </div>
@@ -185,7 +186,7 @@ export default function InvoiceReceipt({
                     <span className="tabular-nums">{money(invoice.total)}</span>
                 </div>
                 {!!invoice.advancePaid && invoice.advancePaid > 0 && (
-                    <div className="flex justify-between text-gray-600">
+                    <div className="flex justify-between" style={{ color: '#000' }}>
                         <span>Advance Paid ({advanceMethodLabel(invoice.advanceMethod)})</span>
                         <span className="tabular-nums">- {money(invoice.advancePaid)}</span>
                     </div>
@@ -211,16 +212,16 @@ export default function InvoiceReceipt({
                     </div>
                     {invoice.paymentMethod === 'both' && (
                         <>
-                            <div className="flex justify-between text-gray-600">
+                            <div className="flex justify-between" style={{ color: '#000' }}>
                                 <span>· Cash</span>
                                 <span className="tabular-nums">{money(invoice.cashPaid ?? 0)}</span>
                             </div>
-                            <div className="flex justify-between text-gray-600">
+                            <div className="flex justify-between" style={{ color: '#000' }}>
                                 <span>· QR / Digital</span>
                                 <span className="tabular-nums">{money(invoice.qrPaid ?? 0)}</span>
                             </div>
                             {!!invoice.creditPaid && (
-                                <div className="flex justify-between text-gray-600">
+                                <div className="flex justify-between" style={{ color: '#000' }}>
                                     <span>· On credit</span>
                                     <span className="tabular-nums">{money(invoice.creditPaid)}</span>
                                 </div>
@@ -228,7 +229,7 @@ export default function InvoiceReceipt({
                         </>
                     )}
                     {invoice.paymentMethod === 'credit' && !!invoice.creditPaid && (
-                        <div className="flex justify-between text-gray-600">
+                        <div className="flex justify-between" style={{ color: '#000' }}>
                             <span>· On credit</span>
                             <span className="tabular-nums">{money(invoice.creditPaid)}</span>
                         </div>
@@ -239,7 +240,7 @@ export default function InvoiceReceipt({
             <div className="border-t border-dashed border-black my-1.5" />
 
             {/* Thermal Printer Welcome Greeting */}
-            <div className="text-center text-[9px] text-gray-500 uppercase tracking-widest leading-normal pt-1 pb-2">
+            <div className="text-center text-[9px] uppercase tracking-widest leading-normal pt-1 pb-2" style={{ color: '#000' }}>
                 <p>*** THANK YOU! ***</p>
                 <p>WE HOPE TO SEE YOU AGAIN</p>
             </div>
@@ -247,8 +248,8 @@ export default function InvoiceReceipt({
             {/* Brand footer — mirrors the ESC/POS templates' appendBrandFooter */}
             <div className="text-center pt-1 pb-1 flex flex-col items-center gap-1">
                 {/* eslint-disable-next-line @next/next/no-img-element -- print-only receipt, next/image adds no value here */}
-                <img src="/brand/kkkhane-k-logo.jpg" alt="" className="w-6 h-6" />
-                <p className="text-[8px] text-gray-500 uppercase tracking-widest">Powered by KKKhane</p>
+                <img src="/brand/kkkhane-k-logo.jpg" alt="" className="w-4 h-4" />
+                <p className="text-[8px] uppercase tracking-widest" style={{ color: '#000' }}>Powered by KKKhane</p>
             </div>
         </div>
     )

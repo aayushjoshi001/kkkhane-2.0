@@ -496,12 +496,20 @@ export default function CashierClient({
     const getRoomQrOrders = (room: any) => {
         if (!room) return []
         if (filteredRoomOrders.length > 0) {
-            return filteredRoomOrders.map(item => ({
-                name: getItemDisplayName(item),
-                quantity: item.quantity || 0,
-                unitPrice: Number(item.unit_price ?? 0),
-                status: 'active'
-            }))
+            // Merge duplicate items (same dish ordered at different times)
+            const mergeMap = new Map<string, { name: string; quantity: number; unitPrice: number; status: string }>()
+            for (const item of filteredRoomOrders) {
+                const name = getItemDisplayName(item)
+                const unitPrice = Number(item.unit_price ?? 0)
+                const key = `${name}__${unitPrice}`
+                const existing = mergeMap.get(key)
+                if (existing) {
+                    existing.quantity += item.quantity || 0
+                } else {
+                    mergeMap.set(key, { name, quantity: item.quantity || 0, unitPrice, status: 'active' })
+                }
+            }
+            return Array.from(mergeMap.values())
         }
         
         // Fallback for immediate UI responsiveness before API returns
@@ -521,18 +529,27 @@ export default function CashierClient({
             uniqueOrdersMap.set(o.id, o)
         }
         const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
+        const mergeMap = new Map<string, { name: string; quantity: number; unitPrice: number; status: string }>()
         for (const order of Array.from(uniqueOrdersMap.values())) {
             const orderItems = order.order_items || []
             for (const item of orderItems) {
-                items.push({
-                    name: getItemDisplayName(item),
-                    quantity: item.quantity || 0,
-                    unitPrice: Number(item.unit_price ?? 0),
-                    status: item.status || order.status || 'unknown'
-                })
+                const name = getItemDisplayName(item)
+                const unitPrice = Number(item.unit_price ?? 0)
+                const key = `${name}__${unitPrice}`
+                const existing = mergeMap.get(key)
+                if (existing) {
+                    existing.quantity += item.quantity || 0
+                } else {
+                    mergeMap.set(key, {
+                        name,
+                        quantity: item.quantity || 0,
+                        unitPrice,
+                        status: item.status || order.status || 'unknown'
+                    })
+                }
             }
         }
-        return items
+        return Array.from(mergeMap.values())
     }
 
     const stayCost = selectedBillingRoom && billingStayBooking ? calculateStayCost(selectedBillingRoom, billingStayBooking) : 0
@@ -638,18 +655,26 @@ export default function CashierClient({
             const nights = calculateNights(booking.check_in, booking.check_out)
             const stayCost = price * nights
 
-            const sessionOrders = filteredRoomOrders.map(item => ({
-                name: getItemDisplayName(item),
-                quantity: item.quantity || 0,
-                unitPrice: Number(item.unit_price ?? 0)
-            }))
+            // Merge duplicate items (same dish ordered at different times in the same session)
+            const mergeFn = (rawItems: any[]) => {
+                const map = new Map<string, { name: string; quantity: number; unitPrice: number }>()
+                for (const item of rawItems) {
+                    const name = getItemDisplayName(item)
+                    const unitPrice = Number(item.unit_price ?? 0)
+                    const key = `${name}__${unitPrice}`
+                    const existing = map.get(key)
+                    if (existing) {
+                        existing.quantity += item.quantity || 0
+                    } else {
+                        map.set(key, { name, quantity: item.quantity || 0, unitPrice })
+                    }
+                }
+                return Array.from(map.values())
+            }
+            const sessionOrders = mergeFn(filteredRoomOrders)
             const qrOrdersTotal = filteredRoomOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
 
-            const linkedOrders = filteredLinkedOrders.map(item => ({
-                name: getItemDisplayName(item),
-                quantity: item.quantity || 0,
-                unitPrice: Number(item.unit_price ?? 0)
-            }))
+            const linkedOrders = mergeFn(filteredLinkedOrders)
             const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
             const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
             const total = calculateGrandTotal(room, booking)
