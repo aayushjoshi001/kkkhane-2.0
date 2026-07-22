@@ -217,6 +217,26 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const overpaid = paymentMethod === 'split' && (resolvedCash + resolvedQr) > balanceDue + 0.01
     const creditFieldsInvalid = resolvedCredit > 0.01 && (!creditCustomerName.trim() || !creditCustomerPhone.trim())
 
+    // Merge duplicate line items (same dish ordered at different times in the same
+    // session) into a single row with summed quantity — prevents the same item
+    // appearing twice on the printed bill (e.g. "Chili Momo Veg x1" twice instead
+    // of "Chili Momo Veg x2").
+    const mergeLineItems = (items: typeof allServiceOrderItems) => {
+        const map = new Map<string, { name: string; quantity: number; unitPrice: number }>()
+        for (const item of items) {
+            const name = getItemDisplayName(item)
+            const unitPrice = Number(item.unit_price)
+            const key = `${name}__${unitPrice}`
+            const existing = map.get(key)
+            if (existing) {
+                existing.quantity += item.quantity
+            } else {
+                map.set(key, { name, quantity: item.quantity, unitPrice })
+            }
+        }
+        return Array.from(map.values())
+    }
+
     // Same shape the Cashier POS invoice preview uses, so the printed receipt
     // is identical regardless of which screen settled the bill.
     const invoiceData: ActiveInvoice | null = booking ? {
@@ -229,11 +249,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         nights: calculateNights(booking.check_in, booking.check_out),
         basePrice: room.room_types?.base_price || 0,
         stayCost: stayCost,
-        qrOrders: allServiceOrderItems.map(item => ({
-            name: getItemDisplayName(item),
-            quantity: item.quantity,
-            unitPrice: Number(item.unit_price),
-        })),
+        qrOrders: mergeLineItems(allServiceOrderItems),
         qrOrdersTotal,
         manualCharges: charges.map(c => ({ id: c.id, description: c.description, amount: Number(c.amount) })),
         manualChargesTotal,
