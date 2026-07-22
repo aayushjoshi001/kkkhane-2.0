@@ -240,23 +240,6 @@ export async function createVoucherAction(input: {
         return { error: 'No active Day Book session is open. Please open Cash Book or Bank Book to start a session first.' }
     }
 
-    // Determine ownership type if Bank selected
-    let isPersonalAccount = false
-    let isAcPayeeAccount = false
-    if ((input.payment_mode === 'qr' || input.payment_mode === 'cheque' || input.payment_mode === 'bank') && input.bank_name) {
-        const { data: bankAcc } = await supabase
-            .from('bank_accounts')
-            .select('bank_name')
-            .eq('restaurant_id', user.restaurantId)
-            .ilike('name', input.bank_name.trim())
-            .maybeSingle()
-        if (bankAcc?.bank_name?.startsWith('personal:')) {
-            isPersonalAccount = true
-        } else if (bankAcc?.bank_name?.startsWith('company:') || bankAcc?.bank_name?.startsWith('ac_payee:')) {
-            isAcPayeeAccount = true
-        }
-    }
-
     // ── Generate sequential Voucher Number
     // Drawn from an atomic per (restaurant, date, prefix) counter. Counting
     // existing rows instead would hand two simultaneous submissions the same
@@ -277,17 +260,11 @@ export async function createVoucherAction(input: {
     const dateCompact = todayDateNst.replace(/-/g, '').substring(2)
     const voucherNumber = `${prefix}-${dateCompact}-${sequenceStr}`
 
-    // Cheque approval rules
-    // Receipt normal cheque OR Payment personal cheque requires manager approval
-    // If deposited to an A/C Payee account, it is approved immediately.
-    // Stock purchase cheques always require approval before they hit the
-    // bank ledger, regardless of account ownership type.
-    const needsApproval = input.payment_mode === 'cheque' &&
-        (input.category === 'stock'
-            ? true
-            : (input.voucher_type === 'receipt'
-                ? (isAcPayeeAccount ? false : input.cheque_details?.cheque_type === 'normal')
-                : isPersonalAccount))
+    // Cheque approval rule: a cheque isn't real money until the bank actually
+    // clears it — it may be post-dated by days — so no balance moves for any
+    // cheque (receipt or payment, any account, any category) until a manager
+    // approves it and confirms it's actually been drawn/cleared.
+    const needsApproval = input.payment_mode === 'cheque'
 
     const status = needsApproval ? 'pending_approval' : 'approved'
     const dbAmount = needsApproval ? 0.01 : input.amount // Place 0.01 placeholder to hold record without altering active balances

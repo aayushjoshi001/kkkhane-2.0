@@ -114,7 +114,15 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
             totalAmount: number
         }> = {}
 
-        const allOrders = [...active, ...unpaid].filter(o => o.status !== 'cancelled')
+        // Dedupe by id, preferring the `unpaid` copy on a clash — `active` and
+        // `unpaid` are two separately-updated realtime-patched lists, and a
+        // transient race between them (an order mid-transition landing in
+        // both at once) would otherwise render the same order.id twice and
+        // crash React on the duplicate key.
+        const byId = new Map<string, AnyOrder>()
+        for (const o of active) byId.set(o.id, o)
+        for (const o of unpaid) byId.set(o.id, o)
+        const allOrders = Array.from(byId.values()).filter(o => o.status !== 'cancelled')
 
         for (const order of allOrders) {
             let key = ''
