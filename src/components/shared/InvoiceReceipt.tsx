@@ -28,6 +28,14 @@ export default function InvoiceReceipt({
         .filter(Boolean)
         .join(' · ')
 
+    // Plain number formatter — no "Rs." prefix — for RATE and AMT columns
+    const num = (amount: number) =>
+        Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+    // Total Due = what's still left to pay after all payments received
+    const totalPaid = (invoice.cashPaid ?? 0) + (invoice.qrPaid ?? 0) + (invoice.advancePaid ?? 0)
+    const totalDue = Math.max(0, invoice.total - totalPaid)
+
     return (
         <div className={`bg-white text-black print-container font-mono text-[11px] ${className}`}>
             {/* CSS media print override for POS thermal printer */}
@@ -128,8 +136,8 @@ export default function InvoiceReceipt({
                         <div className="flex justify-between py-0.5">
                             <span className="w-1/2 text-left truncate">Room Stay ({invoice.nights}n)</span>
                             <span className="w-12 text-center">{invoice.nights}</span>
-                            <span className="w-16 text-right">{money(invoice.basePrice)}</span>
-                            <span className="w-16 text-right font-bold text-black">{money(invoice.stayCost)}</span>
+                            <span className="w-16 text-right">{num(invoice.basePrice)}</span>
+                            <span className="w-16 text-right font-bold text-black">{num(invoice.stayCost)}</span>
                         </div>
                     )}
 
@@ -138,8 +146,8 @@ export default function InvoiceReceipt({
                         <div key={c.id} className="flex justify-between py-0.5">
                             <span className="w-1/2 text-left truncate capitalize">{c.description}</span>
                             <span className="w-12 text-center">1</span>
-                            <span className="w-16 text-right">{money(c.amount)}</span>
-                            <span className="w-16 text-right font-bold text-black">{money(c.amount)}</span>
+                            <span className="w-16 text-right">{num(c.amount)}</span>
+                            <span className="w-16 text-right font-bold text-black">{num(c.amount)}</span>
                         </div>
                     ))}
 
@@ -148,8 +156,8 @@ export default function InvoiceReceipt({
                         <div key={idx} className="flex justify-between py-0.5">
                             <span className="w-1/2 text-left truncate">{invoice.type === 'room' ? `Food: ${item.name}` : item.name}</span>
                             <span className="w-12 text-center">{item.quantity}</span>
-                            <span className="w-16 text-right">{money(item.unitPrice)}</span>
-                            <span className="w-16 text-right font-bold text-black">{money(item.unitPrice * item.quantity)}</span>
+                            <span className="w-16 text-right">{num(item.unitPrice)}</span>
+                            <span className="w-16 text-right font-bold text-black">{num(item.unitPrice * item.quantity)}</span>
                         </div>
                     ))}
 
@@ -158,8 +166,8 @@ export default function InvoiceReceipt({
                         <div key={idx} className="flex justify-between py-0.5">
                             <span className="w-1/2 text-left truncate font-medium">Dine: {item.name}</span>
                             <span className="w-12 text-center">{item.quantity}</span>
-                            <span className="w-16 text-right">{money(item.unitPrice)}</span>
-                            <span className="w-16 text-right font-bold text-black">{money(item.unitPrice * item.quantity)}</span>
+                            <span className="w-16 text-right">{num(item.unitPrice)}</span>
+                            <span className="w-16 text-right font-bold text-black">{num(item.unitPrice * item.quantity)}</span>
                         </div>
                     ))}
                 </div>
@@ -181,8 +189,8 @@ export default function InvoiceReceipt({
                         <span className="tabular-nums">- {money(invoice.discountAmount)}</span>
                     </div>
                 )}
-                <div className="flex justify-between font-bold">
-                    <span className="uppercase">Grand Total</span>
+                <div className="flex justify-between font-black text-[13px] border-t border-dashed border-black pt-1 mt-0.5">
+                    <span className="uppercase">GRAND TOTAL</span>
                     <span className="tabular-nums">{money(invoice.total)}</span>
                 </div>
                 {!!invoice.advancePaid && invoice.advancePaid > 0 && (
@@ -193,9 +201,9 @@ export default function InvoiceReceipt({
                 )}
             </div>
 
-            <div className="flex justify-between items-center text-xs font-black border-t border-dashed border-black pt-1 mt-1">
-                <span className="uppercase">{invoice.advancePaid && invoice.advancePaid > 0 ? 'BALANCE DUE' : 'TOTAL DUE'}</span>
-                <span className="text-sm font-black text-black tabular-nums">{money(invoice.balanceDue ?? invoice.total)}</span>
+            <div className="flex justify-between items-center text-xs font-black border-t-2 border-black pt-1 mt-1">
+                <span className="uppercase">TOTAL DUE</span>
+                <span className="text-sm font-black text-black tabular-nums">{money(totalDue)}</span>
             </div>
 
             {/* Payment Method on receipt */}
