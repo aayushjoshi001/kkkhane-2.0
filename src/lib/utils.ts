@@ -140,6 +140,15 @@ export interface SupplierBillDetails {
     // was cash vs QR, since that one payment splits across two Day Book entries.
     cash_portion?: number
     qr_portion?: number
+    // Only present when a cheque payment has ever been recorded on this bill —
+    // 'pending_approval' means paid_amount above excludes it (still due) until
+    // a manager approves it via approveChequeBillAction/rejectChequeBillAction.
+    cheque_status?: 'pending_approval' | 'approved' | 'rejected'
+    pending_cheque?: {
+        amount: number
+        bank_name: string
+        cheque_details: { written_name: string; bank_cheque: string; cheque_number: string; cheque_date: string; cheque_type: 'ac_payee' | 'normal' }
+    }
 }
 
 /**

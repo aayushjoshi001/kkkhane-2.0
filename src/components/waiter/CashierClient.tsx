@@ -1231,7 +1231,10 @@ export default function CashierClient({
             // order just never shows up anywhere in Billing/Orders, with no sign why.
             if (error) console.error('[Cashier orders realtime] INSERT fetch failed:', error)
             if (data) {
-                setActive(prev => [...prev, data as unknown as ActiveOrder])
+                // Guard against a duplicate/replayed INSERT event (reconnects,
+                // redelivery) adding the same order twice — React then throws
+                // on the duplicate order.id key everywhere this list renders.
+                setActive(prev => prev.some(o => o.id === data.id) ? prev : [...prev, data as unknown as ActiveOrder])
 
                 // Auto-print KOT/BOT if KOT printing is enabled — items still
                 // awaiting cashier confirmation (QR self-orders) are excluded;
@@ -1269,7 +1272,11 @@ export default function CashierClient({
                     .single()
                 if (error) console.error('[Cashier orders realtime] UPDATE (unpaid) fetch failed:', error)
                 if (data) {
-                    setUnpaid(prev => [...prev, data as unknown as UnpaidOrder])
+                    // Same duplicate-event guard as the INSERT branch above —
+                    // a second UPDATE landing on the same order (e.g. a
+                    // follow-up write setting delivered_at) would otherwise
+                    // push a second copy of it into `unpaid`.
+                    setUnpaid(prev => prev.some(o => o.id === data.id) ? prev : [...prev, data as unknown as UnpaidOrder])
                 }
                 setActive(prev => prev.filter(o => o.id !== id))
             } else if (payment_status === 'paid' || status === 'cancelled') {
