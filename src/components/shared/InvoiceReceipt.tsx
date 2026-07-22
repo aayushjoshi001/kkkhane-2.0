@@ -199,6 +199,18 @@ export default function InvoiceReceipt({
                         <span className="tabular-nums">- {money(invoice.advancePaid)}</span>
                     </div>
                 )}
+                {!!invoice.cashPaid && invoice.cashPaid > 0 && (
+                    <div className="flex justify-between" style={{ color: '#000' }}>
+                        <span>Cash Paid</span>
+                        <span className="tabular-nums">- {money(invoice.cashPaid)}</span>
+                    </div>
+                )}
+                {!!invoice.qrPaid && invoice.qrPaid > 0 && (
+                    <div className="flex justify-between" style={{ color: '#000' }}>
+                        <span>QR / Digital Paid</span>
+                        <span className="tabular-nums">- {money(invoice.qrPaid)}</span>
+                    </div>
+                )}
             </div>
 
             <div className="flex justify-between items-center text-xs font-black border-t-2 border-black pt-1 mt-1">
