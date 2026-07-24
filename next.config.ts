@@ -136,7 +136,20 @@ const nextConfig: NextConfig = {
               // browser fetches the host directly rather than via /_next/image —
               // 'self' doesn't cover it and it must be named here or every nav /
               // sidebar avatar renders as a broken-image icon.
-              ["img-src 'self' data: blob: https://*.supabase.co https://images.unsplash.com https://*.tile.openstreetmap.org https://api.dicebear.com", ...(devSupabaseUrl ? [devSupabaseUrl.origin] : [])].join(' '),
+              //
+              // *.googleusercontent.com is where Google serves OAuth profile
+              // photos, which is what `users.avatar_url` holds for everyone who
+              // signed in with Google — in practice every stored avatar. It was
+              // never listed here, so those photos were blocked and each one fell
+              // back to the initial-letter placeholder in the sidebar, the nav and
+              // the profile page.
+              //
+              // Note this is not only about SVGs any more: `images.unoptimized`
+              // is on globally (see above — the Vercel optimizer quota is
+              // exhausted), so *every* next/image URL is fetched by the browser
+              // directly. Any image host the app renders has to appear here, not
+              // just the ones opting out of the optimizer individually.
+              ["img-src 'self' data: blob: https://*.supabase.co https://images.unsplash.com https://*.tile.openstreetmap.org https://api.dicebear.com https://*.googleusercontent.com", ...(devSupabaseUrl ? [devSupabaseUrl.origin] : [])].join(' '),
               // QZ Tray (thermal printer bridge) runs a local WebSocket server on the
               // till/kitchen device itself, port-scanning 8181-8185. It also connects
               // via the localhost.qz.io hostname (resolves to loopback) so a page
