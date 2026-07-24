@@ -11,11 +11,11 @@ import StickyBottomBar from '@/components/customer/StickyBottomBar'
 import PromoCodeInput from '@/components/customer/PromoCodeInput'
 import LoyaltyPanel from '@/components/customer/LoyaltyPanel'
 import SplitBillModal from '@/components/customer/SplitBillModal'
-import { useFeatures, useCurrency, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
-import { toNepaliDate } from '@/lib/nepaliDate'
+import { useFeatures, useCurrency } from '@/lib/contexts/FeatureContext'
 import { useParams } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import { playVoice } from '@/lib/voice'
+import { useDates } from '@/lib/contexts/CalendarContext'
 
 // Both bottom bars on this page sit above the fixed BottomNavbar (bottom-[88px])
 // and carry the same upward shadow — kept here so the two don't repeat it.
@@ -42,7 +42,7 @@ export default function CheckoutPageClient({ isHotelRoom = true }: { isHotelRoom
     const params = useParams<{ tableSlug: string }>()
     const money = useCurrency()
     const features = useFeatures()
-    const bsEnabled = useFeatureEnabled('bsDateEnabled')
+    const { formatDate } = useDates()
     const items = useHydratedStore(useCartStore, (s) => s.items)
     const sessionId = useHydratedStore(useCartStore, (s) => s.sessionId)
     const restaurantSlug = useHydratedStore(useCartStore, (s) => s.restaurantSlug)
@@ -199,11 +199,11 @@ export default function CheckoutPageClient({ isHotelRoom = true }: { isHotelRoom
                             <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-ink-muted">
                                 <div>
                                     <p className="text-[10px] font-bold text-ink-subtle uppercase">Check In</p>
-                                    <p>{bsEnabled ? toNepaliDate(new Date(stayBilling.checkIn), 'MMMM DD, YYYY', 'en') + ' BS' : new Date(stayBilling.checkIn).toLocaleDateString('en-US', { dateStyle: 'medium' })}</p>
+                                    <p>{formatDate(stayBilling.checkIn)}</p>
                                 </div>
                                 <div className="text-right">
                                     <p className="text-[10px] font-bold text-ink-subtle uppercase">Check Out</p>
-                                    <p>{bsEnabled ? toNepaliDate(new Date(stayBilling.checkOut), 'MMMM DD, YYYY', 'en') + ' BS' : new Date(stayBilling.checkOut).toLocaleDateString('en-US', { dateStyle: 'medium' })}</p>
+                                    <p>{formatDate(stayBilling.checkOut)}</p>
                                 </div>
                             </div>
                         </div>

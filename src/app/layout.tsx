@@ -5,6 +5,9 @@ import type { Viewport, Metadata } from 'next'
 import { createAdminClient } from '@/lib/supabase/server'
 import { unstable_cache } from 'next/cache'
 import { SerwistProvider } from '@serwist/turbopack/react'
+import { cookies } from 'next/headers'
+import { CalendarProvider } from '@/lib/contexts/CalendarContext'
+import { CALENDAR_COOKIE, parseCalendar } from '@/lib/calendar'
 import PwaInstallPrompt from '@/components/shared/PwaInstallPrompt'
 import Script from 'next/script'
 import './globals.css'
@@ -132,6 +135,10 @@ export default async function RootLayout({
   children: React.ReactNode
 }) {
   const theme = await getThemeConfig()
+  // Read here, in the server render, so server-rendered dates (dashboard,
+  // reports, ledgers) already use the right calendar and the client hydrates
+  // to identical text.
+  const calendar = parseCalendar((await cookies()).get(CALENDAR_COOKIE)?.value)
 
   return (
     <html lang="en" className="scroll-smooth" suppressHydrationWarning>
@@ -146,6 +153,7 @@ export default async function RootLayout({
         bg-canvas text-ink
         antialiased min-h-screen flex flex-col
       `}>
+        <CalendarProvider initial={calendar}>
         <SerwistProvider
           swUrl="/serwist/sw.js"
           disable={process.env.NODE_ENV === 'development'}
@@ -206,6 +214,7 @@ export default async function RootLayout({
           }}
         />
         <ConfirmModal />
+        </CalendarProvider>
       </body>
     </html>
   )

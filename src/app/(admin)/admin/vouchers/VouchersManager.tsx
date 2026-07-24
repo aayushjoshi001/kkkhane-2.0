@@ -82,7 +82,6 @@ export default function VouchersManager({
     const { confirm } = useConfirmStore()
     const [entriesList, setEntriesList] = useState<RawVoucherEntry[]>(initialEntries)
     const formatDate = useDateFormatter()
-    const bsEnabled = useFeatureEnabled('bsDateEnabled')
 
     // Session opening states
     const [openingSession, setOpeningSession] = useState(false)
@@ -1166,7 +1165,7 @@ export default function VouchersManager({
             )}
 
             {printVoucher && (
-                <VoucherPrintSlip voucher={printVoucher} bsEnabled={bsEnabled} onClose={() => setPrintVoucher(null)} />
+                <VoucherPrintSlip voucher={printVoucher} onClose={() => setPrintVoucher(null)} />
             )}
 
             {/* Delete voucher — requires a reason, same pattern as refunds

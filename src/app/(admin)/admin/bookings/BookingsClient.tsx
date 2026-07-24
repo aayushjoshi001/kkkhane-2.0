@@ -8,8 +8,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import RoomBillingModal, { type BillingTable, type BillingOrder } from '@/components/admin/RoomBillingModal'
 import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import Select from '@/components/ui/Select'
-import { toNepaliDate } from '@/lib/nepaliDate'
-import { formatDateShort } from '@/lib/utils'
+import { useDates } from '@/lib/contexts/CalendarContext'
 
 interface BookingsClientProps {
     initialBookings: Booking[]
@@ -43,7 +42,7 @@ export default function BookingsClient({ initialBookings, restaurantName, tables
     }, [deepLinkedId, bookings])
 
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
-    const bsEnabled = useFeatureEnabled('bsDateEnabled')
+    const { formatDate } = useDates()
 
     // Re-sync when the server sends fresh bookings (render-phase adjust,
     // see react.dev "You Might Not Need an Effect")
@@ -154,14 +153,8 @@ export default function BookingsClient({ initialBookings, restaurantName, tables
                                     const roomNum = b.rooms?.room_number || '—'
                                     const checkInDate = new Date(b.check_in)
                                     const checkOutDate = new Date(b.check_out)
-                                    const checkInAd = formatDateShort(checkInDate, { withYear: true })
-                                    const checkOutAd = formatDateShort(checkOutDate, { withYear: true })
-                                    const checkInStr = bsEnabled 
-                                        ? `${checkInAd} (${toNepaliDate(checkInDate, 'MMMM DD, YYYY', 'en')} BS)`
-                                        : checkInAd
-                                    const checkOutStr = bsEnabled
-                                        ? `${checkOutAd} (${toNepaliDate(checkOutDate, 'MMMM DD, YYYY', 'en')} BS)`
-                                        : checkOutAd
+                                    const checkInStr = formatDate(checkInDate)
+                                    const checkOutStr = formatDate(checkOutDate)
                                     const total = b.total_amount || 0.00
                                     const paid = b.paid_amount || 0.00
                                     const balance = total - paid

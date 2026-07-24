@@ -24,7 +24,7 @@ import type { BankAccount, ExpenseCategory, Supplier, Session } from '@/types/da
 import QuickOrderModal from './QuickOrderModal'
 
 
-import { formatDateTime, calculateNights, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
+import { calculateNights, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 
 type OrderItem = {
@@ -78,6 +78,7 @@ import CashierTableManager, { type TableWithSession } from './CashierTableManage
 import CashierRoomManager from './CashierRoomManager'
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import Select from '@/components/ui/Select'
+import { useDates } from '@/lib/contexts/CalendarContext'
 
 interface Props {
     restaurantId: string
@@ -149,7 +150,7 @@ export default function CashierClient({
     const showInvoiceEnabled = useFeatureEnabled('showInvoiceEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
-    const bsEnabled = useFeatureEnabled('bsDateEnabled')
+    const { formatDateTime, calendar } = useDates()
     const { print: printInvoice } = usePrinter('invoice')
     const { print: printKot } = usePrinter('kot')
     const { print: printBot } = usePrinter('bot')
@@ -1141,7 +1142,7 @@ export default function CashierClient({
     // we fall back to the browser print dialog for driver-based printers.
     const handlePrintBill = async () => {
         if (!activeInvoice) return
-        const result = await printInvoice(buildInvoiceTicket(activeInvoice, money, restaurantName, restaurantAddress, restaurantPhone))
+        const result = await printInvoice(buildInvoiceTicket(activeInvoice, money, restaurantName, restaurantAddress, restaurantPhone, calendar))
         if (!result.ok) {
             toast.error(
                 result.status === 'no-printer-selected'
@@ -2040,8 +2041,8 @@ export default function CashierClient({
                                     </div>
                                     <div className="space-y-1 text-right border-l border-hairline pl-4">
                                         <p className="text-[10px] font-bold text-ink-subtle uppercase">Stay schedule</p>
-                                        <p className="font-semibold text-ink-muted">In: {formatDateTime(billingStayBooking.check_in, bsEnabled)}</p>
-                                        <p className="font-semibold text-ink-muted">Out: {formatDateTime(billingStayBooking.check_out, bsEnabled)}</p>
+                                        <p className="font-semibold text-ink-muted">In: {formatDateTime(billingStayBooking.check_in)}</p>
+                                        <p className="font-semibold text-ink-muted">Out: {formatDateTime(billingStayBooking.check_out)}</p>
                                         {isExceeded && (
                                             <p className="text-[9px] text-rose-600 font-bold mt-1">⚠ Exceeded by {extraHours} hr(s)</p>
                                         )}

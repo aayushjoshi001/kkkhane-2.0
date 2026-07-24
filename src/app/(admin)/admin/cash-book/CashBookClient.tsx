@@ -16,6 +16,7 @@ import { toNepaliDate } from '@/lib/nepaliDate'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import { orderCategoriesForDisplay, findMainCategory, buildDescriptionWithName } from '@/lib/utils'
 import Select from '@/components/ui/Select'
+import { useDates } from '@/lib/contexts/CalendarContext'
 
 interface CashBookClientProps {
     initialSession: DayBookSession | null
@@ -386,23 +387,8 @@ export default function CashBookClient({
     }
 
     const isClosed = session?.status === 'closed'
-    const bsEnabled = useFeatureEnabled('bsDateEnabled')
-    const dateLabel = (() => {
-        const d = new Date(todayDate + 'T00:00:00')
-        const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-        const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-        const weekday = weekdays[d.getDay()]
-        const month = months[d.getMonth()]
-        const day = d.getDate()
-        const year = d.getFullYear()
-        const ad = `${weekday}, ${day} ${month} ${year}`
-        if (!bsEnabled) return ad
-        try {
-            return `${ad} (${toNepaliDate(d, 'MMMM DD, YYYY', 'en')} BS)`
-        } catch {
-            return ad
-        }
-    })()
+    const { formatDateLong } = useDates()
+    const dateLabel = formatDateLong(`${todayDate}T00:00:00`)
 
     return (
         <div className="space-y-6 pb-16 animate-fade-up">

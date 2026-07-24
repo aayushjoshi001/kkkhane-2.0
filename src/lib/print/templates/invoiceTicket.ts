@@ -7,6 +7,7 @@ import { EscPosBuilder, LINE_WIDTH } from '../escpos'
 import { advanceMethodLabel, formatInvoiceAddress } from '@/lib/utils'
 import type { AdvancePaymentMethod } from '@/types/database'
 import { appendBrandFooter } from './brandFooter'
+import { DEFAULT_CALENDAR, formatDateTime, type Calendar } from '@/lib/calendar'
 
 export interface InvoiceLineItem {
     name: string
@@ -59,7 +60,11 @@ export function buildInvoiceTicket(
     money: (amount: number) => string,
     restaurantName = 'KKHANE HOTEL & RESTAURANT',
     restaurantAddress = '',
-    restaurantPhone = ''
+    restaurantPhone = '',
+    // Printed invoices carry Bikram Sambat first, like the rest of the app. Not
+    // a hook — this builds raw ESC/POS bytes outside React — so the cashier's
+    // current choice is passed in from the component that triggers the print.
+    calendar: Calendar = DEFAULT_CALENDAR,
 ): Uint8Array {
     const b = new EscPosBuilder().init()
 
@@ -70,7 +75,7 @@ export function buildInvoiceTicket(
     }
     b.line('*** INVOICE ***')
     b.line(`No: INV-${invoice.id.slice(0, 8).toUpperCase()}`)
-    b.line(`Date: ${new Date().toLocaleString()}`)
+    b.line(`Date: ${formatDateTime(new Date(), calendar)}`)
     b.divider()
 
     b.align('left')

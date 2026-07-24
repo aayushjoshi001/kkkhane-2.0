@@ -9,6 +9,7 @@ import type { DayBookSession, DayBookEntry } from '@/types/database'
 import { downloadCsv } from '@/lib/exportCsv'
 import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { toNepaliDate } from '@/lib/nepaliDate'
+import { useDates } from '@/lib/contexts/CalendarContext'
 
 interface DayBookTotals {
     total_cash_in: number
@@ -93,23 +94,8 @@ const isSourceCash = (type: DayBookEntry['type']) => type === 'cash_in' || type 
 export default function DayBookClient({ session, entries, totals, todayDate }: DayBookClientProps) {
     const [ledgerTab, setLedgerTab] = useState<'in' | 'out'>('in')
 
-    const bsEnabled = useFeatureEnabled('bsDateEnabled')
-    const dateLabel = (() => {
-        const d = new Date(todayDate + 'T00:00:00')
-        const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-        const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-        const weekday = weekdays[d.getDay()]
-        const month = months[d.getMonth()]
-        const day = d.getDate()
-        const year = d.getFullYear()
-        const ad = `${weekday}, ${day} ${month} ${year}`
-        if (!bsEnabled) return ad
-        try {
-            return `${ad} (${toNepaliDate(d, 'MMMM DD, YYYY', 'en')} BS)`
-        } catch {
-            return ad
-        }
-    })()
+    const { formatDateLong } = useDates()
+    const dateLabel = formatDateLong(`${todayDate}T00:00:00`)
 
     const moneyInEntries  = entries.filter(e => e.type === 'cash_in' || e.type === 'bank_in')
     const moneyOutEntries = entries.filter(e => e.type === 'cash_out' || e.type === 'bank_out')

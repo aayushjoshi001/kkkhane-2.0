@@ -2,7 +2,8 @@
 
 import Modal from '@/components/ui/Modal'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
-import { formatDateTime, getItemDisplayName } from '@/lib/utils'
+import { getItemDisplayName } from '@/lib/utils'
+import { useDates } from '@/lib/contexts/CalendarContext'
 import type { AdminOrder } from '@/app/(admin)/admin/orders/OrdersClient'
 import { Clock, MapPin, Phone, User, Utensils, X } from 'lucide-react'
 
@@ -59,6 +60,7 @@ export default function OrderDetailModal({
     onClose: () => void
 }) {
     const money = useCurrency()
+    const { formatDateTime } = useDates()
     if (!order) return null
 
     const items = order.order_items || []
