@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { createAdminClient } from '@/lib/supabase/server'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatDateShort, NEPAL_TZ } from '@/lib/utils'
 import {
     TrendingUp, ShoppingBag, Users, AlertTriangle, Clock, UserCheck,
     ArrowRight, CheckCircle2, ChevronRight, UtensilsCrossed, QrCode, Tag, ClipboardList, Boxes, Inbox,
@@ -309,10 +309,10 @@ async function PipelineTableSection({ restaurantId, money, isHotel = false, bsDa
                                 const chOut = new Date(booking.check_out)
                                 const checkInDate = bsDateEnabled
                                     ? toNepaliDate(chIn, 'MMMM DD', 'en')
-                                    : chIn.toLocaleDateString([], { month: 'short', day: 'numeric' })
+                                    : formatDateShort(chIn)
                                 const checkOutDate = bsDateEnabled
                                     ? toNepaliDate(chOut, 'MMMM DD', 'en')
-                                    : chOut.toLocaleDateString([], { month: 'short', day: 'numeric' })
+                                    : formatDateShort(chOut)
                                 return (
                                     <tr key={booking.id} className="group hover:bg-surface-muted/50 transition-colors cursor-pointer">
                                         <td className="px-6 py-4">
@@ -394,7 +394,7 @@ async function PipelineTableSection({ restaurantId, money, isHotel = false, bsDa
                                     <span className="font-mono text-[13px] font-bold text-ink group-hover:text-brand-500 transition-colors">#{order.id.substring(0, 6).toUpperCase()}</span>
                                 </td>
                                 <td className="px-6 py-4 text-[14px] text-ink-subtle font-medium tabular">
-                                    {new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {new Date(order.placed_at).toLocaleTimeString('en-US', { timeZone: NEPAL_TZ, hour: '2-digit', minute: '2-digit' })}
                                 </td>
                                 <td className="px-6 py-4">
                                     <StatusBadge status={order.status} />
@@ -591,7 +591,7 @@ async function ActiveStaffSection({ restaurantId }: { restaurantId: string }) {
                 ) : (
                     shifts.slice(0, 5).map(s => {
                         const roleName = (s.users?.roles as unknown as { name: string } | null)?.name || ''
-                        const since = new Date(s.clock_in).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                        const since = new Date(s.clock_in).toLocaleTimeString('en-IN', { timeZone: NEPAL_TZ, hour: '2-digit', minute: '2-digit' })
                         return (
                             <div key={s.id} className="flex items-center gap-4 p-3 hover:bg-surface-muted rounded-xl transition-colors">
                                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 border border-hairline flex items-center justify-center text-ink-subtle font-bold text-[15px] shadow-sm">

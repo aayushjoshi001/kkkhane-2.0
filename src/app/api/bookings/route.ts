@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { getOptionalUser } from '@/lib/auth'
 import { postHotelPaymentIncomeAndLedger } from '@/lib/ledger'
+import { nepalInputToISO } from '@/lib/utils'
 
 export async function POST(req: Request) {
     try {
@@ -21,6 +22,21 @@ export async function POST(req: Request) {
 
         if (!room_id || !guest_name || !guest_phone || !check_in || !check_out || !guest_count) {
             return NextResponse.json({ error: 'Missing required booking fields' }, { status: 400 })
+        }
+
+        // The form sends naive `YYYY-MM-DDTHH:mm` values. Resolve them against
+        // Kathmandu rather than the runtime's zone — this route executes in UTC,
+        // which previously shifted every stored check-in 5h45m into the future.
+        let checkInISO: string
+        let checkOutISO: string
+        try {
+            checkInISO = nepalInputToISO(check_in)
+            checkOutISO = nepalInputToISO(check_out)
+        } catch {
+            return NextResponse.json({ error: 'Invalid check-in or check-out date' }, { status: 400 })
+        }
+        if (new Date(checkOutISO) <= new Date(checkInISO)) {
+            return NextResponse.json({ error: 'Check-out must be after check-in' }, { status: 400 })
         }
 
         const supabase = await createAdminClient()
@@ -75,8 +91,8 @@ export async function POST(req: Request) {
                 room_id,
                 guest_name: guest_name.trim(),
                 guest_phone: guest_phone.trim(),
-                check_in: new Date(check_in).toISOString(),
-                check_out: new Date(check_out).toISOString(),
+                check_in: checkInISO,
+                check_out: checkOutISO,
                 adults: Number(guest_count),
                 status: 'checked_in',
                 notes,
