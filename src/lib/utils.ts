@@ -85,13 +85,84 @@ export function timeAgo(timestamp: string): string {
 }
 
 /**
+ * The business timezone. Every booking/stay timestamp is entered, stored and
+ * displayed against Kathmandu wall-clock time regardless of where the browser
+ * or the serverless runtime happens to be.
+ *
+ * Pinning this matters: Vercel runs Node in UTC, so anything that formats or
+ * parses a date without an explicit zone renders differently in a server
+ * component than in the browser. Nepal observes no DST, so the offset is a
+ * constant +05:45 and the string form below is exact for every date.
+ */
+export const NEPAL_TZ = 'Asia/Kathmandu'
+const NEPAL_UTC_OFFSET = '+05:45'
+
+/**
+ * Convert the naive `YYYY-MM-DDTHH:mm` value of an <input type="datetime-local">
+ * into a real instant, reading it as Kathmandu wall-clock time.
+ *
+ * `new Date('2026-07-24T14:42')` resolves against the *runtime's* zone, so the
+ * same string became 14:42Z on the server and 09:57Z in a Nepali browser. Every
+ * booking created through the admin/cashier form was stored 5h45m late as a
+ * result. Anchoring the offset removes the ambiguity.
+ *
+ * Values that already carry a zone (a full ISO string ending in `Z` or an
+ * explicit ±HH:mm) are passed through untouched.
+ */
+export function nepalInputToISO(value: string | Date): string {
+    if (value instanceof Date) return value.toISOString()
+    const hasZone = /(?:[Zz]|[+-]\d{2}:?\d{2})$/.test(value.trim())
+    const normalized = hasZone
+        ? value.trim()
+        : `${value.trim().length === 16 ? `${value.trim()}:00` : value.trim()}${NEPAL_UTC_OFFSET}`
+    const date = new Date(normalized)
+    if (Number.isNaN(date.getTime())) throw new Error(`Invalid datetime: ${value}`)
+    return date.toISOString()
+}
+
+/**
+ * Inverse of {@link nepalInputToISO} — render an instant as the naive
+ * `YYYY-MM-DDTHH:mm` that <input type="datetime-local"> expects, in Kathmandu
+ * time, so prefilled forms show the same clock the staff member is reading.
+ */
+export function isoToNepalInput(value: string | Date | null | undefined): string {
+    if (!value) return ''
+    const date = typeof value === 'string' ? new Date(value) : value
+    if (Number.isNaN(date.getTime())) return ''
+    // en-CA yields ISO-ordered date parts, so this composes without reparsing.
+    const [d, t] = date
+        .toLocaleString('en-CA', {
+            timeZone: NEPAL_TZ,
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', hour12: false
+        })
+        .split(', ')
+    return `${d}T${t}`
+}
+
+/**
+ * Default stay window for a new walk-in booking: check in now, check out at
+ * noon the next day — both as Kathmandu wall-clock `datetime-local` values.
+ *
+ * Shared by the admin Rooms and cashier Room-manager booking forms, which each
+ * used to build this from the browser's own clock.
+ */
+export function defaultStayWindowInputs(): { checkIn: string; checkOut: string } {
+    const checkIn = isoToNepalInput(new Date())
+    const [y, m, d] = checkIn.slice(0, 10).split('-').map(Number)
+    // Calendar arithmetic in UTC so the day rolls over without a zone shift.
+    const nextDay = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
+    return { checkIn, checkOut: `${nextDay}T12:00` }
+}
+
+/**
  * Format ISO datetime string into human readable locale string.
  */
 export function formatDateTime(dateStr: string | Date | null | undefined, bsEnabled = false): string {
     if (!dateStr) return '-'
     const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr
     const ad = date.toLocaleString('en-US', {
-        timeZone: 'Asia/Kathmandu',
+        timeZone: NEPAL_TZ,
         month: 'short',
         day: 'numeric',
         hour: 'numeric',
@@ -104,6 +175,26 @@ export function formatDateTime(dateStr: string | Date | null | undefined, bsEnab
     } catch {
         return ad
     }
+}
+
+/**
+ * Date-only counterpart to {@link formatDateTime}, for the compact stay-range
+ * columns. Also pinned to Kathmandu so a late-evening check-in doesn't render
+ * as the previous day in server components (which run in UTC).
+ */
+export function formatDateShort(
+    dateStr: string | Date | null | undefined,
+    opts: { withYear?: boolean } = {}
+): string {
+    if (!dateStr) return '-'
+    const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr
+    if (Number.isNaN(date.getTime())) return '-'
+    return date.toLocaleDateString('en-US', {
+        timeZone: NEPAL_TZ,
+        month: 'short',
+        day: 'numeric',
+        ...(opts.withYear ? { year: 'numeric' } : {})
+    })
 }
 
 /**

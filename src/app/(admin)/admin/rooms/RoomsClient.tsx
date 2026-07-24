@@ -17,7 +17,7 @@ import DownloadAllQrsButton from '@/components/admin/DownloadAllQrsButton'
 import { useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
-import { toNepaliDate } from '@/lib/nepaliDate'
+import { formatDateTime, defaultStayWindowInputs } from '@/lib/utils'
 
 const QR_LOGO_SRC = '/icons/kkkhane.png'
 
@@ -309,19 +309,7 @@ export default function RoomsClient({
             toast.error('Only available rooms can be booked. Please mark the room as available first.')
             return
         }
-        const todayDate = new Date()
-        const tomorrowDate = new Date()
-        tomorrowDate.setDate(todayDate.getDate() + 1)
-        tomorrowDate.setHours(12, 0, 0, 0) // default to noon 12:00
-
-        const formatLocalTime = (d: Date) => {
-            const pad = (n: number) => (n < 10 ? '0' : '') + n
-            return d.getFullYear() + '-' +
-                pad(d.getMonth() + 1) + '-' +
-                pad(d.getDate()) + 'T' +
-                pad(d.getHours()) + ':' +
-                pad(d.getMinutes())
-        }
+        const { checkIn, checkOut } = defaultStayWindowInputs()
 
         const roomType = roomTypesList.find(t => t.id === selectedRoom?.type_id)
 
@@ -329,8 +317,8 @@ export default function RoomsClient({
             guest_name: '',
             guest_phone: '',
             kyc: '',
-            check_in: formatLocalTime(todayDate),
-            check_out: formatLocalTime(tomorrowDate),
+            check_in: checkIn,
+            check_out: checkOut,
             guest_count: roomType ? roomType.capacity.toString() : '2',
             advance_amount: '0',
             advance_payment_method: 'cash',
@@ -464,23 +452,6 @@ export default function RoomsClient({
     }
 
     const bsEnabled = useFeatureEnabled('bsDateEnabled')
-    const formatDateTime = (dateStr: string) => {
-        if (!dateStr) return '-'
-        const date = new Date(dateStr)
-        const ad = date.toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
-        })
-        if (!bsEnabled) return ad
-        try {
-            return `${ad} (${toNepaliDate(date, 'MMMM DD, YYYY', 'en')} BS)`
-        } catch {
-            return ad
-        }
-    }
 
     return (
         <div className="space-y-6 pb-12">
@@ -782,11 +753,11 @@ export default function RoomsClient({
                                         <div className="border-t border-blue-100/60 pt-2 space-y-1.5">
                                             <div className="flex items-center justify-between text-[11px]">
                                                 <span className="text-ink-subtle font-bold">CHECK IN:</span>
-                                                <span className="font-extrabold text-ink">{formatDateTime(activeBooking.check_in)}</span>
+                                                <span className="font-extrabold text-ink">{formatDateTime(activeBooking.check_in, bsEnabled)}</span>
                                             </div>
                                             <div className="flex items-center justify-between text-[11px]">
                                                 <span className="text-ink-subtle font-bold">CHECK OUT:</span>
-                                                <span className="font-extrabold text-ink">{formatDateTime(activeBooking.check_out)}</span>
+                                                <span className="font-extrabold text-ink">{formatDateTime(activeBooking.check_out, bsEnabled)}</span>
                                             </div>
                                         </div>
 

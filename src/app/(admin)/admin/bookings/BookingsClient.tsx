@@ -9,6 +9,7 @@ import RoomBillingModal, { type BillingTable, type BillingOrder } from '@/compon
 import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import Select from '@/components/ui/Select'
 import { toNepaliDate } from '@/lib/nepaliDate'
+import { formatDateShort } from '@/lib/utils'
 
 interface BookingsClientProps {
     initialBookings: Booking[]
@@ -137,8 +138,8 @@ export default function BookingsClient({ initialBookings, restaurantName, tables
                                     const roomNum = b.rooms?.room_number || '—'
                                     const checkInDate = new Date(b.check_in)
                                     const checkOutDate = new Date(b.check_out)
-                                    const checkInAd = checkInDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
-                                    const checkOutAd = checkOutDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+                                    const checkInAd = formatDateShort(checkInDate, { withYear: true })
+                                    const checkOutAd = formatDateShort(checkOutDate, { withYear: true })
                                     const checkInStr = bsEnabled 
                                         ? `${checkInAd} (${toNepaliDate(checkInDate, 'MMMM DD, YYYY', 'en')} BS)`
                                         : checkInAd

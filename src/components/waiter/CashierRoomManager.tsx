@@ -9,7 +9,7 @@ import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCurrency, useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { type TableWithSession } from './CashierTableManager'
-import { formatDateTime, calculateNights, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
+import { formatDateTime, calculateNights, advanceMethodLabel, getItemDisplayName, defaultStayWindowInputs } from '@/lib/utils'
 import QuickOrderModal from './QuickOrderModal'
 import { openSession } from '@/app/(staff)/waiter/actions'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
@@ -161,27 +161,15 @@ export default function CashierRoomManager({
 
     // Prepopulate booking form check-in/out default values
     const prepopulateBookingForm = () => {
-        const checkIn = new Date()
-        const checkOut = new Date()
-        checkOut.setDate(checkOut.getDate() + 1) // default 1 night stay
-        checkOut.setHours(12, 0, 0, 0) // default check-out to noon 12:00
-
-        // Format to YYYY-MM-DDTHH:MM for datetime-local inputs
-        const formatLocalTime = (d: Date) => {
-            const pad = (n: number) => (n < 10 ? '0' : '') + n
-            return d.getFullYear() + '-' +
-                pad(d.getMonth() + 1) + '-' +
-                pad(d.getDate()) + 'T' +
-                pad(d.getHours()) + ':' +
-                pad(d.getMinutes())
-        }
+        // Default to a 1-night stay: in now, out at noon tomorrow (Kathmandu).
+        const { checkIn, checkOut } = defaultStayWindowInputs()
 
         setBookingForm({
             guest_name: '',
             guest_phone: '',
             kyc: '',
-            check_in: formatLocalTime(checkIn),
-            check_out: formatLocalTime(checkOut),
+            check_in: checkIn,
+            check_out: checkOut,
             guest_count: '1'
         })
         setAdvanceType('none')
