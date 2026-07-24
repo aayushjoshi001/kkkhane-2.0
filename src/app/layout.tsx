@@ -6,7 +6,6 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { unstable_cache } from 'next/cache'
 import { SerwistProvider } from '@serwist/turbopack/react'
 import PwaInstallPrompt from '@/components/shared/PwaInstallPrompt'
-import PwaUpdatePrompt from '@/components/shared/PwaUpdatePrompt'
 import Script from 'next/script'
 import './globals.css'
 
@@ -182,7 +181,6 @@ export default async function RootLayout({
           </div>
         </SerwistProvider>
         <PwaInstallPrompt />
-        <PwaUpdatePrompt />
         {/* Global Overlays */}
         <Toaster
           position="top-center"
