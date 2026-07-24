@@ -1,5 +1,6 @@
 'use client'
 
+import { catchUpOnResubscribe } from '@/lib/realtime/channelCatchUp'
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { playStatusUpdate } from '@/lib/audio'
@@ -100,7 +101,12 @@ export default function OrderTracker({
                     }
                 }
             )
-            .subscribe()
+            .subscribe(catchUpOnResubscribe(`order:${orderId}`, async () => {
+                // Silent resync — no toast or sound, the guest may well have
+                // been shown this status before the connection dropped.
+                const { data } = await supabase.from('orders').select('*').eq('id', orderId).single()
+                if (data) setOrder((prev) => ({ ...prev, ...(data as Order) }))
+            }))
         return () => { supabase.removeChannel(channel) }
     }, [orderId])
 

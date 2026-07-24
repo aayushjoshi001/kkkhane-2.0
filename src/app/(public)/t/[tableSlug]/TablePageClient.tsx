@@ -1,5 +1,6 @@
 'use client'
 
+import { catchUpOnResubscribe } from '@/lib/realtime/channelCatchUp'
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -252,7 +253,7 @@ export default function TablePageClient({
                 { event: '*', schema: 'public', table: 'sessions', filter: `table_id=eq.${tableData.id}` },
                 () => { fetchActiveSession() }
             )
-            .subscribe()
+            .subscribe(catchUpOnResubscribe(`table-session:${tableData.id}`, fetchActiveSession))
 
         return () => { supabase.removeChannel(channel) }
     // eslint-disable-next-line react-hooks/exhaustive-deps

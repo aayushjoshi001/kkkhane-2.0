@@ -12,12 +12,17 @@ const REFRESH_DEBOUNCE_MS = 300
  * (re)connects.
  *
  * Realtime is not a durable log: any event emitted while the socket is down is
- * gone. The shared channel also tears itself down and rebuilds whenever a
- * component subscribes to a table not yet bound (or the last subscriber of a
- * table unmounts), and every binding is dead for that round trip. Live
- * components that only ever apply deltas therefore drift, and nothing corrects
- * them - the floor counters are literally `setOccupied(n => n + 1)`, so one
- * missed session INSERT is wrong until the page is reloaded by hand.
+ * gone. The shared channel also rebuilds when a component subscribes to a table
+ * not yet bound, and every binding is dead for that round trip. Live components
+ * that only ever apply deltas therefore drift, and nothing corrects them - the
+ * floor counters are literally `setOccupied(n => n + 1)`, so one missed session
+ * INSERT is wrong until the page is reloaded by hand.
+ *
+ * Firing on those rebuilds as well as on true reconnects is deliberate: both
+ * lose events, and the channel manager no longer rebuilds when a subscriber
+ * goes away, so a rebuild now only happens the first time a panel reaches a
+ * given table. That bounds this to a handful of refreshes per session instead
+ * of one per tab switch.
  *
  * `router.refresh()` re-runs the route's server components and pushes fresh
  * props down without remounting the client tree, so one call resyncs every live

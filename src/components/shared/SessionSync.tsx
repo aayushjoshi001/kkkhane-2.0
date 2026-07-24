@@ -1,5 +1,6 @@
 'use client'
 
+import { catchUpOnResubscribe } from '@/lib/realtime/channelCatchUp'
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -53,7 +54,31 @@ export default function SessionSync({ userId }: { userId: string }) {
                     router.replace('/login')
                 }
             )
-            .subscribe()
+            .subscribe(catchUpOnResubscribe(`user-sync-${userId}`, async () => {
+                // A deactivation or role change that landed while the socket was
+                // down would otherwise never be noticed — the account stays
+                // signed in with stale claims until the tab is closed.
+                const { data } = await supabase
+                    .from('users')
+                    .select('is_active')
+                    .eq('id', userId)
+                    .maybeSingle()
+
+                if (!data) {
+                    await supabase.auth.signOut()
+                    router.replace('/login')
+                    return
+                }
+                if (data.is_active === false) {
+                    await supabase.auth.signOut()
+                    router.replace('/login?deactivated=1')
+                    return
+                }
+                // Role/restaurant may have moved; re-mint the claims and let the
+                // server decide where this user now belongs.
+                await supabase.auth.refreshSession()
+                router.refresh()
+            }))
 
         return () => {
             supabase.removeChannel(channel)

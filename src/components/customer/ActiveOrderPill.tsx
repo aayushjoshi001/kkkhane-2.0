@@ -1,5 +1,6 @@
 'use client'
 
+import { catchUpOnResubscribe } from '@/lib/realtime/channelCatchUp'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -79,7 +80,18 @@ export default function ActiveOrderPill() {
                 }
             )
         }
-        channel.subscribe()
+        channel.subscribe(catchUpOnResubscribe(`active-order-pill:${idsKey}`, async () => {
+            const { data } = await supabase.from('orders').select('id, status').in('id', ids)
+            if (cancelled || !data) return
+            for (const row of data as Array<{ id: string; status: string }>) {
+                if (TERMINAL.has(row.status)) removeActiveOrder(row.id)
+            }
+            setStatusById(Object.fromEntries(
+                (data as Array<{ id: string; status: string }>)
+                    .filter((row) => !TERMINAL.has(row.status))
+                    .map((row) => [row.id, row.status])
+            ))
+        }))
 
         return () => { cancelled = true; supabase.removeChannel(channel) }
         // eslint-disable-next-line react-hooks/exhaustive-deps

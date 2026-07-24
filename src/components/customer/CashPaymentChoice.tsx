@@ -1,5 +1,6 @@
 'use client'
 
+import { catchUpOnResubscribe } from '@/lib/realtime/channelCatchUp'
 import { useEffect, useState } from 'react'
 import { Store, HandCoins, Loader2, Check, Footprints } from 'lucide-react'
 import { requestCashCollection, getCashCollectionStatus } from '@/app/api/service-requests/actions'
@@ -28,12 +29,15 @@ export default function CashPaymentChoice({ sessionId, restaurantId, totalAmount
         if (mode !== 'waiter') return
         let cancelled = false
 
-        // One-shot check — covers a state change that landed before we subscribed.
-        getCashCollectionStatus(sessionId).then((res) => {
+        // Covers a state change that landed before we subscribed — and, on
+        // reconnect, one that landed while the socket was down.
+        const syncStatus = async () => {
+            const res = await getCashCollectionStatus(sessionId)
             if (cancelled) return
             if (res.state === 'on_the_way') { setWaiterState('on_the_way'); setWaiterName(res.waiterName) }
             else if (res.state === 'done') setWaiterState('done')
-        })
+        }
+        syncStatus()
 
         const supabase = createClient()
         const channel = supabase
@@ -57,7 +61,7 @@ export default function CashPaymentChoice({ sessionId, restaurantId, totalAmount
                     }
                 }
             )
-            .subscribe()
+            .subscribe(catchUpOnResubscribe(`cash-request:${sessionId}`, syncStatus))
 
         return () => { cancelled = true; supabase.removeChannel(channel) }
     }, [mode, sessionId])
