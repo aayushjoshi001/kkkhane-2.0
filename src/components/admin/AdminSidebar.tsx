@@ -16,6 +16,7 @@ import { signOutAndRedirect } from '@/lib/auth/signOut'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { useSidebar } from '@/lib/contexts/SidebarContext'
+import SidebarShell from '@/components/admin/SidebarShell'
 import { useFeatures, useBusinessMode } from '@/lib/contexts/FeatureContext'
 import { generatedAvatar, isGeneratedAvatar } from '@/lib/avatar'
 
@@ -26,7 +27,7 @@ function cn(...inputs: ClassValue[]) {
 export default function AdminSidebar({ userRole, restaurantName, userAvatar }: { userRole?: string; restaurantName?: string; userAvatar?: string }) {
     const pathname = usePathname()
     const router = useRouter()
-    const { isOpen, isCollapsed, closeMobile } = useSidebar()
+    const { closeMobile } = useSidebar()
     const [isDark, setIsDark] = useState(true) // Defaulting to the dark premium vibe
     const [imgError, setImgError] = useState(false)
     // Explicit ?? true fallback (not useFeatureEnabled's !!, which treats a
@@ -49,17 +50,14 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
     const businessMode = useBusinessMode()
     const isHotel = businessMode === 'hotel'
 
-    // Load theme preference on mount
-    // eslint-disable-next-line
+    // Load theme preference on mount. Effect rather than a lazy useState
+    // initialiser because localStorage does not exist during the server render.
     useEffect(() => {
         const storedTheme = localStorage.getItem('srms-theme')
-        if (storedTheme === 'light') {
-            setIsDark(false)
-            document.documentElement.classList.remove('dark')
-        } else {
-            setIsDark(true)
-            document.documentElement.classList.add('dark')
-        }
+        const nextIsDark = storedTheme !== 'light'
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setIsDark(nextIsDark)
+        document.documentElement.classList.toggle('dark', nextIsDark)
     }, [])
 
     const handleSignOut = () => signOutAndRedirect(router)
@@ -79,7 +77,9 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
     // Use DiceBear Notionists style for a premium placeholder if no avatar provided
     const avatarUrl = userAvatar || generatedAvatar(roleLabel)
 
-    const content = (
+    // Rendered once per frame by SidebarShell — the drawer always gets
+    // `isCollapsed: false`, since collapsing is a desktop-only affordance.
+    const renderContent = (isCollapsed: boolean) => (
         <div className={cn(
             "flex flex-col h-full relative overflow-hidden transition-colors duration-500",
             isDark ? "bg-[#0a0a0a] text-white/70" : "bg-[#f8f9fa] text-ink-muted border-r border-hairline-strong"
@@ -108,16 +108,19 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                     )}
                 </div>
                 <button onClick={closeMobile}
+                        type="button"
+                        aria-label="Close navigation menu"
                         className={cn(
-                            "md:hidden p-2 rounded-xl transition-colors",
+                            // 44px tap target; `p-2` around an 18px icon was 34px.
+                            "md:hidden -mr-2 inline-flex items-center justify-center min-w-11 min-h-11 rounded-xl transition-colors",
                             isDark ? "text-white/50 hover:text-white hover:bg-surface/10" : "text-ink-subtle hover:text-ink hover:bg-surface-muted"
                         )}>
-                    <X size={18} />
+                    <X size={20} />
                 </button>
             </div>
 
             {/* Navigation */}
-            <nav className={cn("flex-1 overflow-y-auto py-2 scrollbar-none space-y-1 relative z-10", isCollapsed ? "px-2" : "px-4")}>
+            <nav className={cn("flex-1 overflow-y-auto overscroll-contain py-2 scrollbar-none space-y-1 relative z-10", isCollapsed ? "px-2" : "px-4")}>
                 <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/dashboard"     icon={BarChart3}       label="Overview"        path={pathname} />
                 {financeEnabled && manualEntryEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/manual-entry"  icon={PenLine}         label="Manual Entry"    path={pathname} />}
                 <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Alerts & Status</SectionLabel>
@@ -154,7 +157,10 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                         {(dineInEnabled || takeoutEnabled) && (
                             <>
                                 <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Live Operations</SectionLabel>
-                                {dineInEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/orders"      icon={ShoppingBag}     label="Live Orders"     path={pathname} badge="12" />}
+                                {/* No badge until it can show a real count — this
+                                    read `badge="12"` unconditionally, so every
+                                    restaurant saw "12 live orders" forever. */}
+                                {dineInEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/orders"      icon={ShoppingBag}     label="Live Orders"     path={pathname} />}
                                 {dineInEnabled && features.irdSyncEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/payments"    icon={CreditCard}      label="Payments"        path={pathname} />}
                                 {takeoutEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/takeout"     icon={Truck}           label="Takeout & Disp." path={pathname} />}
                                 {tableManagementEnabled && dineInEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"      icon={Grid3X3}         label="Tables & QR"     path={pathname} />}
@@ -285,35 +291,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
         </div>
     )
 
-    return (
-        <>
-            {/* Mobile Overlay */}
-            {isOpen && (
-                <div className={cn(
-                    "md:hidden fixed inset-0 backdrop-blur-sm z-40 animate-fade-in",
-                    isDark ? "bg-black/60" : "bg-black/20"
-                )} onClick={closeMobile} />
-            )}
-
-            {/* Mobile Sidebar */}
-            <aside className={cn(
-                "print:hidden md:hidden fixed top-0 left-0 bottom-0 w-[280px] z-50 transition-transform duration-500 ease-[var(--ease-spring)]",
-                isOpen ? "translate-x-0" : "-translate-x-full",
-                isDark ? "shadow-[20px_0_40px_rgba(0,0,0,0.5)]" : "shadow-[20px_0_40px_rgba(0,0,0,0.1)]"
-            )}>
-                {content}
-            </aside>
-
-            {/* Desktop Sidebar */}
-            <aside className={cn(
-                "print:hidden hidden md:block shrink-0 z-20 h-screen sticky top-0 overflow-hidden transition-all duration-300 ease-[var(--ease-spring)]",
-                isCollapsed ? "w-[80px]" : "w-[280px]",
-                isDark ? "shadow-[4px_0_24px_rgba(0,0,0,0.05)] border-r border-white/5" : "border-r border-hairline-strong shadow-sm"
-            )}>
-                {content}
-            </aside>
-        </>
-    )
+    return <SidebarShell renderContent={renderContent} tone={isDark ? 'dark' : 'light'} />
 }
 
 function SectionLabel({ children, isDark, isCollapsed }: { children: React.ReactNode, isDark: boolean, isCollapsed: boolean }) {
@@ -342,15 +320,22 @@ function NavItem({ href, icon: Icon, label, path, badge, isDark, isCollapsed }: 
             prefetch={true}
             title={isCollapsed ? label : undefined}
             className={cn(
-                "group relative flex items-center px-4 h-11 rounded-2xl text-[14px] font-semibold transition-all duration-300",
+                // Colour and background carry the state; the row itself stays put.
+                // It used to scale 1.02 and shift 4px right on both hover and
+                // active, so the list nudged sideways under a moving finger and
+                // the scaled row's edge fought the panel's rounded corner.
+                "group relative flex items-center px-4 h-11 rounded-2xl text-[14px] font-semibold",
+                "transition-colors duration-200 motion-reduce:transition-none",
                 isCollapsed ? "justify-center" : "justify-between",
                 isActive
-                    ? isDark 
-                        ? "bg-gradient-to-r from-brand-500 to-[#ff7a00] text-white shadow-[0_4px_15px_rgba(255,90,0,0.3)] scale-[1.02] translate-x-1"
-                        : "bg-brand-500/10 text-brand-500 shadow-[inset_0_1px_3px_rgba(255,90,0,0.1)] scale-[1.02] translate-x-1 border border-brand-500/20"
+                    ? isDark
+                        ? "bg-gradient-to-r from-brand-500 to-[#ff7a00] text-white shadow-[0_2px_10px_-2px_rgba(255,90,0,0.45)]"
+                        : "bg-brand-500/10 text-brand-600 border border-brand-500/20"
                     : isDark
-                        ? "text-white/60 hover:bg-surface/5 hover:text-white hover:translate-x-1"
-                        : "text-ink-subtle hover:bg-surface-muted hover:text-ink hover:translate-x-1"
+                        // /60 on near-black is about 3.4:1 — under the 4.5:1 floor
+                        // for the smaller text this nav uses.
+                        ? "text-white/75 hover:bg-white/5 hover:text-white"
+                        : "text-ink-subtle hover:bg-surface-muted hover:text-ink"
             )}
         >
             <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3.5")}>
