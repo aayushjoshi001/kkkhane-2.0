@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { getRestaurantName } from '@/lib/features'
 import BookingsClient from './BookingsClient'
 import type { Booking, Room } from '@/types/database'
+import RealtimeRefresh from '@/components/shared/RealtimeRefresh'
 
 export const revalidate = 0
 
@@ -87,6 +88,8 @@ export default async function BookingsPage() {
     }
 
     return (
+        <>
+        <RealtimeRefresh restaurantId={restaurantId} tables={['bookings', 'rooms']} />
         <BookingsClient
             initialBookings={bookings}
             rooms={rooms}
@@ -95,5 +98,6 @@ export default async function BookingsPage() {
             tables={tablesMapped}
             activeOrders={activeOrders}
         />
+        </>
     )
 }

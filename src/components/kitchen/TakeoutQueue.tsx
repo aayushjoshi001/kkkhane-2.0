@@ -9,6 +9,7 @@ import { Phone, User, CheckCircle2, XCircle, Timer, Package } from 'lucide-react
 import { playKitchenPing } from '@/lib/audio'
 import Button from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
+import { useServerState } from '@/lib/hooks/useServerState'
 
 interface TakeoutQueueProps {
     restaurantId: string
@@ -54,7 +55,7 @@ function CountdownBadge({ pickupTime }: { pickupTime: string }) {
 }
 
 export default function TakeoutQueue({ restaurantId, initialOrders }: TakeoutQueueProps) {
-    const [orders, setOrders] = useState<TakeoutOrder[]>(initialOrders)
+    const [orders, setOrders] = useServerState<TakeoutOrder[]>(initialOrders)
     const money = useCurrency()
     const [loading, setLoading] = useState<string | null>(null)
 

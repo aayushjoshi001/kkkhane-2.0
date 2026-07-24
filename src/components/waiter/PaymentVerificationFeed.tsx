@@ -11,6 +11,7 @@ import FeedSection from '@/components/ui/FeedSection'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
+import { useServerState } from '@/lib/hooks/useServerState'
 
 export interface PaymentClaim {
     id: string
@@ -45,7 +46,7 @@ export default function PaymentVerificationFeed({
     /** Reports the live count of pending claims so a parent can adjust its own empty state. */
     onPendingCountChange?: (count: number) => void
 }) {
-    const [claims, setClaims] = useState<PaymentClaim[]>(initialClaims)
+    const [claims, setClaims] = useServerState<PaymentClaim[]>(initialClaims)
     const money = useCurrency()
     const [loading, setLoading] = useState<string | null>(null)
 

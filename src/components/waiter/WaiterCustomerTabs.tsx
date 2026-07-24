@@ -15,6 +15,7 @@ import { openSessionFromRequest } from '@/app/(staff)/waiter/actions'
 import type { ServiceRequest, ServiceRequestType, ServiceRequestStatus, Settings } from '@/types/database'
 import CashPaymentFeed, { type UnpaidOrder } from './CashPaymentFeed'
 import PaymentVerificationFeed, { type PaymentClaim } from './PaymentVerificationFeed'
+import { useServerState } from '@/lib/hooks/useServerState'
 
 export type ServiceRequestWithTable = ServiceRequest & {
     sessions?: { tables?: { label?: string } }
@@ -63,9 +64,12 @@ export default function WaiterCustomerTabs({
     staffNames = {},
     features
 }: Props) {
-    const [requests, setRequests] = useState<ServiceRequestWithTable[]>(initialRequests)
-    const [unpaidCount, setUnpaidCount] = useState(initialUnpaidOrders?.length || 0)
-    const [claimsCount, setClaimsCount] = useState(
+    const [requests, setRequests] = useServerState<ServiceRequestWithTable[]>(initialRequests)
+    // Derived counts, not lists — they are only ever nudged by realtime deltas,
+    // so a missed event leaves the badge permanently wrong. Re-seed from the
+    // server prop on refresh like the feeds above.
+    const [unpaidCount, setUnpaidCount] = useServerState(initialUnpaidOrders?.length || 0)
+    const [claimsCount, setClaimsCount] = useServerState(
         (initialClaims || []).filter(c => !c.staff_verified && !c.staff_rejected).length
     )
     const [activeTab, setActiveTab] = useState<TabType>('food')

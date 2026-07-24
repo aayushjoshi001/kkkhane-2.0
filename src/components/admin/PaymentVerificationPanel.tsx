@@ -7,6 +7,7 @@ import { CheckCircle, XCircle, Clock, Banknote, ScanLine, Loader2, ExternalLink,
 import { verifyPayment, verifyPaymentAndCloseTable } from '@/components/waiter/payment-verification-actions'
 import { toast } from 'react-hot-toast'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
+import { useServerState } from '@/lib/hooks/useServerState'
 
 interface PaymentClaim {
     id: string
@@ -49,7 +50,7 @@ export default function PaymentVerificationPanel({
     restaurantId: string
     userId: string
 }) {
-    const [claims, setClaims] = useState<PaymentClaim[]>(initialClaims)
+    const [claims, setClaims] = useServerState<PaymentClaim[]>(initialClaims)
     const money = useCurrency()
     const [loading, setLoading] = useState<string | null>(null)
     const [filter, setFilter] = useState<'pending' | 'verified' | 'rejected' | 'all'>('pending')

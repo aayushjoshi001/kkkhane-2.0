@@ -11,6 +11,7 @@ import FeedSection from '@/components/ui/FeedSection'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
+import { useServerState } from '@/lib/hooks/useServerState'
 
 interface Props {
     initialOrders: TakeoutOrder[]
@@ -18,7 +19,7 @@ interface Props {
 }
 
 export default function WaiterTakeoutFeed({ initialOrders, restaurantId }: Props) {
-    const [orders, setOrders] = useState<TakeoutOrder[]>(initialOrders)
+    const [orders, setOrders] = useServerState<TakeoutOrder[]>(initialOrders)
     const money = useCurrency()
     const [loading, setLoading] = useState<string | null>(null)
 

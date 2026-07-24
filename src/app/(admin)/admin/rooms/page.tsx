@@ -3,6 +3,7 @@ import type { BillingTable, BillingOrder } from '@/components/admin/RoomBillingM
 import { getCurrentUser } from '@/lib/auth'
 import RoomsClient from './RoomsClient'
 import type { Room, RoomType } from '@/types/database'
+import RealtimeRefresh from '@/components/shared/RealtimeRefresh'
 
 export const revalidate = 0
 
@@ -106,6 +107,8 @@ export default async function RoomsPage() {
     }
 
     return (
+        <>
+        <RealtimeRefresh restaurantId={restaurantId} tables={['rooms', 'bookings']} />
         <RoomsClient 
             initialRooms={rooms} 
             roomTypes={roomTypes} 
@@ -115,5 +118,6 @@ export default async function RoomsPage() {
             tables={tablesMapped}
             activeOrders={activeOrders}
         />
+        </>
     )
 }

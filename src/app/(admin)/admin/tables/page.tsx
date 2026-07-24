@@ -6,6 +6,7 @@ import { QrCode } from 'lucide-react'
 
 import { redirect } from 'next/navigation'
 import { getRestaurantFeatures } from '@/lib/features'
+import RealtimeRefresh from '@/components/shared/RealtimeRefresh'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,6 +38,7 @@ export default async function TablesManagementPage() {
 
     return (
         <div className="space-y-6">
+            <RealtimeRefresh restaurantId={restaurantId} tables={['tables', 'sessions']} />
             <PremiumPageHeader 
                 title="Table Management" 
                 description="Configure restaurant tables and generate QR ordering codes" 

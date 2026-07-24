@@ -19,6 +19,7 @@ import FeedSection from '@/components/ui/FeedSection'
 import EmptyState from '@/components/ui/EmptyState'
 import { Badge, StatusBadge } from '@/components/ui/Badge'
 import type { Order, OrderItem, MenuItem, Session, Table, OrderStatus, OrderItemStatus } from '@/types/database'
+import { useServerState } from '@/lib/hooks/useServerState'
 
 export type WaiterOrderItem = OrderItem & { menu_items?: Partial<MenuItem> }
 
@@ -51,7 +52,7 @@ export default function WaiterOrderFeed({ initialOrders, restaurantId, userId, s
     userId: string
     staffNames?: Record<string, string>
 }) {
-    const [orders, setOrders] = useState<WaiterOrder[]>(initialOrders)
+    const [orders, setOrders] = useServerState<WaiterOrder[]>(initialOrders)
     const money = useCurrency()
     const ordersRef = useRef(orders)
     const [servingId, setServingId] = useState<string | null>(null)

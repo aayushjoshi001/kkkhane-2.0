@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/auth'
 import OrdersClient, { type AdminOrder } from './OrdersClient'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import { ShoppingBag } from 'lucide-react'
+import RealtimeRefresh from '@/components/shared/RealtimeRefresh'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,6 +26,7 @@ export default async function AdminOrdersPage() {
 
     return (
         <div className="space-y-4 md:space-y-6">
+            <RealtimeRefresh restaurantId={restaurantId} tables={['orders']} />
             <PremiumPageHeader 
                 title="Order History" 
                 description="View and manage all orders. Managers can void or refund orders." 
