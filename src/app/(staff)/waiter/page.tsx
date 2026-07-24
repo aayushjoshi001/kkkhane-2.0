@@ -1,3 +1,4 @@
+import RealtimeCatchUp from '@/components/shared/RealtimeCatchUp'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import TableManager, { type TableWithSession } from '@/components/waiter/TableManager'
@@ -310,6 +311,7 @@ export default async function WaiterPage() {
 
     return (
         <div className="flex flex-col min-h-[calc(100vh-4rem)] md:min-h-[calc(100vh-5rem)]">
+            <RealtimeCatchUp restaurantId={restaurantId} />
             <div className="flex-1 px-3 md:px-6 pb-3 md:pb-6">
                 <WaiterTabs
                     spaceContent={spaceContent}

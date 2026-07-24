@@ -1,5 +1,6 @@
 'use client'
 
+import { catchUpOnResubscribe } from '@/lib/realtime/channelCatchUp'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -79,7 +80,23 @@ export default function ActiveOrderPill() {
                 }
             )
         }
-        channel.subscribe()
+        // Reuses the same server action as the one-shot fetch above rather than
+        // querying from the client. RLS only lets a guest read orders inside
+        // their own dine-in session, so a client-side read would return nothing
+        // for takeout orders and quietly blank the map — putting finished orders
+        // back in the pill. The action runs with the service role for exactly
+        // this reason.
+        channel.subscribe(catchUpOnResubscribe(`active-order-pill:${idsKey}`, async () => {
+            const rows = await getTrackedOrderStatuses(ids)
+            if (cancelled) return
+            const map: Record<string, string> = {}
+            for (const r of rows) {
+                map[r.id] = r.status
+                if (TERMINAL.has(r.status)) removeActiveOrder(r.id)
+            }
+            for (const id of ids) if (!(id in map)) removeActiveOrder(id)
+            setStatusById(map)
+        }))
 
         return () => { cancelled = true; supabase.removeChannel(channel) }
         // eslint-disable-next-line react-hooks/exhaustive-deps

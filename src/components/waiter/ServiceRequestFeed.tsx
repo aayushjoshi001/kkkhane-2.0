@@ -14,6 +14,7 @@ import { playVoice } from '@/lib/voice'
 import { toast } from 'react-hot-toast'
 import type { ServiceRequest, ServiceRequestType } from '@/types/database'
 import { openSessionFromRequest } from '@/app/(staff)/waiter/actions'
+import { useServerState } from '@/lib/hooks/useServerState'
 
 const ICON_MAP: Record<ServiceRequestType, typeof Bell> = {
     call_waiter: Bell,
@@ -52,7 +53,7 @@ export default function ServiceRequestFeed({
     userId: string
     staffNames?: Record<string, string>
 }) {
-    const [requests, setRequests] = useState<ServiceRequestWithTable[]>(initialRequests)
+    const [requests, setRequests] = useServerState<ServiceRequestWithTable[]>(initialRequests)
     const [openingSession, setOpeningSession] = useState<string | null>(null)
     const supabaseRef = useRef(createClient())
 

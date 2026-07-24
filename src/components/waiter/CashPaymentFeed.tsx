@@ -10,6 +10,7 @@ import { useCurrency } from '@/lib/contexts/FeatureContext'
 import FeedSection from '@/components/ui/FeedSection'
 import OrderCard from '@/components/ui/OrderCard'
 import Button from '@/components/ui/Button'
+import { useServerState } from '@/lib/hooks/useServerState'
 
 export interface UnpaidOrder {
     id: string
@@ -28,7 +29,7 @@ export default function CashPaymentFeed({
     restaurantId: string
     onPendingCountChange?: (count: number) => void
 }) {
-    const [orders, setOrders] = useState<UnpaidOrder[]>(initialOrders)
+    const [orders, setOrders] = useServerState<UnpaidOrder[]>(initialOrders)
     const money = useCurrency()
     const [processingId, setProcessingId] = useState<string | null>(null)
 

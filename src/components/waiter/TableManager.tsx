@@ -16,6 +16,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import { useRouter } from 'next/navigation'
 import QuickOrderModal from './QuickOrderModal'
 import { useFeatures } from '@/lib/contexts/FeatureContext'
+import { useServerState } from '@/lib/hooks/useServerState'
 
 export type TableWithSession = Table & { activeSession?: Session | null; otherActiveSessions?: Session[] }
 
@@ -52,7 +53,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
     isHotel?: boolean
     waiterSessionEnabled?: boolean
 }) {
-    const [tables, setTables] = useState<TableWithSession[]>(initialTables)
+    const [tables, setTables] = useServerState<TableWithSession[]>(initialTables)
     // Mirror of `tables` for realtime handlers that need the previous state
     // without reading it inside a setState updater (updaters must stay pure).
     const tablesRef = useRef(tables)

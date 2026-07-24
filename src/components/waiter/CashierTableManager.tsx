@@ -12,6 +12,7 @@ import Button from '@/components/ui/Button'
 import { useCurrency, useFeatures } from '@/lib/contexts/FeatureContext'
 import { getItemDisplayName } from '@/lib/utils'
 import QuickOrderModal from './QuickOrderModal'
+import { useServerState } from '@/lib/hooks/useServerState'
 
 export type TableWithSession = Table & { activeSession?: Session | null; otherActiveSessions?: Session[] }
 
@@ -61,7 +62,7 @@ export default function CashierTableManager({
     onSwitchToBilling: (sessionId: string) => void
     isHotel: boolean
 }) {
-    const [tables, setTables] = useState<TableWithSession[]>(initialTables)
+    const [tables, setTables] = useServerState<TableWithSession[]>(initialTables)
     const [selectedTable, setSelectedTable] = useState<TableWithSession | null>(null)
     const [isProcessing, setIsProcessing] = useState(false)
     const [mounted, setMounted] = useState(false)

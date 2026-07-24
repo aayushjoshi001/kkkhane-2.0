@@ -1,3 +1,4 @@
+import RealtimeCatchUp from '@/components/shared/RealtimeCatchUp'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import OrderQueue, { type KitchenOrder, type ComboItemRow } from '@/components/kitchen/OrderQueue'
@@ -98,6 +99,7 @@ export default async function KitchenPage() {
 
     return (
         <div className="h-full flex flex-col overflow-hidden bg-[#FBF7F3]">
+            <RealtimeCatchUp restaurantId={restaurantId} />
             {/* Order Queue */}
             <div className="flex-1 overflow-hidden">
                 <OrderQueue

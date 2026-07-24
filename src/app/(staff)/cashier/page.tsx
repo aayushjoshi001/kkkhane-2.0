@@ -1,3 +1,4 @@
+import RealtimeCatchUp from '@/components/shared/RealtimeCatchUp'
 import { requireRole } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import CashierClient, { type UnpaidOrder, type ActiveOrder } from '@/components/waiter/CashierClient'
@@ -178,6 +179,8 @@ export default async function CashierPage() {
     const isHotel = mode === 'hotel'
 
     return (
+        <>
+        <RealtimeCatchUp restaurantId={restaurantId} />
         <CashierClient
             restaurantId={restaurantId}
             restaurantSlug={restaurantSlug}
@@ -200,5 +203,6 @@ export default async function CashierPage() {
             manualEntryHasOpenSession={!!openSession}
             manualEntrySessionId={openSession?.id ?? null}
         />
+        </>
     )
 }

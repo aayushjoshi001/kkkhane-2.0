@@ -16,6 +16,7 @@ import TableChip from '@/components/ui/TableChip'
 import EmptyState from '@/components/ui/EmptyState'
 import { ClipboardCheck, Check, X, Clock } from 'lucide-react'
 import type { Order, OrderItem } from '@/types/database'
+import { useServerState } from '@/lib/hooks/useServerState'
 
 export type ConfirmOrder = Order & {
     sessions?: { tables?: { label?: string } }
@@ -36,7 +37,7 @@ export default function OrderConfirmFeed({ initialOrders, restaurantId }: {
     userId: string
     staffNames?: Record<string, string>
 }) {
-    const [orders, setOrders] = useState<ConfirmOrder[]>(initialOrders)
+    const [orders, setOrders] = useServerState<ConfirmOrder[]>(initialOrders)
     const [busyId, setBusyId] = useState<string | null>(null)
     const [rejecting, setRejecting] = useState<ConfirmOrder | null>(null)
     const money = useCurrency()

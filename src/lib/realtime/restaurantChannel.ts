@@ -86,6 +86,48 @@ function buildChannel(restaurantId: string, entry: RestaurantEntry): RealtimeCha
 }
 
 /**
+ * Register a callback for channel (re)connects only, without binding a table.
+ *
+ * `subscribeRestaurantTable`'s `onReconnect` couples catch-up to owning a table
+ * subscription, so a component that just wants to resync on reconnect had to
+ * subscribe to something it did not care about. This lets one component per
+ * panel own the catch-up for everybody.
+ *
+ * Deliberately does not add a table binding or schedule a rebuild: a
+ * reconnect-only subscriber must never cause a channel to exist on its own
+ * (there would be nothing to catch up on), it only listens to one that the
+ * table subscribers bring up. refCount is still incremented so the registry
+ * entry - and therefore this callback - survives as long as the hook is mounted.
+ */
+export function subscribeRestaurantReconnect(restaurantId: string, callback: () => void): () => void {
+    let entry = registry.get(restaurantId)
+    if (!entry) {
+        entry = { channel: null, tables: new Map(), reconnectCallbacks: new Set(), refCount: 0, rebuildTimeout: null }
+        registry.set(restaurantId, entry)
+    }
+    entry.reconnectCallbacks.add(callback)
+    entry.refCount++
+
+    return () => {
+        const e = registry.get(restaurantId)
+        if (!e) return
+        e.reconnectCallbacks.delete(callback)
+        e.refCount = Math.max(0, e.refCount - 1)
+        if (e.refCount === 0) {
+            if (e.rebuildTimeout) {
+                clearTimeout(e.rebuildTimeout)
+                e.rebuildTimeout = null
+            }
+            if (e.channel) {
+                supabase.removeChannel(e.channel)
+                e.channel = null
+            }
+            registry.delete(restaurantId)
+        }
+    }
+}
+
+/**
  * Register a callback for INSERT/UPDATE/DELETE on `table`, scoped to the restaurant.
  * Returns an unsubscribe function. Bindings are keyed by table; the standard
  * `restaurant_id=eq.<id>` filter is applied automatically.
@@ -144,37 +186,21 @@ export function subscribeRestaurantTable(
         const set = e.tables.get(table)
         if (set) {
             set.delete(callback)
-            if (set.size === 0) {
-                e.tables.delete(table)
-                // If a table is removed, we also need to rebuild the channel to remove the listener
-                if (e.rebuildTimeout) clearTimeout(e.rebuildTimeout)
-                e.rebuildTimeout = setTimeout(() => {
-                    const currentEntry = registry.get(restaurantId)
-                    if (!currentEntry) return
-                    currentEntry.rebuildTimeout = null
-                    
-                    const setupChannel = () => {
-                        if (currentEntry.tables.size > 0) {
-                            currentEntry.channel = buildChannel(restaurantId, currentEntry)
-                        } else {
-                            currentEntry.channel = null
-                        }
-                    }
-
-                    if (currentEntry.channel) {
-                        const oldChannel = currentEntry.channel
-                        currentEntry.channel = null
-                        Promise.resolve(supabase.removeChannel(oldChannel))
-                            .then(setupChannel)
-                            .catch((err) => {
-                                console.error('[restaurantChannel] Failed to remove channel on unsubscribe:', err)
-                                setupChannel()
-                            })
-                    } else {
-                        setupChannel()
-                    }
-                }, 50)
-            }
+            // The empty binding is deliberately kept rather than rebuilding the
+            // channel to drop it.
+            //
+            // Panels unmount their inactive content — WaiterTabs renders each
+            // tab as `activeTab === 'x' && <content>` — so every tab switch used
+            // to retire a table, tear the whole channel down and build a new
+            // one. Every other binding was dead for that round trip, and with
+            // catch-up now wired up each of those rebuilds also cost a full
+            // server refresh of the route.
+            //
+            // A binding whose callback set is empty just dispatches to nobody.
+            // The cost is one server-side filter for a table no one is reading;
+            // the set of tables is small and fixed (seven), so this converges
+            // after the first visit to each tab and then stops rebuilding
+            // entirely.
         }
         if (onReconnect) e.reconnectCallbacks.delete(onReconnect)
         e.refCount = Math.max(0, e.refCount - 1)

@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { Users, Package, Bell, ChefHat } from 'lucide-react'
 import StatCard from '@/components/ui/StatCard'
 import type { StatCardProps } from '@/components/ui/StatCard'
+import { useServerState } from '@/lib/hooks/useServerState'
 
 interface Props {
     occupiedTables: number
@@ -25,10 +25,10 @@ export default function FloorStats({
     restaurantId,
     onStatClick,
 }: Props) {
-    const [occupied, setOccupied] = useState(initOccupied)
-    const [ready, setReady] = useState(initReady)
-    const [kitchen, setKitchen] = useState(initKitchen)
-    const [pending, setPending] = useState(initPending)
+    const [occupied, setOccupied] = useServerState(initOccupied)
+    const [ready, setReady] = useServerState(initReady)
+    const [kitchen, setKitchen] = useServerState(initKitchen)
+    const [pending, setPending] = useServerState(initPending)
 
     useRestaurantTable(restaurantId, 'sessions', (payload) => {
         if (payload.eventType === 'INSERT') {

@@ -12,6 +12,7 @@ import FeedSection from '@/components/ui/FeedSection'
 import EmptyState from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { Bike, MapPin, Phone, Footprints, X, Check } from 'lucide-react'
+import { useServerState } from '@/lib/hooks/useServerState'
 
 function nameOf(mi: { name: string } | { name: string }[] | null): string {
     if (!mi) return 'Item'
@@ -24,7 +25,7 @@ export default function WaiterDeliveryFeed({ initialOrders, restaurantId, userId
     userId: string
     staffNames?: Record<string, string>
 }) {
-    const [orders, setOrders] = useState<DeliveryOrderRow[]>(initialOrders)
+    const [orders, setOrders] = useServerState<DeliveryOrderRow[]>(initialOrders)
     const [busyId, setBusyId] = useState<string | null>(null)
     const [codeFor, setCodeFor] = useState<string | null>(null)
     const [code, setCode] = useState('')

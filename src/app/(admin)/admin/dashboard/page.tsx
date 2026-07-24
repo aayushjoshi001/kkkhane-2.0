@@ -1,3 +1,4 @@
+import RealtimeRefresh from '@/components/shared/RealtimeRefresh'
 import { Suspense } from 'react'
 import { createAdminClient } from '@/lib/supabase/server'
 import { formatCurrency, formatDateShort, NEPAL_TZ } from '@/lib/utils'
@@ -67,6 +68,14 @@ export default async function AdminDashboardPage() {
 
     return (
         <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
+            {/* Every section below is a separate server-side aggregate, so this
+                refreshes on a long fuse — the numbers should track service, not
+                re-run a dozen counts per order during a dinner rush. */}
+            <RealtimeRefresh
+                restaurantId={restaurantId}
+                tables={isHotel ? ['orders', 'sessions', 'rooms', 'bookings'] : ['orders', 'sessions']}
+                debounceMs={5000}
+            />
             {/* Premium Header */}
             <div className="relative overflow-hidden rounded-[2rem] bg-[#0a0a0a] text-white p-8 sm:p-12 shadow-2xl animate-fade-up">
                 <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-brand-500 opacity-20 blur-[120px] rounded-full translate-x-1/3 -translate-y-1/4 pointer-events-none" />

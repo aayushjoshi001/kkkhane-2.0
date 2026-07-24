@@ -1,3 +1,4 @@
+import RealtimeCatchUp from '@/components/shared/RealtimeCatchUp'
 import { ReactNode } from 'react'
 import AdminSidebar from '@/components/admin/AdminSidebar'
 import SuperAdminSidebar from '@/components/admin/SuperAdminSidebar'
@@ -59,7 +60,10 @@ export default async function AdminLayout({ children }: { children: ReactNode })
                     <SessionSync userId={currentUser.id} />
                     {isSuperAdmin ? <SuperAdminSidebar userRole={roleNameRaw} userAvatar={userAvatar} /> : <AdminSidebar userRole={roleNameRaw} restaurantName={restaurantName} userAvatar={userAvatar} />}
                     {!isSuperAdmin && currentUser.restaurantId && (
-                        <AdminOrderNotifier restaurantId={currentUser.restaurantId} />
+                        <>
+                            <AdminOrderNotifier restaurantId={currentUser.restaurantId} />
+                            <RealtimeCatchUp restaurantId={currentUser.restaurantId} />
+                        </>
                     )}
 
                     {/* Main Content */}
