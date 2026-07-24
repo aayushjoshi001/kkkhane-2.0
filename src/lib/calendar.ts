@@ -81,6 +81,32 @@ function pair(lead: string | null, secondary: string | null): string {
 }
 
 /**
+ * The two calendars as separate strings, for callers that want to lay them out
+ * themselves rather than take the bracketed one-liner.
+ *
+ * Dense tables are the reason this exists: "Shrawan 08, 2083 (Jul 24, 2026)" is
+ * roughly twice the width of the AD date it replaced, and in a nowrap cell that
+ * pushes the whole table into horizontal scroll. Stacking the secondary
+ * calendar under the primary keeps both without the width.
+ *
+ * `secondary` is null when the BS conversion failed, so callers can render just
+ * the one line rather than an empty second row.
+ */
+export function formatDateParts(
+    value: string | Date | null | undefined,
+    calendar: Calendar = DEFAULT_CALENDAR,
+    opts: { withYear?: boolean } = {},
+): { primary: string; secondary: string | null } {
+    const date = toDate(value)
+    if (!date) return { primary: '-', secondary: null }
+    const bs = bsPart(date, opts)
+    const ad = adPart(date, opts)
+    return calendar === 'bs'
+        ? { primary: bs ?? ad, secondary: bs ? ad : null }
+        : { primary: ad, secondary: bs }
+}
+
+/**
  * A date with both calendars, the chosen one leading.
  *
  *   bs → "Asar 26, 2083 (Jul 10, 2026)"

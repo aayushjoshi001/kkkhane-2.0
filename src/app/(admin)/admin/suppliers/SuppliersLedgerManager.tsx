@@ -16,6 +16,7 @@ import SupplierPaymentFields, { EMPTY_SUPPLIER_PAYMENT, validateSupplierPayment,
 import PayPartyModal, { type PayPartyResult } from '@/components/admin/PayPartyModal'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
+import DateCell from '@/components/ui/DateCell'
 
 function paymentTypeLabel(parsed: SupplierBillDetails, bankAccountName?: string): string {
     const bank = bankAccountName || parsed.bank_name || 'Transfer'
@@ -764,7 +765,7 @@ export default function SuppliersLedgerManager({
                                                 <tr key={e.id} className="hover:bg-surface-muted/50 transition-colors">
                                                     {/* Date */}
                                                     <td className="px-4 py-3 text-ink-subtle font-semibold">
-                                                        {formatDate(e.created_at)}
+                                                        <DateCell value={e.created_at} />
                                                     </td>
                                                     {/* Description */}
                                                     <td className="px-4 py-3 font-bold text-ink">

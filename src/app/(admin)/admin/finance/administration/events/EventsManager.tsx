@@ -14,6 +14,7 @@ import { FINANCIAL_EVENT_TYPES, FINANCIAL_EVENT_STATUSES, type FinancialEvent, t
 import type { SearchFinancialEventsFilters } from '@/lib/finance-events/repository'
 import { searchEventsAction, retryEventAction } from './actions'
 import Select from '@/components/ui/Select'
+import DateCell from '@/components/ui/DateCell'
 
 const PAGE_SIZE = 20
 
@@ -143,7 +144,7 @@ export default function EventsManager({ initialRows, initialTotal }: { initialRo
                                         <td className="px-4 py-3 font-mono text-xs font-bold">{ev.event_code}</td>
                                         <td className="px-4 py-3">{ev.event_type}</td>
                                         <td className="px-4 py-3 text-ink-subtle text-xs">{ev.source_module}</td>
-                                        <td className="px-4 py-3">{formatDate(ev.business_date)}</td>
+                                        <td className="px-4 py-3"><DateCell value={ev.business_date} /></td>
                                         <td className="px-4 py-3">{formatCurrency(ev.amount, ev.currency)}</td>
                                         <td className="px-4 py-3"><StatusBadge status={ev.status} /></td>
                                         <td className="px-4 py-3">{ev.retry_count}</td>

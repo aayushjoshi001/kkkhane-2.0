@@ -8,7 +8,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import RoomBillingModal, { type BillingTable, type BillingOrder } from '@/components/admin/RoomBillingModal'
 import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import Select from '@/components/ui/Select'
-import { useDates } from '@/lib/contexts/CalendarContext'
+import DateCell from '@/components/ui/DateCell'
 
 interface BookingsClientProps {
     initialBookings: Booking[]
@@ -42,7 +42,6 @@ export default function BookingsClient({ initialBookings, restaurantName, tables
     }, [deepLinkedId, bookings])
 
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
-    const { formatDate } = useDates()
 
     // Re-sync when the server sends fresh bookings (render-phase adjust,
     // see react.dev "You Might Not Need an Effect")
@@ -151,10 +150,6 @@ export default function BookingsClient({ initialBookings, restaurantName, tables
                             <tbody className="divide-y divide-hairline text-[14px]">
                                 {filteredBookings.map(b => {
                                     const roomNum = b.rooms?.room_number || '—'
-                                    const checkInDate = new Date(b.check_in)
-                                    const checkOutDate = new Date(b.check_out)
-                                    const checkInStr = formatDate(checkInDate)
-                                    const checkOutStr = formatDate(checkOutDate)
                                     const total = b.total_amount || 0.00
                                     const paid = b.paid_amount || 0.00
                                     const balance = total - paid
@@ -169,8 +164,11 @@ export default function BookingsClient({ initialBookings, restaurantName, tables
                                                 Room {roomNum}
                                             </td>
                                             <td className="px-6 py-4 font-medium text-ink-subtle">
-                                                <div>{checkInStr} to</div>
-                                                <div className="text-xs text-ink-subtle mt-0.5">{checkOutStr}</div>
+                                                <div className="flex items-start gap-1.5">
+                                                    <DateCell value={b.check_in} />
+                                                    <span className="text-ink-subtle text-xs pt-0.5">→</span>
+                                                    <DateCell value={b.check_out} />
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4">
                                                 <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusColor(b.status)}`}>

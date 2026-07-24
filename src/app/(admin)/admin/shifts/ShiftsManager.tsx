@@ -6,7 +6,7 @@ import { Clock, CheckCircle, LogOut, User, Pencil, X, Loader2 } from 'lucide-rea
 import toast from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
 import { useConfirmStore } from '@/lib/stores/confirm'
-import { useDates } from '@/lib/contexts/CalendarContext'
+import DateCell from '@/components/ui/DateCell'
 
 interface ShiftRow {
     id: string
@@ -149,7 +149,6 @@ export default function ShiftsManager({ activeShifts, recentShifts }: {
     const [active, setActive] = useState(activeShifts)
     const [recent, setRecent] = useState(recentShifts)
     const [correcting, setCorrecting] = useState<ShiftRow | null>(null)
-    const { formatDate } = useDates()
 
     async function handleForceClockOut(shift: ShiftRow) {
         const ok = await confirm({ title: `Force clock-out ${getStaffName(shift)}?`, message: 'This action cannot be undone.', confirmText: 'Confirm', isDestructive: true })
@@ -254,7 +253,7 @@ export default function ShiftsManager({ activeShifts, recentShifts }: {
                             <tr key={s.id} className="hover:bg-surface-muted/30 transition-colors">
                                 <td className="px-5 py-4 font-extrabold text-ink">{getStaffName(s)}</td>
                                 <td className="px-5 py-4 text-ink-subtle font-medium capitalize hidden md:table-cell">{getStaffRole(s)}</td>
-                                <td className="px-5 py-4 text-ink-subtle font-medium tabular-nums hidden md:table-cell">{formatDate(s.clock_in)}</td>
+                                <td className="px-5 py-4 text-ink-subtle font-medium hidden md:table-cell"><DateCell value={s.clock_in} /></td>
                                 <td className="px-5 py-4 text-ink-subtle font-bold tabular-nums">
                                     {new Date(s.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     {' → '}
