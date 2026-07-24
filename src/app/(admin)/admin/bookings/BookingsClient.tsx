@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Plus, Filter, Calendar } from 'lucide-react'
 import type { Booking, Room, BookingStatus } from '@/types/database'
 import EmptyState from '@/components/ui/EmptyState'
@@ -26,6 +26,22 @@ export default function BookingsClient({ initialBookings, restaurantName, tables
     const [filterStatus, setFilterStatus] = useState<string>('all')
     // Booking being settled in the checkout/billing modal
     const [billingBooking, setBillingBooking] = useState<Booking | null>(null)
+    const searchParams = useSearchParams()
+
+    // Deep link from the dashboard's recent-bookings row:
+    // /admin/bookings?booking=<id> opens that stay's billing detail directly.
+    // Once only, so dismissing it does not reopen while the query string stands.
+    const deepLinkedId = searchParams.get('booking')
+    const consumedDeepLink = useRef(false)
+    useEffect(() => {
+        if (!deepLinkedId || consumedDeepLink.current) return
+        const match = bookings.find((b) => b.id === deepLinkedId)
+        if (!match) return
+        consumedDeepLink.current = true
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setBillingBooking(match)
+    }, [deepLinkedId, bookings])
+
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
     const bsEnabled = useFeatureEnabled('bsDateEnabled')
 
