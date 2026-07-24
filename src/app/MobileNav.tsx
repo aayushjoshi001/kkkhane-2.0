@@ -68,8 +68,12 @@ export default function MobileNav({ user = null }: { user?: NavUser | null }) {
                 />
             )}
 
-            {/* Slide-down mobile menu */}
+            {/* Slide-down mobile menu.
+                `pointer-events-none` stops the mouse but not the keyboard, so
+                while closed this panel still sat in the tab order — tabbing from
+                the hamburger walked through invisible links. */}
             <div
+                inert={!open}
                 className={`fixed top-14 sm:top-16 left-0 right-0 z-50 md:hidden bg-surface border-b border-hairline-strong shadow-xl transition-all duration-300 ease-in-out ${
                     open
                         ? 'opacity-100 translate-y-0'
