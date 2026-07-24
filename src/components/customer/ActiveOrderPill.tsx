@@ -80,17 +80,22 @@ export default function ActiveOrderPill() {
                 }
             )
         }
+        // Reuses the same server action as the one-shot fetch above rather than
+        // querying from the client. RLS only lets a guest read orders inside
+        // their own dine-in session, so a client-side read would return nothing
+        // for takeout orders and quietly blank the map — putting finished orders
+        // back in the pill. The action runs with the service role for exactly
+        // this reason.
         channel.subscribe(catchUpOnResubscribe(`active-order-pill:${idsKey}`, async () => {
-            const { data } = await supabase.from('orders').select('id, status').in('id', ids)
-            if (cancelled || !data) return
-            for (const row of data as Array<{ id: string; status: string }>) {
-                if (TERMINAL.has(row.status)) removeActiveOrder(row.id)
+            const rows = await getTrackedOrderStatuses(ids)
+            if (cancelled) return
+            const map: Record<string, string> = {}
+            for (const r of rows) {
+                map[r.id] = r.status
+                if (TERMINAL.has(r.status)) removeActiveOrder(r.id)
             }
-            setStatusById(Object.fromEntries(
-                (data as Array<{ id: string; status: string }>)
-                    .filter((row) => !TERMINAL.has(row.status))
-                    .map((row) => [row.id, row.status])
-            ))
+            for (const id of ids) if (!(id in map)) removeActiveOrder(id)
+            setStatusById(map)
         }))
 
         return () => { cancelled = true; supabase.removeChannel(channel) }
