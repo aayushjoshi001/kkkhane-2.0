@@ -14,6 +14,7 @@ import { FeatureProvider, BusinessModeProvider } from '@/lib/contexts/FeatureCon
 import type { BusinessMode } from '@/lib/businessMode'
 import { SidebarProvider } from '@/lib/contexts/SidebarContext'
 import SidebarToggle from '@/components/admin/SidebarToggle'
+import CalendarToggle from '@/components/shared/CalendarToggle'
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
     // requireRole() uses the React.cache-wrapped getCurrentUser — no duplicate DB call
@@ -71,6 +72,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
                         <header className="print:hidden bg-surface border-b border-hairline px-5 md:px-8 h-16 flex items-center justify-between shrink-0 z-10">
                             <SidebarToggle isSuperAdmin={isSuperAdmin} />
                             <div className="flex items-center gap-3">
+                                <CalendarToggle />
                                 <CommandHint />
                                 {!isSuperAdmin && <SoundEnableButton variant="light" />}
                                 <span className={`text-caption font-semibold px-2.5 py-1 rounded-full ${

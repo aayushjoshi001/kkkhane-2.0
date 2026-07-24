@@ -910,7 +910,6 @@ export default function StaffManager({
     }
 
     const { financeEnabled } = useFeatures()
-    const bsEnabled = useFeatureEnabled('bsDateEnabled')
 
     // Business Logic: only super_admin can assign super_admin, and the
     // finance/receptionist roles require the enterprise finance plan.
@@ -2253,7 +2252,6 @@ export default function StaffManager({
                               )
                             : undefined
                     }
-                    bsEnabled={bsEnabled}
                     bankAccounts={bankAccounts}
                     onSettled={handlePaySettled}
                 />

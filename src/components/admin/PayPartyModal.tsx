@@ -28,7 +28,6 @@ interface PayPartyModalProps {
     partyId: string
     partyName: string
     currentDue?: number
-    bsEnabled: boolean
     bankAccounts: BankAccountOption[]
     onSettled: (result: PayPartyResult) => void
 }
@@ -50,7 +49,6 @@ export default function PayPartyModal({
     partyId,
     partyName,
     currentDue,
-    bsEnabled,
     bankAccounts,
     onSettled,
 }: PayPartyModalProps) {
@@ -433,7 +431,7 @@ export default function PayPartyModal({
             </Modal>
 
             {printSlip && (
-                <VoucherPrintSlip voucher={printSlip} bsEnabled={bsEnabled} onClose={() => setPrintSlip(null)} />
+                <VoucherPrintSlip voucher={printSlip} onClose={() => setPrintSlip(null)} />
             )}
         </>
     )

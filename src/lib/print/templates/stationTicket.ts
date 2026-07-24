@@ -8,6 +8,7 @@ import type { KitchenOrder, KitchenOrderItem } from '@/components/kitchen/OrderQ
 import { STATION_META, itemsForStation, type StationKind } from '@/lib/stations'
 import { getKOTSourceLabel, getItemKOTDisplay } from '@/lib/utils'
 import { appendBrandFooter } from './brandFooter'
+import { formatTime } from '@/lib/calendar'
 
 export function buildStationTicket(
     order: KitchenOrder,
@@ -29,7 +30,7 @@ export function buildStationTicket(
 
     b.align('left')
     b.line(`Order: #${order.id.slice(0, 8).toUpperCase()}`)
-    b.line(`Time: ${new Date(order.placed_at).toLocaleTimeString()}`)
+    b.line(`Time: ${formatTime(order.placed_at)}`)
     b.divider()
 
     const items = itemsForStation<KitchenOrderItem>(order.order_items, station)

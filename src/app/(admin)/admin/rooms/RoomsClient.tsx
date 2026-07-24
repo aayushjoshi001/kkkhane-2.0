@@ -17,7 +17,8 @@ import DownloadAllQrsButton from '@/components/admin/DownloadAllQrsButton'
 import { useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
-import { formatDateTime, defaultStayWindowInputs } from '@/lib/utils'
+import { defaultStayWindowInputs } from '@/lib/utils'
+import { useDates } from '@/lib/contexts/CalendarContext'
 
 const QR_LOGO_SRC = '/icons/kkkhane.png'
 
@@ -451,7 +452,7 @@ export default function RoomsClient({
         return `https://kkkhane.com/r/${restaurantSlug}?room=${encodeURIComponent(roomId)}`
     }
 
-    const bsEnabled = useFeatureEnabled('bsDateEnabled')
+    const { formatDateTime } = useDates()
 
     return (
         <div className="space-y-6 pb-12">
@@ -753,11 +754,11 @@ export default function RoomsClient({
                                         <div className="border-t border-blue-100/60 pt-2 space-y-1.5">
                                             <div className="flex items-center justify-between text-[11px]">
                                                 <span className="text-ink-subtle font-bold">CHECK IN:</span>
-                                                <span className="font-extrabold text-ink">{formatDateTime(activeBooking.check_in, bsEnabled)}</span>
+                                                <span className="font-extrabold text-ink">{formatDateTime(activeBooking.check_in)}</span>
                                             </div>
                                             <div className="flex items-center justify-between text-[11px]">
                                                 <span className="text-ink-subtle font-bold">CHECK OUT:</span>
-                                                <span className="font-extrabold text-ink">{formatDateTime(activeBooking.check_out, bsEnabled)}</span>
+                                                <span className="font-extrabold text-ink">{formatDateTime(activeBooking.check_out)}</span>
                                             </div>
                                         </div>
 

@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { ShoppingBag, Search, X } from 'lucide-react'
-import { useCurrency, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
-import { toNepaliDate } from '@/lib/nepaliDate'
+import { useCurrency } from '@/lib/contexts/FeatureContext'
 import RefundOrderButton from './RefundOrderButton'
 import Select from '@/components/ui/Select'
 import { getItemDisplayName } from '@/lib/utils'
 import OrderDetailModal from '@/components/admin/OrderDetailModal'
+import { useDates } from '@/lib/contexts/CalendarContext'
+import { formatTime } from '@/lib/calendar'
 
 export type AdminOrderItem = {
     id: string
@@ -88,7 +89,7 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
         setDetailOrder(match)
     }, [deepLinkedId, orders])
     const money = useCurrency()
-    const bsEnabled = useFeatureEnabled('bsDateEnabled')
+    const { formatDate } = useDates()
     const [status, setStatus] = useState('all')
     const [payment, setPayment] = useState('all')
     const [dateRange, setDateRange] = useState('all')
@@ -223,7 +224,7 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-ink-subtle text-xs whitespace-nowrap">
-                                        <span className="tabular-nums">{bsEnabled ? toNepaliDate(new Date(order.placed_at), 'MMMM DD, YYYY', 'en') : new Date(order.placed_at).toLocaleDateString()}</span> <span className="mx-1 opacity-50">·</span> <span className="tabular-nums">{new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                        <span className="tabular-nums">{formatDate(order.placed_at)}</span> <span className="mx-1 opacity-50">·</span> <span className="tabular-nums">{formatTime(order.placed_at)}</span>
                                     </td>
                                     <td className="px-6 py-4 text-right font-bold text-ink whitespace-nowrap">
                                         <span className={`tabular-nums ${order.payment_status === 'refunded' ? 'line-through text-ink-subtle' : ''}`}>
@@ -288,7 +289,7 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                             {itemNames && <p className="text-xs text-ink-subtle/70 truncate">{itemNames}</p>}
                             <div className="flex items-center justify-between pt-1">
                                 <div className="text-[11px] text-ink-subtle tabular-nums font-medium">
-                                    {bsEnabled ? toNepaliDate(new Date(order.placed_at), 'MMMM DD, YYYY', 'en') : new Date(order.placed_at).toLocaleDateString()} <span className="opacity-50 mx-1">·</span> {new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {formatDate(order.placed_at)} <span className="opacity-50 mx-1">·</span> {formatTime(order.placed_at)}
                                 </div>
                                 {refundable && <span onClick={(e) => e.stopPropagation()}><RefundOrderButton orderId={order.id} paymentStatus={order.payment_status} totalAmount={order.total_amount ?? 0} refundedAmount={order.refunded_amount ?? 0} /></span>}
                             </div>

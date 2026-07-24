@@ -9,12 +9,13 @@ import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCurrency, useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { type TableWithSession } from './CashierTableManager'
-import { formatDateTime, calculateNights, advanceMethodLabel, getItemDisplayName, defaultStayWindowInputs } from '@/lib/utils'
+import { calculateNights, advanceMethodLabel, getItemDisplayName, defaultStayWindowInputs } from '@/lib/utils'
 import QuickOrderModal from './QuickOrderModal'
 import { openSession } from '@/app/(staff)/waiter/actions'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 import { getRoomStatusConfig } from '@/lib/roomStatus'
 import Select from '@/components/ui/Select'
+import { useDates } from '@/lib/contexts/CalendarContext'
 
 export interface RoomWithTypes {
     id: string
@@ -68,7 +69,7 @@ export default function CashierRoomManager({
     const money = useCurrency()
     const supabaseRef = useRef(createClient())
     const manualEntryEnabled = useFeatureEnabled('manualEntryEnabled')
-    const bsEnabled = useFeatureEnabled('bsDateEnabled')
+    const { formatDateTime } = useDates()
 
     // Sub-modal and drawer states
     const [bookingFormOpen, setBookingFormOpen] = useState(false)
@@ -927,8 +928,8 @@ export default function CashierRoomManager({
                                     </div>
                                     <div className="space-y-2 text-right border-l border-hairline pl-4">
                                         <p className="text-[10px] font-bold text-ink-subtle uppercase text-right">Stay Schedule</p>
-                                        <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">In:</span> {formatDateTime(activeBooking.check_in, bsEnabled)}</p>
-                                        <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">Out:</span> {formatDateTime(activeBooking.check_out, bsEnabled)}</p>
+                                        <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">In:</span> {formatDateTime(activeBooking.check_in)}</p>
+                                        <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">Out:</span> {formatDateTime(activeBooking.check_out)}</p>
                                         <p className="text-[10px] text-brand-500 font-extrabold">{activeBooking.adults} Guest(s)</p>
                                     </div>
                                 </div>

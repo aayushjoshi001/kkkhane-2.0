@@ -6,12 +6,13 @@ import { X, Loader2, CheckCircle2, Percent, Clock } from 'lucide-react'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
-import { formatDateTime, calculateNights, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
+import { calculateNights, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
 import type { ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 import { useFeatureEnabled, useDateFormatter } from '@/lib/contexts/FeatureContext'
 import Select from '@/components/ui/Select'
+import { useDates } from '@/lib/contexts/CalendarContext'
 
 /** Table shape the admin room pages pass in (with its active QR session, if any). */
 export interface BillingTable {
@@ -114,7 +115,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const printBillEnabled = useFeatureEnabled('printBillEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
-    const bsEnabled = useFeatureEnabled('bsDateEnabled')
+    const { formatDateTime } = useDates()
     // True once the checkout API confirms the room is settled — printing
     // happens after this, so the manager sees "Settled" immediately instead
     // of waiting on a printer that may be slow or not configured.
@@ -406,8 +407,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                 </div>
                                 <div className="space-y-1 text-right border-l border-hairline pl-4">
                                     <p className="text-[10px] font-bold text-ink-subtle uppercase">Stay schedule</p>
-                                    <p className="font-semibold text-ink-subtle">In: {formatDateTime(booking.check_in, bsEnabled)}</p>
-                                    <p className="font-semibold text-ink-subtle">Out: {formatDateTime(booking.check_out, bsEnabled)}</p>
+                                    <p className="font-semibold text-ink-subtle">In: {formatDateTime(booking.check_in)}</p>
+                                    <p className="font-semibold text-ink-subtle">Out: {formatDateTime(booking.check_out)}</p>
                                     {isExceeded && (
                                         <p className="text-[9px] text-rose-600 font-bold mt-1">⚠ Exceeded by {extraHours} hr(s)</p>
                                     )}

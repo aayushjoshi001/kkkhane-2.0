@@ -2,7 +2,9 @@ import RealtimeRefresh from '@/components/shared/RealtimeRefresh'
 import RowLink from '@/components/admin/RowLink'
 import { Suspense } from 'react'
 import { createAdminClient } from '@/lib/supabase/server'
-import { formatCurrency, formatDateShort, NEPAL_TZ } from '@/lib/utils'
+import { formatCurrency, NEPAL_TZ } from '@/lib/utils'
+import { cookies } from 'next/headers'
+import { CALENDAR_COOKIE, formatDateShort, parseCalendar, type Calendar } from '@/lib/calendar'
 import {
     TrendingUp, ShoppingBag, Users, AlertTriangle, Clock, UserCheck,
     ArrowRight, CheckCircle2, ChevronRight, UtensilsCrossed, QrCode, Tag, ClipboardList, Boxes, Inbox,
@@ -16,7 +18,6 @@ import { StatusBadge } from '@/components/ui/Badge'
 import { StatCardSkeleton, RowSkeleton } from '@/components/ui/Skeleton'
 import { getBusinessMode } from '@/lib/businessMode'
 import { getRestaurantFeatures } from '@/lib/features'
-import { toNepaliDate } from '@/lib/nepaliDate'
 
 export const revalidate = 0
 
@@ -26,6 +27,9 @@ export default async function AdminDashboardPage() {
     const currentUser = await getCurrentUser()
     if (currentUser.role === 'super_admin') redirect('/admin/super-admin/dashboard')
     const { restaurantId } = currentUser
+    // Server component: the user's calendar choice arrives by cookie, so these
+    // server-rendered dates match what the client would render.
+    const calendar = parseCalendar((await cookies()).get(CALENDAR_COOKIE)?.value)
     const features = await getRestaurantFeatures(restaurantId)
 
     // One fast, single-row query gates the whole shell — everything else below
@@ -134,7 +138,7 @@ export default async function AdminDashboardPage() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">
                     <Suspense fallback={<PipelineCardSkeleton />}>
-                        <PipelineTableSection restaurantId={restaurantId} money={money} isHotel={isHotel} bsDateEnabled={!!features?.bsDateEnabled} />
+                        <PipelineTableSection restaurantId={restaurantId} money={money} isHotel={isHotel} calendar={calendar} />
                     </Suspense>
 
                     <Suspense fallback={null}>
@@ -262,7 +266,7 @@ function KpiGridSkeleton() {
     )
 }
 
-async function PipelineTableSection({ restaurantId, money, isHotel = false, bsDateEnabled = false }: { restaurantId: string; money: Money; isHotel?: boolean; bsDateEnabled?: boolean }) {
+async function PipelineTableSection({ restaurantId, money, isHotel = false, calendar }: { restaurantId: string; money: Money; isHotel?: boolean; calendar: Calendar }) {
     const adminSupabase = await createAdminClient()
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -317,12 +321,8 @@ async function PipelineTableSection({ restaurantId, money, isHotel = false, bsDa
                                 const roomNumber = (booking.rooms as unknown as { room_number: string } | null)?.room_number || '—'
                                 const chIn = new Date(booking.check_in)
                                 const chOut = new Date(booking.check_out)
-                                const checkInDate = bsDateEnabled
-                                    ? toNepaliDate(chIn, 'MMMM DD', 'en')
-                                    : formatDateShort(chIn)
-                                const checkOutDate = bsDateEnabled
-                                    ? toNepaliDate(chOut, 'MMMM DD', 'en')
-                                    : formatDateShort(chOut)
+                                const checkInDate = formatDateShort(chIn, calendar)
+                                const checkOutDate = formatDateShort(chOut, calendar)
                                 return (
                                     <RowLink key={booking.id} href={`/admin/bookings?booking=${booking.id}`} className="group">
                                         <td className="px-6 py-4">

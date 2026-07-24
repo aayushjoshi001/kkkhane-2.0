@@ -392,6 +392,13 @@ export interface Settings {
         serviceChargeEnabled?: boolean
         serviceChargeRate?: number
         phoneOtpEnabled: boolean
+        /**
+         * @deprecated Superseded by the per-user calendar toggle (the
+         * kkkhane-calendar cookie, see lib/calendar.ts). Bikram Sambat now
+         * leads by default for everyone and each user flips their own
+         * preference, so nothing reads this. Kept so stored settings rows
+         * still parse; safe to drop in a later migration.
+         */
         bsDateEnabled: boolean
         // Notification
         notificationSoundUrl?: string | null

@@ -2,7 +2,7 @@
 
 import { Printer, X } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
-import { toNepaliDate } from '@/lib/nepaliDate'
+import { useDates } from '@/lib/contexts/CalendarContext'
 
 export interface VoucherSlipData {
     date: string
@@ -54,13 +54,14 @@ function amountInWords(amount: number): string {
 // per-row print icon and PayPartyModal's post-payment print prompt.
 export default function VoucherPrintSlip({
     voucher,
-    bsEnabled,
     onClose,
 }: {
     voucher: VoucherSlipData
-    bsEnabled: boolean
     onClose: () => void
 }) {
+    // Follows the printing user's own calendar choice, like every other date.
+    const { formatDate } = useDates()
+
     const handlePrint = () => {
         window.print()
     }
@@ -129,16 +130,7 @@ export default function VoucherPrintSlip({
                             <div>
                                 <span className="font-bold text-ink-subtle uppercase">Date: </span>
                                 <span className="font-black text-ink">
-                                    {(() => {
-                                        const d = new Date(voucher.date)
-                                        const ad = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
-                                        if (!bsEnabled) return ad
-                                        try {
-                                            return `${ad} (${toNepaliDate(d, 'MMMM DD, YYYY', 'en')} BS)`
-                                        } catch {
-                                            return ad
-                                        }
-                                    })()}
+                                    {formatDate(voucher.date)}
                                 </span>
                             </div>
                             <div>

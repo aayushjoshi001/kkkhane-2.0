@@ -17,6 +17,7 @@ import { toNepaliDate } from '@/lib/nepaliDate'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import { orderCategoriesForDisplay, findMainCategory } from '@/lib/utils'
 import Select from '@/components/ui/Select'
+import { useDates } from '@/lib/contexts/CalendarContext'
 
 interface BankBookClientProps {
     initialSession: DayBookSession | null
@@ -415,17 +416,8 @@ export default function BankBookClient({
     }
 
     const isClosed = session?.status === 'closed'
-    const bsEnabled = useFeatureEnabled('bsDateEnabled')
-    const dateLabel = (() => {
-        const d = new Date(todayDate + 'T00:00:00')
-        const ad = d.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-        if (!bsEnabled) return ad
-        try {
-            return `${ad} (${toNepaliDate(d, 'MMMM DD, YYYY', 'en')} BS)`
-        } catch {
-            return ad
-        }
-    })()
+    const { formatDateLong } = useDates()
+    const dateLabel = formatDateLong(`${todayDate}T00:00:00`)
 
     return (
         <div className="space-y-6 pb-16 animate-fade-up">

@@ -106,7 +106,6 @@ export default function SuppliersLedgerManager({
     // Pay modal — one action per supplier, settling however many outstanding
     // bills the amount covers (oldest first), via a real Payment Voucher.
     const [payModalOpen, setPayModalOpen] = useState(false)
-    const bsEnabled = useFeatureEnabled('bsDateEnabled')
 
     // Open add modal
     const openAddModal = () => {
@@ -1170,7 +1169,6 @@ export default function SuppliersLedgerManager({
                     partyId={ledgerSupplier.id}
                     partyName={ledgerSupplier.name}
                     currentDue={totalOwed}
-                    bsEnabled={bsEnabled}
                     bankAccounts={bankAccounts}
                     onSettled={handlePaySettled}
                 />
