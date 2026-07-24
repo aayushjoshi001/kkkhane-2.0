@@ -1,4 +1,5 @@
 import RealtimeRefresh from '@/components/shared/RealtimeRefresh'
+import RowLink from '@/components/admin/RowLink'
 import { Suspense } from 'react'
 import { createAdminClient } from '@/lib/supabase/server'
 import { formatCurrency, formatDateShort, NEPAL_TZ } from '@/lib/utils'
@@ -323,7 +324,7 @@ async function PipelineTableSection({ restaurantId, money, isHotel = false, bsDa
                                     ? toNepaliDate(chOut, 'MMMM DD', 'en')
                                     : formatDateShort(chOut)
                                 return (
-                                    <tr key={booking.id} className="group hover:bg-surface-muted/50 transition-colors cursor-pointer">
+                                    <RowLink key={booking.id} href={`/admin/bookings?booking=${booking.id}`} className="group">
                                         <td className="px-6 py-4">
                                             <span className="font-bold text-ink group-hover:text-brand-500 transition-colors">{booking.guest_name}</span>
                                         </td>
@@ -339,7 +340,7 @@ async function PipelineTableSection({ restaurantId, money, isHotel = false, bsDa
                                         <td className="px-6 py-4 text-right">
                                             <span className="text-[15px] font-bold text-ink tabular">{money(booking.total_amount)}</span>
                                         </td>
-                                    </tr>
+                                    </RowLink>
                                 )
                             })}
                         </tbody>
@@ -398,7 +399,7 @@ async function PipelineTableSection({ restaurantId, money, isHotel = false, bsDa
                     </thead>
                     <tbody className="divide-y divide-hairline">
                         {recentOrders?.map(order => (
-                            <tr key={order.id} className="group hover:bg-surface-muted/50 transition-colors cursor-pointer">
+                            <RowLink key={order.id} href={`/admin/orders?order=${order.id}`} className="group">
                                 <td className="px-6 py-4">
                                     <span className="font-mono text-[13px] font-bold text-ink group-hover:text-brand-500 transition-colors">#{order.id.substring(0, 6).toUpperCase()}</span>
                                 </td>
@@ -411,7 +412,7 @@ async function PipelineTableSection({ restaurantId, money, isHotel = false, bsDa
                                 <td className="px-6 py-4 text-right">
                                     <span className="text-[15px] font-bold text-ink tabular">{money(order.total_amount)}</span>
                                 </td>
-                            </tr>
+                            </RowLink>
                         ))}
                     </tbody>
                 </table>
