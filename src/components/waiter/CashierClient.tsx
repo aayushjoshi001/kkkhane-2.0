@@ -1265,7 +1265,15 @@ export default function CashierClient({
             setInvoiceSettled(true)
 
             if (printInvoiceEnabled && printBillEnabled) {
-                window.print()
+                const result = await printInvoice(buildInvoiceTicket(invoice, money, restaurantName, restaurantAddress, restaurantPhone, calendar))
+                if (!result.ok) {
+                    toast.error(
+                        result.status === 'no-printer-selected'
+                            ? 'No printer set for this till — pick one in Printer Settings.'
+                            : 'Printer not connected — opening browser print instead.'
+                    )
+                    if (result.status !== 'no-printer-selected') window.print()
+                }
             }
 
             setActiveInvoice(null)
