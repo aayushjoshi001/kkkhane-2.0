@@ -1543,7 +1543,6 @@ export default function CashierClient({
 
     return (
         <div className="space-y-5">
-            <AdSpace />
             {/* Header Actions Bar */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-surface rounded-2xl border border-hairline p-4 shadow-sm">
                 <div>
@@ -1570,6 +1569,8 @@ export default function CashierClient({
                     )}
                 </div>
             </div>
+
+            <AdSpace />
 
             {/* Cashier Tab Navigation */}
             <div className={`grid ${isHotel ? 'grid-cols-4' : 'grid-cols-3'} border-b border-hairline mb-4 bg-surface sticky top-14 z-20 -mx-3 px-3 md:mx-0 md:px-0`}>
