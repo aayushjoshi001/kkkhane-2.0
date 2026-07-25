@@ -13,7 +13,7 @@ export default async function CashierPage() {
 
     const ORDER_SELECT = `
         id, total_amount, placed_at, delivered_at, payment_status, payment_method, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address,
-        sessions ( id, booking_id, seat_number, tables ( id, label, room_id ) ),
+        sessions ( id, booking_id, seat_number, tables ( id, label, room_id ), bookings:booking_id ( id, rooms ( id, room_number ) ) ),
         bookings ( id, rooms ( id, room_number ) ),
         order_items ( id, quantity, status, unit_price, special_request, needs_confirmation, menu_items ( name ), menu_item_variations:menu_item_variation_id ( id, name ) )
     `
@@ -62,7 +62,7 @@ export default async function CashierPage() {
             .from('orders')
             .select(`
                 id, status, total_amount, placed_at, session_id, order_type, customer_name, customer_phone, delivery_address, payment_status, booking_id,
-                sessions ( id, booking_id, seat_number, tables ( id, label, room_id ) ),
+                sessions ( id, booking_id, seat_number, tables ( id, label, room_id ), bookings:booking_id ( id, rooms ( id, room_number ) ) ),
                 bookings ( id, rooms ( id, room_number ) ),
                 order_items ( id, quantity, status, unit_price, special_request, needs_confirmation, menu_items ( name ), menu_item_variations:menu_item_variation_id ( id, name ) )
             `)

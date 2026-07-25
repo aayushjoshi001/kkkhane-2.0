@@ -35,11 +35,18 @@ interface Props {
 }
 
 function locationLabel(order: AnyOrder, splitSessionIds: Set<string>): string {
-    const roomNumber = order.bookings?.rooms?.room_number
+    const roomNumber = order.bookings?.rooms?.room_number || order.sessions?.bookings?.rooms?.room_number
+    const hasTable = !!order.session_id && !!order.sessions
+    const tblLabel = hasTable ? tableLabel(order.sessions, splitSessionIds) : null
+
+    if (roomNumber && tblLabel && tblLabel !== '?') {
+        return `Room ${roomNumber} - Table ${tblLabel}`
+    }
     if (roomNumber) return `Room ${roomNumber}`
     if (order.order_type === 'takeout') return `Takeaway · ${order.customer_name || 'Customer'}`
     if (order.order_type === 'delivery') return `Delivery · ${order.customer_name || 'Customer'}`
-    return `Table ${tableLabel(order.sessions, splitSessionIds)}`
+    if (tblLabel && tblLabel !== '?') return `Table ${tblLabel}`
+    return 'Unknown Location'
 }
 
 // Small select-all + per-item toggle set, mirroring the pattern already used
@@ -128,12 +135,20 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
         for (const order of allOrders) {
             let key = ''
             let title = ''
-            if (order.session_id) {
+            const roomNumber = order.bookings?.rooms?.room_number || order.sessions?.bookings?.rooms?.room_number
+            const hasTable = !!order.session_id && !!order.sessions
+            const tblLabel = hasTable ? tableLabel(order.sessions, splitSessionIds) : null
+            const bookingId = order.booking_id || order.sessions?.booking_id
+
+            if (roomNumber && hasTable && tblLabel && tblLabel !== '?') {
+                key = `booking-${bookingId || 'b'}-session-${order.session_id}`
+                title = `Room ${roomNumber} - Table ${tblLabel}`
+            } else if (order.session_id) {
                 key = `session-${order.session_id}`
-                title = `Table ${tableLabel(order.sessions, splitSessionIds)}`
-            } else if (order.booking_id) {
-                key = `booking-${order.booking_id}`
-                title = order.bookings?.rooms?.room_number ? `Room ${order.bookings.rooms.room_number}` : 'Room Service'
+                title = `Table ${tblLabel || '?'}`
+            } else if (bookingId) {
+                key = `booking-${bookingId}`
+                title = roomNumber ? `Room ${roomNumber}` : 'Room Service'
             } else {
                 key = `order-${order.id}`
                 title = order.order_type === 'takeout'

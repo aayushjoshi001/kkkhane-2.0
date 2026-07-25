@@ -63,7 +63,7 @@ export type UnpaidOrder = {
     customer_name?: string | null
     customer_phone?: string | null
     delivery_address?: string | null
-    sessions: { id: string; seat_number?: number; tables: TableRef } | null
+    sessions: { id: string; seat_number?: number; booking_id?: string | null; tables: TableRef; bookings?: BookingRoomRef } | null
     bookings?: BookingRoomRef
     order_items: OrderItem[]
 }
@@ -80,7 +80,7 @@ export type ActiveOrder = {
     customer_name?: string | null
     customer_phone?: string | null
     delivery_address?: string | null
-    sessions: { id: string; seat_number?: number; tables: TableRef } | null
+    sessions: { id: string; seat_number?: number; booking_id?: string | null; tables: TableRef; bookings?: BookingRoomRef } | null
     bookings?: BookingRoomRef
     order_items?: OrderItem[]
 }
