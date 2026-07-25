@@ -51,7 +51,8 @@ export async function getRoomContextForTable(
 
     if (!table?.room_id) return null
 
-    const room = table.rooms as unknown as { room_number?: string } | null
+    const roomRaw = table.rooms as unknown
+    const room = Array.isArray(roomRaw) ? roomRaw[0] : (roomRaw as { id?: string; room_number?: string } | null)
     const booking = await getActiveBookingForRoom(admin, table.room_id as string)
 
     return {
