@@ -1452,7 +1452,7 @@ export default function MenuManager({
                                         onChange={e => setNewStockForm({ ...newStockForm, unit: e.target.value })}
                                         className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                     >
-                                        {['kg', 'g', 'L', 'mL', 'pcs', 'lbs', 'oz', 'cups', 'tbsp', 'tsp'].map(u => (
+                                        {['kg', 'g', 'L', 'mL', 'pcs', 'bottle', 'packet', 'lbs', 'oz', 'cups', 'tbsp', 'tsp'].map(u => (
                                             <option key={u} value={u}>{u}</option>
                                         ))}
                                     </Select>
