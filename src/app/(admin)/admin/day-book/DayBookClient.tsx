@@ -10,6 +10,7 @@ import { downloadCsv } from '@/lib/exportCsv'
 import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { toNepaliDate } from '@/lib/nepaliDate'
 import { useDates } from '@/lib/contexts/CalendarContext'
+import { formatDateParts, type Calendar } from '@/lib/calendar'
 
 interface DayBookTotals {
     total_cash_in: number
@@ -65,10 +66,11 @@ function timeStr(iso: string) {
     return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kathmandu' })
 }
 
-function entryDateStr(iso: string) {
-    const d = new Date(iso)
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-    return `${d.getDate()} ${months[d.getMonth()]}`
+// Only the leading calendar here — this renders as a 10px line beneath the
+// entry time, where "Shrawan 08 (Jul 24)" would not fit. The page header
+// already states the day in full, in both calendars.
+function entryDateStr(iso: string, calendar: Calendar) {
+    return formatDateParts(iso, calendar, { withYear: false }).primary
 }
 
 function formatDescription(desc: string): string {
@@ -94,7 +96,7 @@ const isSourceCash = (type: DayBookEntry['type']) => type === 'cash_in' || type 
 export default function DayBookClient({ session, entries, totals, todayDate }: DayBookClientProps) {
     const [ledgerTab, setLedgerTab] = useState<'in' | 'out'>('in')
 
-    const { formatDateLong } = useDates()
+    const { formatDateLong, calendar } = useDates()
     const dateLabel = formatDateLong(`${todayDate}T00:00:00`)
 
     const moneyInEntries  = entries.filter(e => e.type === 'cash_in' || e.type === 'bank_in')
@@ -258,7 +260,7 @@ export default function DayBookClient({ session, entries, totals, todayDate }: D
                                                     <tr key={e.id} className="hover:bg-surface-muted transition-colors">
                                                         <td className="px-6 py-4 text-ink-subtle font-semibold">
                                                             <div>{timeStr(e.created_at)}</div>
-                                                            <div className="text-[10px] text-ink-subtle font-bold">{entryDateStr(e.created_at)}</div>
+                                                            <div className="text-[10px] text-ink-subtle font-bold">{entryDateStr(e.created_at, calendar)}</div>
                                                         </td>
                                                         <td className="px-6 py-4">
                                                             <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${

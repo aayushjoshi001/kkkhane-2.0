@@ -13,6 +13,7 @@ import VoucherPrintSlip from '@/components/admin/VoucherPrintSlip'
 import { useDateFormatter, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
+import DateCell from '@/components/ui/DateCell'
 
 interface BankAccount {
     id: string
@@ -739,7 +740,7 @@ export default function VouchersManager({
                                 {filteredVouchers.map(v => (
                                     <tr key={v.id} className="hover:bg-surface-muted/50 transition-colors">
                                         <td className="px-5 py-4 text-ink-subtle font-semibold">
-                                            {formatDate(v.date)}
+                                            <DateCell value={v.date} />
                                         </td>
                                         <td className="px-5 py-4 font-extrabold text-ink whitespace-nowrap">{v.voucher_number}</td>
                                         <td className="px-5 py-4">

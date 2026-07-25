@@ -18,6 +18,7 @@ import {
 import { getIrdSyncLogsAction, retryIrdSyncAction } from './sync-actions'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
+import DateCell from '@/components/ui/DateCell'
 
 const fmt = (n: number) => `Rs. ${new Intl.NumberFormat('en-IN').format(Math.round(n))}`
 
@@ -717,7 +718,7 @@ function FilingsTab({
                                         ) : (
                                             monthlyReportDetails.sales.map((s: any, idx: number) => (
                                                 <tr key={idx} className="hover:bg-surface-muted/20">
-                                                    <td className="border border-hairline p-2">{formatDate(s.date)}</td>
+                                                    <td className="border border-hairline p-2"><DateCell value={s.date} /></td>
                                                     <td className="border border-hairline p-2">{s.customerName}</td>
                                                     <td className="border border-hairline p-2 font-mono text-[10px]">{s.description}</td>
                                                     <td className="border border-hairline p-2 text-right tabular-nums">{fmt(s.taxable)}</td>
@@ -757,7 +758,7 @@ function FilingsTab({
                                         ) : (
                                             monthlyReportDetails.purchases.map((p: any, idx: number) => (
                                                 <tr key={idx} className="hover:bg-surface-muted/20">
-                                                    <td className="border border-hairline p-2">{formatDate(p.date)}</td>
+                                                    <td className="border border-hairline p-2"><DateCell value={p.date} /></td>
                                                     <td className="border border-hairline p-2">{p.recipient}</td>
                                                     <td className="border border-hairline p-2 font-mono text-[10px]">{p.description}</td>
                                                     <td className="border border-hairline p-2 text-right tabular-nums">{fmt(p.taxable)}</td>

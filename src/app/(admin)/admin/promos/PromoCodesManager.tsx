@@ -9,7 +9,7 @@ import useSWR from 'swr'
 import { fetchPromoCodes } from '@/lib/swr-fetchers'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
-import { useDateFormatter } from '@/lib/contexts/FeatureContext'
+import DateCell from '@/components/ui/DateCell'
 
 const PROMO_TYPES = [
     { value: 'percentage_off', label: '% Off' },
@@ -25,7 +25,6 @@ export default function PromoCodesManager({ initialPromos, restaurantId }: {
     const { confirm } = useConfirmStore()
     const { data: promos = initialPromos, mutate } = useSWR(['promo_codes', restaurantId], () => fetchPromoCodes(restaurantId), { fallbackData: initialPromos })
     const [showForm, setShowForm] = useState(false)
-    const formatDate = useDateFormatter()
     const [editingId, setEditingId] = useState<string | null>(null)
     const [form, setForm] = useState({
         code: '', promo_type: 'percentage_off', value: '10',
@@ -216,7 +215,7 @@ export default function PromoCodesManager({ initialPromos, restaurantId }: {
                                 <td className="px-5 py-4 capitalize text-ink-subtle">{promo.promo_type.replace('_', ' ')}</td>
                                 <td className="px-5 py-4 font-bold tabular-nums text-ink">{promo.promo_type === 'percentage_off' ? `${promo.value}%` : `$${promo.value}`}</td>
                                 <td className="px-5 py-4 text-ink-subtle font-medium tabular-nums hidden md:table-cell">{promo.current_uses} / {promo.max_uses || '∞'}</td>
-                                <td className="px-5 py-4 text-ink-subtle hidden md:table-cell">{promo.valid_until ? formatDate(promo.valid_until) : '—'}</td>
+                                <td className="px-5 py-4 text-ink-subtle hidden md:table-cell">{promo.valid_until ? <DateCell value={promo.valid_until} /> : '—'}</td>
                                 <td className="px-5 py-4">
                                     <label className="relative inline-flex items-center cursor-pointer group">
                                         <input 

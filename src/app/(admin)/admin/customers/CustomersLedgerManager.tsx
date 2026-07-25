@@ -16,6 +16,7 @@ import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 import type { CustomerCreditAccount, ReceivableTransaction, ReceivableTransactionType } from '@/types/database'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
+import DateCell from '@/components/ui/DateCell'
 
 interface CustomersLedgerManagerProps {
     initialAccounts: CustomerCreditAccount[]
@@ -422,7 +423,7 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                                         <tbody className="divide-y divide-hairline">
                                             {customerLedgerEntries.map(t => (
                                                 <tr key={t.id} className="hover:bg-surface-muted/50 transition-colors">
-                                                    <td className="px-4 py-3 text-ink-subtle font-semibold">{formatDate(t.created_at)}</td>
+                                                    <td className="px-4 py-3 text-ink-subtle font-semibold"><DateCell value={t.created_at} /></td>
                                                     <td className="px-4 py-3 text-center">
                                                         <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-black uppercase ${t.type === 'charge' ? 'bg-orange-50 text-orange-700' : 'bg-emerald-50 text-emerald-700'}`}>
                                                             {t.type === 'charge' ? 'Charge' : 'Payment'}

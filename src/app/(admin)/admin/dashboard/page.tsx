@@ -4,7 +4,7 @@ import { Suspense } from 'react'
 import { createAdminClient } from '@/lib/supabase/server'
 import { formatCurrency, NEPAL_TZ } from '@/lib/utils'
 import { cookies } from 'next/headers'
-import { CALENDAR_COOKIE, formatDateShort, parseCalendar, type Calendar } from '@/lib/calendar'
+import { CALENDAR_COOKIE, formatDateParts, parseCalendar, type Calendar } from '@/lib/calendar'
 import {
     TrendingUp, ShoppingBag, Users, AlertTriangle, Clock, UserCheck,
     ArrowRight, CheckCircle2, ChevronRight, UtensilsCrossed, QrCode, Tag, ClipboardList, Boxes, Inbox,
@@ -321,8 +321,10 @@ async function PipelineTableSection({ restaurantId, money, isHotel = false, cale
                                 const roomNumber = (booking.rooms as unknown as { room_number: string } | null)?.room_number || '—'
                                 const chIn = new Date(booking.check_in)
                                 const chOut = new Date(booking.check_out)
-                                const checkInDate = formatDateShort(chIn, calendar)
-                                const checkOutDate = formatDateShort(chOut, calendar)
+                                // Stacked, not inline: two bracketed dates in one
+                                // cell ran to ~44 characters and stretched the column.
+                                const inParts = formatDateParts(chIn, calendar, { withYear: false })
+                                const outParts = formatDateParts(chOut, calendar, { withYear: false })
                                 return (
                                     <RowLink key={booking.id} href={`/admin/bookings?booking=${booking.id}`} className="group">
                                         <td className="px-6 py-4">
@@ -332,7 +334,12 @@ async function PipelineTableSection({ restaurantId, money, isHotel = false, cale
                                             Room {roomNumber}
                                         </td>
                                         <td className="px-6 py-4 text-[13px] text-ink-subtle font-medium">
-                                            {checkInDate} - {checkOutDate}
+                                            <span className="block whitespace-nowrap">{inParts.primary} – {outParts.primary}</span>
+                                            {inParts.secondary && outParts.secondary && (
+                                                <span className="block text-[11px] text-ink-subtle whitespace-nowrap mt-0.5">
+                                                    {inParts.secondary} – {outParts.secondary}
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4">
                                             <StatusBadge status={booking.status === 'checked_in' ? 'ready' : booking.status === 'checked_out' ? 'delivered' : booking.status} />

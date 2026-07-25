@@ -9,10 +9,10 @@ import {
     Check, X, Settings, ArrowRight, ToggleLeft, ToggleRight
 } from 'lucide-react'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
-import { useDates } from '@/lib/contexts/CalendarContext'
 import Button from '@/components/ui/Button'
 import { createClient } from '@/lib/supabase/client'
 import { useConfirmStore } from '@/lib/stores/confirm'
+import DateCell from '@/components/ui/DateCell'
 import { 
     sendLinkRequestAction, 
     acceptLinkRequestAction, 
@@ -63,7 +63,6 @@ export default function ReconciliationClient({
 }) {
     const router = useRouter()
     const money = useCurrency()
-    const { formatDate } = useDates()
     const supabase = createClient()
     const { confirm } = useConfirmStore()
     const [mounted, setMounted] = useState(false)
@@ -722,7 +721,7 @@ export default function ReconciliationClient({
                                             {/* Receivables (Income categories Accounts Receivable) */}
                                             {receivables.map((r) => (
                                                 <tr key={r.id} className="border-b border-hairline hover:bg-surface-muted/20">
-                                                    <td className="py-2.5">{mounted ? formatDate(r.created_at) : ''}</td>
+                                                    <td className="py-2.5">{mounted ? <DateCell value={r.created_at} /> : ''}</td>
                                                     <td className="py-2.5 text-emerald-600 font-bold flex items-center gap-1">
                                                         <ArrowDownLeft className="w-3.5 h-3.5" />
                                                         <span>Accounts Receivable</span>
@@ -734,7 +733,7 @@ export default function ReconciliationClient({
                                             {/* Payables (Expenses category Accounts Payable) */}
                                             {payables.map((p) => (
                                                 <tr key={p.id} className="border-b border-hairline hover:bg-surface-muted/20">
-                                                    <td className="py-2.5">{mounted ? formatDate(p.created_at) : ''}</td>
+                                                    <td className="py-2.5">{mounted ? <DateCell value={p.created_at} /> : ''}</td>
                                                     <td className="py-2.5 text-rose-600 font-bold flex items-center gap-1">
                                                         <ArrowUpRight className="w-3.5 h-3.5" />
                                                         <span>Accounts Payable</span>
