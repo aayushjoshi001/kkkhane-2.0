@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import Select from '@/components/ui/Select'
+import { NepaliDateInput } from '@/components/ui/NepaliDateInput'
 
 export type SupplierPaymentSource = 'cash' | 'qr' | 'cheque' | 'cash_qr'
 
@@ -241,11 +242,11 @@ export default function SupplierPaymentFields({ value, onChange, bankAccounts, p
                         </div>
                         <div>
                             <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Cheque Date</label>
-                            <input
-                                type="date"
+                            <NepaliDateInput
+                                aria-label="Cheque date"
                                 value={value.cheque_date}
-                                onChange={e => onChange({ ...value, cheque_date: e.target.value })}
-                                className="w-full px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                onChange={cheque_date => onChange({ ...value, cheque_date })}
+                                className="px-3 py-2.5 rounded-xl text-sm font-bold shadow-sm focus:ring-2 focus:ring-brand-500/20"
                             />
                         </div>
                     </div>

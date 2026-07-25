@@ -17,6 +17,7 @@ import {
     markOrderItemsServed, cancelOrderItem,
 } from '@/app/(staff)/waiter/order-actions'
 import { getItemDisplayName } from '@/lib/utils'
+import { formatTime } from '@/lib/calendar'
 import { tableLabel, type ActiveOrder, type UnpaidOrder } from './CashierClient'
 import type { KitchenOrder } from '@/components/kitchen/OrderQueue'
 
@@ -269,7 +270,7 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
     }
 
     async function handleCancelOrder(order: AnyOrder) {
-        const timeStr = new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        const timeStr = formatTime(order.placed_at)
         const itemsSummary = (order.order_items || []).map(i => `${i.quantity}x ${getItemDisplayName(i)}`).join(', ')
         const ok = await confirm({
             title: 'Cancel this particular order?',
@@ -355,7 +356,7 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm font-bold text-ink truncate">{locationLabel(order, splitSessionIds)}</p>
                                             <p className="text-[11px] text-ink-subtle">
-                                                {new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {isTakeoutPending
+                                                {formatTime(order.placed_at)} · {isTakeoutPending
                                                     ? 'Awaiting confirmation'
                                                     : `${pendingItems.length} item${pendingItems.length !== 1 ? 's' : ''} pending`}
                                             </p>
@@ -397,7 +398,7 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                     {groupedStatusCards.map(card => {
                         const totalItems = card.orders.flatMap(o => o.order_items || []).filter(i => i.status !== 'cancelled').length
                         const isExpanded = expandedStatusId === card.key
-                        const earliestTime = new Date(card.placedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        const earliestTime = formatTime(card.placedAt)
 
                         return (
                             <div 
@@ -670,7 +671,7 @@ function StatusDetail({
                 const readyIds = items.filter(i => i.status === 'ready' && i.id).map(i => i.id!)
                 const { selected, allSelected, toggleAll, toggle } = useSelection(readyIds)
                 const isBusy = busyId === order.id
-                const timeStr = new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                const timeStr = formatTime(order.placed_at)
 
                 return (
                     <div key={order.id} className="py-3 first:pt-1.5 last:pb-1.5 space-y-2.5">
