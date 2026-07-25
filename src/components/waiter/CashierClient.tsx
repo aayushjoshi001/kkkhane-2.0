@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useMemo, useEffect } from 'react'
+import { useRef, useState, useMemo, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
@@ -16,7 +16,8 @@ import Button from '@/components/ui/Button'
 import { usePrinter } from '@/lib/print/usePrinter'
 import { buildInvoiceTicket } from '@/lib/print/templates/invoiceTicket'
 import { buildStationTicket } from '@/lib/print/templates/stationTicket'
-import { itemsForStation } from '@/lib/stations'
+import { itemsForStation, STATION_META, type StationKind } from '@/lib/stations'
+import KotPrintFallback from '@/components/kitchen/KotPrintFallback'
 import type { KitchenOrder } from '@/components/kitchen/OrderQueue'
 import ManualEntryClient from '@/app/(admin)/admin/manual-entry/ManualEntryClient'
 import CashierOrdersPanel from './CashierOrdersPanel'
@@ -26,6 +27,10 @@ import QuickOrderModal from './QuickOrderModal'
 
 import { calculateNights, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
+
+// Auto-print retry/fallback tuning, matching the kitchen screen's.
+const KOT_PRINT_MAX_RETRIES = 2
+const KOT_PRINT_RETRY_MS = 2500
 
 type OrderItem = {
     id?: string
@@ -152,8 +157,79 @@ export default function CashierClient({
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
     const { formatDateTime, calendar } = useDates()
     const { print: printInvoice } = usePrinter('invoice')
-    const { print: printKot } = usePrinter('kot')
-    const { print: printBot } = usePrinter('bot')
+    const { print: printKot, networkPrinter: kotNetworkPrinter } = usePrinter('kot')
+    const { print: printBot, networkPrinter: botNetworkPrinter } = usePrinter('bot')
+
+    // Station tickets that reached no thermal printer, queued for the browser
+    // fallback. A queue rather than a single slot: QZ Tray down for a whole
+    // shift would otherwise drop every ticket but the most recent.
+    const [ticketFallbackQueue, setTicketFallbackQueue] = useState<{ order: KitchenOrder; station: StationKind }[]>([])
+    const dequeueTicketFallback = useCallback(() => setTicketFallbackQueue(q => q.slice(1)), [])
+
+    // Pending retry timers, cleared on unmount so a queued retry can't fire
+    // (and setState) after the panel is gone.
+    const printRetryTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
+    useEffect(() => () => {
+        const timers = printRetryTimers.current
+        timers.forEach(clearTimeout)
+        timers.clear()
+    }, [])
+
+    /**
+     * Auto-print one station's ticket for an order, with the safety net the
+     * kitchen screen already had: retry a transient LAN failure, fall back to a
+     * browser print on this device, and always say what happened.
+     *
+     * Previously a failed cashier auto-print was a console.error and nothing
+     * else — indistinguishable, from behind the till, from KOT printing simply
+     * not being wired up. A misconfigured LAN printer silently cost every
+     * ticket.
+     */
+    const printStationTicket = useCallback((order: KitchenOrder, station: StationKind) => {
+        const items = itemsForStation(order.order_items, station)
+        if (items.length === 0) return
+        // Project to this station's lines so the browser fallback renders the
+        // same subset the thermal ticket would.
+        const projected = { ...order, order_items: items }
+        const send = station === 'bar' ? printBot : printKot
+        const network = station === 'bar' ? botNetworkPrinter : kotNetworkPrinter
+        const abbr = STATION_META[station].ticketAbbr
+
+        // Hoisted so it can recurse for retries without referencing the
+        // surrounding useCallback before it is declared.
+        function attemptPrint(attempt: number) {
+            void send(buildStationTicket(projected, station, restaurantName)).then((result) => {
+                if (result.ok) {
+                    if (result.usedLocalFallback) {
+                        toast(`${abbr} printer unreachable — printed on this device instead.`)
+                    }
+                    return
+                }
+                // Retry a transient LAN failure before giving up on the roll the
+                // ticket belongs on. A missing printer or a trust block needs a
+                // human, not another attempt.
+                const transient = result.status === 'not-running' || result.status === 'print-failed'
+                if (network && transient && attempt < KOT_PRINT_MAX_RETRIES) {
+                    const t = setTimeout(() => {
+                        printRetryTimers.current.delete(t)
+                        attemptPrint(attempt + 1)
+                    }, KOT_PRINT_RETRY_MS)
+                    printRetryTimers.current.add(t)
+                    return
+                }
+                setTicketFallbackQueue(q => [...q, { order: projected, station }])
+                toast.error(
+                    result.status === 'no-printer-selected'
+                        ? `No ${abbr} printer set — printed via browser instead. Set one in Printer Settings.`
+                        : network
+                            ? `${abbr} printer unreachable after ${KOT_PRINT_MAX_RETRIES + 1} tries — printed via browser instead.`
+                            : `${abbr} printer not connected — printed via browser instead.`
+                )
+            })
+        }
+        attemptPrint(0)
+    }, [printKot, printBot, kotNetworkPrinter, botNetworkPrinter, restaurantName])
+
     const [active, setActive] = useState<ActiveOrder[]>(initialActive)
     const [processingId, setProcessingId] = useState<string | null>(null)
     const supabaseRef = useRef(createClient())
@@ -1242,24 +1318,10 @@ export default function CashierClient({
                 // they print once confirmed, from the Order Confirmation panel.
                 if (features?.kotEnabled) {
                     const confirmedOrder = { ...(data as unknown as KitchenOrder), order_items: (data as unknown as KitchenOrder).order_items?.filter(i => !i.needs_confirmation) }
-
-                    // 1. KOT (Kitchen Ticket) auto-print
-                    const kitchenItems = itemsForStation(confirmedOrder.order_items, 'kitchen')
-                    if (kitchenItems.length > 0) {
-                        const ticketBytes = buildStationTicket(confirmedOrder, 'kitchen', restaurantName)
-                        void printKot(ticketBytes).then((result) => {
-                            if (!result.ok) console.error('[Cashier KOT Auto-print Failed]:', result.status, result.error)
-                        }).catch(err => console.error('[Cashier KOT Auto-print Failed]:', err))
-                    }
-
-                    // 2. BOT (Bar Ticket) auto-print
-                    const barItems = itemsForStation(confirmedOrder.order_items, 'bar')
-                    if (barItems.length > 0) {
-                        const ticketBytes = buildStationTicket(confirmedOrder, 'bar', restaurantName)
-                        void printBot(ticketBytes).then((result) => {
-                            if (!result.ok) console.error('[Cashier BOT Auto-print Failed]:', result.status, result.error)
-                        }).catch(err => console.error('[Cashier BOT Auto-print Failed]:', err))
-                    }
+                    // Each is a no-op when the order has no lines for that
+                    // station; both retry and fall back to a browser print.
+                    printStationTicket(confirmedOrder, 'kitchen')
+                    printStationTicket(confirmedOrder, 'bar')
                 }
             }
         } else if (payload.eventType === 'UPDATE') {
@@ -3192,6 +3254,17 @@ export default function CashierClient({
                     onClose={() => setShowTakeoutQuickOrder(false)}
                     restaurantId={restaurantId}
                     isManualTakeoutDelivery={true}
+                />
+            )}
+
+            {/* Browser-print fallback for tickets no thermal printer took. One
+                at a time — window.print() is modal, so the queue drains as each
+                afterprint fires. */}
+            {ticketFallbackQueue.length > 0 && (
+                <KotPrintFallback
+                    order={ticketFallbackQueue[0].order}
+                    station={ticketFallbackQueue[0].station}
+                    onDone={dequeueTicketFallback}
                 />
             )}
 
