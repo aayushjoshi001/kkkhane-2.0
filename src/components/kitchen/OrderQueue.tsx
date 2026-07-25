@@ -14,6 +14,7 @@ import { setOrderItemsStatus, getKitchenOrders } from '@/app/(staff)/kitchen/act
 import { rollUpOrderStatus } from '@/lib/orderRollup'
 import EmptyState from '@/components/ui/EmptyState'
 import { usePrinter } from '@/lib/print/usePrinter'
+import { claimForPrinting } from '@/lib/print/printClaims'
 import { ensureConnected } from '@/lib/print/qzClient'
 import { buildStationTicket } from '@/lib/print/templates/stationTicket'
 import { STATION_META, itemsForStation, type StationKind } from '@/lib/stations'
@@ -81,7 +82,7 @@ const ORDER_SELECT = `
     )
   ),
   order_items (
-    id, menu_item_id, quantity, unit_price, special_request, status, station, claimed_by, claimed_at, needs_confirmation,
+    id, menu_item_id, quantity, unit_price, special_request, status, station, claimed_by, claimed_at, needs_confirmation, kot_printed_at,
     menu_items ( id, name, is_combo ),
     menu_item_variations:menu_item_variation_id ( id, name ),
     order_item_modifiers ( modifier_name, price_adjustment )
@@ -170,13 +171,13 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     const ordersRef = useRef<KitchenOrder[]>(orders)
     useEffect(() => { ordersRef.current = orders }, [orders])
 
-    // Items already sent to the printer — dedupes per item id (not per order
-    // id) across the INSERT event, any confirming UPDATE, and reconnect
-    // resyncs, so a QR self-order confirmed in several batches gets exactly
-    // one printed line per item, no matter which batch it was confirmed in.
-    // Seeded with the initial board's items so existing tickets never reprint
-    // when the kitchen screen loads.
-    const printedRef = useRef<Set<string>>(new Set((initialOrders || []).flatMap(o => (o.order_items || []).map(it => it.id))))
+    // Local echo of what this tab has already sent, purely to save a round trip.
+    // It is NOT the record of what has printed — order_items.kot_printed_at is,
+    // and the claim below is what actually decides. Deliberately not seeded from
+    // the initial board any more: an order placed while no station was open
+    // arrives unprinted, and seeding it here would suppress the very ticket the
+    // claim exists to recover.
+    const printedRef = useRef<Set<string>>(new Set())
 
     // Auto-print the KOT. Falls back to a browser print if QZ Tray isn't
     // connected/trusted on this kitchen screen yet. Called as a plain
@@ -221,11 +222,19 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     // yet — a QR self-order confirmed in multiple batches gets one ticket per
     // batch, scoped to just the newly-confirmed items; a no-op if there's
     // nothing new (already printed, or still awaiting confirmation).
-    const maybePrintKot = useCallback((order: KitchenOrder) => {
-        const newItems = (order.order_items || []).filter(it => !printedRef.current.has(it.id))
-        if (newItems.length === 0) return
-        newItems.forEach(it => printedRef.current.add(it.id))
-        printKotWithFallback({ ...order, order_items: newItems })
+    const maybePrintKot = useCallback(async (order: KitchenOrder) => {
+        const candidates = (order.order_items || []).filter(
+            it => it.id && !it.kot_printed_at && !printedRef.current.has(it.id)
+        )
+        if (candidates.length === 0) return
+        // Claim before printing. If the cashier's till is also open, exactly one
+        // of us gets these lines back and the other prints nothing — which is
+        // what stops two open stations producing two tickets for one order.
+        const wonIds = await claimForPrinting(supabaseRef.current, candidates.map(it => it.id))
+        if (wonIds.length === 0) return
+        const won = new Set(wonIds)
+        wonIds.forEach(id => printedRef.current.add(id))
+        printKotWithFallback({ ...order, order_items: candidates.filter(it => won.has(it.id)) })
     }, [printKotWithFallback])
 
     // Resync: fetch fresh orders from DB on mount and whenever the realtime
@@ -233,8 +242,14 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     // (e.g. logout → login, network blip, token refresh).
     const resync = useCallback(async () => {
         const fresh = await getKitchenOrders(restaurantId)
-        setOrders(projectStation(fresh as unknown as KitchenOrder[]))
-    }, [restaurantId, projectStation])
+        const projected = projectStation(fresh as unknown as KitchenOrder[])
+        setOrders(projected)
+        // Print anything still outstanding. Previously resync only refreshed the
+        // board, so an order that arrived while this tab was closed or dropped
+        // came back on screen having never printed. The claim makes this safe to
+        // run on every mount and reconnect.
+        for (const order of projected) await maybePrintKot(order)
+    }, [restaurantId, projectStation, maybePrintKot])
 
     useEffect(() => {
         resync() // always refresh on mount
@@ -279,7 +294,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
                         </div>
                     </div>
                 ), { duration: 6000, position: 'top-right' })
-                maybePrintKot(order)
+                void maybePrintKot(order)
             }, 400)
         } else if (payload.eventType === 'UPDATE') {
             const newStatus = payload.new.status as string
@@ -320,7 +335,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             // order was already on the board (a second confirmation batch on
             // a QR self-order that was partially confirmed earlier).
             // maybePrintKot dedupes per item id so nothing double-prints.
-            maybePrintKot(fresh)
+            void maybePrintKot(fresh)
         }
     }, resync)
 

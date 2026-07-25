@@ -323,6 +323,11 @@ export interface OrderItem {
     claimed_at?: string | null
     /** Where this line is made. Resolved and frozen when the line is written. */
     station?: StationKind
+    // When a print station claimed this line for its ticket. Null means the
+    // line is still outstanding, so any station that connects will print it —
+    // this is what stops a ticket depending on a tab being subscribed at the
+    // instant the order landed. Claimed atomically; see printClaims.ts.
+    kot_printed_at?: string | null
     created_at: string
     // Joined fields
     menu_items?: MenuItem

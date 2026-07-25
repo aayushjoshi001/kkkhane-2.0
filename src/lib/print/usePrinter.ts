@@ -26,6 +26,13 @@ function toConnStatus(result: QzResult): PrinterConnStatus {
     return result.status === 'not-trusted' ? 'not-trusted' : 'not-running'
 }
 
+// How long a LAN target stays "known bad" after a failed send. Module-level, so
+// every screen and both station slots share one view of a dead printer instead
+// of each rediscovering it a ticket at a time.
+const LAN_COOLDOWN_MS = 30_000
+const lanFailedUntil = new Map<string, number>()
+const lanKey = (t: { host: string; port: number }) => `${t.host}:${t.port}`
+
 /**
  * Per-role (invoice or KOT) printer connection + selection.
  * Printer choice is per-device (see printerSettings.ts) — this hook just
@@ -69,24 +76,40 @@ export function usePrinter(role: PrinterRole) {
     const print = useCallback(
         async (bytes: Uint8Array): Promise<PrintOutcome> => {
             if (networkPrinter) {
-                const result = await printRawEscPos(networkPrinter.target, bytes, networkPrinter.copies)
-                // A configured-but-unreachable LAN printer must not mean "no ticket
-                // at all". When this device also has its own printer, send the job
-                // there rather than dropping it — a misconfigured or offline host
-                // (wrong subnet, printer powered down) then costs the ticket its
-                // preferred destination, not its existence.
-                //
-                // Both paths go through QZ Tray, so this only rescues an
-                // unreachable host: if QZ itself is down the local attempt fails
-                // the same way, and we return the original network failure so
-                // callers still see the LAN status they retry on.
-                if (!result.ok && selectedPrinter) {
+                const key = lanKey(networkPrinter.target)
+                // Skip a LAN target that just failed and go straight to this
+                // device's printer. Without this every ticket pays the connect
+                // timeout again before falling back, which is what makes a
+                // wrongly-configured LAN printer feel like printing is broken
+                // rather than merely misrouted. One attempt per cooldown still
+                // gets through, so the printer coming back is picked up on its
+                // own without anyone restarting anything.
+                const cooling = (lanFailedUntil.get(key) ?? 0) > Date.now()
+                if (!(cooling && selectedPrinter)) {
+                    const result = await printRawEscPos(networkPrinter.target, bytes, networkPrinter.copies)
+                    if (result.ok) {
+                        lanFailedUntil.delete(key)
+                        setStatus(toConnStatus(result))
+                        return result
+                    }
+                    lanFailedUntil.set(key, Date.now() + LAN_COOLDOWN_MS)
+                    // A configured-but-unreachable LAN printer must not mean "no
+                    // ticket at all". Both paths go through QZ Tray, so falling
+                    // back only rescues an unreachable host: if QZ itself is
+                    // down the local attempt fails the same way, and we return
+                    // the original network failure so callers still see the LAN
+                    // status they retry on.
+                    if (!selectedPrinter) {
+                        setStatus(toConnStatus(result))
+                        return result
+                    }
                     const local = await printRawEscPos(selectedPrinter, bytes)
                     setStatus(toConnStatus(local))
                     return local.ok ? { ...local, usedLocalFallback: true } : result
                 }
-                setStatus(toConnStatus(result))
-                return result
+                const local = await printRawEscPos(selectedPrinter as string, bytes)
+                setStatus(toConnStatus(local))
+                return local.ok ? { ...local, usedLocalFallback: true } : local
             }
             if (!selectedPrinter) {
                 return { ok: false, status: 'no-printer-selected', error: 'No printer selected for this station — open Printer Settings.' }
