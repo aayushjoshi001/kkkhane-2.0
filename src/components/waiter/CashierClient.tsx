@@ -32,6 +32,25 @@ import { useQrCodes } from '@/lib/hooks/useQrCodes'
 const KOT_PRINT_MAX_RETRIES = 2
 const KOT_PRINT_RETRY_MS = 2500
 
+// Everything buildStationTicket needs to render an order's KOT/BOT. Shared by
+// the realtime INSERT fetch and the reconnect catch-up so the two can never
+// drift into printing from different shapes.
+const PRINT_ORDER_SELECT = `
+    id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address,
+    sessions ( id, seat_number, tables ( id, label, room_id, rooms ( id, room_number ) ) ),
+    bookings ( id, rooms ( id, room_number ) ),
+    order_items (
+        id, quantity, status, unit_price, special_request, needs_confirmation, station,
+        menu_items ( id, name, station, is_combo ),
+        menu_item_variations:menu_item_variation_id ( id, name ),
+        order_item_modifiers ( modifier_name, price_adjustment )
+    )
+`
+
+// Orders a station may still have work on. A delivered or cancelled order has
+// nothing left to cook, so a catch-up ticket for one is just wasted paper.
+const CATCH_UP_ORDER_STATUSES = ['pending', 'confirmed', 'preparing', 'ready']
+
 type OrderItem = {
     id?: string
     quantity: number
@@ -229,6 +248,65 @@ export default function CashierClient({
         }
         attemptPrint(0)
     }, [printKot, printBot, kotNetworkPrinter, botNetworkPrinter, restaurantName])
+
+    // Item ids already sent to a printer. Deduping per item (not per order)
+    // means a QR self-order confirmed in several batches gets exactly one
+    // printed line per item, whichever path prints it. Seeded with the board as
+    // it arrived so nothing already on screen at load reprints.
+    const printedItemsRef = useRef<Set<string>>(new Set(
+        (initialActive || []).flatMap(o => (o.order_items || []).map(i => i.id).filter((id): id is string => !!id))
+    ))
+
+    // Only orders placed after this panel opened are catch-up candidates —
+    // without it, a reconnect after a long sleep would print the whole shift.
+    const mountedAtRef = useRef(new Date().toISOString())
+
+    /**
+     * Print whatever of this order hasn't been printed yet, split by station.
+     * The single entry point for auto-printing, so the realtime INSERT and the
+     * reconnect catch-up can't both print the same lines.
+     */
+    const maybePrintStationTickets = useCallback((order: KitchenOrder) => {
+        // Items still awaiting cashier confirmation (QR self-orders) are not
+        // ours to print — they go out from the Order Confirmation panel once
+        // confirmed.
+        const confirmed = (order.order_items || []).filter(i => !i.needs_confirmation)
+        const unprinted = confirmed.filter(i => i.id && !printedItemsRef.current.has(i.id))
+        if (unprinted.length === 0) return
+        unprinted.forEach(i => printedItemsRef.current.add(i.id))
+        const scoped = { ...order, order_items: unprinted }
+        // Each is a no-op when the order has no lines for that station.
+        printStationTicket(scoped, 'kitchen')
+        printStationTicket(scoped, 'bar')
+    }, [printStationTicket])
+
+    /**
+     * Print tickets for orders that landed while the realtime channel was down.
+     *
+     * postgres_changes only delivers what happens while you are listening, so an
+     * order placed during a blip (laptop asleep, wifi drop, token refresh) was
+     * never announced to this tab. router.refresh() puts it back on the board —
+     * which is exactly why the gap was invisible — but nothing ever printed it,
+     * and behind the till a missing ticket is a missing dish.
+     */
+    const catchUpMissedTickets = useCallback(async () => {
+        if (!features?.kotEnabled) return
+        const { data, error } = await supabaseRef.current
+            .from('orders')
+            .select(PRINT_ORDER_SELECT)
+            .eq('restaurant_id', restaurantId)
+            .in('status', CATCH_UP_ORDER_STATUSES)
+            .gte('placed_at', mountedAtRef.current)
+            .order('placed_at', { ascending: true })
+            .limit(50)
+        if (error) {
+            console.error('[Cashier KOT catch-up] fetch failed:', error)
+            return
+        }
+        for (const order of (data || []) as unknown as KitchenOrder[]) {
+            maybePrintStationTickets(order)
+        }
+    }, [features?.kotEnabled, restaurantId, maybePrintStationTickets])
 
     const [active, setActive] = useState<ActiveOrder[]>(initialActive)
     const [processingId, setProcessingId] = useState<string | null>(null)
@@ -1291,17 +1369,7 @@ export default function CashierClient({
         if (payload.eventType === 'INSERT') {
             const { data, error } = await supabase
                 .from('orders')
-                .select(`
-                    id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address,
-                    sessions ( id, seat_number, tables ( id, label, room_id, rooms ( id, room_number ) ) ),
-                    bookings ( id, rooms ( id, room_number ) ),
-                    order_items (
-                        id, quantity, status, unit_price, special_request, needs_confirmation, station,
-                        menu_items ( id, name, station, is_combo ),
-                        menu_item_variations:menu_item_variation_id ( id, name ),
-                        order_item_modifiers ( modifier_name, price_adjustment )
-                    )
-                `)
+                .select(PRINT_ORDER_SELECT)
                 .eq('id', payload.new.id)
                 .single()
             // Previously silent — if this fetch fails (RLS, network, ...) the new
@@ -1313,15 +1381,10 @@ export default function CashierClient({
                 // on the duplicate order.id key everywhere this list renders.
                 setActive(prev => prev.some(o => o.id === data.id) ? prev : [...prev, data as unknown as ActiveOrder])
 
-                // Auto-print KOT/BOT if KOT printing is enabled — items still
-                // awaiting cashier confirmation (QR self-orders) are excluded;
-                // they print once confirmed, from the Order Confirmation panel.
+                // Auto-print the KOT/BOT if KOT printing is enabled. Dedupes per
+                // item, retries, and falls back to a browser print.
                 if (features?.kotEnabled) {
-                    const confirmedOrder = { ...(data as unknown as KitchenOrder), order_items: (data as unknown as KitchenOrder).order_items?.filter(i => !i.needs_confirmation) }
-                    // Each is a no-op when the order has no lines for that
-                    // station; both retry and fall back to a browser print.
-                    printStationTicket(confirmedOrder, 'kitchen')
-                    printStationTicket(confirmedOrder, 'bar')
+                    maybePrintStationTickets(data as unknown as KitchenOrder)
                 }
             }
         } else if (payload.eventType === 'UPDATE') {
@@ -1368,6 +1431,9 @@ export default function CashierClient({
         // props back up.
         console.log('[CashierClient] Realtime reconnected — refreshing to catch up on any missed updates')
         router.refresh()
+        // router.refresh() restores the board but prints nothing, so an order
+        // placed during the drop would silently never reach the kitchen.
+        void catchUpMissedTickets()
     })
 
     const handleCashPay = async (orderId: string) => {
