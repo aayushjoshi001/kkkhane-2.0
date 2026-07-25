@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import {
     Plus, X, Search, Loader2, Trash2, Edit2, FileText, Phone, DollarSign, Truck, Tag,
     Download, Printer, Banknote
 } from 'lucide-react'
-import { createSupplierAction, updateSupplierAction, deleteSupplierAction, createSupplierBillAction, approveChequeBillAction, rejectChequeBillAction } from './actions'
+import { createSupplierAction, updateSupplierAction, deleteSupplierAction, createSupplierBillAction, approveChequeBillAction, rejectChequeBillAction, getSupplierSettlementsAction } from './actions'
 import { createCategoryAction } from '../income-expenses/actions'
 import { toast } from 'react-hot-toast'
 import { formatCurrency, parseExpenseDescription, type SupplierBillDetails } from '@/lib/utils'
@@ -53,13 +53,15 @@ interface SuppliersLedgerManagerProps {
     expenses: Expense[]
     expenseCategories: Array<{ id: string; name: string }>
     bankAccounts: Array<{ id: string; name: string; bank_name: string | null; account_number: string | null }>
+    ingredients?: Array<{ id: string; name: string; unit: string; cost_per_unit: number; category_id: string | null }>
 }
 
 export default function SuppliersLedgerManager({
     initialSuppliers,
     expenses,
     expenseCategories,
-    bankAccounts
+    bankAccounts,
+    ingredients = []
 }: SuppliersLedgerManagerProps) {
     const { confirm } = useConfirmStore()
     const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers)
@@ -82,6 +84,42 @@ export default function SuppliersLedgerManager({
 
     // View Ledger Statement state
     const [ledgerSupplier, setLedgerSupplier] = useState<Supplier | null>(null)
+    const [settlements, setSettlements] = useState<any[]>([])
+    const [loadingSettlements, setLoadingSettlements] = useState(false)
+
+    const loadSettlements = async (supplier: Supplier) => {
+        const sNameLower = supplier.name.toLowerCase().trim()
+        const supplierExpenseIds = expensesList
+            .filter(e => e.vendor_name?.toLowerCase().trim() === sNameLower)
+            .map(e => e.id)
+
+        if (supplierExpenseIds.length === 0) {
+            setSettlements([])
+            return
+        }
+
+        setLoadingSettlements(true)
+        try {
+            const res = await getSupplierSettlementsAction(supplierExpenseIds)
+            if (res.error) {
+                toast.error(res.error)
+            } else if (res.data) {
+                setSettlements(res.data)
+            }
+        } catch (err) {
+            toast.error('Failed to load payment history')
+        } finally {
+            setLoadingSettlements(false)
+        }
+    }
+
+    useEffect(() => {
+        if (ledgerSupplier) {
+            loadSettlements(ledgerSupplier)
+        } else {
+            setSettlements([])
+        }
+    }, [ledgerSupplier])
 
     // Which row's Cash + QR breakdown is expanded — click the Payment Type
     // badge to reveal the small-font split, click again to collapse it.
@@ -89,6 +127,7 @@ export default function SuppliersLedgerManager({
 
     // Record Bill Form fields
     const [billModalOpen, setBillModalOpen] = useState(false)
+    const [selectedIngredientId, setSelectedIngredientId] = useState('')
     const [billDesc, setBillDesc] = useState('')
     const [billQty, setBillQty] = useState('')
     const [billRate, setBillRate] = useState('')
@@ -97,6 +136,21 @@ export default function SuppliersLedgerManager({
     const [billPaidAmount, setBillPaidAmount] = useState('')
     const [billPayment, setBillPayment] = useState<SupplierPaymentValue>(EMPTY_SUPPLIER_PAYMENT)
     const [submittingBill, setSubmittingBill] = useState(false)
+
+    const handleIngredientSelect = (ingId: string) => {
+        setSelectedIngredientId(ingId)
+        if (!ingId) return
+
+        const ing = ingredients.find(i => i.id === ingId)
+        if (ing) {
+            setBillDesc(ing.name)
+            setBillRate(ing.cost_per_unit.toString())
+            setBillUnit(ing.unit)
+            if (ing.category_id) {
+                setBillCategory(ing.category_id)
+            }
+        }
+    }
 
     // Inline Category Creator inside Record Bill
     const [showNewCatForm, setShowNewCatForm] = useState(false)
@@ -271,6 +325,7 @@ export default function SuppliersLedgerManager({
                 cash_portion: billPayment.payment_source === 'cash_qr' ? (parseFloat(billPayment.cash_portion) || 0) : undefined,
                 qr_portion: billPayment.payment_source === 'cash_qr' ? (parseFloat(billPayment.qr_portion) || 0) : undefined,
                 cheque_details: billPayment.payment_source === 'cheque' ? buildChequeDetailsFromSupplierPayment(billPayment) : undefined,
+                ingredient_id: selectedIngredientId || undefined,
             })
 
             if (res.error) {
@@ -283,6 +338,7 @@ export default function SuppliersLedgerManager({
                 }
                 setExpensesList(prev => [newEntry, ...prev])
                 setBillModalOpen(false)
+                setSelectedIngredientId('')
                 setBillDesc('')
                 setBillQty('')
                 setBillRate('')
@@ -307,14 +363,34 @@ export default function SuppliersLedgerManager({
     // Called after PayPartyModal successfully records a voucher that settled
     // some (or all) of this supplier's outstanding bills — patches the
     // touched bills' paid_amount locally instead of a full page refetch.
-    const handlePaySettled = (result: PayPartyResult) => {
+    const handlePaySettled = async (result: PayPartyResult) => {
         if (!result.settledBills?.length) return
-        setExpensesList(prev => prev.map(e => {
+        const updatedExpenses = expensesList.map(e => {
             const settled = result.settledBills!.find(b => b.id === e.id)
             if (!settled) return e
             const parsed = parseExpenseDescription(e.description)
             return { ...e, description: JSON.stringify({ ...parsed, paid_amount: settled.paid_amount }) }
-        }))
+        })
+        setExpensesList(updatedExpenses)
+
+        if (ledgerSupplier) {
+            const sNameLower = ledgerSupplier.name.toLowerCase().trim()
+            const supplierExpenseIds = updatedExpenses
+                .filter(e => e.vendor_name?.toLowerCase().trim() === sNameLower)
+                .map(e => e.id)
+
+            if (supplierExpenseIds.length > 0) {
+                setLoadingSettlements(true)
+                try {
+                    const res = await getSupplierSettlementsAction(supplierExpenseIds)
+                    if (res.data) setSettlements(res.data)
+                } catch (e) {
+                    console.error(e)
+                } finally {
+                    setLoadingSettlements(false)
+                }
+            }
+        }
     }
 
     // Bills currently holding a cheque payment awaiting manager approval —
@@ -398,33 +474,130 @@ export default function SuppliersLedgerManager({
         if (!ledgerSupplier) return []
         const sNameLower = ledgerSupplier.name.toLowerCase().trim()
 
-        // Filter and sort ascending (oldest first) to accumulate running balance correctly
-        const filtered = expensesList
-            .filter(e => e.vendor_name?.toLowerCase().trim() === sNameLower)
-            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        // 1. Get all bills for this supplier
+        const bills = expensesList.filter(e => e.vendor_name?.toLowerCase().trim() === sNameLower)
+
+        // 2. Map settlements to bills to find out how much of the current paid_amount is from subsequent settlements
+        const settlementsMap: Record<string, number> = {}
+        settlements.forEach(s => {
+            settlementsMap[s.expense_id] = (settlementsMap[s.expense_id] || 0) + Number(s.amount)
+        })
+
+        // 3. Create statement rows
+        const statementRows: Array<{
+            id: string
+            created_at: string
+            description: string
+            totalAmt: number
+            paidAmt: number
+            owed: number
+            parsed: SupplierBillDetails
+            bank_accounts?: {
+                name: string
+            }
+            isPaymentRow?: boolean
+        }> = []
+
+        // Add bill rows
+        bills.forEach(b => {
+            const parsed = parseExpenseDescription(b.description)
+            const totalAmt = Number(b.amount)
+            const currentPaid = Number(parsed.paid_amount ?? totalAmt)
+            const settlementsPaid = settlementsMap[b.id] || 0
+            const initialPaid = Math.max(0, currentPaid - settlementsPaid)
+            const owed = totalAmt - initialPaid
+
+            statementRows.push({
+                id: b.id,
+                created_at: b.created_at,
+                description: b.description,
+                totalAmt: totalAmt,
+                paidAmt: initialPaid,
+                owed: owed,
+                parsed: {
+                    ...parsed,
+                    paid_amount: initialPaid,
+                    payment_type: initialPaid === 0 ? 'UNPAID' : parsed.payment_type || 'cash',
+                },
+                bank_accounts: b.bank_accounts ? { name: b.bank_accounts.name } : undefined
+            })
+        })
+
+        // Group settlements by day_book_entry_id so we present a single payment row for each voucher
+        const groupedSettlements: Record<string, {
+            dayBookEntryId: string
+            date: string
+            description: string
+            totalAmount: number
+            paymentMode: string
+            bankName: string
+        }> = {}
+
+        settlements.forEach(s => {
+            const dbEntry = s.day_book_entries
+            if (!dbEntry) return
+
+            let parsedDbDesc = { particulars: '', voucher_number: '', payment_mode: '', bank_name: '' }
+            try {
+                parsedDbDesc = JSON.parse(dbEntry.description)
+            } catch (e) {
+                parsedDbDesc.particulars = dbEntry.description
+            }
+
+            const entryId = dbEntry.id
+            if (!groupedSettlements[entryId]) {
+                const voucherNo = parsedDbDesc.voucher_number || 'Payment'
+                groupedSettlements[entryId] = {
+                    dayBookEntryId: entryId,
+                    date: s.created_at,
+                    description: `Payment Voucher (${voucherNo}) - ${parsedDbDesc.particulars || 'Supplier Payment'}`,
+                    totalAmount: 0,
+                    paymentMode: parsedDbDesc.payment_mode || (dbEntry.type?.includes('cash') ? 'cash' : 'bank'),
+                    bankName: parsedDbDesc.bank_name || dbEntry.bank_name || ''
+                }
+            }
+            groupedSettlements[entryId].totalAmount += Number(s.amount)
+        })
+
+        // Add payment rows
+        Object.values(groupedSettlements).forEach(gs => {
+            statementRows.push({
+                id: gs.dayBookEntryId,
+                created_at: gs.date,
+                description: gs.description,
+                totalAmt: 0,
+                paidAmt: gs.totalAmount,
+                owed: 0,
+                parsed: {
+                    text_desc: gs.description,
+                    quantity: null,
+                    rate: null,
+                    unit: '',
+                    paid_amount: gs.totalAmount,
+                    payment_type: gs.paymentMode,
+                    bank_name: gs.bankName || ''
+                },
+                isPaymentRow: true
+            })
+        })
+
+        // 4. Sort chronologically by date ascending to calculate running balance correctly
+        statementRows.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 
         let cumulativeBalance = 0
-        const mapped = filtered.map(e => {
-            const parsed = parseExpenseDescription(e.description)
-
-            const totalAmt = Number(e.amount)
-            const paidAmt = Number(parsed.paid_amount ?? totalAmt)
-            const owed = totalAmt - paidAmt
-            cumulativeBalance += owed
+        const mapped = statementRows.map(row => {
+            const netChange = row.totalAmt - row.paidAmt
+            cumulativeBalance += netChange
 
             return {
-                ...e,
-                parsed,
-                totalAmt,
-                paidAmt,
-                owed,
+                ...row,
                 runningBalance: cumulativeBalance
             }
         })
 
-        // Return descending (newest first) for visual rendering
+        // 5. Return descending (newest first) for UI rendering
         return mapped.reverse()
-    }, [ledgerSupplier, expensesList])
+    }, [ledgerSupplier, expensesList, settlements])
 
     const totalPurchased = useMemo(() => {
         return supplierLedgerEntries.reduce((sum, e) => sum + e.totalAmt, 0)
@@ -695,6 +868,7 @@ export default function SuppliersLedgerManager({
                                 <button
                                     onClick={() => {
                                         setShowNewCatForm(false)
+                                        setSelectedIngredientId('')
                                         setBillModalOpen(true)
                                     }}
                                     className="flex items-center gap-1.5 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white font-extrabold rounded-xl text-xs shadow-sm transition-colors"
@@ -736,7 +910,12 @@ export default function SuppliersLedgerManager({
 
                         {/* Ledger Statement Transactions Table (9 columns) */}
                         <div className="flex-1 overflow-auto p-6 bg-surface-muted/30">
-                            {supplierLedgerEntries.length === 0 ? (
+                            {loadingSettlements ? (
+                                <div className="text-center py-20 bg-surface border border-dashed border-hairline rounded-2xl text-ink-subtle">
+                                    <Loader2 size={32} className="mx-auto mb-2 animate-spin text-brand-500" />
+                                    <p className="text-sm font-bold">Loading ledger statement history...</p>
+                                </div>
+                            ) : supplierLedgerEntries.length === 0 ? (
                                 <div className="text-center py-20 bg-surface border border-dashed border-hairline rounded-2xl text-ink-subtle">
                                     <DollarSign size={32} className="mx-auto mb-2 opacity-30" />
                                     <p className="text-sm font-bold">No registered transactions match this supplier name.</p>
@@ -974,6 +1153,22 @@ export default function SuppliersLedgerManager({
                         {/* Modal Form Body */}
                         <form onSubmit={handleRecordBill}>
                             <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                                {/* Link to Stock Item */}
+                                <div>
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Link to Stock Item (Optional)</label>
+                                    <Select
+                                        value={selectedIngredientId}
+                                        onChange={e => handleIngredientSelect(e.target.value)}
+                                        className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                    >
+                                        <option value="">Do not link to stock</option>
+                                        {ingredients.map(ing => (
+                                            <option key={ing.id} value={ing.id}>{ing.name} ({ing.unit})</option>
+                                        ))}
+                                    </Select>
+                                    <p className="text-[10px] text-ink-subtle mt-1">If selected, recording this purchase will automatically add stock quantity to the ingredient.</p>
+                                </div>
+
                                 {/* Category select & Add Category */}
                                 <div>
                                     <div className="flex items-center justify-between mb-1.5">

@@ -248,6 +248,7 @@ export async function createSupplierBillAction(input: {
     cash_portion?: number
     qr_portion?: number
     cheque_details?: ChequeDetailsInput
+    ingredient_id?: string
 }) {
     let user
     try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
@@ -330,6 +331,29 @@ export async function createSupplierBillAction(input: {
         .single()
 
     if (expError) return { error: expError.message }
+
+    // 2b. Automatically log stock movement if an ingredient is linked to the purchase
+    if (input.ingredient_id && newExpense) {
+        const { error: moveErr } = await supabase
+            .from('ingredient_movements')
+            .insert({
+                ingredient_id: input.ingredient_id,
+                movement_type: 'purchase',
+                quantity: input.quantity,
+                reference_id: newExpense.id,
+                notes: `Purchase from supplier: ${supplierName}`,
+                performed_by: user.id
+            })
+
+        if (!moveErr) {
+            await supabase.rpc('adjust_ingredient_stock', {
+                p_ingredient_id: input.ingredient_id,
+                p_delta: input.quantity
+            })
+        } else {
+            console.error('Failed to record stock movement:', moveErr)
+        }
+    }
 
     // 3. Post paid_amount to Day Book if greater than 0 and not held for
     // cheque approval. The difference between amount and paid_amount is the
@@ -606,4 +630,22 @@ export async function rejectChequeBillAction(expenseId: string) {
     revalidatePath(PATH)
     return { success: true }
 }
+
+export async function getSupplierSettlementsAction(expenseIds: string[]) {
+    let user
+    try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
+
+    if (!expenseIds || expenseIds.length === 0) return { data: [] }
+
+    const supabase = await createAdminClient()
+    const { data, error } = await supabase
+        .from('voucher_supplier_settlements')
+        .select('*, day_book_entries(*)')
+        .in('expense_id', expenseIds)
+        .order('created_at', { ascending: true })
+
+    if (error) return { error: error.message }
+    return { data: data || [] }
+}
+
 
