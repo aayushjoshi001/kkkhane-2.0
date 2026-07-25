@@ -1,4 +1,5 @@
 import RealtimeRefresh from '@/components/shared/RealtimeRefresh'
+import AdSpace from '@/components/shared/AdSpace'
 import RowLink from '@/components/admin/RowLink'
 import { Suspense } from 'react'
 import { createAdminClient } from '@/lib/supabase/server'
@@ -81,6 +82,7 @@ export default async function AdminDashboardPage() {
                 tables={isHotel ? ['orders', 'sessions', 'rooms', 'bookings'] : ['orders', 'sessions']}
                 debounceMs={5000}
             />
+            <AdSpace />
             {/* Premium Header */}
             <div className="relative overflow-hidden rounded-[2rem] bg-[#0a0a0a] text-white p-8 sm:p-12 shadow-2xl animate-fade-up">
                 <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-brand-500 opacity-20 blur-[120px] rounded-full translate-x-1/3 -translate-y-1/4 pointer-events-none" />

@@ -41,22 +41,18 @@ const ADS: Ad[] = [
 
 export default function AdSpace() {
     const [currentIndex, setCurrentIndex] = useState(0)
-    const [isVisible, setIsVisible] = useState(true)
 
     useEffect(() => {
-        if (!isVisible) return
         const timer = setInterval(() => {
             setCurrentIndex(prev => (prev + 1) % ADS.length)
         }, 12000) // Rotate ads every 12 seconds
         return () => clearInterval(timer)
-    }, [isVisible])
-
-    if (!isVisible) return null
+    }, [])
 
     const ad = ADS[currentIndex]
 
     return (
-        <div className="w-full bg-surface border border-hairline rounded-2xl shadow-sm overflow-hidden animate-fade-in relative mt-6 print:hidden">
+        <div className="w-full bg-surface border border-hairline rounded-2xl shadow-sm overflow-hidden animate-fade-in relative print:hidden">
             {/* Ambient Background Glow */}
             <div className="absolute inset-0 bg-gradient-to-r from-brand-500/5 via-transparent to-brand-500/5 pointer-events-none" />
 
@@ -89,13 +85,6 @@ export default function AdSpace() {
                         {ad.cta}
                         <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
                     </a>
-                    <button
-                        onClick={() => setIsVisible(false)}
-                        className="p-1.5 hover:bg-surface-muted text-ink-subtle hover:text-ink rounded-lg transition-colors border border-transparent hover:border-hairline"
-                        title="Close Ad"
-                    >
-                        <X size={15} />
-                    </button>
                 </div>
             </div>
         </div>

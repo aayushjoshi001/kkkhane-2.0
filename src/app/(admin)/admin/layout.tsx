@@ -15,9 +15,6 @@ import type { BusinessMode } from '@/lib/businessMode'
 import { SidebarProvider } from '@/lib/contexts/SidebarContext'
 import SidebarToggle from '@/components/admin/SidebarToggle'
 import CalendarToggle from '@/components/shared/CalendarToggle'
-
-import AdSpace from '@/components/shared/AdSpace'
-
 export default async function AdminLayout({ children }: { children: ReactNode }) {
     // requireRole() uses the React.cache-wrapped getCurrentUser — no duplicate DB call
     // when the page also calls getCurrentUser().
@@ -89,7 +86,6 @@ export default async function AdminLayout({ children }: { children: ReactNode })
                         <CommandPaletteMount role={roleNameRaw} theme="light" />
                         <div className="flex-1 overflow-auto p-5 md:p-8">
                             <div className="max-w-6xl mx-auto">
-                                <AdSpace />
                                 {children}
                             </div>
                         </div>
