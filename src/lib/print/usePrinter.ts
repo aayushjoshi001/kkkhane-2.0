@@ -17,6 +17,8 @@ export interface PrintOutcome {
     ok: boolean
     status: QzStatus | 'no-printer-selected'
     error?: string
+    /** True when the LAN printer failed and this device's own printer took the job. */
+    usedLocalFallback?: boolean
 }
 
 function toConnStatus(result: QzResult): PrinterConnStatus {
@@ -68,6 +70,21 @@ export function usePrinter(role: PrinterRole) {
         async (bytes: Uint8Array): Promise<PrintOutcome> => {
             if (networkPrinter) {
                 const result = await printRawEscPos(networkPrinter.target, bytes, networkPrinter.copies)
+                // A configured-but-unreachable LAN printer must not mean "no ticket
+                // at all". When this device also has its own printer, send the job
+                // there rather than dropping it — a misconfigured or offline host
+                // (wrong subnet, printer powered down) then costs the ticket its
+                // preferred destination, not its existence.
+                //
+                // Both paths go through QZ Tray, so this only rescues an
+                // unreachable host: if QZ itself is down the local attempt fails
+                // the same way, and we return the original network failure so
+                // callers still see the LAN status they retry on.
+                if (!result.ok && selectedPrinter) {
+                    const local = await printRawEscPos(selectedPrinter, bytes)
+                    setStatus(toConnStatus(local))
+                    return local.ok ? { ...local, usedLocalFallback: true } : result
+                }
                 setStatus(toConnStatus(result))
                 return result
             }
