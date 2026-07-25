@@ -13,6 +13,7 @@ import { createSupplierBillAction } from '@/app/(admin)/admin/suppliers/actions'
 import type { BankAccount, ExpenseCategory, Supplier } from '@/types/database'
 import { orderCategoriesForDisplay, findMainCategory, buildDescriptionWithName } from '@/lib/utils'
 import Select from '@/components/ui/Select'
+import { NepaliDateInput } from '@/components/ui/NepaliDateInput'
 import SupplierPaymentFields, {
     EMPTY_SUPPLIER_PAYMENT, validateSupplierPayment, isUnderpaidSplit, underpaidSplitConfirmMessage,
     UNSPECIFIED_SUPPLIER_NAME, OTHERS_SUPPLIER_ID, buildChequeDetailsFromSupplierPayment, type SupplierPaymentValue
@@ -220,12 +221,14 @@ function ChequeDetailsFields({ value, onChange }: { value: ChequeDetailsValue; o
                 value={value.cheque_number}
                 onChange={e => onChange({ ...value, cheque_number: e.target.value })}
             />
-            <InputField
-                label="Cheque Date"
-                type="date"
-                value={value.cheque_date}
-                onChange={e => onChange({ ...value, cheque_date: e.target.value })}
-            />
+            <div className="space-y-1.5">
+                <label className="block text-small font-bold text-ink">Cheque Date</label>
+                <NepaliDateInput
+                    aria-label="Cheque date"
+                    value={value.cheque_date}
+                    onChange={cheque_date => onChange({ ...value, cheque_date })}
+                />
+            </div>
             <SelectField
                 label="Cheque Type"
                 value={value.cheque_type}

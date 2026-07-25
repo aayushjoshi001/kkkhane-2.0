@@ -15,6 +15,7 @@ import { openSession } from '@/app/(staff)/waiter/actions'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 import { getRoomStatusConfig } from '@/lib/roomStatus'
 import Select from '@/components/ui/Select'
+import { NepaliDateInput, NepaliDateTimeInput } from '@/components/ui/NepaliDateInput'
 import { useDates } from '@/lib/contexts/CalendarContext'
 
 export interface RoomWithTypes {
@@ -582,28 +583,22 @@ export default function CashierRoomManager({
                                         </div>
                                         <div>
                                             <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Check-in *</label>
-                                            <input
-                                                type="datetime-local"
+                                            <NepaliDateTimeInput
+                                                aria-label="Check-in date and time"
                                                 value={bookingForm.check_in}
-                                                onChange={e => setBookingForm(b => ({ ...b, check_in: e.target.value }))}
-                                                className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                                onChange={check_in => setBookingForm(b => ({ ...b, check_in }))}
+                                                className="px-3 py-1.5 rounded-xl text-xs font-semibold"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Check-out *</label>
-                                            <input
-                                                type="datetime-local"
-                                                value={bookingForm.check_out}
-                                                onChange={e => {
-                                                    const val = e.target.value
-                                                    if (val) {
-                                                        const datePart = val.slice(0, 10)
-                                                        setBookingForm(b => ({ ...b, check_out: `${datePart}T12:00` }))
-                                                    } else {
-                                                        setBookingForm(b => ({ ...b, check_out: val }))
-                                                    }
-                                                }}
-                                                className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Check-out * <span className="text-ink-subtle/70 normal-case font-semibold">(12:00 PM)</span></label>
+                                            {/* Checkout has always been pinned to noon here — so this asks for
+                                                the day only, rather than offering a time it would overwrite. */}
+                                            <NepaliDateInput
+                                                aria-label="Check-out date"
+                                                value={bookingForm.check_out.slice(0, 10)}
+                                                onChange={iso => setBookingForm(b => ({ ...b, check_out: iso ? `${iso}T12:00` : '' }))}
+                                                className="px-3 py-1.5 rounded-xl text-xs font-semibold"
                                             />
                                         </div>
                                         <div className="col-span-2">
