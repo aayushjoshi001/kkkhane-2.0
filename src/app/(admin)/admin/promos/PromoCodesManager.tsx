@@ -9,7 +9,6 @@ import useSWR from 'swr'
 import { fetchPromoCodes } from '@/lib/swr-fetchers'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
-import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 import DateCell from '@/components/ui/DateCell'
 
 const PROMO_TYPES = [
