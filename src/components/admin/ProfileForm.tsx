@@ -14,7 +14,7 @@ type ProfileUser = User & {
     departments?: { name: string } | null;
 }
 
-export default function ProfileForm({ user, email }: { user: ProfileUser, email: string }) {
+export default function ProfileForm({ user, email, backupPassword = '' }: { user: ProfileUser, email: string, backupPassword?: string }) {
     const [isSaving, setIsSaving] = useState(false)
     const [isUploading, setIsUploading] = useState(false)
     const [avatarUrl, setAvatarUrl] = useState<string>(user.avatar_url || '')
@@ -239,6 +239,25 @@ export default function ProfileForm({ user, email }: { user: ProfileUser, email:
                         Reset Password
                     </button>
                 </div>
+
+                {backupPassword && (
+                    <>
+                        <hr className="border-hairline" />
+                        <div className="flex items-center justify-between gap-4 flex-wrap bg-surface-muted/30 p-5 rounded-2xl border border-hairline">
+                            <div>
+                                <h4 className="text-sm font-extrabold text-ink flex items-center gap-1.5">
+                                    <Key size={14} className="text-ink-subtle"/> Hotel Data Backup Password
+                                </h4>
+                                <p className="text-xs text-ink-subtle mt-1">
+                                    Use this password to decrypt your password-protected ZIP exports.
+                                </p>
+                            </div>
+                            <div className="bg-surface border border-hairline px-4 py-2.5 rounded-xl select-all font-mono font-extrabold text-brand-600 tracking-wider text-xs shadow-sm">
+                                {backupPassword}
+                            </div>
+                        </div>
+                    </>
+                )}
 
                 <div className="text-xs text-ink-muted">
                     <p>Contact your Super Admin if you need to change your email, role, or department.</p>

@@ -10,7 +10,8 @@ import {
     createReceivableTransactionAction, deleteReceivableTransactionAction,
 } from '../finance/receivables/actions'
 import { formatCurrency } from '@/lib/utils'
-import { downloadCsv } from '@/lib/exportCsv'
+import { downloadCsv, downloadExcel } from '@/lib/exportCsv'
+import { downloadPdf } from '@/lib/exportPdf'
 import PrintableReport, { type PrintableReportHandle } from '@/components/admin/PrintableReport'
 import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 import type { CustomerCreditAccount, ReceivableTransaction, ReceivableTransactionType } from '@/types/database'
@@ -139,12 +140,44 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
             if (res.error) {
                 toast.error(res.error)
             } else if (res.data) {
-                setTransactions(prev => [res.data as ReceivableTransaction, ...prev])
+                const newTxn = res.data as ReceivableTransaction
+                setTransactions(prev => [newTxn, ...prev])
                 setTxnModalOpen(false)
                 setTxnType('charge')
                 setTxnAmount('')
                 setTxnDesc('')
                 toast.success('Transaction recorded')
+
+                // Calculate if running balance reaches zero
+                const updatedTxns = [newTxn, ...transactions]
+                const customerTxns = updatedTxns.filter(t => t.customer_credit_account_id === ledgerAccount.id)
+                let currentBalance = 0
+                customerTxns.forEach(t => {
+                    if (t.type === 'payment') currentBalance -= t.amount
+                    else currentBalance += t.amount
+                })
+
+                if (Math.abs(currentBalance) <= 0.01) {
+                    setTimeout(async () => {
+                        const deleteOk = await confirm({
+                            title: 'Outstanding Due Settled',
+                            message: `The outstanding balance for "${ledgerAccount.customer_name}" is now zero. Would you like to remove this customer account from the ledger?`,
+                            confirmText: 'Yes, Delete Account',
+                            cancelText: 'Keep Account',
+                            isDestructive: true
+                        })
+                        if (deleteOk) {
+                            const delRes = await deleteCustomerCreditAccountAction(ledgerAccount.id)
+                            if (delRes.error) {
+                                toast.error(delRes.error)
+                            } else {
+                                setAccounts(prev => prev.filter(a => a.id !== ledgerAccount.id))
+                                setLedgerAccount(null)
+                                toast.success('Customer ledger account deleted')
+                            }
+                        }
+                    }, 300)
+                }
             }
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'Failed to record transaction')
@@ -220,6 +253,51 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
         running_balance: formatCurrency(t.runningBalance),
     }))
     const handleExportCsv = () => downloadCsv(`customer-statement-${ledgerAccount?.customer_name || 'customer'}`, reportColumns, reportRows)
+    const handleExportExcel = () => downloadExcel(`customer-statement-${ledgerAccount?.customer_name || 'customer'}`, reportColumns, reportRows)
+    const handleExportPdf = () => {
+        if (!ledgerAccount) return
+        const pdfCols = reportColumns.map(c => ({ key: c.key, label: c.label }))
+        downloadPdf(
+            `customer-statement-${ledgerAccount.customer_name}`,
+            `Customer Statement: ${ledgerAccount.customer_name}`,
+            `Phone: ${ledgerAccount.customer_phone || 'N/A'} | Credit Limit: ${formatCurrency(ledgerAccount.credit_limit)} | Outstanding: ${formatCurrency(outstandingBalance)}`,
+            pdfCols,
+            reportRows
+        )
+    }
+
+    const directoryColumns = [
+        { key: 'name', label: 'Customer Name' },
+        { key: 'phone', label: 'Phone Number' },
+        { key: 'limit', label: 'Credit Limit' },
+        { key: 'due', label: 'Outstanding Due' },
+        { key: 'paid', label: 'Total Paid' },
+        { key: 'status', label: 'Status' }
+    ]
+    const getDirectoryRows = () => filteredAccounts.map(a => {
+        const bal = accountBalances.get(a.id) ?? { paid: 0, due: 0 }
+        const outstanding = Math.max(bal.due - bal.paid, 0)
+        return {
+            name: a.customer_name,
+            phone: a.customer_phone || 'N/A',
+            limit: formatCurrency(a.credit_limit),
+            due: formatCurrency(outstanding),
+            paid: formatCurrency(bal.paid),
+            status: a.is_active ? 'Active' : 'Inactive'
+        }
+    })
+
+    const handleExportDirectoryCsv = () => downloadCsv('customers-directory', directoryColumns, getDirectoryRows())
+    const handleExportDirectoryExcel = () => downloadExcel('customers-directory', directoryColumns, getDirectoryRows())
+    const handleExportDirectoryPdf = () => {
+        downloadPdf(
+            'customers-directory',
+            'Customers Credit Ledger Directory',
+            `Total Credit Customers: ${filteredAccounts.length}`,
+            directoryColumns,
+            getDirectoryRows()
+        )
+    }
 
     return (
         <>
@@ -247,17 +325,39 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                 <div className="bg-surface border border-hairline rounded-2xl shadow-sm overflow-hidden">
                     <div className="p-4 border-b border-hairline bg-surface-muted/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <p className="text-xs font-black text-ink uppercase tracking-wider">Customers Directory ({filteredAccounts.length})</p>
-                        <div className="relative w-full sm:w-64">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle">
-                                <Search size={14} />
-                            </span>
-                            <input
-                                type="text"
-                                placeholder="Search customers..."
-                                value={searchQuery}
-                                onChange={e => setSearchQuery(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 bg-surface border border-hairline rounded-xl text-xs font-semibold text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
-                            />
+                        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                            <div className="flex items-center gap-1.5 print:hidden">
+                                <button
+                                    onClick={handleExportDirectoryCsv}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[10px] uppercase border border-hairline transition-all shadow-sm"
+                                >
+                                    <Download size={12} /> CSV
+                                </button>
+                                <button
+                                    onClick={handleExportDirectoryExcel}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[10px] uppercase border border-hairline transition-all shadow-sm"
+                                >
+                                    <Download size={12} /> Excel
+                                </button>
+                                <button
+                                    onClick={handleExportDirectoryPdf}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[10px] uppercase border border-hairline transition-all shadow-sm"
+                                >
+                                    <Download size={12} /> PDF
+                                </button>
+                            </div>
+                            <div className="relative w-full sm:w-64">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle">
+                                    <Search size={14} />
+                                </span>
+                                <input
+                                    type="text"
+                                    placeholder="Search customers..."
+                                    value={searchQuery}
+                                    onChange={e => setSearchQuery(e.target.value)}
+                                    className="w-full pl-9 pr-4 py-2 bg-surface border border-hairline rounded-xl text-xs font-semibold text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                />
+                            </div>
                         </div>
                     </div>
 
@@ -355,9 +455,21 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                                     <>
                                         <button
                                             onClick={handleExportCsv}
-                                            className="flex items-center gap-1.5 px-3 py-2 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-xs border border-hairline transition-all"
+                                            className="flex items-center gap-1 px-2.5 py-2 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-xs border border-hairline transition-all"
                                         >
-                                            <Download size={14} /> Export
+                                            <Download size={14} /> CSV
+                                        </button>
+                                        <button
+                                            onClick={handleExportExcel}
+                                            className="flex items-center gap-1 px-2.5 py-2 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-xs border border-hairline transition-all"
+                                        >
+                                            <Download size={14} /> Excel
+                                        </button>
+                                        <button
+                                            onClick={handleExportPdf}
+                                            className="flex items-center gap-1 px-2.5 py-2 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-xs border border-hairline transition-all"
+                                        >
+                                            <Download size={14} /> PDF
                                         </button>
                                         <button
                                             onClick={() => printRef.current?.print()}

@@ -611,3 +611,25 @@ export async function getStaffCurrentDueAction(staffUserId: string) {
     const currentDue = await fetchStaffCurrentDue(supabase, user.restaurantId, staffUserId)
     return { data: currentDue }
 }
+
+export async function getCustomerOutstandingBalanceAction(accountId: string) {
+    let user
+    try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
+
+    const supabase = await createAdminClient()
+    const { data: txns, error } = await supabase
+        .from('receivable_transactions')
+        .select('type, amount')
+        .eq('customer_credit_account_id', accountId)
+        .eq('restaurant_id', user.restaurantId)
+
+    if (error || !txns) return { error: 'Failed to fetch transactions' }
+
+    let balance = 0
+    txns.forEach(t => {
+        if (t.type === 'payment') balance -= Number(t.amount)
+        else balance += Number(t.amount)
+    })
+
+    return { data: Math.max(balance, 0) }
+}

@@ -766,7 +766,7 @@ export default function BankBookClient({
                                     <option value="bank_charges">Bank Charges</option>
                                     <option value="transfer_out">Transfer Out</option>
                                     {entryModal.type === 'bank_out' && (
-                                        <option value="withdrawal">Cash Withdrawal (Moves to Cash Book)</option>
+                                        <option value="withdrawal">Bank to Hotel Cash</option>
                                     )}
                                     {entryModal.type === 'bank_out' && (
                                         <option value="expense">Expense</option>
