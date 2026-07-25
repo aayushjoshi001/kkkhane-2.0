@@ -19,6 +19,7 @@ import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
 import { defaultStayWindowInputs } from '@/lib/utils'
 import { useDates } from '@/lib/contexts/CalendarContext'
+import { describeGuestMix } from '@/lib/guests'
 
 const QR_LOGO_SRC = '/icons/kkkhane.png'
 
@@ -81,7 +82,9 @@ export default function RoomsClient({
         kyc: '',
         check_in: '',
         check_out: '',
-        guest_count: '2',
+        adult_male: '1',
+        adult_female: '1',
+        children: '0',
         advance_amount: '0',
         advance_payment_method: 'cash',
         advance_cash_amount: '',
@@ -320,7 +323,9 @@ export default function RoomsClient({
             kyc: '',
             check_in: checkIn,
             check_out: checkOut,
-            guest_count: roomType ? roomType.capacity.toString() : '2',
+            adult_male: '1',
+            adult_female: roomType && roomType.capacity > 1 ? '1' : '0',
+            children: '0',
             advance_amount: '0',
             advance_payment_method: 'cash',
             advance_cash_amount: '',
@@ -342,8 +347,11 @@ export default function RoomsClient({
             return
         }
 
-        const count = parseInt(bookingForm.guest_count)
-        if (isNaN(count) || count <= 0) { toast.error('Enter a valid guest count'); return }
+        const n = (v: string) => Math.max(0, Math.trunc(Number(v) || 0))
+        const maleCount = n(bookingForm.adult_male)
+        const femaleCount = n(bookingForm.adult_female)
+        const childCount = n(bookingForm.children)
+        if (maleCount + femaleCount < 1) { toast.error('Enter at least one adult guest'); return }
 
         const isSplit = bookingForm.advance_payment_method === 'split'
         const splitCash = parseFloat(bookingForm.advance_cash_amount) || 0
@@ -365,7 +373,9 @@ export default function RoomsClient({
                     kyc: bookingForm.kyc,
                     check_in: bookingForm.check_in,
                     check_out: bookingForm.check_out,
-                    guest_count: count,
+                    adult_male: maleCount,
+                    adult_female: femaleCount,
+                    children: childCount,
                     advance_amount: (irdSyncEnabled && isSplit) ? splitCash + splitQr : (parseFloat(bookingForm.advance_amount) || 0),
                     advance_payment_method: (parseFloat(bookingForm.advance_amount) || 0) > 0 ? (irdSyncEnabled ? bookingForm.advance_payment_method : 'cash') : 'none',
                     advance_cash_amount: (irdSyncEnabled && isSplit) ? splitCash : undefined,
@@ -743,7 +753,7 @@ export default function RoomsClient({
                                         </div>
                                         <div className="flex items-center justify-between">
                                             <span className="text-ink-subtle font-bold uppercase tracking-wide">Total Guests:</span>
-                                            <span className="font-extrabold text-ink">{activeBooking.adults} Guests</span>
+                                            <span className="font-extrabold text-ink">{describeGuestMix(activeBooking)}</span>
                                         </div>
                                         {activeBooking.notes && activeBooking.notes.startsWith('KYC:') && (
                                             <div className="flex items-center justify-between">
@@ -958,15 +968,28 @@ export default function RoomsClient({
 
                              <div>
                                 <label className="block text-small font-bold text-ink mb-1.5">
-                                    Number of Guests *
+                                    Guests *
                                 </label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    value={bookingForm.guest_count}
-                                    onChange={e => setBookingForm(b => ({ ...b, guest_count: e.target.value }))}
-                                    className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
-                                />
+                                <div className="grid grid-cols-3 gap-3">
+                                    {([
+                                        ['adult_male', 'Male'],
+                                        ['adult_female', 'Female'],
+                                        ['children', 'Children'],
+                                    ] as const).map(([key, label]) => (
+                                        <div key={key}>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">{label}</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                inputMode="numeric"
+                                                aria-label={`Number of ${label.toLowerCase()} guests`}
+                                                value={bookingForm[key]}
+                                                onChange={e => setBookingForm(b => ({ ...b, [key]: e.target.value }))}
+                                                className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all tabular-nums"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
 
                              <div className={irdSyncEnabled ? "grid grid-cols-2 gap-4" : ""}>

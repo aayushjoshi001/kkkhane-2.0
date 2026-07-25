@@ -8,7 +8,7 @@
 
 import { SupabaseClient } from '@supabase/supabase-js'
 import { getRestaurantFeatures } from '@/lib/features'
-import { calculateNights } from '@/lib/utils'
+import { calculateNights, NEPAL_TZ } from '@/lib/utils'
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
@@ -49,6 +49,47 @@ export interface FolioBreakdown {
  * charged exactly stayCost + chargesTotal + ordersTotal, nothing added on
  * top by default.
  */
+/** One room the stay occupied, with the nightly rate that room carries. */
+export interface RoomRateSegment {
+    /** When the guest entered this room. */
+    fromTs: string
+    /** Nightly rate for the room in this segment. */
+    price: number
+}
+
+/**
+ * Nightly rate for the night beginning `nightStart`, given the rooms a stay has
+ * occupied.
+ *
+ * A move takes effect by calendar date, not by instant: a guest moved at any
+ * hour on the 24th is billed the new room's rate for the night beginning the
+ * 24th. Splitting on the exact timestamp instead would bill a 3pm move at the
+ * old room's rate for the night the guest actually slept in the new room. Dates
+ * are read in Kathmandu so the boundary lines up with the business day.
+ *
+ * With no segments — a stay predating the move history — this returns
+ * `fallbackPrice`, which is the whole-stay behaviour that came before.
+ */
+export function resolveNightlyRate(
+    segments: RoomRateSegment[],
+    nightStart: string | Date,
+    fallbackPrice: number,
+): number {
+    if (segments.length === 0) return fallbackPrice
+    const day = (value: string | Date) =>
+        new Date(value).toLocaleDateString('en-CA', { timeZone: NEPAL_TZ })
+
+    const nightDay = day(nightStart)
+    const ordered = [...segments].sort((a, b) => day(a.fromTs).localeCompare(day(b.fromTs)))
+
+    let rate = ordered[0].price
+    for (const seg of ordered) {
+        if (day(seg.fromTs) <= nightDay) rate = seg.price
+        else break
+    }
+    return rate
+}
+
 export async function computeFolioTotal(
     supabase: SupabaseClient,
     opts: {
@@ -103,7 +144,7 @@ export async function computeFolioTotal(
     }
 
     // Fetch dynamic pricing rules, total rooms, and checked-in bookings count
-    const [roomRes, bookingsCountRes, roomsCountRes, rulesRes] = await Promise.all([
+    const [roomRes, bookingsCountRes, roomsCountRes, rulesRes, segmentsRes] = await Promise.all([
         supabase
             .from('rooms')
             .select('room_types:type_id(base_price)')
@@ -124,11 +165,28 @@ export async function computeFolioTotal(
             .from('dynamic_pricing_rules')
             .select('*')
             .eq('restaurant_id', hotelId)
-            .eq('is_active', true)
+            .eq('is_active', true),
+        // Rooms this stay has occupied, oldest first. A stay that was never
+        // moved has a single segment and prices exactly as it did before.
+        supabase
+            .from('booking_room_stays')
+            .select('room_id, from_ts, rooms:room_id(room_types:type_id(base_price))')
+            .eq('booking_id', bookingId)
+            .order('from_ts', { ascending: true })
     ])
 
     const basePrice = Number((roomRes.data?.room_types as { base_price?: number } | null)?.base_price) || 0
     const nights = calculateNights(checkIn, checkOut)
+
+    const segments: RoomRateSegment[] = (segmentsRes.data || []).map((seg) => ({
+        fromTs: seg.from_ts as string,
+        // A segment whose room lost its type would otherwise price its nights at
+        // zero; fall back to the booking's current room rate.
+        price:
+            Number(((seg.rooms as { room_types?: { base_price?: number } | null } | null)?.room_types)?.base_price) ||
+            basePrice,
+    }))
+    const rateForNight = (nightStart: Date) => resolveNightlyRate(segments, nightStart, basePrice)
     
     // Calculate current occupancy rate
     const totalRoomsCount = roomsCountRes.count || 1
@@ -161,7 +219,7 @@ export async function computeFolioTotal(
                 nightMultiplier *= Number(occupancyRule.multiplier)
             }
             
-            stayCost += basePrice * nightMultiplier
+            stayCost += rateForNight(nightDate) * nightMultiplier
         }
     }
 

@@ -15,13 +15,29 @@ export async function POST(req: Request) {
         const {
             room_id, guest_name, guest_phone, kyc,
             check_in, check_out, guest_count,
+            adult_male, adult_female, children,
             advance_amount, advance_payment_method,
             advance_cash_amount, advance_qr_amount,
             advance_qr_code_id
         } = body
 
-        if (!room_id || !guest_name || !guest_phone || !check_in || !check_out || !guest_count) {
+        if (!room_id || !guest_name || !guest_phone || !check_in || !check_out) {
             return NextResponse.json({ error: 'Missing required booking fields' }, { status: 400 })
+        }
+
+        // Guest mix. `guest_count` is still accepted so an older client (or the
+        // demo seeder) that only knows a head count keeps working — it lands as
+        // unspecified adults with no split.
+        const maleCount = Math.max(0, Math.trunc(Number(adult_male) || 0))
+        const femaleCount = Math.max(0, Math.trunc(Number(adult_female) || 0))
+        const childCount = Math.max(0, Math.trunc(Number(children) || 0))
+        const splitProvided = adult_male !== undefined || adult_female !== undefined
+        const adultTotal = splitProvided
+            ? maleCount + femaleCount
+            : Math.max(0, Math.trunc(Number(guest_count) || 0))
+
+        if (adultTotal < 1) {
+            return NextResponse.json({ error: 'A booking needs at least one adult guest' }, { status: 400 })
         }
 
         // The form sends naive `YYYY-MM-DDTHH:mm` values. Resolve them against
@@ -93,7 +109,10 @@ export async function POST(req: Request) {
                 guest_phone: guest_phone.trim(),
                 check_in: checkInISO,
                 check_out: checkOutISO,
-                adults: Number(guest_count),
+                adults: adultTotal,
+                adult_male: splitProvided ? maleCount : 0,
+                adult_female: splitProvided ? femaleCount : 0,
+                children: childCount,
                 status: 'checked_in',
                 notes,
                 paid_amount: paidAmount,
@@ -103,6 +122,24 @@ export async function POST(req: Request) {
             .single()
 
         if (bookingError) throw bookingError
+
+        // Open the first room segment. Every stay has at least one, so the folio
+        // can price each night from the room actually occupied rather than from
+        // whatever room the booking points at when the bill is drawn.
+        const { error: segmentError } = await supabase
+            .from('booking_room_stays')
+            .insert({
+                restaurant_id: currentUser.restaurantId,
+                booking_id: booking.id,
+                room_id,
+                from_ts: checkInISO,
+            })
+        if (segmentError) {
+            // Not fatal — the folio falls back to the booking's current room when
+            // a stay has no segments, which is the pre-move behaviour. Losing the
+            // booking over a history row would be the worse trade.
+            console.error('Failed to open room segment for booking', booking.id, segmentError)
+        }
 
         // 4. Update room status to occupied
         const { error: updateError } = await supabase

@@ -4,12 +4,13 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { createClient } from '@/lib/supabase/client'
-import { Users, X, Check, Bed, ClipboardList, Loader2, CreditCard, RefreshCw, Calendar, FileText, Plus, Landmark, Utensils } from 'lucide-react'
+import { Users, X, Check, Bed, ClipboardList, Loader2, CreditCard, RefreshCw, Calendar, FileText, Plus, Landmark, Utensils, ArrowLeftRight } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCurrency, useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { type TableWithSession } from './CashierTableManager'
 import { calculateNights, advanceMethodLabel, getItemDisplayName, defaultStayWindowInputs } from '@/lib/utils'
+import { describeGuestMix, totalGuests } from '@/lib/guests'
 import QuickOrderModal from './QuickOrderModal'
 import { openSession } from '@/app/(staff)/waiter/actions'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
@@ -90,6 +91,12 @@ export default function CashierRoomManager({
         description: '',
         amount: ''
     })
+    // Room move ("the guest is in 201 but wants 305")
+    const [moveOpen, setMoveOpen] = useState(false)
+    const [moveTargetId, setMoveTargetId] = useState<string>('')
+    const [moveReason, setMoveReason] = useState('')
+    const [moving, setMoving] = useState(false)
+
     const [foodOrderModalOpen, setFoodOrderModalOpen] = useState(false)
     const [createdSessionId, setCreatedSessionId] = useState<string | null>(null)
     const [refreshTrigger, setRefreshTrigger] = useState(0)
@@ -100,7 +107,10 @@ export default function CashierRoomManager({
         setConfirmCloseOpen(false)
         setConfirmDirtyOpen(false)
         setShowAddChargeForm(false)
-        setBookingForm({ guest_name: '', guest_phone: '', kyc: '', check_in: '', check_out: '', guest_count: '2' })
+        setMoveOpen(false)
+        setMoveTargetId('')
+        setMoveReason('')
+        setBookingForm({ guest_name: '', guest_phone: '', kyc: '', check_in: '', check_out: '', adult_male: '1', adult_female: '1', children: '0' })
         setAdvanceType('none')
         setAdvanceAmount('')
         setAdvanceSplitCash('')
@@ -114,7 +124,9 @@ export default function CashierRoomManager({
         kyc: '',
         check_in: '',
         check_out: '',
-        guest_count: '2'
+        adult_male: '1',
+        adult_female: '1',
+        children: '0',
     })
     const [advanceType, setAdvanceType] = useState<'none' | 'full' | 'partial'>('none')
     const [advanceAmount, setAdvanceAmount] = useState<string>('')
@@ -123,6 +135,15 @@ export default function CashierRoomManager({
     const [advanceSplitQr, setAdvanceSplitQr] = useState<string>('')
     const [advanceQrCodeId, setAdvanceQrCodeId] = useState<string>('')
     const qrCodes = useQrCodes()
+
+    // Parsed once so the header count, the capacity hint and the submit guard
+    // all read the same numbers rather than each re-parsing the inputs.
+    const guestTotals = useMemo(() => {
+        const n = (v: string) => Math.max(0, Math.trunc(Number(v) || 0))
+        const male = n(bookingForm.adult_male)
+        const female = n(bookingForm.adult_female)
+        return { male, female, adults: male + female, children: n(bookingForm.children) }
+    }, [bookingForm.adult_male, bookingForm.adult_female, bookingForm.children])
 
     useEffect(() => {
         setMounted(true)
@@ -161,6 +182,56 @@ export default function CashierRoomManager({
             .catch(err => console.error("Error refreshing linked dining orders in real-time:", err))
     })
 
+    // Rooms the guest could move into: in service, not the one they are in, and
+    // with nobody else booked into them. Occupancy is judged by whether a stay
+    // holds the room, not by the status flag — a room left 'dirty' after a
+    // checkout is perfectly movable-into once housekeeping is done, and blocking
+    // on the flag alone would hide it.
+    const moveCandidates = useMemo(() => {
+        const heldRoomIds = new Set(
+            (bookings || [])
+                .filter(b => b.status === 'checked_in' || b.status === 'pending')
+                .map(b => b.room_id),
+        )
+        return rooms
+            .filter(r => r.id !== selectedRoom?.id && !heldRoomIds.has(r.id) && r.status !== 'maintenance')
+            .sort((a, b) => a.room_number.localeCompare(b.room_number, undefined, { numeric: true }))
+    }, [rooms, bookings, selectedRoom?.id])
+
+    const handleMoveRoom = async () => {
+        if (!activeBooking || !moveTargetId) return
+        setMoving(true)
+        try {
+            const res = await fetch('/api/bookings/move-room', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    booking_id: activeBooking.id,
+                    to_room_id: moveTargetId,
+                    reason: moveReason,
+                }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Could not move the guest')
+
+            toast.success(`${activeBooking.guest_name} moved to Room ${data.to_room}`)
+            // Patch what this component owns; the rooms/bookings realtime
+            // subscriptions carry the same change to every other open till.
+            setRooms(prev => prev.map(r =>
+                r.id === moveTargetId ? { ...r, status: 'occupied' }
+                : r.id === selectedRoom?.id ? { ...r, status: 'dirty' }
+                : r))
+            setBookings(prev => prev.map(b => b.id === activeBooking.id ? { ...b, room_id: moveTargetId } : b))
+            setMoveOpen(false)
+            setSelectedRoom(null)
+            resetRoomModal()
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not move the guest')
+        } finally {
+            setMoving(false)
+        }
+    }
+
     // Prepopulate booking form check-in/out default values
     const prepopulateBookingForm = () => {
         // Default to a 1-night stay: in now, out at noon tomorrow (Kathmandu).
@@ -172,7 +243,9 @@ export default function CashierRoomManager({
             kyc: '',
             check_in: checkIn,
             check_out: checkOut,
-            guest_count: '1'
+            adult_male: '1',
+            adult_female: '0',
+            children: '0',
         })
         setAdvanceType('none')
         setAdvanceAmount('')
@@ -374,6 +447,9 @@ export default function CashierRoomManager({
         if (!bookingForm.guest_name.trim()) { toast.error('Guest name is required'); return }
         if (!bookingForm.guest_phone.trim()) { toast.error('Phone number is required'); return }
         if (!bookingForm.check_in || !bookingForm.check_out) { toast.error('Check-in and Check-out dates are required'); return }
+        // Children can stay on their own booking line, but somebody has to be
+        // the adult the room is registered to.
+        if (guestTotals.adults < 1) { toast.error('Enter at least one adult guest'); return }
 
         // Calculate advance amount to send
         const basePrice = selectedRoom.room_types?.base_price || 0
@@ -412,7 +488,9 @@ export default function CashierRoomManager({
                     kyc: bookingForm.kyc,
                     check_in: bookingForm.check_in,
                     check_out: bookingForm.check_out,
-                    guest_count: bookingForm.guest_count,
+                    adult_male: bookingForm.adult_male,
+                    adult_female: bookingForm.adult_female,
+                    children: bookingForm.children,
                     advance_amount: resolvedAdvance,
                     advance_payment_method: resolvedAdvance > 0 ? (irdSyncEnabled ? advancePayMethod : 'cash') : 'none',
                     advance_cash_amount: (irdSyncEnabled && isSplit) ? splitCash : undefined,
@@ -602,14 +680,42 @@ export default function CashierRoomManager({
                                             />
                                         </div>
                                         <div className="col-span-2">
-                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Number of Guests *</label>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                value={bookingForm.guest_count}
-                                                onChange={e => setBookingForm(b => ({ ...b, guest_count: e.target.value }))}
-                                                className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
-                                            />
+                                            <div className="flex items-baseline justify-between mb-1">
+                                                <label className="block text-[10px] font-bold text-ink-subtle uppercase">Guests *</label>
+                                                {(() => {
+                                                    const total = guestTotals.adults + guestTotals.children
+                                                    const capacity = selectedRoom.room_types?.capacity ?? null
+                                                    // Warn, never block — a front desk routinely puts an
+                                                    // extra mattress in a room and needs to record it.
+                                                    const over = capacity !== null && total > capacity
+                                                    return (
+                                                        <span className={`text-[10px] font-bold ${over ? 'text-amber-600' : 'text-ink-subtle'}`}>
+                                                            {total} guest{total === 1 ? '' : 's'}
+                                                            {capacity !== null && ` · room sleeps ${capacity}`}
+                                                        </span>
+                                                    )
+                                                })()}
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {([
+                                                    ['adult_male', 'Male'],
+                                                    ['adult_female', 'Female'],
+                                                    ['children', 'Children'],
+                                                ] as const).map(([key, label]) => (
+                                                    <div key={key}>
+                                                        <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-0.5">{label}</label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            inputMode="numeric"
+                                                            aria-label={`Number of ${label.toLowerCase()} guests`}
+                                                            value={bookingForm[key]}
+                                                            onChange={e => setBookingForm(b => ({ ...b, [key]: e.target.value }))}
+                                                            className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold tabular-nums"
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
 
                                         {/* Advance Payment Section */}
@@ -853,7 +959,88 @@ export default function CashierRoomManager({
                                         <Button variant="secondary" block loading={isProcessing} onClick={() => handleStatusChange(selectedRoom.id, 'dirty')} className="bg-brand-500 text-white hover:bg-brand-600 hover:border-brand-600">Confirm Dirty</Button>
                                     </div>
                                 )}
-                                {selectedRoom.status !== 'available' && !bookingFormOpen && !confirmCloseOpen && !confirmDirtyOpen && (
+                                {moveOpen && activeBooking && (() => {
+                                    const target = moveCandidates.find(r => r.id === moveTargetId) || null
+                                    const currentRate = selectedRoom.room_types?.base_price ?? 0
+                                    const newRate = target?.room_types?.base_price ?? 0
+                                    const rateChanged = !!target && newRate !== currentRate
+                                    const heads = totalGuests(activeBooking)
+                                    const capacity = target?.room_types?.capacity ?? null
+                                    const tooSmall = capacity !== null && heads > capacity
+
+                                    return (
+                                        <div className="space-y-3 border border-hairline rounded-2xl p-4 bg-surface-muted/30">
+                                            <div>
+                                                <p className="text-xs font-extrabold text-ink">Move {activeBooking.guest_name} out of Room {selectedRoom.room_number}</p>
+                                                <p className="text-[11px] text-ink-subtle mt-0.5">
+                                                    The folio moves with the guest — orders, charges and the advance already taken all stay on this stay.
+                                                </p>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Move to *</label>
+                                                <Select
+                                                    value={moveTargetId}
+                                                    onChange={e => setMoveTargetId(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-hairline rounded-xl text-xs bg-surface font-semibold"
+                                                    aria-label="Destination room"
+                                                >
+                                                    <option value="">Select a room…</option>
+                                                    {moveCandidates.map(r => (
+                                                        <option key={r.id} value={r.id}>
+                                                            Room {r.room_number}
+                                                            {r.room_types?.name ? ` · ${r.room_types.name}` : ''}
+                                                            {r.room_types ? ` · ${money(r.room_types.base_price)}/night` : ''}
+                                                            {r.status === 'dirty' ? ' · needs cleaning' : ''}
+                                                        </option>
+                                                    ))}
+                                                </Select>
+                                                {moveCandidates.length === 0 && (
+                                                    <p className="text-[11px] text-amber-600 font-semibold mt-1">
+                                                        No other room is free right now.
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            {rateChanged && (
+                                                <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                                                    {money(currentRate)} → {money(newRate)} per night. Nights already spent in Room {selectedRoom.room_number} stay at {money(currentRate)}; the new rate applies from tonight.
+                                                </p>
+                                            )}
+                                            {tooSmall && (
+                                                <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                                                    {heads} guests but Room {target?.room_number} sleeps {capacity}.
+                                                </p>
+                                            )}
+
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Reason</label>
+                                                <input
+                                                    type="text"
+                                                    value={moveReason}
+                                                    onChange={e => setMoveReason(e.target.value)}
+                                                    placeholder="Guest request, maintenance, upgrade…"
+                                                    className="w-full px-3 py-2 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                                />
+                                            </div>
+
+                                            <div className="flex gap-3">
+                                                <Button variant="secondary" block onClick={() => setMoveOpen(false)}>Cancel</Button>
+                                                <Button
+                                                    variant="primary"
+                                                    block
+                                                    icon={ArrowLeftRight}
+                                                    loading={moving}
+                                                    disabled={!moveTargetId || moving}
+                                                    onClick={handleMoveRoom}
+                                                >
+                                                    Move Guest
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    )
+                                })()}
+                                {selectedRoom.status !== 'available' && !bookingFormOpen && !confirmCloseOpen && !confirmDirtyOpen && !moveOpen && (
                                     <Button
                                         variant="success"
                                         icon={Check}
@@ -925,7 +1112,7 @@ export default function CashierRoomManager({
                                         <p className="text-[10px] font-bold text-ink-subtle uppercase text-right">Stay Schedule</p>
                                         <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">In:</span> {formatDateTime(activeBooking.check_in)}</p>
                                         <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">Out:</span> {formatDateTime(activeBooking.check_out)}</p>
-                                        <p className="text-[10px] text-brand-500 font-extrabold">{activeBooking.adults} Guest(s)</p>
+                                        <p className="text-[10px] text-brand-500 font-extrabold">{describeGuestMix(activeBooking)}</p>
                                     </div>
                                 </div>
 
@@ -1059,6 +1246,14 @@ export default function CashierRoomManager({
                                                     className="px-5 font-bold"
                                                 >
                                                     Close
+                                                </Button>
+                                                <Button
+                                                    variant="secondary"
+                                                    icon={ArrowLeftRight}
+                                                    onClick={() => { setMoveTargetId(''); setMoveReason(''); setMoveOpen(true) }}
+                                                    className="px-5 font-bold"
+                                                >
+                                                    Change Room
                                                 </Button>
                                                 <Button
                                                     variant="danger"
