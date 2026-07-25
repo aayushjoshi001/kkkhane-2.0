@@ -44,7 +44,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
                 .from('restaurants')
                 .select('name')
                 .eq('id', currentUser.restaurantId)
-                .single(),
+                .maybeSingle(),
             getRestaurantFeatures(currentUser.restaurantId),
             getRestaurantMode(currentUser.restaurantId),
         ])
