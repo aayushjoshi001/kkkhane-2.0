@@ -981,7 +981,15 @@ export interface Booking {
     guest_email: string | null
     check_in: string
     check_out: string
+    /** Total adults — kept as `adult_male + adult_female` for new bookings. */
     adults: number
+    /**
+     * Adult split. Both 0 on bookings made before this existed, where only the
+     * `adults` total is known — render those as a plain total rather than
+     * implying a breakdown that was never recorded.
+     */
+    adult_male: number
+    adult_female: number
     children: number
     status: BookingStatus
     total_amount: number
@@ -995,6 +1003,27 @@ export interface Booking {
     discount_applied_by: string | null
     discount_applied_at: string | null
     extra_hour_charge?: number
+    rooms?: Room | null
+}
+
+/**
+ * One room a stay has occupied. `to_ts` null marks the room the guest is in
+ * now, which is also what bookings.room_id points at.
+ *
+ * Exists so a mid-stay move keeps its history: the folio bills each night at
+ * the rate of the room actually occupied that night, instead of re-pricing the
+ * whole stay at whatever room the booking happens to point at now.
+ */
+export interface BookingRoomStay {
+    id: string
+    restaurant_id: string
+    booking_id: string
+    room_id: string
+    from_ts: string
+    to_ts: string | null
+    moved_by: string | null
+    reason: string | null
+    created_at: string
     rooms?: Room | null
 }
 
