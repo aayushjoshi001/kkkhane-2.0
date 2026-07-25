@@ -44,8 +44,8 @@ export type AdminOrder = {
     customer_name: string | null
     customer_phone: string | null
     delivery_address: string | null
-    sessions: { seat_number: number | null; tables: { label: string } | null } | null
-    bookings: { guest_name: string | null; rooms: { room_number: string } | null } | null
+    sessions: { seat_number: number | null; tables: { label: string } | null; bookings?: { guest_name: string | null; rooms: { room_number: string } | null } | null } | null
+    bookings?: { guest_name: string | null; rooms: { room_number: string } | null } | null
     order_items: AdminOrderItem[]
 }
 

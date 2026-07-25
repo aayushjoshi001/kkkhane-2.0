@@ -57,17 +57,22 @@ export async function GET(req: NextRequest) {
             targetRestaurantIds.push(partnerRestaurantId)
         }
 
+        const includeAll = req.nextUrl.searchParams.get('includeAll') === 'true'
+
         // Fetch all order items from these sessions or directly linked to the booking
         let query = supabase
             .from('orders')
             .select(`
-                id, session_id, status, payment_status, 
+                id, session_id, status, payment_status, placed_at, order_type,
                 order_items(id, status, quantity, unit_price, special_request, menu_items(name), menu_item_variations:menu_item_variation_id(id, name)),
                 sessions(id, table_id, tables:table_id(room_id))
             `)
             .in('restaurant_id', targetRestaurantIds)
             .neq('status', 'cancelled')
-            .neq('payment_status', 'paid')
+
+        if (!includeAll) {
+            query = query.neq('payment_status', 'paid')
+        }
 
         if (sessionIds.length > 0) {
             query = query.or(`booking_id.eq.${bookingId},session_id.in.(${sessionIds.join(',')})`)
@@ -94,7 +99,7 @@ export async function GET(req: NextRequest) {
         }
 
         type LinkedOrderItem = { id: string; status?: string; quantity: number; unit_price: number; special_request?: string | null; menu_items: unknown; menu_item_variations?: unknown }
-        type LinkedOrder = { id: string; session_id: string | null; sessions: any; order_items?: LinkedOrderItem[] }
+        type LinkedOrder = { id: string; session_id: string | null; status: string; payment_status: string; placed_at: string; order_type?: string; sessions: any; order_items?: LinkedOrderItem[] }
         const items = ((orders || []) as LinkedOrder[]).flatMap((o) => {
             const roomId = getRoomId(o.sessions)
             const isRoomOrder = roomId !== null || o.session_id === null
@@ -102,6 +107,10 @@ export async function GET(req: NextRequest) {
                 .filter((item: any) => item.status !== 'cancelled')
                 .map((item) => ({
                     id: item.id,
+                    order_id: o.id,
+                    placed_at: o.placed_at,
+                    payment_status: o.payment_status,
+                    order_type: o.order_type || 'dine_in',
                     quantity: item.quantity,
                     unit_price: item.unit_price,
                     special_request: item.special_request,

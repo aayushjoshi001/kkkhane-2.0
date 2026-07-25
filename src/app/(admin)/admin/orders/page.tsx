@@ -15,25 +15,44 @@ export default async function AdminOrdersPage() {
 
     // Selects the whole order, not just what the row renders: the detail dialog
     // opens from this data, so drilling into an order costs no extra round trip.
-    const { data: orders } = await adminSupabase
+    let { data: orders, error } = await adminSupabase
         .from('orders')
         .select(`
             id, status, payment_status, total_amount, refunded_amount, placed_at, customer_note,
-            subtotal_amount, service_charge_amount, tax_amount, tip_amount, discount_amount,
+            subtotal_amount, tax_amount, tip_amount, discount_amount,
             payment_method, confirmed_at, ready_at, delivered_at, paid_at, cancellation_reason,
             order_type, customer_name, customer_phone, delivery_address,
-            sessions ( seat_number, tables ( label ) ),
-            bookings ( guest_name, rooms ( room_number ) ),
+            sessions ( seat_number, tables ( label ), bookings:booking_id ( guest_name, rooms ( room_number ) ) ),
             order_items (
                 id, quantity, unit_price, special_request, status,
                 menu_items ( name ),
-                menu_item_variations:menu_item_variation_id ( name ),
-                order_item_modifiers ( modifier_name, price_adjustment )
+                menu_item_variations:menu_item_variation_id ( name )
             )
         `)
         .eq('restaurant_id', restaurantId)
         .order('placed_at', { ascending: false })
-        .limit(100) as { data: AdminOrder[] | null }
+        .limit(100) as { data: AdminOrder[] | null; error: any }
+
+    if (error) {
+        console.error('[AdminOrdersPage] Primary query error:', error.message || error.details || error)
+        const { data: fallbackOrders } = await adminSupabase
+            .from('orders')
+            .select(`
+                id, status, payment_status, total_amount, refunded_amount, placed_at, customer_note,
+                subtotal_amount, tax_amount, tip_amount, discount_amount,
+                payment_method, confirmed_at, ready_at, delivered_at, paid_at, cancellation_reason,
+                order_type, customer_name, customer_phone, delivery_address,
+                sessions ( seat_number, tables ( label ) ),
+                order_items (
+                    id, quantity, unit_price, special_request, status,
+                    menu_items ( name )
+                )
+            `)
+            .eq('restaurant_id', restaurantId)
+            .order('placed_at', { ascending: false })
+            .limit(100) as { data: AdminOrder[] | null }
+        orders = fallbackOrders
+    }
 
     return (
         <div className="space-y-4 md:space-y-6">
