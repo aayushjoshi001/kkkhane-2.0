@@ -17,6 +17,7 @@ import { usePrinter } from '@/lib/print/usePrinter'
 import { buildInvoiceTicket } from '@/lib/print/templates/invoiceTicket'
 import { buildStationTicket } from '@/lib/print/templates/stationTicket'
 import { itemsForStation, STATION_META, type StationKind } from '@/lib/stations'
+import { claimForPrinting, releasePrintClaim, fetchOrdersWithUnprintedItems, OUTSTANDING_PRINT_SELECT } from '@/lib/print/printClaims'
 import KotPrintFallback from '@/components/kitchen/KotPrintFallback'
 import type { KitchenOrder } from '@/components/kitchen/OrderQueue'
 import ManualEntryClient from '@/app/(admin)/admin/manual-entry/ManualEntryClient'
@@ -32,24 +33,10 @@ import { useQrCodes } from '@/lib/hooks/useQrCodes'
 const KOT_PRINT_MAX_RETRIES = 2
 const KOT_PRINT_RETRY_MS = 2500
 
-// Everything buildStationTicket needs to render an order's KOT/BOT. Shared by
-// the realtime INSERT fetch and the reconnect catch-up so the two can never
-// drift into printing from different shapes.
-const PRINT_ORDER_SELECT = `
-    id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address,
-    sessions ( id, seat_number, tables ( id, label, room_id, rooms ( id, room_number ) ) ),
-    bookings ( id, rooms ( id, room_number ) ),
-    order_items (
-        id, quantity, status, unit_price, special_request, needs_confirmation, station,
-        menu_items ( id, name, station, is_combo ),
-        menu_item_variations:menu_item_variation_id ( id, name ),
-        order_item_modifiers ( modifier_name, price_adjustment )
-    )
-`
-
-// Orders a station may still have work on. A delivered or cancelled order has
-// nothing left to cook, so a catch-up ticket for one is just wasted paper.
-const CATCH_UP_ORDER_STATUSES = ['pending', 'confirmed', 'preparing', 'ready']
+// Backstop sweep for outstanding tickets. Slow on purpose: realtime carries the
+// normal case, so this only has to cover a channel that is wedged rather than
+// disconnected — a state no reconnect callback ever fires for.
+const OUTSTANDING_POLL_MS = 60_000
 
 type OrderItem = {
     id?: string
@@ -204,7 +191,13 @@ export default function CashierClient({
      * not being wired up. A misconfigured LAN printer silently cost every
      * ticket.
      */
-    const printStationTicket = useCallback((order: KitchenOrder, station: StationKind) => {
+    const printStationTicket = useCallback((
+        order: KitchenOrder,
+        station: StationKind,
+        // Called only when this ticket produced no paper at all, so the caller
+        // can hand its claim back and leave the lines outstanding.
+        onProducedNothing?: (itemIds: string[]) => void,
+    ) => {
         const items = itemsForStation(order.order_items, station)
         if (items.length === 0) return
         // Project to this station's lines so the browser fallback renders the
@@ -236,6 +229,7 @@ export default function CashierClient({
                     printRetryTimers.current.add(t)
                     return
                 }
+                // The browser fallback is still paper, so the claim stands.
                 setTicketFallbackQueue(q => [...q, { order: projected, station }])
                 toast.error(
                     result.status === 'no-printer-selected'
@@ -244,69 +238,68 @@ export default function CashierClient({
                             ? `${abbr} printer unreachable after ${KOT_PRINT_MAX_RETRIES + 1} tries — printed via browser instead.`
                             : `${abbr} printer not connected — printed via browser instead.`
                 )
+            }).catch((err) => {
+                // Nothing was printed and no fallback was queued, so the claim
+                // must go back or these lines are lost to a ticket that never
+                // existed.
+                console.error(`[Cashier ${abbr} print] threw:`, err)
+                onProducedNothing?.(items.map(i => i.id).filter(Boolean))
+                toast.error(`${abbr} print failed — the order stays queued to print.`)
             })
         }
         attemptPrint(0)
     }, [printKot, printBot, kotNetworkPrinter, botNetworkPrinter, restaurantName])
 
-    // Item ids already sent to a printer. Deduping per item (not per order)
-    // means a QR self-order confirmed in several batches gets exactly one
-    // printed line per item, whichever path prints it. Seeded with the board as
-    // it arrived so nothing already on screen at load reprints.
-    const printedItemsRef = useRef<Set<string>>(new Set(
-        (initialActive || []).flatMap(o => (o.order_items || []).map(i => i.id).filter((id): id is string => !!id))
-    ))
-
-    // Only orders placed after this panel opened are catch-up candidates —
-    // without it, a reconnect after a long sleep would print the whole shift.
-    const mountedAtRef = useRef(new Date().toISOString())
-
     /**
-     * Print whatever of this order hasn't been printed yet, split by station.
-     * The single entry point for auto-printing, so the realtime INSERT and the
-     * reconnect catch-up can't both print the same lines.
+     * Claim this order's unprinted lines, then print exactly what we won.
+     *
+     * The claim is the whole coordination story: it is a conditional UPDATE, so
+     * if a kitchen station is also open only one of us gets the lines back and
+     * the other prints nothing. Nothing is remembered in this component — the
+     * database is the record of what has printed, which is what lets a tab that
+     * was closed, asleep or disconnected still pick the work up later.
      */
-    const maybePrintStationTickets = useCallback((order: KitchenOrder) => {
+    const claimAndPrint = useCallback(async (order: KitchenOrder) => {
         // Items still awaiting cashier confirmation (QR self-orders) are not
         // ours to print — they go out from the Order Confirmation panel once
         // confirmed.
-        const confirmed = (order.order_items || []).filter(i => !i.needs_confirmation)
-        const unprinted = confirmed.filter(i => i.id && !printedItemsRef.current.has(i.id))
-        if (unprinted.length === 0) return
-        unprinted.forEach(i => printedItemsRef.current.add(i.id))
-        const scoped = { ...order, order_items: unprinted }
-        // Each is a no-op when the order has no lines for that station.
-        printStationTicket(scoped, 'kitchen')
-        printStationTicket(scoped, 'bar')
+        const printable = (order.order_items || []).filter(i => !i.needs_confirmation && i.id && !i.kot_printed_at)
+        if (printable.length === 0) return
+        const wonIds = await claimForPrinting(supabaseRef.current, printable.map(i => i.id))
+        if (wonIds.length === 0) return // another station got there first
+        const won = new Set(wonIds)
+        const scoped = { ...order, order_items: printable.filter(i => won.has(i.id)) }
+        // Each is a no-op when the order has no lines for that station. Handing
+        // the claim back on total failure keeps the lines outstanding rather
+        // than losing them to a claim that printed nothing.
+        printStationTicket(scoped, 'kitchen', releaseIds => void releasePrintClaim(supabaseRef.current, releaseIds))
+        printStationTicket(scoped, 'bar', releaseIds => void releasePrintClaim(supabaseRef.current, releaseIds))
     }, [printStationTicket])
 
     /**
-     * Print tickets for orders that landed while the realtime channel was down.
+     * Print everything nobody has printed yet.
      *
-     * postgres_changes only delivers what happens while you are listening, so an
-     * order placed during a blip (laptop asleep, wifi drop, token refresh) was
-     * never announced to this tab. router.refresh() puts it back on the board —
-     * which is exactly why the gap was invisible — but nothing ever printed it,
-     * and behind the till a missing ticket is a missing dish.
+     * Runs on mount, on realtime reconnect and on a slow poll. Because
+     * outstanding work is a database query rather than a memory of events seen,
+     * this recovers every gap uniformly: an order placed while no station was
+     * open at all, one missed during a wifi blip, or one whose printer was down
+     * at the time. The claim makes running it often harmless.
      */
-    const catchUpMissedTickets = useCallback(async () => {
+    const printOutstanding = useCallback(async () => {
         if (!features?.kotEnabled) return
-        const { data, error } = await supabaseRef.current
-            .from('orders')
-            .select(PRINT_ORDER_SELECT)
-            .eq('restaurant_id', restaurantId)
-            .in('status', CATCH_UP_ORDER_STATUSES)
-            .gte('placed_at', mountedAtRef.current)
-            .order('placed_at', { ascending: true })
-            .limit(50)
-        if (error) {
-            console.error('[Cashier KOT catch-up] fetch failed:', error)
-            return
-        }
-        for (const order of (data || []) as unknown as KitchenOrder[]) {
-            maybePrintStationTickets(order)
-        }
-    }, [features?.kotEnabled, restaurantId, maybePrintStationTickets])
+        const orders = await fetchOrdersWithUnprintedItems(supabaseRef.current, restaurantId)
+        for (const order of orders) await claimAndPrint(order)
+    }, [features?.kotEnabled, restaurantId, claimAndPrint])
+
+    // Mount + slow poll. The poll is the backstop that makes auto-print survive
+    // a realtime channel that is wedged rather than disconnected — a state the
+    // reconnect callback never fires for.
+    useEffect(() => {
+        if (!features?.kotEnabled) return
+        void printOutstanding()
+        const id = setInterval(() => { void printOutstanding() }, OUTSTANDING_POLL_MS)
+        return () => clearInterval(id)
+    }, [features?.kotEnabled, printOutstanding])
 
     const [active, setActive] = useState<ActiveOrder[]>(initialActive)
     const [processingId, setProcessingId] = useState<string | null>(null)
@@ -1369,7 +1362,7 @@ export default function CashierClient({
         if (payload.eventType === 'INSERT') {
             const { data, error } = await supabase
                 .from('orders')
-                .select(PRINT_ORDER_SELECT)
+                .select(OUTSTANDING_PRINT_SELECT)
                 .eq('id', payload.new.id)
                 .single()
             // Previously silent — if this fetch fails (RLS, network, ...) the new
@@ -1384,7 +1377,7 @@ export default function CashierClient({
                 // Auto-print the KOT/BOT if KOT printing is enabled. Dedupes per
                 // item, retries, and falls back to a browser print.
                 if (features?.kotEnabled) {
-                    maybePrintStationTickets(data as unknown as KitchenOrder)
+                    void claimAndPrint(data as unknown as KitchenOrder)
                 }
             }
         } else if (payload.eventType === 'UPDATE') {
@@ -1433,7 +1426,7 @@ export default function CashierClient({
         router.refresh()
         // router.refresh() restores the board but prints nothing, so an order
         // placed during the drop would silently never reach the kitchen.
-        void catchUpMissedTickets()
+        void printOutstanding()
     })
 
     const handleCashPay = async (orderId: string) => {
