@@ -845,3 +845,106 @@ export async function updateRestaurantFeatures(restaurantId: string, features: a
     revalidatePath('/waiter')
     return { success: true }
 }
+
+// ============================================================
+// System Advertisements Management
+// ============================================================
+
+export async function getSystemAdvertisementsAction() {
+    const supabase = await createAdminClient()
+    const { data, error } = await supabase
+        .from('system_advertisements')
+        .select('*')
+        .order('created_at', { ascending: true })
+
+    if (error) {
+        // Fallback to static ads if table doesn't exist yet
+        return {
+            data: [
+                {
+                    id: '1',
+                    badge: 'NEW INTEGRATION',
+                    title: 'Supercharge Room Bookings with Booking.com Sync',
+                    description: 'Connect your hotel rooms directory directly to online travel agents for automatic real-time rate updates and zero overbookings.',
+                    cta: 'Connect Channels',
+                    link: '/admin/settings'
+                },
+                {
+                    id: '2',
+                    badge: 'HARDWARE CORNER',
+                    title: 'Compatible 80mm Direct Thermal Kitchen Printer',
+                    description: 'Need fast, smudge-proof KOT ticket printouts? Get the pre-configured high-speed USB/Ethernet printer for your cashier counter.',
+                    cta: 'Order Printer',
+                    link: 'https://github.com/aayushjoshi001/kkkhane-'
+                },
+                {
+                    id: '3',
+                    badge: 'SRMS PLATINUM',
+                    title: 'Auto-Backup Data to Google Drive & Dropbox',
+                    description: 'Never worry about server outages or laptop loss. Keep encrypted hourly database backups synced automatically to your own cloud storage.',
+                    cta: 'Enable Backups',
+                    link: '/admin/profile'
+                }
+            ]
+        }
+    }
+    return { data: data || [] }
+}
+
+export async function saveSystemAdvertisementAction(ad: {
+    id?: string
+    badge: string
+    title: string
+    description: string
+    cta: string
+    link: string
+}) {
+    await requireRole('super_admin')
+    const supabase = await createAdminClient()
+
+    if (ad.id) {
+        const { data, error } = await supabase
+            .from('system_advertisements')
+            .update({
+                badge: ad.badge,
+                title: ad.title,
+                description: ad.description,
+                cta: ad.cta,
+                link: ad.link
+            })
+            .eq('id', ad.id)
+            .select()
+            .single()
+
+        if (error) return { error: error.message }
+        return { data }
+    } else {
+        const { data, error } = await supabase
+            .from('system_advertisements')
+            .insert({
+                badge: ad.badge,
+                title: ad.title,
+                description: ad.description,
+                cta: ad.cta,
+                link: ad.link
+            })
+            .select()
+            .single()
+
+        if (error) return { error: error.message }
+        return { data }
+    }
+}
+
+export async function deleteSystemAdvertisementAction(id: string) {
+    await requireRole('super_admin')
+    const supabase = await createAdminClient()
+
+    const { error } = await supabase
+        .from('system_advertisements')
+        .delete()
+        .eq('id', id)
+
+    if (error) return { error: error.message }
+    return { success: true }
+}

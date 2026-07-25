@@ -3,8 +3,10 @@
 import { useState, useEffect } from 'react'
 import { Megaphone, X, ExternalLink, ArrowRight } from 'lucide-react'
 
+import { getSystemAdvertisementsAction } from '@/app/(admin)/admin/super-admin/actions'
+
 interface Ad {
-    id: number
+    id: string | number
     title: string
     description: string
     cta: string
@@ -14,7 +16,7 @@ interface Ad {
 
 const ADS: Ad[] = [
     {
-        id: 1,
+        id: '1',
         badge: 'NEW INTEGRATION',
         title: 'Supercharge Room Bookings with Booking.com Sync',
         description: 'Connect your hotel rooms directory directly to online travel agents for automatic real-time rate updates and zero overbookings.',
@@ -22,7 +24,7 @@ const ADS: Ad[] = [
         link: '/admin/settings'
     },
     {
-        id: 2,
+        id: '2',
         badge: 'HARDWARE CORNER',
         title: 'Compatible 80mm Direct Thermal Kitchen Printer',
         description: 'Need fast, smudge-proof KOT ticket printouts? Get the pre-configured high-speed USB/Ethernet printer for your cashier counter.',
@@ -30,7 +32,7 @@ const ADS: Ad[] = [
         link: 'https://github.com/aayushjoshi001/kkkhane-'
     },
     {
-        id: 3,
+        id: '3',
         badge: 'SRMS PLATINUM',
         title: 'Auto-Backup Data to Google Drive & Dropbox',
         description: 'Never worry about server outages or laptop loss. Keep encrypted hourly database backups synced automatically to your own cloud storage.',
@@ -40,16 +42,28 @@ const ADS: Ad[] = [
 ]
 
 export default function AdSpace() {
+    const [ads, setAds] = useState<Ad[]>(ADS)
     const [currentIndex, setCurrentIndex] = useState(0)
 
     useEffect(() => {
-        const timer = setInterval(() => {
-            setCurrentIndex(prev => (prev + 1) % ADS.length)
-        }, 12000) // Rotate ads every 12 seconds
-        return () => clearInterval(timer)
+        getSystemAdvertisementsAction().then(res => {
+            if (res?.data && res.data.length > 0) {
+                setAds(res.data)
+            }
+        }).catch(err => {
+            console.error('Failed to load system advertisements from db:', err)
+        })
     }, [])
 
-    const ad = ADS[currentIndex]
+    useEffect(() => {
+        if (ads.length <= 1) return
+        const timer = setInterval(() => {
+            setCurrentIndex(prev => (prev + 1) % ads.length)
+        }, 12000) // Rotate ads every 12 seconds
+        return () => clearInterval(timer)
+    }, [ads.length])
+
+    const ad = ads[currentIndex] || ADS[0]
 
     return (
         <div className="w-full bg-surface border border-hairline rounded-2xl shadow-sm overflow-hidden animate-fade-in relative print:hidden">
