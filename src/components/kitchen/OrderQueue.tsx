@@ -281,7 +281,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             // 400ms fires, it's a false alarm. Presence is read from ordersRef
             // (the committed board) rather than a setState-updater flag, so the
             // print actually fires; maybePrintKot dedupes per item id.
-            setTimeout(() => {
+            setTimeout(async () => {
                 if (!ordersRef.current.some(o => o.id === order.id)) return // removed — false alarm
                 playNewOrder().catch(() => {})
                 const sourceLabel = getKOTSourceLabel(order)
@@ -294,8 +294,19 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
                         </div>
                     </div>
                 ), { duration: 6000, position: 'top-right' })
+
+                // Re-fetch complete order with all inserted items after settlement window
+                const { data: latestData } = await supabaseRef.current.from('orders').select(ORDER_SELECT).eq('id', order.id).single()
+                if (latestData) {
+                    const [latestOrder] = projectStation([latestData as unknown as KitchenOrder])
+                    if (latestOrder) {
+                        setOrders(prev => prev.map(o => o.id === latestOrder.id ? latestOrder : o))
+                        void maybePrintKot(latestOrder)
+                        return
+                    }
+                }
                 void maybePrintKot(order)
-            }, 400)
+            }, 500)
         } else if (payload.eventType === 'UPDATE') {
             const newStatus = payload.new.status as string
             const isTakeoutDeliveryPending = isTakeoutDelivery && newStatus === 'pending'
