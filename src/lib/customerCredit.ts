@@ -15,12 +15,13 @@ export async function findOrCreateCustomerCreditAccount(
     supabase: SupabaseClient,
     restaurantId: string,
     userId: string | null,
-    input: { name: string; phone: string }
+    input: { name?: string; phone?: string }
 ): Promise<{ id: string } | { error: string }> {
-    const name = input.name?.trim()
-    const phone = input.phone?.trim()
-    if (!name) return { error: 'Customer name is required for credit.' }
-    if (!phone) return { error: 'Customer phone is required for credit.' }
+    const rawName = input.name?.trim()
+    const rawPhone = input.phone?.trim()
+
+    const name = rawName || (rawPhone ? `Customer (${rawPhone})` : 'Walk-in Credit Customer')
+    const phone = rawPhone || `credit-${name.toLowerCase().replace(/[^a-z0-9]/g, '') || '0000000000'}`
 
     // Fetch partner linking info
     const { data: currentRest } = await supabase
@@ -35,7 +36,7 @@ export async function findOrCreateCustomerCreditAccount(
 
     let existingAccount: { id: string } | null = null
 
-    // 1. Look up in current tenant
+    // 1. Look up by phone in current tenant
     const { data: curAcc } = await supabase
         .from('customer_credit_accounts')
         .select('id')
@@ -45,7 +46,19 @@ export async function findOrCreateCustomerCreditAccount(
 
     existingAccount = curAcc
 
-    // 2. If not found in current tenant, check partner tenant if loyalty/credit sharing is enabled
+    // 2. If not found by phone, look up by exact customer name in current tenant
+    if (!existingAccount && rawName) {
+        const { data: curAccByName } = await supabase
+            .from('customer_credit_accounts')
+            .select('id')
+            .eq('restaurant_id', restaurantId)
+            .eq('customer_name', rawName)
+            .maybeSingle()
+
+        existingAccount = curAccByName
+    }
+
+    // 3. If not found in current tenant, check partner tenant if loyalty/credit sharing is enabled
     if (!existingAccount && partnerId && (allowLoyalty || allowCredit)) {
         const { data: partAcc } = await supabase
             .from('customer_credit_accounts')

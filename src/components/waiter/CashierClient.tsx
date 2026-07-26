@@ -3296,9 +3296,13 @@ export default function CashierClient({
                                             variant="primary"
                                             loading={isSettlingInvoice}
                                             onClick={() => setShowSettlementPrintPrompt(true)}
-                                            className="font-bold flex-1 bg-emerald-600 hover:bg-emerald-700 border-emerald-600 hover:border-emerald-700 text-[10px] text-white py-1.5 min-w-[70px] animate-scale-in"
+                                            className={`font-bold flex-1 text-[10px] text-white py-1.5 min-w-[70px] animate-scale-in ${
+                                                (Number(activeInvoice?.creditPaid || 0) > 0.01 || activeInvoice?.paymentMethod === 'credit')
+                                                    ? 'bg-purple-600 hover:bg-purple-700 border-purple-600 hover:border-purple-700'
+                                                    : 'bg-emerald-600 hover:bg-emerald-700 border-emerald-600 hover:border-emerald-700'
+                                            }`}
                                         >
-                                            Mark Paid
+                                            {(Number(activeInvoice?.creditPaid || 0) > 0.01 || activeInvoice?.paymentMethod === 'credit') ? 'Mark Credit' : 'Mark Paid'}
                                         </Button>
                                     )}
                                 </>
@@ -3310,7 +3314,10 @@ export default function CashierClient({
             )}
 
             {/* Settlement Print Prompt Options Modal */}
-            {mounted && showSettlementPrintPrompt && activeInvoice && createPortal(
+            {mounted && showSettlementPrintPrompt && activeInvoice && (() => {
+                const isCredit = Number(activeInvoice?.creditPaid || 0) > 0.01 || activeInvoice?.paymentMethod === 'credit'
+                const actionText = isCredit ? 'Mark Credit' : 'Mark Paid'
+                return createPortal(
                 <div
                     className="fixed inset-0 bg-black/75 backdrop-blur-md z-[100000] flex items-center justify-center p-4 animate-in fade-in duration-150"
                     onClick={() => setShowSettlementPrintPrompt(false)}
@@ -3320,12 +3327,12 @@ export default function CashierClient({
                         onClick={e => e.stopPropagation()}
                     >
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center shrink-0">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isCredit ? 'bg-purple-100 text-purple-600' : 'bg-brand-100 text-brand-600'}`}>
                                 <Printer size={20} />
                             </div>
                             <div>
                                 <h3 className="font-bold text-ink text-base">Print Customer Bill?</h3>
-                                <p className="text-xs text-ink-subtle mt-0.5">Select copies to print or mark paid without printing.</p>
+                                <p className="text-xs text-ink-subtle mt-0.5">Select copies to print or {actionText.toLowerCase()} without printing.</p>
                             </div>
                         </div>
 
@@ -3358,9 +3365,11 @@ export default function CashierClient({
                                     setShowSettlementPrintPrompt(false)
                                     handleMarkPaid(undefined, settlementCopies)
                                 }}
-                                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 active:scale-95 transition shadow-sm flex items-center justify-center gap-2"
+                                className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold text-white active:scale-95 transition shadow-sm flex items-center justify-center gap-2 ${
+                                    isCredit ? 'bg-purple-600 hover:bg-purple-700' : 'bg-brand-600 hover:bg-brand-700'
+                                }`}
                             >
-                                <Printer size={15} /> Print {settlementCopies} {settlementCopies === 1 ? 'Copy' : 'Copies'} & Mark Paid
+                                <Printer size={15} /> Print {settlementCopies} {settlementCopies === 1 ? 'Copy' : 'Copies'} & {actionText}
                             </button>
 
                             <button
@@ -3372,7 +3381,7 @@ export default function CashierClient({
                                 }}
                                 className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-ink bg-surface border border-hairline-strong hover:bg-surface-muted active:scale-95 transition flex items-center justify-center gap-2"
                             >
-                                <CheckCircle size={15} /> Only Mark Paid (No Print)
+                                <CheckCircle size={15} /> Only {actionText} (No Print)
                             </button>
 
                             <button
@@ -3386,7 +3395,8 @@ export default function CashierClient({
                     </div>
                 </div>,
                 document.body
-            )}
+            )
+            })()}
 
             {/* Manual Entry Modal — inline, no navigation away from the dashboard */}
             {mounted && showManualEntry && createPortal(
