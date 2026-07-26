@@ -161,8 +161,7 @@ export function buildInvoiceTicket(
     b.divider()
     b.size({ doubleHeight: true }).bold(true)
     const totalPaid = (invoice.cashPaid ?? 0) + (invoice.qrPaid ?? 0) + (invoice.advancePaid ?? 0) + (invoice.creditPaid ?? 0)
-    const calculatedDue = Math.max(0, invoice.total - totalPaid)
-    const effectiveDue = invoice.balanceDue !== undefined ? invoice.balanceDue : calculatedDue
+    const effectiveDue = Math.max(0, invoice.total - totalPaid)
     const dueLabel = (invoice.advancePaid && invoice.advancePaid > 0) || totalPaid > 0 ? 'BALANCE DUE' : 'TOTAL DUE'
     b.line(`${dueLabel}: ${money(effectiveDue)}`)
     b.size({}).bold(false)
