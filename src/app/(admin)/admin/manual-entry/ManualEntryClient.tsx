@@ -693,6 +693,26 @@ export default function ManualEntryClient({
                                 console.error('Failed to auto-pair cash withdrawal', e)
                             }
                         }
+
+                        // Auto-pair cash deposit (Bank In -> Cash Out)
+                        if (!isWithdrawal && f.category === 'cash_deposit') {
+                            try {
+                                await fetch('/api/day-book/entries', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        session_id: sessionId,
+                                        type: 'cash_out',
+                                        amount,
+                                        description: `Cash Deposit: ${f.description.trim()}`,
+                                        category: 'other',
+                                        bank_name: f.bank_name.trim(),
+                                    }),
+                                })
+                            } catch (e) {
+                                console.error('Failed to auto-pair cash deposit', e)
+                            }
+                        }
                     }
 
                 } else if (activeType === 'voucher') {
@@ -1154,9 +1174,10 @@ export default function ManualEntryClient({
                                                 <option value="salary">Salary / Wage</option>
                                                 <option value="advance">Advance</option>
                                                 <option value="refund">Refund</option>
-                                                <option value="bank_deposit">Bank Deposit</option>
+                                                <option value="bank_deposit">Deposit to Own Bank</option>
                                                 <option value="other">Other</option>
                                             </SelectField>
+
                                             {forms.cash_out.category === 'salary' && staffList.length > 0 && (
                                                 <SelectField
                                                     label="Staff Member"
@@ -1254,6 +1275,16 @@ export default function ManualEntryClient({
                                                     <option key={ba.id} value={ba.name}>{ba.name}</option>
                                                 ))}
                                             </SelectField>
+                                            {forms.bank_transaction.transaction_type === 'deposit' && (
+                                                <SelectField
+                                                    label="Category"
+                                                    value={forms.bank_transaction.category}
+                                                    onChange={e => updateForm('bank_transaction', 'category', e.target.value)}
+                                                >
+                                                    <option value="cash_deposit">Deposit Cash to Own Bank</option>
+                                                    <option value="other">Other</option>
+                                                </SelectField>
+                                            )}
                                             {forms.bank_transaction.transaction_type === 'withdrawal' && (
                                                 <SelectField
                                                     label="Category"
