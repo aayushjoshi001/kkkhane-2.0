@@ -383,6 +383,39 @@ export async function linkSessionToBooking(sessionId: string, bookingId: string,
     return { success: true }
 }
 
+export async function moveSessionToTable(sessionId: string, targetTableId: string, currentTableId: string) {
+    const adminSupabase = await createAdminClient()
+
+    const { error: sessionError } = await adminSupabase
+        .from('sessions')
+        .update({ table_id: targetTableId })
+        .eq('id', sessionId)
+
+    if (sessionError) {
+        console.error('[moveSessionToTable] Error:', sessionError)
+        return { error: sessionError.message }
+    }
+
+    if (currentTableId && currentTableId !== targetTableId) {
+        // Free the old table
+        await adminSupabase
+            .from('tables')
+            .update({ table_status: 'available' })
+            .eq('id', currentTableId)
+
+        // Mark the new table as occupied
+        await adminSupabase
+            .from('tables')
+            .update({ table_status: 'occupied' })
+            .eq('id', targetTableId)
+    }
+
+    revalidatePath('/waiter')
+    revalidatePath('/cashier')
+    revalidatePath('/kitchen')
+    return { success: true }
+}
+
 export async function getStaffMenu(restaurantId: string) {
     // Check if staff user (works for all roles including super_admin)
     const currentUser = await getCurrentUser().catch(() => null)

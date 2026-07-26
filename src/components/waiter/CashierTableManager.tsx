@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
-import { setTableStatus, openSession, linkSessionToBooking, findBookingByRoom, cancelTransientSession, closeSession } from '@/app/(staff)/waiter/actions'
+import { useRouter } from 'next/navigation'
+import { setTableStatus, openSession, linkSessionToBooking, findBookingByRoom, cancelTransientSession, closeSession, moveSessionToTable } from '@/app/(staff)/waiter/actions'
 import { createClient } from '@/lib/supabase/client'
 import { Users, X, Check, CalendarClock, Eye, ShoppingCart, Hotel, Phone, Search, Loader2, Bed, UserCheck, ArrowLeftRight } from 'lucide-react'
 import type { Table, Session } from '@/types/database'
@@ -66,6 +67,7 @@ export default function CashierTableManager({
     const [selectedTable, setSelectedTable] = useState<TableWithSession | null>(null)
     const [isProcessing, setIsProcessing] = useState(false)
     const [mounted, setMounted] = useState(false)
+    const router = useRouter()
     const money = useCurrency()
     const features = useFeatures()
     const kdsEnabled = !features.kotEnabled && (features.kdsEnabled ?? true)
@@ -171,24 +173,38 @@ export default function CashierTableManager({
             const s = payload.new as Session
             const isClosed = s.status === 'closed' || s.status === 'expired'
             
-            setTables(prev => prev.map(t => {
-                if (t.activeSession?.id === s.id) {
-                    return { ...t, activeSession: isClosed ? null : s }
-                }
-                if (t.otherActiveSessions?.some(x => x.id === s.id)) {
-                    return {
-                        ...t,
-                        otherActiveSessions: isClosed
-                            ? t.otherActiveSessions.filter(x => x.id !== s.id)
-                            : t.otherActiveSessions.map(x => x.id === s.id ? s : x)
+            setTables(prev => {
+                // Detect if the session moved to a different table (table_id changed)
+                const oldTable = prev.find(t => t.activeSession?.id === s.id)
+                const movedToNewTable = !isClosed && oldTable && oldTable.id !== s.table_id
+
+                return prev.map(t => {
+                    if (t.activeSession?.id === s.id) {
+                        // Old table: if session moved away, detach it; otherwise update in-place
+                        return { ...t, activeSession: (isClosed || movedToNewTable) ? null : s }
                     }
-                }
-                return t
-            }))
+                    if (t.otherActiveSessions?.some(x => x.id === s.id)) {
+                        return {
+                            ...t,
+                            otherActiveSessions: (isClosed || movedToNewTable)
+                                ? t.otherActiveSessions.filter(x => x.id !== s.id)
+                                : t.otherActiveSessions.map(x => x.id === s.id ? s : x)
+                        }
+                    }
+                    // New table: attach the moved session
+                    if (!isClosed && movedToNewTable && t.id === s.table_id) {
+                        return { ...t, activeSession: s }
+                    }
+                    return t
+                })
+            })
             setSelectedTable(prev => {
                 if (!prev) return null
                 if (prev.activeSession?.id === s.id) {
-                    return { ...prev, activeSession: isClosed ? null : s }
+                    if (isClosed) return { ...prev, activeSession: null }
+                    // Session moved to a different table — close the old table panel
+                    if (prev.id !== s.table_id) return null
+                    return { ...prev, activeSession: s }
                 }
                 if (prev.otherActiveSessions?.some(x => x.id === s.id)) {
                     return {
@@ -227,29 +243,30 @@ export default function CashierTableManager({
         if (!selectedTable?.activeSession || !tableChangeTargetId) return
         setMovingTable(true)
         try {
-            const { error } = await supabaseRef.current
-                .from('sessions')
-                .update({ table_id: tableChangeTargetId })
-                .eq('id', selectedTable.activeSession.id)
-            if (error) throw new Error(error.message)
+            const res = await moveSessionToTable(selectedTable.activeSession.id, tableChangeTargetId, selectedTable.id)
+            if (res.error) throw new Error(res.error)
 
-            // Also clear the old table's occupied status
-            await supabaseRef.current
-                .from('tables')
-                .update({ table_status: 'available' })
-                .eq('id', selectedTable.id)
+            const targetTable = tables.find(t => t.id === tableChangeTargetId)
+            const targetLabel = targetTable?.label || '?'
+
+            // Update local session table reference
+            const updatedSession = {
+                ...selectedTable.activeSession,
+                table_id: tableChangeTargetId,
+                tables: targetTable ? { id: targetTable.id, label: targetTable.label, room_id: targetTable.room_id } : (selectedTable.activeSession as any).tables
+            }
 
             // Patch local state: detach session from old table
             setTables(prev => prev.map(t => {
                 if (t.id === selectedTable.id) return { ...t, activeSession: undefined, table_status: 'available' }
-                if (t.id === tableChangeTargetId) return { ...t, activeSession: selectedTable.activeSession }
+                if (t.id === tableChangeTargetId) return { ...t, activeSession: updatedSession }
                 return t
             }))
 
-            const targetLabel = tables.find(t => t.id === tableChangeTargetId)?.label || '?'
-            toast.success(`Session moved to Table ${targetLabel}`)
+            toast.success(`Session moved to ${targetLabel.toLowerCase().startsWith('table') || targetLabel.toLowerCase().startsWith('cabin') ? targetLabel : 'Table ' + targetLabel}`)
             setTableChangeOpen(false)
             setSelectedTable(null)
+            router.refresh()
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'Could not move table')
         } finally {
