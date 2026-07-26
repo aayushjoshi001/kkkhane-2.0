@@ -9,8 +9,8 @@ import { advanceMethodLabel, formatInvoiceAddress } from '@/lib/utils'
 export default function InvoiceReceipt({
     invoice,
     money,
-    restaurantName = 'KKHANE HOTEL & RESTAURANT',
-    restaurantAddress = '',
+    restaurantName = 'ROYAL REST HOUSE',
+    restaurantAddress = 'Pulchowk, Chitwan',
     restaurantPhone = '',
     className = '',
     formatDate,
@@ -24,7 +24,8 @@ export default function InvoiceReceipt({
     className?: string
 }) {
     const now = new Date()
-    const locationLine = [restaurantAddress.trim(), restaurantPhone.trim() ? `Tel: ${restaurantPhone.trim()}` : '']
+    const addressStr = restaurantAddress.trim() || 'Pulchowk, Chitwan'
+    const locationLine = [addressStr, restaurantPhone.trim() ? `Tel: ${restaurantPhone.trim()}` : '']
         .filter(Boolean)
         .join(' · ')
 

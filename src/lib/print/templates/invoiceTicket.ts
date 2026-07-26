@@ -3,7 +3,7 @@
 // invoice modal. Kept in sync with that JSX; if the on-screen receipt layout
 // changes, mirror the change here too.
 
-import { EscPosBuilder, LINE_WIDTH } from '../escpos'
+import { EscPosBuilder, LINE_WIDTH, wrapTextToByteWidth } from '../escpos'
 import { advanceMethodLabel, formatInvoiceAddress } from '@/lib/utils'
 import type { AdvancePaymentMethod } from '@/types/database'
 import { appendBrandFooter } from './brandFooter'
@@ -58,8 +58,8 @@ const COL = { desc: 18, qty: 4, rate: 9, amt: 11 }
 export function buildInvoiceTicket(
     invoice: ActiveInvoice,
     money: (amount: number) => string,
-    restaurantName = 'KKHANE HOTEL & RESTAURANT',
-    restaurantAddress = '',
+    restaurantName = 'ROYAL REST HOUSE',
+    restaurantAddress = 'Pulchowk, Chitwan',
     restaurantPhone = '',
     // Printed invoices carry Bikram Sambat first, like the rest of the app. Not
     // a hook — this builds raw ESC/POS bytes outside React — so the cashier's
@@ -72,9 +72,12 @@ export function buildInvoiceTicket(
         Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
     b.align('center').bold(true).line(restaurantName).bold(false)
-    const formattedAddress = formatInvoiceAddress(restaurantAddress)
+    const formattedAddress = formatInvoiceAddress(restaurantAddress || 'Pulchowk, Chitwan')
     if (formattedAddress) {
-        b.line(formattedAddress)
+        const addressLines = wrapTextToByteWidth(formattedAddress, LINE_WIDTH)
+        for (const addrLine of addressLines) {
+            b.line(addrLine)
+        }
     }
     b.line('*** INVOICE ***')
     b.line(`No: INV-${invoice.id.slice(0, 8).toUpperCase()}`)
