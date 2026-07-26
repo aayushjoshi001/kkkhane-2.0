@@ -33,9 +33,9 @@ export default function InvoiceReceipt({
     const num = (amount: number) =>
         Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-    // Total Due = what's still left to pay after all payments received
-    const totalPaid = (invoice.cashPaid ?? 0) + (invoice.qrPaid ?? 0) + (invoice.advancePaid ?? 0) + (invoice.creditPaid ?? 0)
-    const totalDue = Math.max(0, invoice.total - totalPaid)
+    // Money Received = Cash + QR Digital + Advance (excluding Credit, which is customer debt/due)
+    const totalReceived = (invoice.cashPaid ?? 0) + (invoice.qrPaid ?? 0) + (invoice.advancePaid ?? 0)
+    const totalDue = Math.max(0, invoice.total - totalReceived)
 
     return (
         <div className={`bg-white text-black print-container font-mono text-[11px] ${className}`}>
@@ -218,7 +218,7 @@ export default function InvoiceReceipt({
             </div>
 
             <div className="flex justify-between items-center text-xs font-black border-t-2 border-black pt-1 mt-1">
-                <span className="uppercase">{(invoice.advancePaid && invoice.advancePaid > 0) || totalPaid > 0 ? 'BALANCE DUE' : 'TOTAL DUE'}</span>
+                <span className="uppercase">{(invoice.advancePaid && invoice.advancePaid > 0) || totalReceived > 0 || (invoice.creditPaid && invoice.creditPaid > 0) ? 'BALANCE DUE' : 'TOTAL DUE'}</span>
                 <span className="text-sm font-black text-black tabular-nums">{money(totalDue)}</span>
             </div>
 
