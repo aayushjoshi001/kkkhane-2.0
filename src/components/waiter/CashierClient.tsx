@@ -1529,8 +1529,8 @@ export default function CashierClient({
 
     // Unpaid takeaway/delivery orders — each is its own billing target (no
     // session to group by, unlike dine-in tables).
-    const billingTakeoutEntries = useMemo(() => unpaid.filter(o => o.order_type === 'takeout'), [unpaid])
-    const billingDeliveryEntries = useMemo(() => unpaid.filter(o => o.order_type === 'delivery'), [unpaid])
+    const billingTakeoutEntries = useMemo(() => unpaid.filter(o => o.order_type === 'takeout' && !o.booking_id), [unpaid])
+    const billingDeliveryEntries = useMemo(() => unpaid.filter(o => o.order_type === 'delivery' && !o.booking_id), [unpaid])
 
     // Group unpaid by session
     const unpaidBySession = useMemo(() => {
