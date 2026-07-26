@@ -71,13 +71,16 @@ export function buildInvoiceTicket(
     const num = (amount: number) =>
         Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-    b.align('center').bold(true).line(restaurantName).bold(false)
+    b.align('center').bold(true).line(restaurantName || 'ROYAL REST HOUSE').bold(false)
     const formattedAddress = formatInvoiceAddress(restaurantAddress || 'Pulchowk, Chitwan')
     if (formattedAddress) {
         const addressLines = wrapTextToByteWidth(formattedAddress, LINE_WIDTH)
         for (const addrLine of addressLines) {
             b.line(addrLine)
         }
+    }
+    if (restaurantPhone.trim()) {
+        b.line(`Tel: ${restaurantPhone.trim()}`)
     }
     b.line('*** INVOICE ***')
     b.line(`No: INV-${invoice.id.slice(0, 8).toUpperCase()}`)

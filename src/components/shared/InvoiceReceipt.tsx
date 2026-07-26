@@ -85,9 +85,12 @@ export default function InvoiceReceipt({
 
             {/* Invoice Header */}
             <div className="text-center space-y-0.5">
-                <h2 className="text-sm font-black tracking-tight text-black uppercase">{restaurantName}</h2>
-                {locationLine ? (
-                    <p className="text-[10px]" style={{ color: '#000' }}>{locationLine}</p>
+                <h2 className="text-sm font-black tracking-tight text-black uppercase">{restaurantName || 'ROYAL REST HOUSE'}</h2>
+                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#000' }}>
+                    {restaurantAddress.trim() || 'Pulchowk, Chitwan'}
+                </p>
+                {restaurantPhone.trim() ? (
+                    <p className="text-[9px]" style={{ color: '#000' }}>Tel: {restaurantPhone.trim()}</p>
                 ) : null}
                 <div className="border-t border-dashed border-black my-1.5" />
                 <p className="font-bold text-[11px] uppercase tracking-wider">*** INVOICE ***</p>
