@@ -210,6 +210,7 @@ export default async function CashierPage() {
             manualEntryCustomerAccounts={customerAccounts || []}
             manualEntryHasOpenSession={!!openSession}
             manualEntrySessionId={openSession?.id ?? null}
+            openSession={openSession}
         />
         </>
     )

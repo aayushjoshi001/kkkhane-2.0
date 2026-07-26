@@ -22,6 +22,8 @@ import KotPrintFallback from '@/components/kitchen/KotPrintFallback'
 import type { KitchenOrder } from '@/components/kitchen/OrderQueue'
 import ManualEntryClient from '@/app/(admin)/admin/manual-entry/ManualEntryClient'
 import AdSpace from '@/components/shared/AdSpace'
+import BusinessSessionControl from '@/components/shared/BusinessSessionControl'
+import { getNstDateString } from '@/lib/timezone'
 import CashierOrdersPanel from './CashierOrdersPanel'
 import type { BankAccount, ExpenseCategory, Supplier, Session } from '@/types/database'
 import QuickOrderModal from './QuickOrderModal'
@@ -114,6 +116,7 @@ interface Props {
     manualEntryCustomerAccounts?: any[]
     manualEntryHasOpenSession: boolean
     manualEntrySessionId: string | null
+    openSession?: any
 }
 
 // Label for an order's table, seat-aware: seat 2+ of a split table is always
@@ -151,6 +154,7 @@ export default function CashierClient({
     manualEntryCustomerAccounts = [],
     manualEntryHasOpenSession,
     manualEntrySessionId,
+    openSession,
 }: Props) {
     const router = useRouter()
     const [showManualEntry, setShowManualEntry] = useState(false)
@@ -1579,6 +1583,18 @@ export default function CashierClient({
             </div>
 
             <AdSpace />
+
+            <BusinessSessionControl
+                initialSession={openSession ? {
+                    id: openSession.id,
+                    date: openSession.date,
+                    status: openSession.status,
+                    opening_balance: Number(openSession.opening_balance),
+                    opening_bank_balance: Number(openSession.opening_bank_balance)
+                } : null}
+                userRole={userRole}
+                todayDate={getNstDateString()}
+            />
 
             {/* Cashier Tab Navigation */}
             <div className={`grid ${isHotel ? 'grid-cols-4' : 'grid-cols-3'} border-b border-hairline mb-4 bg-surface sticky top-14 z-20 -mx-3 px-3 md:mx-0 md:px-0`}>

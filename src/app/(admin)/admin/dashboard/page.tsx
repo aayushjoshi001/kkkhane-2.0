@@ -1,5 +1,8 @@
 import RealtimeRefresh from '@/components/shared/RealtimeRefresh'
 import AdSpace from '@/components/shared/AdSpace'
+import BusinessSessionControl from '@/components/shared/BusinessSessionControl'
+import { resolveActiveDayBookSession } from '@/lib/ledger'
+import { getNstDateString } from '@/lib/timezone'
 import RowLink from '@/components/admin/RowLink'
 import { Suspense } from 'react'
 import { createAdminClient } from '@/lib/supabase/server'
@@ -36,7 +39,7 @@ export default async function AdminDashboardPage() {
     // One fast, single-row query gates the whole shell — everything else below
     // streams in independently instead of blocking on 13 queries up front.
     const adminSupabase = await createAdminClient()
-    const [restaurantSettingsRes, restaurantRes, turnoverRes] = await Promise.all([
+    const [restaurantSettingsRes, restaurantRes, turnoverRes, openSession] = await Promise.all([
         adminSupabase
             .from('settings')
             .select('business_hours, features_v2')
@@ -51,7 +54,8 @@ export default async function AdminDashboardPage() {
             .from('income_entries')
             .select('amount')
             .eq('restaurant_id', restaurantId)
-            .eq('status', 'posted')
+            .eq('status', 'posted'),
+        resolveActiveDayBookSession(adminSupabase, restaurantId, currentUser.id),
     ])
 
     const restaurantSettings = restaurantSettingsRes.data
@@ -71,6 +75,7 @@ export default async function AdminDashboardPage() {
     const hour = new Date().getHours()
     const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
     const name = currentUser.email.split('@')[0]
+    const todayDate = getNstDateString()
 
     return (
         <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
@@ -81,6 +86,17 @@ export default async function AdminDashboardPage() {
                 restaurantId={restaurantId}
                 tables={isHotel ? ['orders', 'sessions', 'rooms', 'bookings'] : ['orders', 'sessions']}
                 debounceMs={5000}
+            />
+            <BusinessSessionControl
+                initialSession={openSession ? {
+                    id: openSession.id,
+                    date: openSession.date,
+                    status: openSession.status as 'open' | 'closed',
+                    opening_balance: Number(openSession.opening_balance),
+                    opening_bank_balance: Number(openSession.opening_bank_balance)
+                } : null}
+                userRole={currentUser.role || ''}
+                todayDate={todayDate}
             />
             <AdSpace />
             {/* Premium Header */}
