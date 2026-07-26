@@ -120,6 +120,12 @@ export default function CashierTableManager({
     const [tableChangeTargetId, setTableChangeTargetId] = useState('')
     const [movingTable, setMovingTable] = useState(false)
 
+    // Link table session to hotel room ("guest was non-guest walk-in but is actually a room guest")
+    const [linkRoomOpen, setLinkRoomOpen] = useState(false)
+    const [roomLinkInput, setRoomLinkInput] = useState('')
+    const [roomLinkSearching, setRoomLinkSearching] = useState(false)
+    const [foundRoomBooking, setFoundRoomBooking] = useState<any | null | undefined>(null)
+
     const supabaseRef = useRef(createClient())
 
     useEffect(() => {
@@ -139,6 +145,10 @@ export default function CashierTableManager({
             setActiveSeat(null)
             setTableChangeOpen(false)
             setTableChangeTargetId('')
+            setLinkRoomOpen(false)
+            setRoomLinkInput('')
+            setRoomLinkSearching(false)
+            setFoundRoomBooking(null)
         }
     }, [selectedTable])
 
@@ -678,51 +688,169 @@ export default function CashierTableManager({
                                                 )
                                             })()}
 
-                                            <div className="grid grid-cols-2 gap-3 pt-2">
-                                                <Button
-                                                    variant="secondary"
-                                                    icon={ShoppingCart}
-                                                    block
-                                                    onClick={() => {
-                                                        // If it's a split table (has other sessions), let's open the manual order seats menu
-                                                        if ((selectedTable.otherActiveSessions?.length ?? 0) > 0) {
-                                                            setChoiceStep('manual_order')
-                                                            setSplitView(true)
-                                                        } else {
-                                                            // Regular combined table session
-                                                            setQuickOrderSession({
-                                                                sessionId: selectedTable.activeSession!.session_token,
-                                                                tableName: selectedTable.label
-                                                            })
-                                                            setSelectedTable(null)
-                                                        }
-                                                    }}
-                                                >
-                                                    Manual Order
-                                                </Button>
-                                                <Button
-                                                    variant="primary"
-                                                    icon={Eye}
-                                                    block
-                                                    onClick={() => {
-                                                        if (tableSessionDetails) {
-                                                            onSwitchToBilling(tableSessionDetails.sessionId)
-                                                        }
-                                                        setSelectedTable(null)
-                                                    }}
-                                                >
-                                                    View Bill
-                                                </Button>
-                                            </div>
-                                            <Button
-                                                variant="secondary"
-                                                icon={ArrowLeftRight}
-                                                block
-                                                onClick={() => { setTableChangeTargetId(''); setTableChangeOpen(prev => !prev) }}
-                                            >
-                                                Change Table
-                                            </Button>
-                                        </div>
+                                             {/* Link to Room Panel */}
+                                             {linkRoomOpen && selectedTable.activeSession && (() => {
+                                                 return (
+                                                     <div className="space-y-3 border border-hairline rounded-2xl p-4 bg-surface-muted/30 mt-2">
+                                                         <div className="flex items-center justify-between">
+                                                             <div>
+                                                                 <p className="text-xs font-extrabold text-ink flex items-center gap-1.5">
+                                                                     <Hotel size={14} className="text-brand-500" /> Link Table {selectedTable.label} to Hotel Room
+                                                                 </p>
+                                                                 <p className="text-[11px] text-ink-subtle mt-0.5">Search room number to link this table session to a checked-in guest stay.</p>
+                                                             </div>
+                                                             <button onClick={() => { setLinkRoomOpen(false); setFoundRoomBooking(null) }} className="text-ink-subtle hover:text-ink">
+                                                                 <X size={16} />
+                                                             </button>
+                                                         </div>
+
+                                                         <div className="space-y-2">
+                                                             <div className="relative">
+                                                                 <Bed size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
+                                                                 <input
+                                                                     type="text"
+                                                                     value={roomLinkInput}
+                                                                     onChange={e => setRoomLinkInput(e.target.value)}
+                                                                     placeholder="Room number (e.g. 101, 202)..."
+                                                                     className="w-full pl-10 pr-4 py-2 rounded-xl border border-hairline bg-surface text-ink text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-brand-500"
+                                                                     onKeyDown={async (e) => {
+                                                                         if (e.key === 'Enter' && roomLinkInput.trim() && !roomLinkSearching) {
+                                                                             setRoomLinkSearching(true)
+                                                                             setFoundRoomBooking(null)
+                                                                             const res = await findBookingByRoom(roomLinkInput, restaurantId)
+                                                                             if (res.success) {
+                                                                                 setFoundRoomBooking(res.booking || undefined)
+                                                                             } else {
+                                                                                 toast.error(res.error || 'Search failed')
+                                                                             }
+                                                                             setRoomLinkSearching(false)
+                                                                         }
+                                                                     }}
+                                                                 />
+                                                             </div>
+                                                             <Button
+                                                                 block
+                                                                 variant="secondary"
+                                                                 icon={roomLinkSearching ? Loader2 : Search}
+                                                                 loading={roomLinkSearching}
+                                                                 disabled={!roomLinkInput.trim()}
+                                                                 onClick={async () => {
+                                                                     setRoomLinkSearching(true)
+                                                                     setFoundRoomBooking(null)
+                                                                     const res = await findBookingByRoom(roomLinkInput, restaurantId)
+                                                                     if (res.success) {
+                                                                         setFoundRoomBooking(res.booking || undefined)
+                                                                     } else {
+                                                                         toast.error(res.error || 'Search failed')
+                                                                     }
+                                                                     setRoomLinkSearching(false)
+                                                                 }}
+                                                             >
+                                                                 Search Room Booking
+                                                             </Button>
+
+                                                             {foundRoomBooking === undefined && (
+                                                                 <div className="bg-warning/10 border border-warning/20 rounded-xl p-3 text-center">
+                                                                     <p className="text-xs font-semibold text-warning-fg">No active check-in found for Room {roomLinkInput}</p>
+                                                                 </div>
+                                                             )}
+
+                                                             {foundRoomBooking && (
+                                                                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+                                                                     <div className="flex items-center justify-between text-xs">
+                                                                         <span className="font-extrabold text-emerald-900">{foundRoomBooking.guest_name}</span>
+                                                                         <span className="text-[11px] font-bold text-emerald-700">Room {foundRoomBooking.rooms?.room_number || '?'}</span>
+                                                                     </div>
+                                                                     <Button
+                                                                         block
+                                                                         variant="primary"
+                                                                         icon={Hotel}
+                                                                         loading={isProcessing}
+                                                                         onClick={async () => {
+                                                                             setIsProcessing(true)
+                                                                             const linkRes = await linkSessionToBooking(selectedTable.activeSession!.id, foundRoomBooking.id)
+                                                                             setIsProcessing(false)
+                                                                             if (linkRes.error) {
+                                                                                 toast.error(linkRes.error)
+                                                                             } else {
+                                                                                 toast.success(`Table ${selectedTable.label} linked to Room ${foundRoomBooking.rooms?.room_number || '?'}`)
+                                                                                 setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, activeSession: { ...t.activeSession!, booking_id: foundRoomBooking.id } } : t))
+                                                                                 setSelectedTable(prev => prev ? { ...prev, activeSession: { ...prev.activeSession!, booking_id: foundRoomBooking.id } } : null)
+                                                                                 setLinkRoomOpen(false)
+                                                                                 setFoundRoomBooking(null)
+                                                                             }
+                                                                         }}
+                                                                     >
+                                                                         Confirm Link to Room
+                                                                     </Button>
+                                                                 </div>
+                                                             )}
+                                                         </div>
+                                                     </div>
+                                                 )
+                                             })()}
+
+                                             <div className="grid grid-cols-2 gap-3 pt-2">
+                                                 <Button
+                                                     variant="secondary"
+                                                     icon={ShoppingCart}
+                                                     block
+                                                     onClick={() => {
+                                                         // If it's a split table (has other sessions), let's open the manual order seats menu
+                                                         if ((selectedTable.otherActiveSessions?.length ?? 0) > 0) {
+                                                             setChoiceStep('manual_order')
+                                                             setSplitView(true)
+                                                         } else {
+                                                             // Regular combined table session
+                                                             setQuickOrderSession({
+                                                                 sessionId: selectedTable.activeSession!.session_token,
+                                                                 tableName: selectedTable.label
+                                                             })
+                                                             setSelectedTable(null)
+                                                         }
+                                                     }}
+                                                 >
+                                                     Manual Order
+                                                 </Button>
+                                                 <Button
+                                                     variant="primary"
+                                                     icon={Eye}
+                                                     block
+                                                     onClick={() => {
+                                                         if (tableSessionDetails) {
+                                                             onSwitchToBilling(tableSessionDetails.sessionId)
+                                                         }
+                                                         setSelectedTable(null)
+                                                     }}
+                                                 >
+                                                     View Bill
+                                                 </Button>
+                                             </div>
+                                             <div className="grid grid-cols-2 gap-3">
+                                                 <Button
+                                                     variant="secondary"
+                                                     icon={ArrowLeftRight}
+                                                     block
+                                                     onClick={() => { setTableChangeTargetId(''); setTableChangeOpen(prev => !prev); setLinkRoomOpen(false) }}
+                                                 >
+                                                     Change Table
+                                                 </Button>
+                                                 {selectedTable.activeSession?.booking_id ? (
+                                                     <div className="flex items-center justify-center gap-1 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl py-2 px-3">
+                                                         <Hotel size={14} /> Linked to Room
+                                                     </div>
+                                                 ) : (
+                                                     <Button
+                                                         variant="secondary"
+                                                         icon={Hotel}
+                                                         block
+                                                         onClick={() => { setRoomLinkInput(''); setFoundRoomBooking(null); setLinkRoomOpen(prev => !prev); setTableChangeOpen(false) }}
+                                                     >
+                                                         Link to Room
+                                                     </Button>
+                                                 )}
+                                             </div>
+                                         </div>
                                     ) : (
                                         // Available Option Choice
                                         <div className="space-y-3">
