@@ -929,7 +929,12 @@ export async function cancelOrderItem(
 
     if (orderUpdateError) return { error: orderUpdateError.message }
 
-    if (item.status !== 'pending') {
+    // Only post a cancellation expense for kitchen items that were already being prepared.
+    // Bar/beverage items (station === 'bar') are not tracked as food cost, so cancelling
+    // them should never appear on the expense ledger.
+    const isBarItem = item.station === 'bar'
+    const wasAlreadyBeingPrepared = item.status !== 'pending'
+    if (!isBarItem && wasAlreadyBeingPrepared) {
         const locationLabel = `${parentOrder.id.slice(0, 8).toUpperCase()} (Item Cancelled)`
         const expenseResult = await postOrderCancellationExpense(supabase, parentOrder.restaurant_id, currentUser.id, {
             orderId,

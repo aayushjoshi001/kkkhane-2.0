@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { setTableStatus, openSession, linkSessionToBooking, findBookingByRoom, cancelTransientSession, closeSession } from '@/app/(staff)/waiter/actions'
 import { createClient } from '@/lib/supabase/client'
-import { Users, X, Check, CalendarClock, Eye, ShoppingCart, Hotel, Phone, Search, Loader2, Bed, UserCheck } from 'lucide-react'
+import { Users, X, Check, CalendarClock, Eye, ShoppingCart, Hotel, Phone, Search, Loader2, Bed, UserCheck, ArrowLeftRight } from 'lucide-react'
 import type { Table, Session } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
@@ -115,6 +115,11 @@ export default function CashierTableManager({
     const [splitView, setSplitView] = useState(false)
     const [activeSeat, setActiveSeat] = useState<number | null>(null)
 
+    // Change table ("the guest at T4 wants to move to T7")
+    const [tableChangeOpen, setTableChangeOpen] = useState(false)
+    const [tableChangeTargetId, setTableChangeTargetId] = useState('')
+    const [movingTable, setMovingTable] = useState(false)
+
     const supabaseRef = useRef(createClient())
 
     useEffect(() => {
@@ -132,6 +137,8 @@ export default function CashierTableManager({
             setSplitView(false)
             setVacantSeatNumber(null)
             setActiveSeat(null)
+            setTableChangeOpen(false)
+            setTableChangeTargetId('')
         }
     }, [selectedTable])
 
@@ -197,6 +204,48 @@ export default function CashierTableManager({
         setTables(prev => prev.map(t => t.id === u.id ? { ...t, ...patch } : t))
         setSelectedTable(prev => prev?.id === u.id ? { ...prev, ...patch } : prev)
     })
+
+    // Tables available to move to (not occupied, not the current table)
+    const tableMoveCandidates = useMemo(() => {
+        if (!selectedTable) return []
+        return tables
+            .filter(t => t.id !== selectedTable.id && !t.activeSession && t.table_status !== 'reserved')
+            .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }))
+    }, [tables, selectedTable])
+
+    const handleMoveTable = async () => {
+        if (!selectedTable?.activeSession || !tableChangeTargetId) return
+        setMovingTable(true)
+        try {
+            const { error } = await supabaseRef.current
+                .from('sessions')
+                .update({ table_id: tableChangeTargetId })
+                .eq('id', selectedTable.activeSession.id)
+            if (error) throw new Error(error.message)
+
+            // Also clear the old table's occupied status
+            await supabaseRef.current
+                .from('tables')
+                .update({ table_status: 'available' })
+                .eq('id', selectedTable.id)
+
+            // Patch local state: detach session from old table
+            setTables(prev => prev.map(t => {
+                if (t.id === selectedTable.id) return { ...t, activeSession: undefined, table_status: 'available' }
+                if (t.id === tableChangeTargetId) return { ...t, activeSession: selectedTable.activeSession }
+                return t
+            }))
+
+            const targetLabel = tables.find(t => t.id === tableChangeTargetId)?.label || '?'
+            toast.success(`Session moved to Table ${targetLabel}`)
+            setTableChangeOpen(false)
+            setSelectedTable(null)
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not move table')
+        } finally {
+            setMovingTable(false)
+        }
+    }
 
     // Filter tables
     const filteredTables = useMemo(() => {
@@ -585,6 +634,50 @@ export default function CashierTableManager({
                                                 </div>
                                             )}
 
+                                            {/* Change Table Panel */}
+                                            {tableChangeOpen && (() => {
+                                                return (
+                                                    <div className="space-y-3 border border-hairline rounded-2xl p-4 bg-surface-muted/30 mt-2">
+                                                        <div>
+                                                            <p className="text-xs font-extrabold text-ink">Move session from Table {selectedTable.label}</p>
+                                                            <p className="text-[11px] text-ink-subtle mt-0.5">Orders and bill stay with the session — they move with the table.</p>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Move to *</label>
+                                                            <select
+                                                                value={tableChangeTargetId}
+                                                                onChange={e => setTableChangeTargetId(e.target.value)}
+                                                                className="w-full px-3 py-2 border border-hairline rounded-xl text-xs bg-surface font-semibold"
+                                                            >
+                                                                <option value="">Select a table…</option>
+                                                                {tableMoveCandidates.map(t => (
+                                                                    <option key={t.id} value={t.id}>
+                                                                        Table {t.label}
+                                                                        {t.table_status === 'dirty' ? ' · needs cleaning' : ''}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                            {tableMoveCandidates.length === 0 && (
+                                                                <p className="text-[11px] text-amber-600 font-semibold mt-1">No free tables available right now.</p>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex gap-3">
+                                                            <Button variant="secondary" block onClick={() => setTableChangeOpen(false)}>Cancel</Button>
+                                                            <Button
+                                                                variant="primary"
+                                                                block
+                                                                icon={ArrowLeftRight}
+                                                                loading={movingTable}
+                                                                disabled={!tableChangeTargetId || movingTable}
+                                                                onClick={handleMoveTable}
+                                                            >
+                                                                Move Session
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })()}
+
                                             <div className="grid grid-cols-2 gap-3 pt-2">
                                                 <Button
                                                     variant="secondary"
@@ -621,6 +714,14 @@ export default function CashierTableManager({
                                                     View Bill
                                                 </Button>
                                             </div>
+                                            <Button
+                                                variant="secondary"
+                                                icon={ArrowLeftRight}
+                                                block
+                                                onClick={() => { setTableChangeTargetId(''); setTableChangeOpen(prev => !prev) }}
+                                            >
+                                                Change Table
+                                            </Button>
                                         </div>
                                     ) : (
                                         // Available Option Choice
