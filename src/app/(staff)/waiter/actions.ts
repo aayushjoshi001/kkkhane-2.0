@@ -353,7 +353,15 @@ export async function linkSessionToBooking(sessionId: string, bookingId: string)
         console.error('[linkSessionToBooking] Error:', error)
         return { error: error.message }
     }
+
+    // Also update existing orders for this session so queries on orders.booking_id catch them
+    await adminSupabase
+        .from('orders')
+        .update({ booking_id: bookingId })
+        .eq('session_id', sessionId)
+
     revalidatePath('/waiter')
+    revalidatePath('/cashier')
     return { success: true }
 }
 
