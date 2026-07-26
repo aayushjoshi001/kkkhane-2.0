@@ -7,8 +7,9 @@ import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
 import { calculateNights, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
-import type { ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
+import { buildInvoiceTicket, type ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
+import { usePrinter } from '@/lib/print/usePrinter'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 import { useFeatureEnabled, useDateFormatter } from '@/lib/contexts/FeatureContext'
 import Select from '@/components/ui/Select'
@@ -115,7 +116,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const printBillEnabled = useFeatureEnabled('printBillEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
-    const { formatDateTime } = useDates()
+    const { formatDateTime, calendar } = useDates()
+    const { print: printInvoice } = usePrinter('invoice')
     // True once the checkout API confirms the room is settled — printing
     // happens after this, so the manager sees "Settled" immediately instead
     // of waiting on a printer that may be slow or not configured.
@@ -267,6 +269,19 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         extraHourCharge: extraHourChargeVal,
     } : null
 
+    const handlePrintBill = async () => {
+        if (!invoiceData) return
+        const result = await printInvoice(buildInvoiceTicket(invoiceData, money, restaurantName, restaurantAddress, restaurantPhone, calendar))
+        if (!result.ok) {
+            toast.error(
+                result.status === 'no-printer-selected'
+                    ? 'No printer set for this till — pick one in Printer Settings.'
+                    : 'Printer not connected — opening browser print instead.'
+            )
+            if (result.status !== 'no-printer-selected') window.print()
+        }
+    }
+
     // 'cash'/'qr_digital' are unambiguous — settle immediately. 'split' and
     // 'credit' open the confirmation popup instead (see showSettlementConfirm
     // above); its own Confirm button calls handleSettle directly once the
@@ -350,7 +365,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             // manager prints or cancels here has no bearing on the settlement
             // above, which already happened.
             if (printInvoiceEnabled && printBillEnabled) {
-                window.print()
+                await handlePrintBill()
             }
 
             const paidAmount = advancePaid + resolvedCash + resolvedQr
@@ -761,7 +776,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                             </button>
                                             {printInvoiceEnabled && printBillEnabled && (
                                                 <button
-                                                    onClick={() => window.print()}
+                                                    onClick={handlePrintBill}
                                                     className="px-4 py-2 border border-hairline rounded-xl text-xs font-semibold hover:bg-surface-muted transition"
                                                 >
                                                     Print Bill

@@ -45,7 +45,7 @@ export default async function AdminDashboardPage() {
             .from('restaurants')
             .select('business_type, vat_registered')
             .eq('id', restaurantId)
-            .single(),
+            .maybeSingle(),
         adminSupabase
             .from('income_entries')
             .select('amount')

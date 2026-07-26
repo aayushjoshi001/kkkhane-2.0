@@ -213,27 +213,58 @@ export default function CashierTableManager({
         if (!selectedTable?.activeSession) return null
 
         const sessionId = selectedTable.activeSession.id
-        // Get all matching orders
-        const allActive = activeOrders.filter(o => o.session_id === sessionId)
-        const allUnpaid = unpaidOrders.filter(o => o.session_id === sessionId)
-        const combinedOrders = [...allActive, ...allUnpaid]
+        // Get all matching orders, deduping by id
+        const orderMap = new Map<string, any>()
+        activeOrders.filter(o => o.session_id === sessionId).forEach(o => orderMap.set(o.id, o))
+        unpaidOrders.filter(o => o.session_id === sessionId).forEach(o => orderMap.set(o.id, o))
+        const combinedOrders = Array.from(orderMap.values()).sort(
+            (a, b) => new Date(a.placed_at).getTime() - new Date(b.placed_at).getTime()
+        )
 
-        const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
+        const orders: Array<{
+            id: string
+            placed_at: string
+            status: string
+            payment_status: string
+            total: number
+            isPaid: boolean
+            items: Array<{ name: string; quantity: number; unitPrice: number; status: string }>
+        }> = []
+
         let total = 0
+        const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
 
         for (const order of combinedOrders) {
             const orderItems = order.order_items || []
+            const parsedItems: Array<{ name: string; quantity: number; unitPrice: number; status: string }> = []
+            let orderItemsSum = 0
+
             for (const item of orderItems) {
                 const name = getItemDisplayName(item)
                 const qty = item.quantity || 0
                 const price = Number(item.unit_price ?? 0)
                 const status = item.status || order.status || 'unknown'
+                parsedItems.push({ name, quantity: qty, unitPrice: price, status })
                 items.push({ name, quantity: qty, unitPrice: price, status })
-                total += price * qty
+                orderItemsSum += price * qty
             }
+
+            const isPaid = order.payment_status === 'paid'
+            const orderTotal = Number(order.total_amount) || orderItemsSum
+            orders.push({
+                id: order.id,
+                placed_at: order.placed_at,
+                status: order.status,
+                payment_status: order.payment_status || 'unpaid',
+                total: orderTotal,
+                isPaid,
+                items: parsedItems,
+            })
+
+            total += orderTotal
         }
 
-        return { items, total, sessionId }
+        return { orders, items, total, sessionId }
     }, [selectedTable, activeOrders, unpaidOrders])
 
     const handleReserve = async () => {
@@ -491,25 +522,55 @@ export default function CashierTableManager({
                                     {selectedTable.activeSession ? (
                                         // Occupied Option Choice
                                         <div className="space-y-4">
-                                            <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Active Order Items</h4>
-                                            {tableSessionDetails && tableSessionDetails.items.length > 0 ? (
-                                                <div className="space-y-2 max-h-48 overflow-y-auto border border-hairline rounded-xl p-3 bg-surface-muted/50 divide-y divide-gray-100">
-                                                    {tableSessionDetails.items.map((item, idx) => (
-                                                        <div key={idx} className="flex justify-between items-center py-2 text-xs">
-                                                            <div className="flex-1 min-w-0 pr-2">
-                                                                <p className="font-extrabold text-ink truncate text-[13px]">{item.name}</p>
-                                                                <p className="text-[10px] text-ink-subtle capitalize">
-                                                                    Status: <span className="text-brand-500 font-extrabold">{item.status}</span>
-                                                                </p>
+                                            <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Table Order History</h4>
+                                            {tableSessionDetails && tableSessionDetails.orders.length > 0 ? (
+                                                <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                                                    {tableSessionDetails.orders.map((order, orderIdx) => {
+                                                        const placedTime = order.placed_at ? new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+                                                        return (
+                                                            <div key={order.id || orderIdx} className="border border-hairline rounded-xl p-3 bg-surface shadow-xs space-y-2">
+                                                                <div className="flex items-center justify-between border-b border-hairline/60 pb-2">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-xs font-bold text-ink font-mono">#{order.id.slice(0, 6).toUpperCase()}</span>
+                                                                        {placedTime && (
+                                                                            <span className="text-[11px] font-semibold text-ink-subtle">· {placedTime}</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        {order.isPaid ? (
+                                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                                                💳 Paid
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-200">
+                                                                                ⏳ Unpaid
+                                                                            </span>
+                                                                        )}
+                                                                        <span className="text-xs font-black text-ink tabular-nums">{money(order.total)}</span>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Dish items list with price */}
+                                                                <div className="space-y-1.5 pt-1">
+                                                                    {order.items.map((item, itemIdx) => (
+                                                                        <div key={itemIdx} className="flex items-center justify-between text-xs py-0.5">
+                                                                            <div className="flex-1 min-w-0 pr-2">
+                                                                                <span className="font-bold text-ink truncate text-[12px]">{item.name}</span>
+                                                                                <span className="text-[10px] text-ink-subtle ml-2 capitalize font-semibold">({item.status})</span>
+                                                                            </div>
+                                                                            <div className="flex items-center gap-2 tabular-nums shrink-0">
+                                                                                <span className="text-xs font-extrabold text-brand-600 bg-brand-50 px-1.5 py-0.2 rounded text-[11px]">
+                                                                                    {item.quantity}×
+                                                                                </span>
+                                                                                <span className="text-[11px] text-ink-subtle">@{money(item.unitPrice)}</span>
+                                                                                <span className="font-bold text-ink text-xs min-w-[50px] text-right">{money(item.unitPrice * item.quantity)}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
                                                             </div>
-                                                            <div className="flex items-center gap-3 shrink-0">
-                                                                <span className="text-xs font-extrabold text-brand-600 bg-brand-50 border border-brand-100/50 px-2 py-0.5 rounded-lg tabular-nums">
-                                                                    {item.quantity}×
-                                                                </span>
-                                                                <span className="font-semibold text-ink-muted tabular-nums">{money(item.unitPrice * item.quantity)}</span>
-                                                            </div>
-                                                        </div>
-                                                    ))}
+                                                        )
+                                                    })}
                                                 </div>
                                             ) : (
                                                 <div className="p-4 text-center border border-dashed border-hairline-strong rounded-xl">
@@ -519,7 +580,7 @@ export default function CashierTableManager({
 
                                             {tableSessionDetails && (
                                                 <div className="flex justify-between items-center py-3 px-1 border-t border-hairline font-bold text-sm">
-                                                    <span className="text-ink-muted">Total Amount:</span>
+                                                    <span className="text-ink-muted">Total Session Amount:</span>
                                                     <span className="text-brand-600 text-base tabular-nums">{money(tableSessionDetails.total)}</span>
                                                 </div>
                                             )}

@@ -63,7 +63,7 @@ export type UnpaidOrder = {
     customer_name?: string | null
     customer_phone?: string | null
     delivery_address?: string | null
-    sessions: { id: string; seat_number?: number; tables: TableRef } | null
+    sessions: { id: string; seat_number?: number; booking_id?: string | null; tables: TableRef; bookings?: BookingRoomRef } | null
     bookings?: BookingRoomRef
     order_items: OrderItem[]
 }
@@ -80,7 +80,7 @@ export type ActiveOrder = {
     customer_name?: string | null
     customer_phone?: string | null
     delivery_address?: string | null
-    sessions: { id: string; seat_number?: number; tables: TableRef } | null
+    sessions: { id: string; seat_number?: number; booking_id?: string | null; tables: TableRef; bookings?: BookingRoomRef } | null
     bookings?: BookingRoomRef
     order_items?: OrderItem[]
 }
@@ -1265,7 +1265,15 @@ export default function CashierClient({
             setInvoiceSettled(true)
 
             if (printInvoiceEnabled && printBillEnabled) {
-                window.print()
+                const result = await printInvoice(buildInvoiceTicket(invoice, money, restaurantName, restaurantAddress, restaurantPhone, calendar))
+                if (!result.ok) {
+                    toast.error(
+                        result.status === 'no-printer-selected'
+                            ? 'No printer set for this till — pick one in Printer Settings.'
+                            : 'Printer not connected — opening browser print instead.'
+                    )
+                    if (result.status !== 'no-printer-selected') window.print()
+                }
             }
 
             setActiveInvoice(null)

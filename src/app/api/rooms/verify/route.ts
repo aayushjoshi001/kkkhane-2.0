@@ -18,7 +18,7 @@ export async function POST(req: Request) {
             .from('restaurants')
             .select('id, name, linked_hotel_id')
             .eq('slug', restaurantSlug)
-            .single()
+            .maybeSingle()
 
         if (restError || !restaurant) {
             return NextResponse.json({ error: 'Restaurant not found' }, { status: 404 })

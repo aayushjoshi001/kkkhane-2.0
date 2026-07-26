@@ -1282,6 +1282,7 @@ export default function SuppliersLedgerManager({
                                             <option value="kg">kg</option>
                                             <option value="pcs">pcs</option>
                                             <option value="ltr">ltr</option>
+                                            <option value="bottle">bottle</option>
                                             <option value="box">box</option>
                                             <option value="packet">packet</option>
                                             <option value="plate">plate</option>

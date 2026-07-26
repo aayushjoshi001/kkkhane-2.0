@@ -3,7 +3,7 @@
 // Previously duplicated (and able to drift) across src/proxy.ts,
 // src/app/login/page.tsx, and src/app/login/actions.ts.
 export const ROLE_LANDING: Record<string, string> = {
-    super_admin: '/admin/dashboard',
+    super_admin: '/admin/super-admin/dashboard',
     manager: '/admin/dashboard',
     kitchen: '/kitchen',
     bartender: '/bar',

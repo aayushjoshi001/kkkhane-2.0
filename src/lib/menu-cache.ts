@@ -6,13 +6,13 @@ async function fetchMenuDataFromDb(restaurantId: string) {
         const supabase = await createAdminClient()
 
         const [
-            { data: categories },
-            { data: rawMenuItems },
-            { data: rawTranslations },
-            { data: rawLangs },
-            comboItemsResult,
-            { data: rawPairings }
-        ] = await Promise.all([
+            categoriesRes,
+            menuItemsRes,
+            translationsRes,
+            langsRes,
+            comboItemsRes,
+            pairingsRes
+        ] = await Promise.allSettled([
             supabase
                 .from('menu_categories')
                 .select('*')
@@ -40,8 +40,6 @@ async function fetchMenuDataFromDb(restaurantId: string) {
 
             supabase
                 .from('combo_items')
-                // Scope to this restaurant's combos via the parent combo's restaurant_id
-                // (combo_items has no restaurant_id of its own).
                 .select('id, combo_id, item_id, quantity, combo:menu_items!combo_id!inner(restaurant_id)')
                 .eq('combo.restaurant_id', restaurantId),
 
@@ -51,6 +49,13 @@ async function fetchMenuDataFromDb(restaurantId: string) {
                 .eq('restaurant_id', restaurantId)
                 .order('co_order_count', { ascending: false })
         ])
+
+        const categories = categoriesRes.status === 'fulfilled' ? categoriesRes.value.data || [] : []
+        const rawMenuItems = menuItemsRes.status === 'fulfilled' ? menuItemsRes.value.data || [] : []
+        const rawTranslations = translationsRes.status === 'fulfilled' ? translationsRes.value.data || [] : []
+        const rawLangs = langsRes.status === 'fulfilled' ? langsRes.value.data || [] : []
+        const rawComboItems = comboItemsRes.status === 'fulfilled' ? comboItemsRes.value.data || [] : []
+        const rawPairings = pairingsRes.status === 'fulfilled' ? pairingsRes.value.data || [] : []
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const menuItems = (rawMenuItems || []).map((item: Record<string, any>) => ({
@@ -64,7 +69,7 @@ async function fetchMenuDataFromDb(restaurantId: string) {
 
         const translations = (rawTranslations || []) as { language_code: string; entity_type: string; entity_id: string; translated_text: string }[]
         const supportedLanguages = (rawLangs || []).map(l => ({ code: l.language_code, name: l.language_name }))
-        const comboItems = comboItemsResult?.data || []
+        const comboItems = rawComboItems
 
         // itemId -> ranked list of paired item ids, for the "pairs well with" UI.
         const pairings: Record<string, string[]> = {}
@@ -74,7 +79,7 @@ async function fetchMenuDataFromDb(restaurantId: string) {
         }
 
         return {
-            categories: categories || [],
+            categories,
             menuItems,
             translations,
             supportedLanguages,

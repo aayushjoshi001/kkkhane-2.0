@@ -131,7 +131,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/rooms"     icon={Bed}             label="Rooms & Suites"  path={pathname} />
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/bookings"  icon={CalendarRange}   label="Bookings"        path={pathname} />
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/orders"    icon={ShoppingBag}     label="Service Orders"  path={pathname} />
-                        {features.irdSyncEnabled && (
+                        {features.irdSyncEnabled && userRole !== 'manager' && (
                             <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/payments"  icon={CreditCard}      label="Room Billing"    path={pathname} />
                         )}
 

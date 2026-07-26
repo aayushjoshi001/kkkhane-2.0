@@ -13,31 +13,37 @@ import { unstable_cache, revalidateTag, revalidatePath } from 'next/cache'
  * was previously hitting the DB on every kitchen/waiter/admin page load.
  */
 export async function getRestaurantFeatures(restaurantId: string): Promise<Settings['features_v2'] | null> {
-    const fetcher = unstable_cache(
-        async () => {
-            return fetchWithCache(`features:${restaurantId}`, async () => {
-                const supabase = await createAdminClient()
-                const { data } = await supabase
-                    .from('settings')
-                    .select('features_v2')
-                    .eq('restaurant_id', restaurantId)
-                    .single()
-                return data?.features_v2 ?? null
-            }, 30) // 30 seconds — short enough that toggle changes show immediately
-        },
-        [`features-${restaurantId}`],
-        { tags: [`features-${restaurantId}`], revalidate: 3600 }
-    )
-    const features = await fetcher()
-    if (!features) return null
+    if (!restaurantId) return null
+    try {
+        const fetcher = unstable_cache(
+            async () => {
+                return fetchWithCache(`features:${restaurantId}`, async () => {
+                    const supabase = await createAdminClient()
+                    const { data } = await supabase
+                        .from('settings')
+                        .select('features_v2')
+                        .eq('restaurant_id', restaurantId)
+                        .maybeSingle()
+                    return data?.features_v2 ?? null
+                }, 30)
+            },
+            [`features-${restaurantId}`],
+            { tags: [`features-${restaurantId}`], revalidate: 3600 }
+        )
+        const features = await fetcher().catch(() => null)
+        if (!features) return null
 
-    const isIrd = !!features.irdSyncEnabled
-    return {
-        ...features,
-        financeEnabled: isIrd ? true : (features.financeEnabled ?? false),
-        generateInvoiceEnabled: isIrd ? true : (features.generateInvoiceEnabled ?? true),
-        printInvoiceEnabled: isIrd ? true : (features.printInvoiceEnabled ?? true),
-        vatEnabled: isIrd ? features.vatEnabled : false
+        const isIrd = !!features.irdSyncEnabled
+        return {
+            ...features,
+            financeEnabled: isIrd ? true : (features.financeEnabled ?? false),
+            generateInvoiceEnabled: isIrd ? true : (features.generateInvoiceEnabled ?? true),
+            printInvoiceEnabled: isIrd ? true : (features.printInvoiceEnabled ?? true),
+            vatEnabled: isIrd ? features.vatEnabled : false
+        }
+    } catch (e) {
+        console.error('getRestaurantFeatures error:', e)
+        return null
     }
 }
 
@@ -46,22 +52,27 @@ export async function getRestaurantFeatures(restaurantId: string): Promise<Setti
  * Cached for 30 seconds — same rationale as getRestaurantFeatures.
  */
 export async function getRestaurantMode(restaurantId: string): Promise<BusinessMode> {
-    const fetcher = unstable_cache(
-        async () => {
-            return fetchWithCache(`mode:${restaurantId}`, async () => {
-                const supabase = await createAdminClient()
-                const { data } = await supabase
-                    .from('restaurants')
-                    .select('business_type')
-                    .eq('id', restaurantId)
-                    .single()
-                return getBusinessMode(data?.business_type)
-            }, 86400)
-        },
-        [`mode-${restaurantId}`],
-        { tags: [`mode-${restaurantId}`], revalidate: 3600 }
-    )
-    return fetcher()
+    if (!restaurantId) return 'dine_in'
+    try {
+        const fetcher = unstable_cache(
+            async () => {
+                return fetchWithCache(`mode:${restaurantId}`, async () => {
+                    const supabase = await createAdminClient()
+                    const { data } = await supabase
+                        .from('restaurants')
+                        .select('business_type')
+                        .eq('id', restaurantId)
+                        .maybeSingle()
+                    return getBusinessMode(data?.business_type)
+                }, 86400)
+            },
+            [`mode-${restaurantId}`],
+            { tags: [`mode-${restaurantId}`], revalidate: 3600 }
+        )
+        return (await fetcher().catch(() => 'dine_in')) || 'dine_in'
+    } catch {
+        return 'dine_in'
+    }
 }
 
 /**
@@ -69,22 +80,27 @@ export async function getRestaurantMode(restaurantId: string): Promise<BusinessM
  * Cached for a day — same rationale as getRestaurantMode.
  */
 export async function getRestaurantName(restaurantId: string): Promise<string> {
-    const fetcher = unstable_cache(
-        async () => {
-            return fetchWithCache(`restaurant-name:${restaurantId}`, async () => {
-                const supabase = await createAdminClient()
-                const { data } = await supabase
-                    .from('restaurants')
-                    .select('name')
-                    .eq('id', restaurantId)
-                    .single()
-                return data?.name ?? 'Restaurant'
-            }, 86400)
-        },
-        [`restaurant-name-${restaurantId}`],
-        { tags: [`restaurant-name-${restaurantId}`], revalidate: 3600 }
-    )
-    return fetcher()
+    if (!restaurantId) return 'Restaurant'
+    try {
+        const fetcher = unstable_cache(
+            async () => {
+                return fetchWithCache(`restaurant-name:${restaurantId}`, async () => {
+                    const supabase = await createAdminClient()
+                    const { data } = await supabase
+                        .from('restaurants')
+                        .select('name')
+                        .eq('id', restaurantId)
+                        .maybeSingle()
+                    return data?.name ?? 'Restaurant'
+                }, 86400)
+            },
+            [`restaurant-name-${restaurantId}`],
+            { tags: [`restaurant-name-${restaurantId}`], revalidate: 3600 }
+        )
+        return (await fetcher().catch(() => 'Restaurant')) || 'Restaurant'
+    } catch {
+        return 'Restaurant'
+    }
 }
 
 /**
@@ -92,22 +108,27 @@ export async function getRestaurantName(restaurantId: string): Promise<string> {
  * Cached for 30 seconds — changes rarely and rides a hot customer page path.
  */
 export async function getMenuLayout(restaurantId: string): Promise<'grid' | 'list'> {
-    const fetcher = unstable_cache(
-        async () => {
-            return fetchWithCache(`menu-layout:${restaurantId}`, async () => {
-                const supabase = await createAdminClient()
-                const { data } = await supabase
-                    .from('settings')
-                    .select('theme')
-                    .eq('restaurant_id', restaurantId)
-                    .single()
-                return (data?.theme as { menuLayout?: string } | null)?.menuLayout === 'list' ? 'list' : 'grid'
-            }, 86400)
-        },
-        [`menu-layout-${restaurantId}`],
-        { tags: [`menu-layout-${restaurantId}`], revalidate: 3600 }
-    )
-    return fetcher()
+    if (!restaurantId) return 'grid'
+    try {
+        const fetcher = unstable_cache(
+            async () => {
+                return fetchWithCache(`menu-layout:${restaurantId}`, async () => {
+                    const supabase = await createAdminClient()
+                    const { data } = await supabase
+                        .from('settings')
+                        .select('theme')
+                        .eq('restaurant_id', restaurantId)
+                        .maybeSingle()
+                    return (data?.theme as { menuLayout?: string } | null)?.menuLayout === 'list' ? 'list' : 'grid'
+                }, 86400)
+            },
+            [`menu-layout-${restaurantId}`],
+            { tags: [`menu-layout-${restaurantId}`], revalidate: 3600 }
+        )
+        return (await fetcher().catch(() => 'grid')) || 'grid'
+    } catch {
+        return 'grid'
+    }
 }
 
 /**

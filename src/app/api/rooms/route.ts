@@ -42,6 +42,24 @@ export async function POST(req: Request) {
             }
             throw error
         }
+
+        // Auto-provision room table mapping so QR codes work instantly
+        try {
+            const { randomBytes } = await import('crypto')
+            const newQrToken = randomBytes(18).toString('base64url')
+            await supabase
+                .from('tables')
+                .insert({
+                    restaurant_id: currentUser.restaurantId,
+                    room_id: data.id,
+                    label: `Room ${data.room_number}`,
+                    qr_token: newQrToken,
+                    is_active: true
+                })
+        } catch (tableErr) {
+            console.error('Failed to auto-create room table mapping:', tableErr)
+        }
+
         return NextResponse.json({ success: true, data })
     } catch (e: any) {
         return NextResponse.json({ error: e.message || 'Server error' }, { status: 500 })

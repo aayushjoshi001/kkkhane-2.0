@@ -68,6 +68,9 @@ export function buildInvoiceTicket(
 ): Uint8Array {
     const b = new EscPosBuilder().init()
 
+    const num = (amount: number) =>
+        Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
     b.align('center').bold(true).line(restaurantName).bold(false)
     const formattedAddress = formatInvoiceAddress(restaurantAddress)
     if (formattedAddress) {
@@ -98,8 +101,8 @@ export function buildInvoiceTicket(
         b.columns([
             { text: `Room Stay (${invoice.nights}n)`, width: COL.desc },
             { text: String(invoice.nights), width: COL.qty, align: 'center' },
-            { text: money(invoice.basePrice), width: COL.rate, align: 'right' },
-            { text: money(invoice.stayCost), width: COL.amt, align: 'right' },
+            { text: num(invoice.basePrice), width: COL.rate, align: 'right' },
+            { text: num(invoice.stayCost), width: COL.amt, align: 'right' },
         ])
     }
 
@@ -107,8 +110,8 @@ export function buildInvoiceTicket(
         b.columns([
             { text: charge.description, width: COL.desc },
             { text: '1', width: COL.qty, align: 'center' },
-            { text: money(charge.amount), width: COL.rate, align: 'right' },
-            { text: money(charge.amount), width: COL.amt, align: 'right' },
+            { text: num(charge.amount), width: COL.rate, align: 'right' },
+            { text: num(charge.amount), width: COL.amt, align: 'right' },
         ])
     }
 
@@ -117,8 +120,8 @@ export function buildInvoiceTicket(
         b.columns([
             { text: name, width: COL.desc },
             { text: String(item.quantity), width: COL.qty, align: 'center' },
-            { text: money(item.unitPrice), width: COL.rate, align: 'right' },
-            { text: money(item.unitPrice * item.quantity), width: COL.amt, align: 'right' },
+            { text: num(item.unitPrice), width: COL.rate, align: 'right' },
+            { text: num(item.unitPrice * item.quantity), width: COL.amt, align: 'right' },
         ])
     }
 
@@ -127,8 +130,8 @@ export function buildInvoiceTicket(
             b.columns([
                 { text: `Dine: ${item.name}`, width: COL.desc },
                 { text: String(item.quantity), width: COL.qty, align: 'center' },
-                { text: money(item.unitPrice), width: COL.rate, align: 'right' },
-                { text: money(item.unitPrice * item.quantity), width: COL.amt, align: 'right' },
+                { text: num(item.unitPrice), width: COL.rate, align: 'right' },
+                { text: num(item.unitPrice * item.quantity), width: COL.amt, align: 'right' },
             ])
         }
     }
