@@ -15,7 +15,6 @@ import type { BusinessMode } from '@/lib/businessMode'
 import { SidebarProvider } from '@/lib/contexts/SidebarContext'
 import SidebarToggle from '@/components/admin/SidebarToggle'
 import CalendarToggle from '@/components/shared/CalendarToggle'
-
 export default async function AdminLayout({ children }: { children: ReactNode }) {
     // requireRole() uses the React.cache-wrapped getCurrentUser — no duplicate DB call
     // when the page also calls getCurrentUser().

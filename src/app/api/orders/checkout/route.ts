@@ -214,11 +214,14 @@ export async function POST(req: Request) {
             if (phone && (cashPaid > 0 || qrPaid > 0)) {
                 const pointsToEarn = Math.round((cashPaid + qrPaid) * 0.05)
                 if (pointsToEarn > 0) {
-                    const account = await findOrCreateCustomerCreditAccount(supabase, currentUser.restaurantId, currentUser.id, {
-                        name,
-                        phone,
-                    })
-                    if (!('error' in account)) {
+                    const { data: account } = await supabase
+                        .from('customer_credit_accounts')
+                        .select('id')
+                        .eq('restaurant_id', currentUser.restaurantId)
+                        .eq('customer_phone', phone)
+                        .maybeSingle()
+
+                    if (account) {
                         await postLoyaltyEarn(supabase, currentUser.restaurantId, account.id, pointsToEarn, `Earned from ${orderLabel}`)
                     }
                 }

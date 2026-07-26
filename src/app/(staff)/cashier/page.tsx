@@ -33,6 +33,7 @@ export default async function CashierPage() {
         { data: staff },
         { data: expenseCategories },
         { data: ingredients },
+        { data: customerAccounts },
         openSession,
     ] = await Promise.all([
         // (1) Delivered but not yet paid — all order types (dine-in, room service, etc.)
@@ -142,6 +143,12 @@ export default async function CashierPage() {
             .eq('restaurant_id', restaurantId)
             .eq('is_active', true)
             .order('name', { ascending: true }),
+        adminSupabase
+            .from('customer_credit_accounts')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
+            .order('customer_name', { ascending: true }),
         resolveActiveDayBookSession(adminSupabase, restaurantId, userId),
     ])
 
@@ -200,6 +207,7 @@ export default async function CashierPage() {
             manualEntryStaffList={staff || []}
             manualEntryExpenseCategories={expenseCategories || []}
             manualEntryIngredients={ingredients || []}
+            manualEntryCustomerAccounts={customerAccounts || []}
             manualEntryHasOpenSession={!!openSession}
             manualEntrySessionId={openSession?.id ?? null}
         />

@@ -21,6 +21,7 @@ import { claimForPrinting, releasePrintClaim, fetchOrdersWithUnprintedItems, OUT
 import KotPrintFallback from '@/components/kitchen/KotPrintFallback'
 import type { KitchenOrder } from '@/components/kitchen/OrderQueue'
 import ManualEntryClient from '@/app/(admin)/admin/manual-entry/ManualEntryClient'
+import AdSpace from '@/components/shared/AdSpace'
 import CashierOrdersPanel from './CashierOrdersPanel'
 import type { BankAccount, ExpenseCategory, Supplier, Session } from '@/types/database'
 import QuickOrderModal from './QuickOrderModal'
@@ -110,6 +111,7 @@ interface Props {
     manualEntryStaffList: { id: string; full_name: string }[]
     manualEntryExpenseCategories: ExpenseCategory[]
     manualEntryIngredients: { id: string; name: string; unit: string; stock_quantity: number }[]
+    manualEntryCustomerAccounts?: any[]
     manualEntryHasOpenSession: boolean
     manualEntrySessionId: string | null
 }
@@ -146,6 +148,7 @@ export default function CashierClient({
     manualEntryStaffList,
     manualEntryExpenseCategories,
     manualEntryIngredients,
+    manualEntryCustomerAccounts = [],
     manualEntryHasOpenSession,
     manualEntrySessionId,
 }: Props) {
@@ -1574,6 +1577,8 @@ export default function CashierClient({
                     )}
                 </div>
             </div>
+
+            <AdSpace />
 
             {/* Cashier Tab Navigation */}
             <div className={`grid ${isHotel ? 'grid-cols-4' : 'grid-cols-3'} border-b border-hairline mb-4 bg-surface sticky top-14 z-20 -mx-3 px-3 md:mx-0 md:px-0`}>
@@ -3305,6 +3310,7 @@ export default function CashierClient({
                                 staffList={manualEntryStaffList}
                                 expenseCategories={manualEntryExpenseCategories}
                                 ingredients={manualEntryIngredients}
+                                customerAccounts={manualEntryCustomerAccounts}
                                 hasOpenSession={manualEntryHasOpenSession}
                                 sessionId={manualEntrySessionId}
                                 userRole={userRole}

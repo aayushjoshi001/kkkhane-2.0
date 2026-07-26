@@ -739,7 +739,7 @@ export default function CashBookClient({
                                     {entryModal.type === 'cash_out' && (
                                         <>
                                             <option value="expense">Expense</option>
-                                            <option value="bank_deposit">Bank Deposit (Deposited Cash to Bank)</option>
+                                            <option value="bank_deposit">Deposit to own bank</option>
                                         </>
                                     )}
                                 </Select>

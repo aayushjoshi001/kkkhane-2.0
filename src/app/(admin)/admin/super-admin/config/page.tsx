@@ -1,4 +1,5 @@
 import { requireRole } from '@/lib/auth'
+import AdManager from './AdManager'
 import { Settings, CheckCircle, XCircle, Shield } from 'lucide-react'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import { TIER_FEATURES, TIER_LIMITS, TIERS, TIER_LABELS, isUnlimited, type Tier } from '@/lib/tiers'
@@ -162,6 +163,9 @@ export default async function ConfigPage() {
                 </div>
                 <p className="text-xs text-ink-subtle mt-3">Methods available when recording subscription payments via the Restaurants page.</p>
             </div>
+
+            {/* Dashboard Advertisements Manager */}
+            <AdManager />
         </div>
     )
 }

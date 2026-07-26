@@ -7,9 +7,10 @@ import {
     PenLine, Banknote, Building2, Receipt, Boxes, HandCoins, Info
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
-import { createVoucherAction, openTodayDayBookSessionAction, getSupplierOutstandingBalanceAction, getStaffCurrentDueAction } from '@/app/(admin)/admin/vouchers/actions'
+import { createVoucherAction, openTodayDayBookSessionAction, getSupplierOutstandingBalanceAction, getStaffCurrentDueAction, getCustomerOutstandingBalanceAction } from '@/app/(admin)/admin/vouchers/actions'
 import { addStockMovementAction } from '@/app/(admin)/admin/ingredients/actions'
-import { createSupplierBillAction } from '@/app/(admin)/admin/suppliers/actions'
+import { createSupplierBillAction, createSupplierAction } from '@/app/(admin)/admin/suppliers/actions'
+import { createReceivableTransactionAction } from '@/app/(admin)/admin/finance/receivables/actions'
 import type { BankAccount, ExpenseCategory, Supplier } from '@/types/database'
 import { orderCategoriesForDisplay, findMainCategory, buildDescriptionWithName } from '@/lib/utils'
 import Select from '@/components/ui/Select'
@@ -31,12 +32,13 @@ interface ManualEntryClientProps {
     staffList: StaffMember[]
     expenseCategories: ExpenseCategory[]
     ingredients: IngredientItem[]
+    customerAccounts?: any[]
     hasOpenSession: boolean
     sessionId: string | null
     userRole: string
 }
 
-type EntryType = 'cash_in' | 'cash_out' | 'bank_transaction' | 'voucher' | 'inventory' | 'supplier_payment' | 'staff_payment' | 'expense_payment'
+type EntryType = 'cash_in' | 'cash_out' | 'bank_transaction' | 'voucher' | 'inventory' | 'supplier_payment' | 'staff_payment' | 'expense_payment' | 'customer_payment'
 
 // ─── Entry Cards Config ───────────────────────────────────────────────────────
 
@@ -129,6 +131,17 @@ const ENTRY_CARDS = [
         activeBorder: 'border-rose-500',
         activeBg: 'bg-rose-50/60',
     },
+    {
+        type: 'customer_payment' as EntryType,
+        icon: HandCoins,
+        label: 'Customer Credit Repayment',
+        desc: 'Record a payment received from a credit customer and reduce their due.',
+        iconBg: 'bg-teal-50',
+        iconColor: 'text-teal-600',
+        border: 'border-hairline',
+        activeBorder: 'border-teal-500',
+        activeBg: 'bg-teal-50/60',
+    },
 ]
 
 // ─── Form State Types ─────────────────────────────────────────────────────────
@@ -142,6 +155,7 @@ const emptyForms = {
     supplier_payment: { supplier_id: '', amount: '', payment_source: 'cash', bank_name: '', notes: '' },
     staff_payment: { staff_id: '', entry_type: 'salary_payout', amount: '', payment_mode: 'cash', bank_name: '', notes: '' },
     expense_payment: { amount: '', expense_category_id: '', supplier_id: '', payment_mode: 'cash', bank_name: '', description: '' },
+    customer_payment: { customer_id: '', amount: '', payment_mode: 'cash', bank_name: '', description: '' },
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -158,18 +172,22 @@ function InputField({ label, ...props }: { label: string } & React.InputHTMLAttr
     )
 }
 
-function SelectField({ label, children, ...props }: {
+function SelectField({ label, children, rightElement, ...props }: {
     label: string
     value: string
     onChange: (e: { target: { value: string } }) => void
     disabled?: boolean
     required?: boolean
     searchable?: boolean
+    rightElement?: React.ReactNode
     children: React.ReactNode
 }) {
     return (
         <div className="space-y-1.5">
-            <label className="block text-small font-bold text-ink">{label}</label>
+            <div className="flex items-center justify-between">
+                <label className="block text-small font-bold text-ink">{label}</label>
+                {rightElement}
+            </div>
             <Select
                 {...props}
                 className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm px-3 py-2 border bg-surface text-ink transition-all cursor-pointer"
@@ -264,16 +282,22 @@ function buildChequeDetailsPayload(v: ChequeDetailsValue) {
 
 export default function ManualEntryClient({
     bankAccounts,
-    suppliers,
+    suppliers: initialSuppliers,
     staffList,
     expenseCategories,
     ingredients,
+    customerAccounts: initialCustomerAccounts = [],
     hasOpenSession,
     sessionId,
     userRole,
 }: ManualEntryClientProps) {
     const { confirm } = useConfirmStore()
     const [activeType, setActiveType] = useState<EntryType | null>(null)
+    const [suppliers, setSuppliersList] = useState<Supplier[]>(initialSuppliers)
+    const [customerAccounts, setCustomerAccounts] = useState<any[]>(initialCustomerAccounts)
+    const [showSupplierModal, setShowSupplierModal] = useState(false)
+    const [newSupplierForm, setNewSupplierForm] = useState({ name: '', phone: '', pan: '', vat: '', address: '' })
+    const [isSavingSupplier, setIsSavingSupplier] = useState(false)
     const [forms, setForms] = useState(emptyForms)
     const [isPending, startTransition] = useTransition()
     const [lastSuccess, setLastSuccess] = useState<{ type: EntryType; label: string } | null>(null)
@@ -286,6 +310,38 @@ export default function ManualEntryClient({
     // method (Voucher, Supplier/Staff/Expense Payment) — only one card is ever
     // open at a time, same reasoning as inventoryPayment above.
     const [chequeDetails, setChequeDetails] = useState<ChequeDetailsValue>(EMPTY_CHEQUE_DETAILS)
+
+    const handleQuickAddSupplier = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!newSupplierForm.name.trim()) { toast.error('Supplier name is required'); return }
+        if (!newSupplierForm.phone.trim()) { toast.error('Phone number is required'); return }
+        setIsSavingSupplier(true)
+        try {
+            const res = await createSupplierAction(newSupplierForm)
+            if (res.error) {
+                toast.error(res.error)
+            } else if (res.data) {
+                const sObj = res.data as Supplier
+                setSuppliersList(prev => [...prev, sObj].sort((a, b) => a.name.localeCompare(b.name)))
+                toast.success('Supplier added successfully!')
+                
+                // Auto-select the newly added supplier in whatever form is currently open
+                if (activeType === 'cash_out') updateForm('cash_out', 'supplier_id', sObj.id)
+                else if (activeType === 'bank_transaction') updateForm('bank_transaction', 'supplier_id', sObj.id)
+                else if (activeType === 'inventory') updateForm('inventory', 'supplier_id', sObj.id)
+                else if (activeType === 'supplier_payment') updateForm('supplier_payment', 'supplier_id', sObj.id)
+                else if (activeType === 'expense_payment') updateForm('expense_payment', 'supplier_id', sObj.id)
+
+                setShowSupplierModal(false)
+                setNewSupplierForm({ name: '', phone: '', pan: '', vat: '', address: '' })
+            }
+        } catch (err) {
+            toast.error('Failed to create supplier')
+        } finally {
+            setIsSavingSupplier(false)
+        }
+    }
+
     const stockCategoryOptions = useMemo(
         () => orderCategoriesForDisplay(expenseCategories.filter(c => c.is_stock_category)),
         [expenseCategories],
@@ -362,6 +418,33 @@ export default function ManualEntryClient({
                         ...prev.supplier_payment,
                         amount: String(res.data),
                         notes: `Payment to ${sName} for outstanding bills`
+                    }
+                }))
+                toast.success(`Auto-filled due: Rs. ${res.data}`, { id: 'due-autofill-toast' })
+            }
+        })
+    }
+
+    const [customerPaymentBalance, setCustomerPaymentBalance] = useState<number | null>(null)
+    const handleCustomerPaymentSelect = (cId: string) => {
+        updateForm('customer_payment', 'customer_id', cId)
+        setCustomerPaymentBalance(null)
+        if (!cId) {
+            updateForm('customer_payment', 'amount', '')
+            updateForm('customer_payment', 'description', '')
+            return
+        }
+        const customerObj = customerAccounts.find(c => c.id === cId)
+        const cName = customerObj ? customerObj.customer_name : ''
+        getCustomerOutstandingBalanceAction(cId).then(res => {
+            if (res.data !== undefined) {
+                setCustomerPaymentBalance(res.data)
+                setForms(prev => ({
+                    ...prev,
+                    customer_payment: {
+                        ...prev.customer_payment,
+                        amount: String(res.data),
+                        description: `Credit repayment from ${cName}`
                     }
                 }))
                 toast.success(`Auto-filled due: Rs. ${res.data}`, { id: 'due-autofill-toast' })
@@ -517,6 +600,28 @@ export default function ManualEntryClient({
                         const data = await res.json()
                         if (!res.ok) throw new Error(data.error)
                         result = { data }
+
+                        // Auto-pair bank deposit
+                        if (activeType === 'cash_out' && cashOutForm?.category === 'bank_deposit') {
+                            if (cashOutForm.bank_name) {
+                                try {
+                                    await fetch('/api/day-book/entries', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            session_id: sessionId,
+                                            type: 'bank_in',
+                                            amount,
+                                            description: `Deposit: ${f.description.trim()}`,
+                                            category: 'deposit',
+                                            bank_name: cashOutForm.bank_name.trim(),
+                                        }),
+                                    })
+                                } catch (e) {
+                                    console.error('Failed to auto-pair bank deposit', e)
+                                }
+                            }
+                        }
                     }
 
                 } else if (activeType === 'bank_transaction') {
@@ -568,6 +673,26 @@ export default function ManualEntryClient({
                         const data = await res.json()
                         if (!res.ok) throw new Error(data.error)
                         result = { data }
+
+                        // Auto-pair cash withdrawal (Bank Out -> Cash In)
+                        if (isWithdrawal && f.category === 'withdrawal') {
+                            try {
+                                await fetch('/api/day-book/entries', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        session_id: sessionId,
+                                        type: 'cash_in',
+                                        amount,
+                                        description: `Cash Withdrawal: ${f.description.trim()}`,
+                                        category: 'withdrawal',
+                                        bank_name: f.bank_name.trim(),
+                                    }),
+                                })
+                            } catch (e) {
+                                console.error('Failed to auto-pair cash withdrawal', e)
+                            }
+                        }
                     }
 
                 } else if (activeType === 'voucher') {
@@ -766,6 +891,47 @@ export default function ManualEntryClient({
                         const data = await res.json()
                         if (!res.ok) throw new Error(data.error)
                         result = { data }
+                    }
+                } else if (activeType === 'customer_payment') {
+                    const f = forms.customer_payment
+                    const amount = parseFloat(f.amount)
+                    if (!f.customer_id) { toast.error('Select a customer'); return }
+                    if (isNaN(amount) || amount <= 0) { toast.error('Enter a valid amount'); return }
+                    if ((f.payment_mode === 'qr' || f.payment_mode === 'bank') && !f.bank_name) { toast.error('Select a bank account'); return }
+                    if (!sessionId) { toast.error('No active session'); return }
+
+                    const selectedCustomer = customerAccounts.find(c => c.id === f.customer_id)
+                    const desc = f.description.trim() || `Credit repayment from ${selectedCustomer?.customer_name || 'customer'}`
+
+                    result = await createReceivableTransactionAction({
+                        customer_credit_account_id: f.customer_id,
+                        type: 'payment',
+                        amount,
+                        description: desc,
+                    })
+
+                    if (result.error) {
+                        toast.error(result.error)
+                        return
+                    }
+
+                    try {
+                        const entryType = f.payment_mode === 'cash' ? 'cash_in' : 'bank_in'
+                        await fetch('/api/day-book/entries', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                session_id: sessionId,
+                                type: entryType,
+                                amount,
+                                description: `Credit Payment: ${desc}`,
+                                category: 'order_payment',
+                                bank_name: f.payment_mode !== 'cash' ? f.bank_name.trim() : undefined,
+                            }),
+                        })
+                    } catch (e) {
+                        console.error('Failed to post customer payment day book entry', e)
+                        toast.error('Customer payment logged, but failed to post to day book. Please log cash_in/bank_in manually.')
                     }
                 }
 
@@ -1016,6 +1182,15 @@ export default function ManualEntryClient({
                                                     label="Supplier"
                                                     value={forms.cash_out.supplier_id}
                                                     onChange={e => updateForm('cash_out', 'supplier_id', e.target.value)}
+                                                    rightElement={
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShowSupplierModal(true)}
+                                                            className="text-[10px] font-black text-brand-600 hover:text-brand-700 hover:underline uppercase tracking-wider transition-all"
+                                                        >
+                                                            + Quick Add
+                                                        </button>
+                                                    }
                                                     searchable
                                                 >
                                                     <option value="">Select supplier...</option>
@@ -1078,6 +1253,7 @@ export default function ManualEntryClient({
                                                     <option value="salary">Salary / Wage</option>
                                                     <option value="advance">Advance</option>
                                                     <option value="refund">Refund</option>
+                                                    <option value="withdrawal">Bank to Hotel Cash</option>
                                                     <option value="other">Other</option>
                                                 </SelectField>
                                             )}
@@ -1117,6 +1293,15 @@ export default function ManualEntryClient({
                                                     label="Supplier"
                                                     value={forms.bank_transaction.supplier_id}
                                                     onChange={e => updateForm('bank_transaction', 'supplier_id', e.target.value)}
+                                                    rightElement={
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShowSupplierModal(true)}
+                                                            className="text-[10px] font-black text-brand-600 hover:text-brand-700 hover:underline uppercase tracking-wider transition-all"
+                                                        >
+                                                            + Quick Add
+                                                        </button>
+                                                    }
                                                     searchable
                                                 >
                                                     <option value="">Select supplier...</option>
@@ -1271,6 +1456,15 @@ export default function ManualEntryClient({
                                                         label="Supplier (optional)"
                                                         value={forms.inventory.supplier_id}
                                                         onChange={e => updateForm('inventory', 'supplier_id', e.target.value)}
+                                                        rightElement={
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setShowSupplierModal(true)}
+                                                                className="text-[10px] font-black text-brand-600 hover:text-brand-700 hover:underline uppercase tracking-wider transition-all"
+                                                            >
+                                                                + Quick Add
+                                                            </button>
+                                                        }
                                                         searchable
                                                     >
                                                         <option value="">Unspecified / Others</option>
@@ -1314,6 +1508,15 @@ export default function ManualEntryClient({
                                                 label="Supplier"
                                                 value={forms.supplier_payment.supplier_id}
                                                 onChange={e => handleSupplierPaymentSelect(e.target.value)}
+                                                rightElement={
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowSupplierModal(true)}
+                                                        className="text-[10px] font-black text-brand-600 hover:text-brand-700 hover:underline uppercase tracking-wider transition-all"
+                                                    >
+                                                        + Quick Add
+                                                    </button>
+                                                }
                                             >
                                                 <option value="">Select supplier...</option>
                                                 {suppliers.map(s => (
@@ -1477,6 +1680,15 @@ export default function ManualEntryClient({
                                                     label="Supplier"
                                                     value={forms.expense_payment.supplier_id}
                                                     onChange={e => updateForm('expense_payment', 'supplier_id', e.target.value)}
+                                                    rightElement={
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShowSupplierModal(true)}
+                                                            className="text-[10px] font-black text-brand-600 hover:text-brand-700 hover:underline uppercase tracking-wider transition-all"
+                                                        >
+                                                            + Quick Add
+                                                        </button>
+                                                    }
                                                     searchable
                                                 >
                                                     <option value="">Select supplier...</option>
@@ -1525,6 +1737,70 @@ export default function ManualEntryClient({
                                         </>
                                     )}
 
+                                    {/* ── CUSTOMER PAYMENT ── */}
+                                    {activeType === 'customer_payment' && (
+                                        <>
+                                            <SelectField
+                                                label="Credit Customer"
+                                                value={forms.customer_payment.customer_id}
+                                                onChange={e => handleCustomerPaymentSelect(e.target.value)}
+                                                searchable
+                                            >
+                                                <option value="">Select customer...</option>
+                                                {customerAccounts.map(c => (
+                                                    <option key={c.id} value={c.id}>
+                                                        {c.customer_name} {c.customer_phone ? `(${c.customer_phone})` : ''}
+                                                    </option>
+                                                ))}
+                                            </SelectField>
+                                            {customerPaymentBalance !== null && (
+                                                <div className="flex items-center gap-2.5 bg-teal-50 border border-teal-200 rounded-xl px-3.5 py-2.5">
+                                                    <Info size={14} className="text-teal-600 shrink-0" />
+                                                    <p className="text-xs font-bold text-teal-800">
+                                                        Outstanding balance: <span className="tabular-nums">Rs. {customerPaymentBalance.toLocaleString()}</span>
+                                                    </p>
+                                                </div>
+                                            )}
+                                            <InputField
+                                                label="Repayment Amount (Rs.)"
+                                                type="number"
+                                                placeholder="0.00"
+                                                value={forms.customer_payment.amount}
+                                                onChange={e => updateForm('customer_payment', 'amount', e.target.value)}
+                                                min="0"
+                                                step="0.01"
+                                            />
+                                            <SelectField
+                                                label="Payment Method"
+                                                value={forms.customer_payment.payment_mode}
+                                                onChange={e => updateForm('customer_payment', 'payment_mode', e.target.value)}
+                                            >
+                                                <option value="cash">Cash</option>
+                                                <option value="qr">QR / Mobile Banking</option>
+                                                <option value="bank">Bank Transfer</option>
+                                            </SelectField>
+                                            {(forms.customer_payment.payment_mode === 'qr' || forms.customer_payment.payment_mode === 'bank') && (
+                                                <SelectField
+                                                    label="Bank Account"
+                                                    value={forms.customer_payment.bank_name}
+                                                    onChange={e => updateForm('customer_payment', 'bank_name', e.target.value)}
+                                                >
+                                                    <option value="">Select bank...</option>
+                                                    {bankAccounts.map(ba => (
+                                                        <option key={ba.id} value={ba.name}>{ba.name}</option>
+                                                    ))}
+                                                </SelectField>
+                                            )}
+                                            <InputField
+                                                label="Description / Notes (optional)"
+                                                type="text"
+                                                placeholder="Payment details or reference"
+                                                value={forms.customer_payment.description}
+                                                onChange={e => updateForm('customer_payment', 'description', e.target.value)}
+                                            />
+                                        </>
+                                    )}
+
                                 {/* Submit */}
                                 <button
                                     onClick={handleSubmit}
@@ -1563,6 +1839,82 @@ export default function ManualEntryClient({
                     )}
                 </div>
             </div>
+            {/* Quick Add Supplier Modal */}
+            {showSupplierModal && (
+                <div className="fixed inset-0 z-50 bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form
+                        onSubmit={handleQuickAddSupplier}
+                        className="bg-surface rounded-2xl border border-hairline shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150"
+                    >
+                        <div className="px-6 py-4 border-b border-hairline bg-surface-muted/50 flex items-center justify-between">
+                            <div>
+                                <span className="text-[9px] font-black uppercase text-brand-600 tracking-wider">Quick Setup</span>
+                                <h2 className="text-base font-extrabold text-ink">Add New Supplier</h2>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowSupplierModal(false)}
+                                className="p-1 text-ink-subtle hover:bg-surface-muted rounded-lg transition-all"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <InputField
+                                label="Supplier Name"
+                                required
+                                value={newSupplierForm.name}
+                                onChange={e => setNewSupplierForm(prev => ({ ...prev, name: e.target.value }))}
+                                placeholder="Enter supplier name"
+                            />
+                            <InputField
+                                label="Phone Number"
+                                required
+                                value={newSupplierForm.phone}
+                                onChange={e => setNewSupplierForm(prev => ({ ...prev, phone: e.target.value }))}
+                                placeholder="Enter phone number"
+                            />
+                            <div className="grid grid-cols-2 gap-4">
+                                <InputField
+                                    label="PAN Number (optional)"
+                                    value={newSupplierForm.pan}
+                                    onChange={e => setNewSupplierForm(prev => ({ ...prev, pan: e.target.value }))}
+                                    placeholder="Enter PAN"
+                                />
+                                <InputField
+                                    label="VAT Number (optional)"
+                                    value={newSupplierForm.vat}
+                                    onChange={e => setNewSupplierForm(prev => ({ ...prev, vat: e.target.value }))}
+                                    placeholder="Enter VAT"
+                                />
+                            </div>
+                            <InputField
+                                label="Address (optional)"
+                                value={newSupplierForm.address}
+                                onChange={e => setNewSupplierForm(prev => ({ ...prev, address: e.target.value }))}
+                                placeholder="Enter address"
+                            />
+                        </div>
+                        <div className="px-6 py-4 bg-surface-muted/50 border-t border-hairline flex items-center justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setShowSupplierModal(false)}
+                                className="px-4 py-2 text-xs font-bold text-ink-subtle hover:bg-surface-muted rounded-xl transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={isSavingSupplier}
+                                className="flex items-center gap-1.5 px-5 py-2 bg-brand-500 hover:bg-brand-600 text-white font-extrabold rounded-xl text-xs shadow-sm transition-all"
+                            >
+                                {isSavingSupplier && <Loader2 size={12} className="animate-spin" />}
+                                Save Supplier
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
         </div>
     )
 }

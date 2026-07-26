@@ -26,6 +26,7 @@ export default async function ManualEntryPage() {
         { data: staff },
         { data: expenseCategories },
         { data: ingredients },
+        { data: customerAccounts },
     ] = await Promise.all([
         supabase
             .from('bank_accounts')
@@ -57,6 +58,12 @@ export default async function ManualEntryPage() {
             .eq('restaurant_id', restaurantId)
             .eq('is_active', true)
             .order('name', { ascending: true }),
+        supabase
+            .from('customer_credit_accounts')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
+            .order('customer_name', { ascending: true }),
     ])
 
     const openSession = await resolveActiveDayBookSession(supabase, restaurantId, currentUser.id)
@@ -68,6 +75,7 @@ export default async function ManualEntryPage() {
             staffList={staff || []}
             expenseCategories={expenseCategories || []}
             ingredients={ingredients || []}
+            customerAccounts={customerAccounts || []}
             hasOpenSession={!!openSession}
             sessionId={openSession?.id ?? null}
             userRole={currentUser.role}

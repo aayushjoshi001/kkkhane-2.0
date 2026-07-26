@@ -393,11 +393,14 @@ export async function POST(req: Request) {
         const name = customer_name ? customer_name.trim() : (booking.guest_name ? booking.guest_name.trim() : 'Guest')
         if (phone && (cashPaid > 0 || qrPaid > 0 || rPoints > 0)) {
             const pointsToEarn = Math.round((cashPaid + qrPaid) * 0.05)
-            const account = await findOrCreateCustomerCreditAccount(supabase, booking.restaurant_id, currentUser.id, {
-                name,
-                phone,
-            })
-            if (!('error' in account)) {
+            const { data: account } = await supabase
+                .from('customer_credit_accounts')
+                .select('id')
+                .eq('restaurant_id', booking.restaurant_id)
+                .eq('customer_phone', phone)
+                .maybeSingle()
+
+            if (account) {
                 if (pointsToEarn > 0) {
                     await postLoyaltyEarn(supabase, booking.restaurant_id, account.id, pointsToEarn, `Earned from Room ${roomNumber} stay`)
                 }
