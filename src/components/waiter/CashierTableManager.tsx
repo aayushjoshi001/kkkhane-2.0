@@ -433,14 +433,7 @@ export default function CashierTableManager({
             }
             
             toast.success(`Linked to Room ${roomNumber}`)
-            const sessionWithBooking = { ...session, booking_id: bookingId }
-            const patch = seatNumber === 1
-                ? { activeSession: sessionWithBooking }
-                : (t: TableWithSession) => ({ otherActiveSessions: [...(t.otherActiveSessions || []).filter(x => x.id !== session.id), sessionWithBooking] })
-            
-            setTables(prev => prev.map(t => t.id === tableId
-                ? { ...t, ...(typeof patch === 'function' ? patch(t) : patch) }
-                : t))
+            setTables(prev => prev.map(t => t.id === tableId ? { ...t, activeSession: null as any, table_status: 'available' } : t))
             
             quickOrderPlacedRef.current = false
             setQuickOrderSession({
@@ -794,6 +787,7 @@ export default function CashierTableManager({
                                                                                   setSelectedTable(null)
                                                                                   setLinkRoomOpen(false)
                                                                                   setFoundRoomBooking(null)
+                                                                                  router.refresh()
                                                                               }
                                                                           }}
                                                                       >

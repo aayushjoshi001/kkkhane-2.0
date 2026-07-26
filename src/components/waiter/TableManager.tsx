@@ -358,7 +358,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
             }
             quickOrderPlacedRef.current = false
             toast.success(`Linked to Room ${roomNumber}`)
-            setTables(prev => prev.map(t => t.id === tableId ? { ...t, activeSession: { ...session, booking_id: bookingId } } : t))
+            setTables(prev => prev.map(t => t.id === tableId ? { ...t, activeSession: null as any, table_status: 'available' } : t))
             setQuickOrderSession({
                 sessionId: session.session_token,
                 tableName: selectedTable?.label || 'Table',
@@ -425,14 +425,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                 return
             }
             
-            toast.success(`Linked to Room ${roomNumber}`)
-            const patch = seatNumber === 1
-                ? { activeSession: { ...session, booking_id: bookingId } }
-                : (t: TableWithSession) => ({ otherActiveSessions: [...(t.otherActiveSessions || []), { ...session, booking_id: bookingId }] })
-            
-            setTables(prev => prev.map(t => t.id === tableId
-                ? { ...t, ...(typeof patch === 'function' ? patch(t) : patch) }
-                : t))
+            setTables(prev => prev.map(t => t.id === tableId ? { ...t, activeSession: null as any, table_status: 'available' } : t))
             
             setQuickOrderSession({
                 sessionId: session.session_token,
@@ -1547,22 +1540,20 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                                 loading={isProcessing}
                                                 onClick={async () => {
                                                     setIsProcessing(true)
-                                                    const linkRes = await linkSessionToBooking(selectedTable.activeSession!.id, phoneResult.id)
+                                                    const linkRes = await linkSessionToBooking(selectedTable.activeSession!.id, phoneResult.id, selectedTable.id)
+                                                    setIsProcessing(false)
                                                     if (linkRes.error) {
                                                         toast.error(linkRes.error)
                                                     } else {
-                                                        toast.success(`Linked to Room ${phoneResult.rooms?.room_number || '?'}`)
+                                                        toast.success(`Orders transferred to Room ${phoneResult.rooms?.room_number || '?'} & Table ${selectedTable.label} freed!`)
+                                                        setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, activeSession: undefined, table_status: 'available' } : t))
+                                                        setSelectedTable(null)
+                                                        setShowGuestPicker(false)
+                                                        router.refresh()
                                                     }
-                                                    setIsProcessing(false)
-                                                    setQuickOrderSession({
-                                                        sessionId: selectedTable.activeSession!.session_token,
-                                                        tableName: selectedTable.label
-                                                    })
-                                                    setSelectedTable(null)
-                                                    setShowGuestPicker(false)
                                                 }}
                                             >
-                                                Link to Room &amp; Order
+                                                Transfer Orders to Room &amp; Free Table
                                             </Button>
                                         </div>
                                     )}

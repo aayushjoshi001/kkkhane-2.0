@@ -380,6 +380,8 @@ export async function linkSessionToBooking(sessionId: string, bookingId: string,
 
     revalidatePath('/waiter')
     revalidatePath('/cashier')
+    revalidatePath('/kitchen')
+    revalidatePath('/admin')
     return { success: true }
 }
 
@@ -592,7 +594,7 @@ export async function placeRoomOrderDirect(
             status: 'confirmed',
             needs_confirmation: false,
             payment_status: 'unpaid',
-            order_type: 'takeout'
+            order_type: 'dine_in'
         })
         .select('id')
         .single()
