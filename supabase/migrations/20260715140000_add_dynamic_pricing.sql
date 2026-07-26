@@ -23,8 +23,15 @@ ON public.dynamic_pricing_rules FOR ALL TO authenticated USING (
     restaurant_id = (auth.jwt() ->> 'restaurant_id')::uuid
 );
 
--- Seed basic weekend pricing rule (1.1x multiplier for Friday/Saturday)
--- This will serve as a default active rule for restaurants.
-INSERT INTO public.dynamic_pricing_rules (restaurant_id, rule_name, rule_type, multiplier)
-SELECT id, 'Weekend Premium (1.1x)', 'weekend', 1.10
-FROM public.restaurants;
+-- Deliberately seeds nothing.
+--
+-- This migration used to insert an active 'Weekend Premium (1.1x)' rule for
+-- every restaurant. Creating a table is a schema change; silently raising every
+-- tenant's weekend prices by 10% is a business decision, and a migration is the
+-- wrong place to make one on an owner's behalf — nobody reviewing a schema diff
+-- expects prices to move. Production was migrated table-only for exactly that
+-- reason, so seeding here would also put every fresh environment out of step
+-- with it.
+--
+-- A venue that wants weekend pricing creates the rule from Admin, where the
+-- multiplier is visible and can be turned off again.
