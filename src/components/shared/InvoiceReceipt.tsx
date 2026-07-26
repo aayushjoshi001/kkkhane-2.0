@@ -86,7 +86,7 @@ export default function InvoiceReceipt({
             <div className="text-center space-y-0.5">
                 <h2 className="text-sm font-black tracking-tight text-black uppercase">{restaurantName || 'ROYAL REST HOUSE'}</h2>
                 <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#000' }}>
-                    {restaurantAddress.trim() || 'Pulchowk, Chitwan'}
+                    {addressStr}
                 </p>
                 {restaurantPhone.trim() ? (
                     <p className="text-[9px]" style={{ color: '#000' }}>Tel: {restaurantPhone.trim()}</p>

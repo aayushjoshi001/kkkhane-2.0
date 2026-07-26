@@ -1208,6 +1208,91 @@ export default function CashierRoomManager({
                                 <p className="text-sm text-ink-subtle">No active booking session found.</p>
                             </div>
                         )}
+                        
+                        {/* Change Room Panel — shown when "Change Room" button is pressed */}
+                        {moveOpen && activeBooking && (() => {
+                            const target = moveCandidates.find(r => r.id === moveTargetId) || null
+                            const currentRate = selectedRoom.room_types?.base_price ?? 0
+                            const newRate = target?.room_types?.base_price ?? 0
+                            const rateChanged = !!target && newRate !== currentRate
+                            const heads = totalGuests(activeBooking)
+                            const capacity = target?.room_types?.capacity ?? null
+                            const tooSmall = capacity !== null && heads > capacity
+
+                            return (
+                                <div className="px-6 py-4 border-t border-hairline flex-shrink-0 bg-surface-muted/30">
+                                    <div className="space-y-3 border border-hairline rounded-2xl p-4 bg-surface">
+                                        <div>
+                                            <p className="text-xs font-extrabold text-ink">Move {activeBooking.guest_name} out of Room {selectedRoom.room_number}</p>
+                                            <p className="text-[11px] text-ink-subtle mt-0.5">
+                                                The folio moves with the guest — orders, charges and the advance already taken all stay on this stay.
+                                            </p>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Move to *</label>
+                                            <Select
+                                                value={moveTargetId}
+                                                onChange={e => setMoveTargetId(e.target.value)}
+                                                className="w-full px-3 py-2 border border-hairline rounded-xl text-xs bg-surface font-semibold"
+                                                aria-label="Destination room"
+                                            >
+                                                <option value="">Select a room…</option>
+                                                {moveCandidates.map(r => (
+                                                    <option key={r.id} value={r.id}>
+                                                        Room {r.room_number}
+                                                        {r.room_types?.name ? ` · ${r.room_types.name}` : ''}
+                                                        {r.room_types ? ` · ${money(r.room_types.base_price)}/night` : ''}
+                                                        {r.status === 'dirty' ? ' · needs cleaning' : ''}
+                                                    </option>
+                                                ))}
+                                            </Select>
+                                            {moveCandidates.length === 0 && (
+                                                <p className="text-[11px] text-amber-600 font-semibold mt-1">
+                                                    No other room is free right now.
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {rateChanged && (
+                                            <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                                                {money(currentRate)} → {money(newRate)} per night. Nights already spent in Room {selectedRoom.room_number} stay at {money(currentRate)}; the new rate applies from tonight.
+                                            </p>
+                                        )}
+                                        {tooSmall && (
+                                            <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                                                {heads} guests but Room {target?.room_number} sleeps {capacity}.
+                                            </p>
+                                        )}
+
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Reason</label>
+                                            <input
+                                                type="text"
+                                                value={moveReason}
+                                                onChange={e => setMoveReason(e.target.value)}
+                                                placeholder="Guest request, maintenance, upgrade…"
+                                                className="w-full px-3 py-2 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                            />
+                                        </div>
+
+                                        <div className="flex gap-3">
+                                            <Button variant="secondary" block onClick={() => setMoveOpen(false)}>Cancel</Button>
+                                            <Button
+                                                variant="primary"
+                                                block
+                                                icon={ArrowLeftRight}
+                                                loading={moving}
+                                                disabled={!moveTargetId || moving}
+                                                onClick={handleMoveRoom}
+                                            >
+                                                Move Guest
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )
+                        })()}
                         </div>
 
                         {/* Drawer Footer (Checkout and Total Billing) - sticky */}
