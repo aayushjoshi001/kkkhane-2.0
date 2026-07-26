@@ -1570,7 +1570,19 @@ export default function CashierClient({
                     <p className="text-caption text-ink-subtle">Manage table orders, room stays, billing, and settlements.</p>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <BusinessSessionControl
+                        initialSession={openSession ? {
+                            id: openSession.id,
+                            date: openSession.date,
+                            status: openSession.status,
+                            opening_balance: Number(openSession.opening_balance),
+                            opening_bank_balance: Number(openSession.opening_bank_balance)
+                        } : null}
+                        userRole={userRole}
+                        todayDate={getNstDateString()}
+                        variant="compact"
+                    />
                     <button
                         onClick={() => setShowTakeoutQuickOrder(true)}
                         className="flex items-center gap-2 text-sm font-bold text-ink-muted bg-surface border border-hairline hover:bg-surface-muted px-4 py-2.5 rounded-xl transition-colors shadow-sm"
@@ -1591,18 +1603,6 @@ export default function CashierClient({
             </div>
 
             <AdSpace />
-
-            <BusinessSessionControl
-                initialSession={openSession ? {
-                    id: openSession.id,
-                    date: openSession.date,
-                    status: openSession.status,
-                    opening_balance: Number(openSession.opening_balance),
-                    opening_bank_balance: Number(openSession.opening_bank_balance)
-                } : null}
-                userRole={userRole}
-                todayDate={getNstDateString()}
-            />
 
             {/* Cashier Tab Navigation */}
             <div className={`grid ${isHotel ? 'grid-cols-4' : 'grid-cols-3'} border-b border-hairline mb-4 bg-surface sticky top-14 z-20 -mx-3 px-3 md:mx-0 md:px-0`}>

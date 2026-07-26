@@ -16,12 +16,14 @@ interface BusinessSessionControlProps {
     } | null
     userRole: string
     todayDate: string
+    variant?: 'banner' | 'compact'
 }
 
 export default function BusinessSessionControl({
     initialSession,
     userRole,
     todayDate,
+    variant = 'banner',
 }: BusinessSessionControlProps) {
     const router = useRouter()
     const { confirm } = useConfirmStore()
@@ -98,6 +100,45 @@ export default function BusinessSessionControl({
         } finally {
             setLoading(false)
         }
+    }
+
+    if (variant === 'compact') {
+        return (
+            <div className="inline-flex items-center print:hidden">
+                {isClosed ? (
+                    <button
+                        onClick={handleOpenBusiness}
+                        disabled={loading}
+                        className="flex items-center gap-2 text-sm font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-4 py-2.5 rounded-xl transition-colors shadow-sm active:scale-95 shrink-0"
+                        title="Business Day is Closed — Click to Open"
+                    >
+                        {loading ? (
+                            <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                            <Play size={15} fill="currentColor" className="text-amber-600" />
+                        )}
+                        <span>Open Business Day</span>
+                    </button>
+                ) : (
+                    <button
+                        onClick={handleCloseBusiness}
+                        disabled={loading}
+                        className="flex items-center gap-2 text-sm font-bold text-emerald-900 bg-emerald-100 hover:bg-rose-100 hover:text-rose-900 border border-emerald-300 hover:border-rose-300 px-4 py-2.5 rounded-xl transition-colors shadow-sm active:scale-95 shrink-0"
+                        title={`Business Day Active (${session.date}) — Click to Close`}
+                    >
+                        {loading ? (
+                            <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                            <span className="relative flex h-2.5 w-2.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                            </span>
+                        )}
+                        <span>Day Active ({session.date})</span>
+                    </button>
+                )}
+            </div>
+        )
     }
 
     return (
