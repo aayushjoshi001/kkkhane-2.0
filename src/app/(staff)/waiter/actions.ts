@@ -595,14 +595,17 @@ export async function placeRoomOrderDirect(
             status: 'confirmed',
             needs_confirmation: false,
             payment_status: 'unpaid',
-            order_type: 'dine_in'
+            order_type: 'takeout',
+            placed_at: new Date().toISOString(),
+            subtotal_amount: 0,
+            total_amount: 0
         })
         .select('id')
         .single()
 
     if (orderInsertError || !orderRow?.id) {
         console.error('[placeRoomOrderDirect] Order insert failed:', orderInsertError)
-        return { error: 'Failed to create order.' }
+        return { error: orderInsertError?.message || 'Failed to create order.' }
     }
 
     const orderId = orderRow.id
