@@ -947,7 +947,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
 
                             <div className="space-y-2.5 pt-1">
                                 {(() => {
-                                    const isCredit = payMethod === 'credit' || (Number(creditAmount) || 0) > 0.01
+                                    const isCredit = paymentMethod === 'credit'
                                     const actionText = isCredit ? 'Mark Credit' : 'Mark Paid'
                                     return (
                                         <>

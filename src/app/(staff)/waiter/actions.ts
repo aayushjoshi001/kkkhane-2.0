@@ -342,11 +342,18 @@ export async function getActiveBookings(restaurantId: string) {
     return { success: true, bookings }
 }
 
-export async function linkSessionToBooking(sessionId: string, bookingId: string) {
+export async function linkSessionToBooking(
+    sessionId: string,
+    bookingId: string,
+    options?: { closeSessionAndFreeTable?: boolean; tableId?: string }
+) {
     const adminSupabase = await createAdminClient()
     const { error } = await adminSupabase
         .from('sessions')
-        .update({ booking_id: bookingId })
+        .update({
+            booking_id: bookingId,
+            ...(options?.closeSessionAndFreeTable ? { status: 'closed', closed_at: new Date().toISOString() } : {})
+        })
         .eq('id', sessionId)
 
     if (error) {
@@ -359,6 +366,13 @@ export async function linkSessionToBooking(sessionId: string, bookingId: string)
         .from('orders')
         .update({ booking_id: bookingId })
         .eq('session_id', sessionId)
+
+    if (options?.closeSessionAndFreeTable && options.tableId) {
+        await adminSupabase
+            .from('tables')
+            .update({ table_status: 'available' })
+            .eq('id', options.tableId)
+    }
 
     revalidatePath('/waiter')
     revalidatePath('/cashier')
