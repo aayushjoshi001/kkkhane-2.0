@@ -481,6 +481,11 @@ export function getItemDisplayName(item: {
  * e.g., "Kathmandu Metropolitan City - 10, Kathmandu"
  */
 export function formatInvoiceAddress(address?: string | null): string {
-    return address?.trim() || ''
+    const raw = address?.trim() || ''
+    if (!raw) return 'Pulchowk, Chitwan'
+    if (raw.toLowerCase().includes('pulchowk') || raw.toLowerCase().includes('chitwan')) {
+        return 'Pulchowk, Chitwan'
+    }
+    return raw
 }
 

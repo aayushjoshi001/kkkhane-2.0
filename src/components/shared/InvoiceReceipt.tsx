@@ -24,7 +24,7 @@ export default function InvoiceReceipt({
     className?: string
 }) {
     const now = new Date()
-    const addressStr = restaurantAddress.trim() || 'Pulchowk, Chitwan'
+    const addressStr = formatInvoiceAddress(restaurantAddress)
     const locationLine = [addressStr, restaurantPhone.trim() ? `Tel: ${restaurantPhone.trim()}` : '']
         .filter(Boolean)
         .join(' · ')
@@ -35,8 +35,7 @@ export default function InvoiceReceipt({
 
     // Total Due = what's still left to pay after all payments received
     const totalPaid = (invoice.cashPaid ?? 0) + (invoice.qrPaid ?? 0) + (invoice.advancePaid ?? 0) + (invoice.creditPaid ?? 0)
-    const calculatedDue = Math.max(0, invoice.total - totalPaid)
-    const totalDue = invoice.balanceDue !== undefined ? invoice.balanceDue : calculatedDue
+    const totalDue = Math.max(0, invoice.total - totalPaid)
 
     return (
         <div className={`bg-white text-black print-container font-mono text-[11px] ${className}`}>
