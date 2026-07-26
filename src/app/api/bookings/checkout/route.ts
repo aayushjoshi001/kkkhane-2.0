@@ -266,11 +266,8 @@ export async function POST(req: Request) {
 
         // 3. Resolve cash, qr, and credit splits
         const isIrd = features?.irdSyncEnabled === true
-        const cashPaid = isIrd ? (Number(cash_paid) || 0) : settledNow
+        const cashPaid = isIrd ? (Number(cash_paid) || 0) : Math.max(0, settledNow - creditAmount)
         const qrPaid = isIrd ? (Number(qr_paid) || 0) : 0
-        if (!isIrd) {
-            creditAmount = 0
-        }
 
         let hotelCash = cashPaid
         let hotelQr = qrPaid

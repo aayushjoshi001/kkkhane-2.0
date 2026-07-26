@@ -946,29 +946,39 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                             </div>
 
                             <div className="space-y-2.5 pt-1">
-                                <button
-                                    type="button"
-                                    disabled={isSaving}
-                                    onClick={() => {
-                                        setShowSettlementPrintPrompt(false)
-                                        handleSettle(settlementCopies)
-                                    }}
-                                    className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 active:scale-95 transition shadow-sm flex items-center justify-center gap-2"
-                                >
-                                    <Printer size={15} /> Print {settlementCopies} {settlementCopies === 1 ? 'Copy' : 'Copies'} & Mark Paid
-                                </button>
+                                {(() => {
+                                    const isCredit = payMethod === 'credit' || (Number(creditAmount) || 0) > 0.01
+                                    const actionText = isCredit ? 'Mark Credit' : 'Mark Paid'
+                                    return (
+                                        <>
+                                            <button
+                                                type="button"
+                                                disabled={isSaving}
+                                                onClick={() => {
+                                                    setShowSettlementPrintPrompt(false)
+                                                    handleSettle(settlementCopies)
+                                                }}
+                                                className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold text-white active:scale-95 transition shadow-sm flex items-center justify-center gap-2 ${
+                                                    isCredit ? 'bg-purple-600 hover:bg-purple-700' : 'bg-brand-600 hover:bg-brand-700'
+                                                }`}
+                                            >
+                                                <Printer size={15} /> Print {settlementCopies} {settlementCopies === 1 ? 'Copy' : 'Copies'} & {actionText}
+                                            </button>
 
-                                <button
-                                    type="button"
-                                    disabled={isSaving}
-                                    onClick={() => {
-                                        setShowSettlementPrintPrompt(false)
-                                        handleSettle(0)
-                                    }}
-                                    className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-ink bg-surface border border-hairline-strong hover:bg-surface-muted active:scale-95 transition flex items-center justify-center gap-2"
-                                >
-                                    <CheckCircle2 size={15} /> Only Mark Paid (No Print)
-                                </button>
+                                            <button
+                                                type="button"
+                                                disabled={isSaving}
+                                                onClick={() => {
+                                                    setShowSettlementPrintPrompt(false)
+                                                    handleSettle(0)
+                                                }}
+                                                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-ink bg-surface border border-hairline-strong hover:bg-surface-muted active:scale-95 transition flex items-center justify-center gap-2"
+                                            >
+                                                <CheckCircle2 size={15} /> Only {actionText} (No Print)
+                                            </button>
+                                        </>
+                                    )
+                                })()}
 
                                 <button
                                     type="button"
