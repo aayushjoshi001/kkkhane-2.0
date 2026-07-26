@@ -180,8 +180,8 @@ export default async function CashierPage() {
     }) || []
 
     const restaurantSlug = restaurantData?.data?.slug || ''
-    const restaurantName = restaurantData?.data?.name || 'Restaurant'
-    const restaurantAddress = restaurantData?.data?.address || ''
+    const restaurantName = restaurantData?.data?.name || 'ROYAL REST HOUSE'
+    const restaurantAddress = restaurantData?.data?.address || 'Pulchowk, Chitwan'
     const restaurantPhone = restaurantData?.data?.contact_phone || ''
     const isHotel = mode === 'hotel'
 

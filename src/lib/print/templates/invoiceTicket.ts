@@ -3,7 +3,7 @@
 // invoice modal. Kept in sync with that JSX; if the on-screen receipt layout
 // changes, mirror the change here too.
 
-import { EscPosBuilder, LINE_WIDTH } from '../escpos'
+import { EscPosBuilder, LINE_WIDTH, wrapTextToByteWidth } from '../escpos'
 import { advanceMethodLabel, formatInvoiceAddress } from '@/lib/utils'
 import type { AdvancePaymentMethod } from '@/types/database'
 import { appendBrandFooter } from './brandFooter'
@@ -58,8 +58,8 @@ const COL = { desc: 18, qty: 4, rate: 9, amt: 11 }
 export function buildInvoiceTicket(
     invoice: ActiveInvoice,
     money: (amount: number) => string,
-    restaurantName = 'KKHANE HOTEL & RESTAURANT',
-    restaurantAddress = '',
+    restaurantName = 'ROYAL REST HOUSE',
+    restaurantAddress = 'Pulchowk, Chitwan',
     restaurantPhone = '',
     // Printed invoices carry Bikram Sambat first, like the rest of the app. Not
     // a hook — this builds raw ESC/POS bytes outside React — so the cashier's
@@ -71,10 +71,16 @@ export function buildInvoiceTicket(
     const num = (amount: number) =>
         Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-    b.align('center').bold(true).line(restaurantName).bold(false)
-    const formattedAddress = formatInvoiceAddress(restaurantAddress)
+    b.align('center').bold(true).line(restaurantName || 'ROYAL REST HOUSE').bold(false)
+    const formattedAddress = formatInvoiceAddress(restaurantAddress || 'Pulchowk, Chitwan')
     if (formattedAddress) {
-        b.line(formattedAddress)
+        const addressLines = wrapTextToByteWidth(formattedAddress, LINE_WIDTH)
+        for (const addrLine of addressLines) {
+            b.line(addrLine)
+        }
+    }
+    if (restaurantPhone.trim()) {
+        b.line(`Tel: ${restaurantPhone.trim()}`)
     }
     b.line('*** INVOICE ***')
     b.line(`No: INV-${invoice.id.slice(0, 8).toUpperCase()}`)
@@ -98,7 +104,7 @@ export function buildInvoiceTicket(
     b.bold(false)
 
     if (invoice.type === 'room' && invoice.stayCost > 0) {
-        b.columns([
+        b.wrappedColumns([
             { text: `Room Stay (${invoice.nights}n)`, width: COL.desc },
             { text: String(invoice.nights), width: COL.qty, align: 'center' },
             { text: num(invoice.basePrice), width: COL.rate, align: 'right' },
@@ -107,7 +113,7 @@ export function buildInvoiceTicket(
     }
 
     for (const charge of invoice.manualCharges) {
-        b.columns([
+        b.wrappedColumns([
             { text: charge.description, width: COL.desc },
             { text: '1', width: COL.qty, align: 'center' },
             { text: num(charge.amount), width: COL.rate, align: 'right' },
@@ -117,7 +123,7 @@ export function buildInvoiceTicket(
 
     for (const item of invoice.qrOrders) {
         const name = invoice.type === 'room' ? `Food: ${item.name}` : item.name
-        b.columns([
+        b.wrappedColumns([
             { text: name, width: COL.desc },
             { text: String(item.quantity), width: COL.qty, align: 'center' },
             { text: num(item.unitPrice), width: COL.rate, align: 'right' },
@@ -127,7 +133,7 @@ export function buildInvoiceTicket(
 
     if (invoice.linkedOrders) {
         for (const item of invoice.linkedOrders) {
-            b.columns([
+            b.wrappedColumns([
                 { text: `Dine: ${item.name}`, width: COL.desc },
                 { text: String(item.quantity), width: COL.qty, align: 'center' },
                 { text: num(item.unitPrice), width: COL.rate, align: 'right' },
@@ -154,8 +160,11 @@ export function buildInvoiceTicket(
 
     b.divider()
     b.size({ doubleHeight: true }).bold(true)
-    const dueLabel = invoice.advancePaid && invoice.advancePaid > 0 ? 'BALANCE DUE' : 'TOTAL DUE'
-    b.line(`${dueLabel}: ${money(invoice.balanceDue ?? invoice.total)}`)
+    const totalPaid = (invoice.cashPaid ?? 0) + (invoice.qrPaid ?? 0) + (invoice.advancePaid ?? 0) + (invoice.creditPaid ?? 0)
+    const calculatedDue = Math.max(0, invoice.total - totalPaid)
+    const effectiveDue = invoice.balanceDue !== undefined ? invoice.balanceDue : calculatedDue
+    const dueLabel = (invoice.advancePaid && invoice.advancePaid > 0) || totalPaid > 0 ? 'BALANCE DUE' : 'TOTAL DUE'
+    b.line(`${dueLabel}: ${money(effectiveDue)}`)
     b.size({}).bold(false)
 
     if (invoice.paymentMethod) {

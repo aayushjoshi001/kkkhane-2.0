@@ -10,10 +10,11 @@ import { updateTakeoutStatusAction } from '@/app/(admin)/admin/takeout/actions'
 import { useCurrency, useFeatureEnabled, useDateFormatter, useFeatures } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
-import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent, PenLine } from 'lucide-react'
+import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent, PenLine, Printer } from 'lucide-react'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import Button from '@/components/ui/Button'
 import { usePrinter } from '@/lib/print/usePrinter'
+import { usePrinterSettingsStore } from '@/lib/stores/printerSettings'
 import { buildInvoiceTicket } from '@/lib/print/templates/invoiceTicket'
 import { buildStationTicket } from '@/lib/print/templates/stationTicket'
 import { itemsForStation, STATION_META, type StationKind } from '@/lib/stations'
@@ -168,6 +169,9 @@ export default function CashierClient({
     const { print: printInvoice } = usePrinter('invoice')
     const { print: printKot, networkPrinter: kotNetworkPrinter } = usePrinter('kot')
     const { print: printBot, networkPrinter: botNetworkPrinter } = usePrinter('bot')
+
+    const [showSettlementPrintPrompt, setShowSettlementPrintPrompt] = useState(false)
+    const [settlementCopies, setSettlementCopies] = useState(1)
 
     // Station tickets that reached no thermal printer, queued for the browser
     // fallback. A queue rather than a single slot: QZ Tray down for a whole
@@ -1116,7 +1120,7 @@ export default function CashierClient({
         }
     }
 
-    const handleMarkPaid = async (directInvoice?: any) => {
+    const handleMarkPaid = async (directInvoice?: any, overrideCopies?: number) => {
         const invoice = directInvoice || activeInvoice
         if (!invoice || isSettlingRef.current) return
         isSettlingRef.current = true
@@ -1267,15 +1271,19 @@ export default function CashierClient({
             setIsSettlingInvoice(false)
             setInvoiceSettled(true)
 
-            if (printInvoiceEnabled && printBillEnabled) {
-                const result = await printInvoice(buildInvoiceTicket(invoice, money, restaurantName, restaurantAddress, restaurantPhone, calendar))
-                if (!result.ok) {
-                    toast.error(
-                        result.status === 'no-printer-selected'
-                            ? 'No printer set for this till — pick one in Printer Settings.'
-                            : 'Printer not connected — opening browser print instead.'
-                    )
-                    if (result.status !== 'no-printer-selected') window.print()
+            const copiesToPrint = overrideCopies !== undefined ? overrideCopies : (usePrinterSettingsStore.getState().autoPrintBillOnSettle ? 1 : 0)
+            if (copiesToPrint > 0 && printInvoiceEnabled && printBillEnabled) {
+                for (let i = 0; i < copiesToPrint; i++) {
+                    const result = await printInvoice(buildInvoiceTicket(invoice, money, restaurantName, restaurantAddress, restaurantPhone, calendar))
+                    if (!result.ok) {
+                        toast.error(
+                            result.status === 'no-printer-selected'
+                                ? 'No printer set for this till — pick one in Printer Settings.'
+                                : 'Printer not connected — opening browser print instead.'
+                        )
+                        if (result.status !== 'no-printer-selected') window.print()
+                        break
+                    }
                 }
             }
 
@@ -3262,7 +3270,7 @@ export default function CashierClient({
                                         <Button
                                             variant="primary"
                                             loading={isSettlingInvoice}
-                                            onClick={() => handleMarkPaid()}
+                                            onClick={() => setShowSettlementPrintPrompt(true)}
                                             className="font-bold flex-1 bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 text-[10px] text-white py-1.5 min-w-[70px] animate-scale-in"
                                         >
                                             Close Guest
@@ -3271,7 +3279,7 @@ export default function CashierClient({
                                         <Button
                                             variant="primary"
                                             loading={isSettlingInvoice}
-                                            onClick={() => handleMarkPaid()}
+                                            onClick={() => setShowSettlementPrintPrompt(true)}
                                             className="font-bold flex-1 bg-emerald-600 hover:bg-emerald-700 border-emerald-600 hover:border-emerald-700 text-[10px] text-white py-1.5 min-w-[70px] animate-scale-in"
                                         >
                                             Mark Paid
@@ -3279,6 +3287,85 @@ export default function CashierClient({
                                     )}
                                 </>
                             )}
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* Settlement Print Prompt Options Modal */}
+            {mounted && showSettlementPrintPrompt && activeInvoice && createPortal(
+                <div
+                    className="fixed inset-0 bg-black/75 backdrop-blur-md z-[100000] flex items-center justify-center p-4 animate-in fade-in duration-150"
+                    onClick={() => setShowSettlementPrintPrompt(false)}
+                >
+                    <div
+                        className="bg-surface w-full max-w-sm p-6 rounded-2xl shadow-2xl space-y-5 relative border border-hairline"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center shrink-0">
+                                <Printer size={20} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-ink text-base">Print Customer Bill?</h3>
+                                <p className="text-xs text-ink-subtle mt-0.5">Select copies to print or mark paid without printing.</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-surface-muted p-3.5 rounded-xl border border-hairline flex items-center justify-between">
+                            <span className="text-xs font-semibold text-ink">Bill Copies:</span>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setSettlementCopies(Math.max(1, settlementCopies - 1))}
+                                    className="w-8 h-8 rounded-lg bg-surface border border-hairline-strong font-bold text-ink hover:bg-surface-muted transition flex items-center justify-center text-sm shadow-sm"
+                                >
+                                    -
+                                </button>
+                                <span className="w-8 text-center font-bold text-sm text-ink">{settlementCopies}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setSettlementCopies(Math.min(5, settlementCopies + 1))}
+                                    className="w-8 h-8 rounded-lg bg-surface border border-hairline-strong font-bold text-ink hover:bg-surface-muted transition flex items-center justify-center text-sm shadow-sm"
+                                >
+                                    +
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2.5 pt-1">
+                            <button
+                                type="button"
+                                disabled={isSettlingInvoice}
+                                onClick={() => {
+                                    setShowSettlementPrintPrompt(false)
+                                    handleMarkPaid(undefined, settlementCopies)
+                                }}
+                                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 active:scale-95 transition shadow-sm flex items-center justify-center gap-2"
+                            >
+                                <Printer size={15} /> Print {settlementCopies} {settlementCopies === 1 ? 'Copy' : 'Copies'} & Mark Paid
+                            </button>
+
+                            <button
+                                type="button"
+                                disabled={isSettlingInvoice}
+                                onClick={() => {
+                                    setShowSettlementPrintPrompt(false)
+                                    handleMarkPaid(undefined, 0)
+                                }}
+                                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-ink bg-surface border border-hairline-strong hover:bg-surface-muted active:scale-95 transition flex items-center justify-center gap-2"
+                            >
+                                <CheckCircle size={15} /> Only Mark Paid (No Print)
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setShowSettlementPrintPrompt(false)}
+                                className="w-full py-1.5 text-xs font-medium text-ink-subtle hover:text-ink transition text-center"
+                            >
+                                Cancel
+                            </button>
                         </div>
                     </div>
                 </div>,

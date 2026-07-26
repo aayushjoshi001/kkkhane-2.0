@@ -9,8 +9,8 @@ import { advanceMethodLabel, formatInvoiceAddress } from '@/lib/utils'
 export default function InvoiceReceipt({
     invoice,
     money,
-    restaurantName = 'KKHANE HOTEL & RESTAURANT',
-    restaurantAddress = '',
+    restaurantName = 'ROYAL REST HOUSE',
+    restaurantAddress = 'Pulchowk, Chitwan',
     restaurantPhone = '',
     className = '',
     formatDate,
@@ -24,7 +24,8 @@ export default function InvoiceReceipt({
     className?: string
 }) {
     const now = new Date()
-    const locationLine = [restaurantAddress.trim(), restaurantPhone.trim() ? `Tel: ${restaurantPhone.trim()}` : '']
+    const addressStr = restaurantAddress.trim() || 'Pulchowk, Chitwan'
+    const locationLine = [addressStr, restaurantPhone.trim() ? `Tel: ${restaurantPhone.trim()}` : '']
         .filter(Boolean)
         .join(' · ')
 
@@ -33,8 +34,9 @@ export default function InvoiceReceipt({
         Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
     // Total Due = what's still left to pay after all payments received
-    const totalPaid = (invoice.cashPaid ?? 0) + (invoice.qrPaid ?? 0) + (invoice.advancePaid ?? 0)
-    const totalDue = Math.max(0, invoice.total - totalPaid)
+    const totalPaid = (invoice.cashPaid ?? 0) + (invoice.qrPaid ?? 0) + (invoice.advancePaid ?? 0) + (invoice.creditPaid ?? 0)
+    const calculatedDue = Math.max(0, invoice.total - totalPaid)
+    const totalDue = invoice.balanceDue !== undefined ? invoice.balanceDue : calculatedDue
 
     return (
         <div className={`bg-white text-black print-container font-mono text-[11px] ${className}`}>
@@ -83,9 +85,12 @@ export default function InvoiceReceipt({
 
             {/* Invoice Header */}
             <div className="text-center space-y-0.5">
-                <h2 className="text-sm font-black tracking-tight text-black uppercase">{restaurantName}</h2>
-                {locationLine ? (
-                    <p className="text-[10px]" style={{ color: '#000' }}>{locationLine}</p>
+                <h2 className="text-sm font-black tracking-tight text-black uppercase">{restaurantName || 'ROYAL REST HOUSE'}</h2>
+                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#000' }}>
+                    {restaurantAddress.trim() || 'Pulchowk, Chitwan'}
+                </p>
+                {restaurantPhone.trim() ? (
+                    <p className="text-[9px]" style={{ color: '#000' }}>Tel: {restaurantPhone.trim()}</p>
                 ) : null}
                 <div className="border-t border-dashed border-black my-1.5" />
                 <p className="font-bold text-[11px] uppercase tracking-wider">*** INVOICE ***</p>
@@ -133,8 +138,8 @@ export default function InvoiceReceipt({
                 <div className="divide-y divide-dashed divide-gray-200 text-[10px] space-y-1 pt-1.5">
                     {/* Stay Charge (if room) */}
                     {invoice.type === 'room' && invoice.stayCost > 0 && (
-                        <div className="flex justify-between py-0.5">
-                            <span className="w-1/2 text-left truncate">Room Stay ({invoice.nights}n)</span>
+                        <div className="flex items-start justify-between py-0.5">
+                            <span className="w-1/2 text-left break-words pr-1">Room Stay ({invoice.nights}n)</span>
                             <span className="w-12 text-center">{invoice.nights}</span>
                             <span className="w-16 text-right">{num(invoice.basePrice)}</span>
                             <span className="w-16 text-right font-bold text-black">{num(invoice.stayCost)}</span>
@@ -143,8 +148,8 @@ export default function InvoiceReceipt({
 
                     {/* Additional charges */}
                     {invoice.manualCharges && invoice.manualCharges.map((c) => (
-                        <div key={c.id} className="flex justify-between py-0.5">
-                            <span className="w-1/2 text-left truncate capitalize">{c.description}</span>
+                        <div key={c.id} className="flex items-start justify-between py-0.5">
+                            <span className="w-1/2 text-left break-words pr-1 capitalize">{c.description}</span>
                             <span className="w-12 text-center">1</span>
                             <span className="w-16 text-right">{num(c.amount)}</span>
                             <span className="w-16 text-right font-bold text-black">{num(c.amount)}</span>
@@ -153,8 +158,8 @@ export default function InvoiceReceipt({
 
                     {/* QR / Session order items */}
                     {invoice.qrOrders && invoice.qrOrders.map((item, idx) => (
-                        <div key={idx} className="flex justify-between py-0.5">
-                            <span className="w-1/2 text-left truncate">{invoice.type === 'room' ? `Food: ${item.name}` : item.name}</span>
+                        <div key={idx} className="flex items-start justify-between py-0.5">
+                            <span className="w-1/2 text-left break-words pr-1">{invoice.type === 'room' ? `Food: ${item.name}` : item.name}</span>
                             <span className="w-12 text-center">{item.quantity}</span>
                             <span className="w-16 text-right">{num(item.unitPrice)}</span>
                             <span className="w-16 text-right font-bold text-black">{num(item.unitPrice * item.quantity)}</span>
@@ -163,8 +168,8 @@ export default function InvoiceReceipt({
 
                     {/* Waiter-linked Dining table orders */}
                     {invoice.linkedOrders && invoice.linkedOrders.map((item, idx) => (
-                        <div key={idx} className="flex justify-between py-0.5">
-                            <span className="w-1/2 text-left truncate font-medium">Dine: {item.name}</span>
+                        <div key={idx} className="flex items-start justify-between py-0.5">
+                            <span className="w-1/2 text-left break-words pr-1 font-medium">Dine: {item.name}</span>
                             <span className="w-12 text-center">{item.quantity}</span>
                             <span className="w-16 text-right">{num(item.unitPrice)}</span>
                             <span className="w-16 text-right font-bold text-black">{num(item.unitPrice * item.quantity)}</span>
@@ -214,7 +219,7 @@ export default function InvoiceReceipt({
             </div>
 
             <div className="flex justify-between items-center text-xs font-black border-t-2 border-black pt-1 mt-1">
-                <span className="uppercase">TOTAL DUE</span>
+                <span className="uppercase">{(invoice.advancePaid && invoice.advancePaid > 0) || totalPaid > 0 ? 'BALANCE DUE' : 'TOTAL DUE'}</span>
                 <span className="text-sm font-black text-black tabular-nums">{money(totalDue)}</span>
             </div>
 

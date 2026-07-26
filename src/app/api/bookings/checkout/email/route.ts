@@ -64,8 +64,8 @@ export async function POST(req: Request) {
             .eq('id', currentUser.restaurantId)
             .single()
 
-        const restaurantName = rest?.name || 'KKHANE HOTEL & RESTAURANT'
-        const formattedAddress = formatInvoiceAddress(rest?.address)
+        const restaurantName = rest?.name || 'ROYAL REST HOUSE'
+        const formattedAddress = formatInvoiceAddress(rest?.address || 'Pulchowk, Chitwan')
 
         // 4. Construct beautiful HTML receipt template
         const chargesRows = folio.charges.map(c => 

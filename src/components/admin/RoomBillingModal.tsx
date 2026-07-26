@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Loader2, CheckCircle2, Percent, Clock } from 'lucide-react'
+import { X, Loader2, CheckCircle2, Percent, Clock, Printer } from 'lucide-react'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
@@ -10,6 +10,7 @@ import { calculateNights, advanceMethodLabel, getItemDisplayName } from '@/lib/u
 import { buildInvoiceTicket, type ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import { usePrinter } from '@/lib/print/usePrinter'
+import { usePrinterSettingsStore } from '@/lib/stores/printerSettings'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 import { useFeatureEnabled, useDateFormatter } from '@/lib/contexts/FeatureContext'
 import Select from '@/components/ui/Select'
@@ -122,6 +123,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // happens after this, so the manager sees "Settled" immediately instead
     // of waiting on a printer that may be slow or not configured.
     const [invoiceSettled, setInvoiceSettled] = useState(false)
+    const [showSettlementPrintPrompt, setShowSettlementPrintPrompt] = useState(false)
+    const [settlementCopies, setSettlementCopies] = useState(1)
 
     useEffect(() => {
         if (!booking) return
@@ -299,10 +302,10 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             setShowSettlementConfirm(true)
             return
         }
-        handleSettle()
+        setShowSettlementPrintPrompt(true)
     }
 
-    const handleSettle = async () => {
+    const handleSettle = async (overrideCopies?: number) => {
         if (!booking) return
         if (overpaid || creditFieldsInvalid) return
 
@@ -359,13 +362,11 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                 })
             }
 
-            // The booking is already settled in the database at this point —
-            // window.print() just opens the browser's own print dialog (pick a
-            // printer, preview, cancel); it's a blocking call, so whether the
-            // manager prints or cancels here has no bearing on the settlement
-            // above, which already happened.
-            if (printInvoiceEnabled && printBillEnabled) {
-                await handlePrintBill()
+            const copiesToPrint = overrideCopies !== undefined ? overrideCopies : (usePrinterSettingsStore.getState().autoPrintBillOnSettle ? 1 : 0)
+            if (copiesToPrint > 0 && printInvoiceEnabled && printBillEnabled) {
+                for (let i = 0; i < copiesToPrint; i++) {
+                    await handlePrintBill()
+                }
             }
 
             const paidAmount = advancePaid + resolvedCash + resolvedQr
@@ -887,12 +888,94 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                     Cancel
                                 </button>
                                 <button
-                                    onClick={handleSettle}
+                                    onClick={() => {
+                                        setShowSettlementConfirm(false)
+                                        setShowSettlementPrintPrompt(true)
+                                    }}
                                     disabled={isSaving || overpaid || creditFieldsInvalid}
                                     className="flex-1 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white font-bold rounded-xl text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
                                 >
                                     {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
                                     Confirm &amp; Continue
+                                </button>
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                )}
+
+                {/* Settlement Print Prompt Modal */}
+                {showSettlementPrintPrompt && invoiceData && createPortal(
+                    <div
+                        className="fixed inset-0 bg-black/75 backdrop-blur-md z-[100000] flex items-center justify-center p-4 animate-in fade-in duration-150"
+                        onClick={() => setShowSettlementPrintPrompt(false)}
+                    >
+                        <div
+                            className="bg-surface w-full max-w-sm p-6 rounded-2xl shadow-2xl space-y-5 relative border border-hairline"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center shrink-0">
+                                    <Printer size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-ink text-base">Print Customer Bill?</h3>
+                                    <p className="text-xs text-ink-subtle mt-0.5">Select copies to print or mark paid without printing.</p>
+                                </div>
+                            </div>
+
+                            <div className="bg-surface-muted p-3.5 rounded-xl border border-hairline flex items-center justify-between">
+                                <span className="text-xs font-semibold text-ink">Bill Copies:</span>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setSettlementCopies(Math.max(1, settlementCopies - 1))}
+                                        className="w-8 h-8 rounded-lg bg-surface border border-hairline-strong font-bold text-ink hover:bg-surface-muted transition flex items-center justify-center text-sm shadow-sm"
+                                    >
+                                        -
+                                    </button>
+                                    <span className="w-8 text-center font-bold text-sm text-ink">{settlementCopies}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSettlementCopies(Math.min(5, settlementCopies + 1))}
+                                        className="w-8 h-8 rounded-lg bg-surface border border-hairline-strong font-bold text-ink hover:bg-surface-muted transition flex items-center justify-center text-sm shadow-sm"
+                                    >
+                                        +
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2.5 pt-1">
+                                <button
+                                    type="button"
+                                    disabled={isSaving}
+                                    onClick={() => {
+                                        setShowSettlementPrintPrompt(false)
+                                        handleSettle(settlementCopies)
+                                    }}
+                                    className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 active:scale-95 transition shadow-sm flex items-center justify-center gap-2"
+                                >
+                                    <Printer size={15} /> Print {settlementCopies} {settlementCopies === 1 ? 'Copy' : 'Copies'} & Mark Paid
+                                </button>
+
+                                <button
+                                    type="button"
+                                    disabled={isSaving}
+                                    onClick={() => {
+                                        setShowSettlementPrintPrompt(false)
+                                        handleSettle(0)
+                                    }}
+                                    className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-ink bg-surface border border-hairline-strong hover:bg-surface-muted active:scale-95 transition flex items-center justify-center gap-2"
+                                >
+                                    <CheckCircle2 size={15} /> Only Mark Paid (No Print)
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setShowSettlementPrintPrompt(false)}
+                                    className="w-full py-1.5 text-xs font-medium text-ink-subtle hover:text-ink transition text-center"
+                                >
+                                    Cancel
                                 </button>
                             </div>
                         </div>
