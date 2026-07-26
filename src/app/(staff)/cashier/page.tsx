@@ -85,6 +85,7 @@ export default async function CashierPage() {
             .select('id, table_id, restaurant_id, status, opened_at, session_token, booking_id, seat_number')
             .eq('restaurant_id', restaurantId)
             .eq('status', 'active')
+            .is('booking_id', null)
             .order('seat_number', { ascending: true }),
 
         // Restaurant slug (manual takeaway/delivery redirect) + name (print tickets)
@@ -169,11 +170,27 @@ export default async function CashierPage() {
     for (const s of activeSessions || []) {
         (sessionsByTable[s.table_id] ??= []).push(s)
     }
+
+    // Auto-cleanup any tables marked 'occupied' or 'active' in DB that have no active non-room sessions
+    const activeTableIds = new Set((activeSessions || []).map(s => s.table_id))
+    const stuckTableIds = (tables || [])
+        .filter(t => (t.table_status === 'occupied' || t.table_status === 'active') && !activeTableIds.has(t.id))
+        .map(t => t.id)
+
+    if (stuckTableIds.length > 0) {
+        await adminSupabase
+            .from('tables')
+            .update({ table_status: 'available' })
+            .in('id', stuckTableIds)
+    }
+
     const mappedTables = tables?.map(t => {
         const tableSessions = sessionsByTable[t.id] || []
         const primary = tableSessions.find(s => s.seat_number === 1) || tableSessions[0] || null
+        const isStuck = stuckTableIds.includes(t.id)
         return {
             ...t,
+            table_status: isStuck ? 'available' : t.table_status,
             activeSession: primary,
             otherActiveSessions: tableSessions.filter(s => s.id !== primary?.id),
         }

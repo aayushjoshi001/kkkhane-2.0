@@ -569,20 +569,21 @@ export async function placeRoomOrderDirect(
     const supabase = await createServerClient()
     const adminSupabase = await createAdminClient()
     
-    // Check if staff user
-    const { restaurantId } = await getCurrentUser()
-    if (!restaurantId) return { error: 'Unauthorized' }
-
     // 1. Fetch booking to make sure it's active
     const { data: booking, error: bookingErr } = await adminSupabase
         .from('bookings')
-        .select('id, status')
+        .select('id, status, restaurant_id')
         .eq('id', bookingId)
         .single()
 
     if (bookingErr || !booking || booking.status !== 'checked_in') {
         return { error: 'Room stay booking is invalid or checked out.' }
     }
+
+    // Check if staff user
+    const currentUser = await getCurrentUser().catch(() => null)
+    const restaurantId = currentUser?.restaurantId || booking.restaurant_id
+    if (!restaurantId) return { error: 'Unauthorized' }
 
     // 2. Create pending order row
     const { data: orderRow, error: orderInsertError } = await adminSupabase

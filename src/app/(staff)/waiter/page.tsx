@@ -63,6 +63,14 @@ export default async function WaiterPage() {
 
     const now = new Date().toISOString()
 
+    // Auto-cleanup any legacy room-linked sessions that were left marked as active before the fix
+    await adminSupabase
+        .from('sessions')
+        .update({ status: 'closed', closed_at: now })
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'active')
+        .not('booking_id', 'is', null)
+
     // Fetch tables and active sessions separately — more reliable than a nested join
     const [{ data: tables }, { data: activeSessions }] = await Promise.all([
         adminSupabase
@@ -76,6 +84,7 @@ export default async function WaiterPage() {
             .select('id, table_id, restaurant_id, opened_by, session_token, status, opened_at, closed_at, expires_at, guest_count, max_seats, seat_number, notes')
             .eq('restaurant_id', restaurantId)
             .eq('status', 'active')
+            .is('booking_id', null)
             .order('seat_number', { ascending: true }),
     ])
 
@@ -89,12 +98,27 @@ export default async function WaiterPage() {
         (sessionsByTable[s.table_id] ??= []).push(s)
     }
 
+    // Auto-cleanup any tables marked 'occupied' or 'active' in DB that have no active non-room sessions
+    const activeTableIds = new Set((activeSessions || []).map(s => s.table_id))
+    const stuckTableIds = (tables || [])
+        .filter(t => (t.table_status === 'occupied' || t.table_status === 'active') && !activeTableIds.has(t.id))
+        .map(t => t.id)
+
+    if (stuckTableIds.length > 0) {
+        await adminSupabase
+            .from('tables')
+            .update({ table_status: 'available' })
+            .in('id', stuckTableIds)
+    }
+
     const mappedTables = (tables || []).map(table => {
         const sessions = sessionsByTable[table.id] || []
         const primary = sessions.find(s => s.seat_number === 1) || sessions[0] || null
         const others = sessions.filter(s => s.id !== primary?.id)
+        const isStuck = stuckTableIds.includes(table.id)
         return {
             ...table,
+            table_status: isStuck ? 'available' : table.table_status,
             activeSession: primary,
             otherActiveSessions: others,
         }

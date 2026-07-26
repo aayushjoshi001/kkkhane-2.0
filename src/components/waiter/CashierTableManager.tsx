@@ -31,7 +31,8 @@ function getSeatSession(table: TableWithSession, seatNumber: number): Session | 
 
 function getEffectiveStatus(table: TableWithSession, isHotel?: boolean): string {
     if (table.activeSession) return 'active'
-    const status = table.table_status || 'available'
+    const status = (table.table_status as string) || 'available'
+    if (status === 'active' || status === 'occupied') return 'available'
     if (isHotel && status === 'dirty') return 'available'
     return status
 }
