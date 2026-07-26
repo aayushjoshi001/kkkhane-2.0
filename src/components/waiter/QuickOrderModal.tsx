@@ -143,7 +143,9 @@ export default function QuickOrderModal({
 
     useEffect(() => {
         if (!isOpen) return
-        if (sessionId && tableName) {
+        if (bookingId) {
+            setSelectedSession(null)
+        } else if (sessionId && tableName) {
             setSelectedSession({ id: sessionId, token: sessionId, label: tableName })
         } else if (activeTables && activeTables.length > 0) {
             const firstActive = activeTables.find(t => t.activeSession)
@@ -159,7 +161,7 @@ export default function QuickOrderModal({
         } else {
             setSelectedSession(null)
         }
-    }, [isOpen, sessionId, tableName, activeTables])
+    }, [isOpen, sessionId, tableName, activeTables, bookingId])
 
     useEffect(() => {
         if (!isOpen || !restaurantId) return
@@ -409,11 +411,13 @@ export default function QuickOrderModal({
                     return item
                 })
 
-                res = bookingId && !selectedSession
-                    ? await placeRoomOrderDirect(bookingId, cartWithPacking, customerNote)
-                    : selectedSession
-                        ? await placeStaffOrder(selectedSession.token, cartWithPacking, customerNote)
-                        : { error: 'No active session found.' }
+                if (bookingId) {
+                    res = await placeRoomOrderDirect(bookingId, cartWithPacking, customerNote)
+                } else if (selectedSession) {
+                    res = await placeStaffOrder(selectedSession.token, cartWithPacking, customerNote)
+                } else {
+                    res = { error: 'No active table session or room stay selected.' }
+                }
             }
 
             if (res && res.success) {
@@ -508,7 +512,9 @@ export default function QuickOrderModal({
                         </div>
                         <div>
                             <h3 className="text-h3 font-black text-ink">Quick POS Order</h3>
-                            {activeTables && activeTables.length > 0 ? (
+                            {bookingId ? (
+                                <p className="text-caption text-brand-500 font-bold mt-0.5">🛎 {tableName || 'Room Stay'} · Room Order</p>
+                            ) : activeTables && activeTables.length > 0 ? (
                                 <div className="mt-1 flex items-center gap-1.5">
                                     <span className="text-[10px] font-bold text-ink-subtle uppercase">Table:</span>
                                     <Select
@@ -537,8 +543,6 @@ export default function QuickOrderModal({
                                 </div>
                             ) : selectedSession ? (
                                 <p className="text-caption text-ink-subtle mt-0.5">Table {selectedSession.label} · Active Session</p>
-                            ) : bookingId && tableName ? (
-                                <p className="text-caption text-brand-500 font-bold mt-0.5">🛎 {tableName} · Room Order</p>
                             ) : (
                                 <p className="text-caption text-amber-500 font-semibold mt-0.5">No active table sessions found</p>
                             )}
