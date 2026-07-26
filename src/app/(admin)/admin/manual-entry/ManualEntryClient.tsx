@@ -849,7 +849,6 @@ export default function ManualEntryClient({
                     // Day Book route used for a no-supplier expense has no cheque/
                     // approval concept, so routing a cheque through it would silently
                     // skip the expense record and any approval gating entirely.
-                    if (f.payment_mode === 'cheque' && !f.supplier_id) { toast.error('Cheque payments need a known supplier — select one above'); return }
                     if (f.payment_mode === 'cheque') {
                         const chequeError = validateChequeDetails(chequeDetails)
                         if (chequeError) { toast.error(chequeError); return }
@@ -873,6 +872,18 @@ export default function ManualEntryClient({
                             category: 'suppliers',
                             supplier_id: f.supplier_id,
                             cheque_details: f.payment_mode === 'cheque' ? buildChequeDetailsPayload(chequeDetails) : undefined,
+                        })
+                    } else if (f.payment_mode === 'cheque') {
+                        result = await createVoucherAction({
+                            voucher_type: 'payment',
+                            party_name: f.description.trim().split(' ')[0] || 'General Expense',
+                            amount,
+                            payment_mode: 'cheque',
+                            bank_name: f.bank_name || undefined,
+                            particulars: f.description.trim(),
+                            category: 'expenses',
+                            expense_category_id: f.expense_category_id,
+                            cheque_details: buildChequeDetailsPayload(chequeDetails),
                         })
                     } else {
                         const res = await fetch('/api/day-book/entries', {
@@ -1707,11 +1718,6 @@ export default function ManualEntryClient({
                                                 <option value="bank">Bank Transfer</option>
                                                 <option value="cheque">Cheque</option>
                                             </SelectField>
-                                            {forms.expense_payment.payment_mode === 'cheque' && !forms.expense_payment.supplier_id && (
-                                                <p className="text-[11px] font-bold text-amber-600">
-                                                    Cheque needs a known supplier — pick a food/stock-related category above to reveal the Supplier field.
-                                                </p>
-                                            )}
                                             {(forms.expense_payment.payment_mode === 'qr' || forms.expense_payment.payment_mode === 'bank' || forms.expense_payment.payment_mode === 'cheque') && (
                                                 <SelectField
                                                     label="Bank Account"
@@ -1724,7 +1730,7 @@ export default function ManualEntryClient({
                                                     ))}
                                                 </SelectField>
                                             )}
-                                            {forms.expense_payment.payment_mode === 'cheque' && forms.expense_payment.supplier_id && (
+                                            {forms.expense_payment.payment_mode === 'cheque' && (
                                                 <ChequeDetailsFields value={chequeDetails} onChange={setChequeDetails} />
                                             )}
                                             <InputField

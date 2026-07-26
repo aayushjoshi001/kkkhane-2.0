@@ -190,6 +190,28 @@ async function postLedgerEntry(supabase: SupabaseClient, user: CurrentUserType, 
             console.error("Failed to post staff ledger entry:", insertErr)
             throw new Error(`Failed to post staff ledger: ${insertErr.message}`)
         }
+    } else if (voucher.category === 'expenses' && voucher.expense_category_id) {
+        const bankAccountId = await resolveBankAccountId(supabase, user.restaurantId, voucher.bank_name)
+
+        const { error: expenseErr } = await supabase
+            .from('expenses')
+            .insert({
+                restaurant_id: user.restaurantId,
+                category_id: voucher.expense_category_id,
+                day_book_entry_id: dayBookEntryId,
+                amount: voucher.amount,
+                description: voucher.particulars,
+                vendor_name: voucher.party_name,
+                bank_account_id: bankAccountId,
+                status: 'paid',
+                created_by: user.id,
+                ...(voucher.purchase_date ? { created_at: `${voucher.purchase_date}T12:00:00.000Z` } : {})
+            })
+
+        if (expenseErr) {
+            console.error('Failed to post general voucher expense:', expenseErr)
+            throw new Error(`Failed to post expense: ${expenseErr.message}`)
+        }
     }
 
     return {}
