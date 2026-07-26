@@ -7,6 +7,7 @@ import MenuItemCard from './MenuItemCard'
 import type { MenuCategory, MenuItem } from '@/types/database'
 import { useTranslation } from '@/lib/contexts/TranslationContext'
 import { Search, X } from 'lucide-react'
+import { matchesMenuSearch } from '@/lib/utils'
 
 export default function MenuSection({
     categories,
@@ -85,11 +86,7 @@ export default function MenuSection({
     // Filter items based on search query
     const filteredItems = useMemo(() => {
         if (!searchQuery.trim()) return items
-        const query = searchQuery.toLowerCase()
-        return items.filter(item => 
-            item.name.toLowerCase().includes(query) || 
-            (item.description && item.description.toLowerCase().includes(query))
-        )
+        return items.filter(item => matchesMenuSearch(item, searchQuery))
     }, [items, searchQuery])
 
     // Items grouped by category in display order

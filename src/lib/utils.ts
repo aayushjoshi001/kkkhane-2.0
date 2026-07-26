@@ -489,3 +489,44 @@ export function formatInvoiceAddress(address?: string | null): string {
     return raw
 }
 
+/**
+ * Checks whether a menu item matches a user search query.
+ * Searches across item name, description, tags, variations, category name, and modifier groups.
+ * Supports tokenized search so multi-word queries like "chicken steam momo" or "large pizza" match properly.
+ */
+export function matchesMenuSearch(item: any, searchQuery: string): boolean {
+    if (!item) return false
+    const query = searchQuery?.trim().toLowerCase()
+    if (!query) return true
+
+    const itemName = (item.name || '').toLowerCase()
+    const description = (item.description || '').toLowerCase()
+    const tags = Array.isArray(item.tags) ? item.tags.join(' ').toLowerCase() : ''
+    const categoryName = (item.menu_categories?.name || item.category_name || item.category?.name || '').toLowerCase()
+
+    // Variations text (e.g. "Chicken Steam Momo", "Large Pizza", "Steam")
+    const variationNames = Array.isArray(item.variations)
+        ? item.variations.map((v: any) => v.name || '').join(' ').toLowerCase()
+        : ''
+
+    // Modifiers text
+    const modifierGroups = item.modifier_groups || item.menu_item_modifier_groups
+    const modifierNames = Array.isArray(modifierGroups)
+        ? modifierGroups
+            .map((g: any) => `${g.name || ''} ${Array.isArray(g.modifiers) ? g.modifiers.map((m: any) => m.name || '').join(' ') : ''}`)
+            .join(' ')
+            .toLowerCase()
+        : ''
+
+    const fullText = `${itemName} ${description} ${tags} ${categoryName} ${variationNames} ${modifierNames}`
+
+    // 1. Direct phrase match
+    if (fullText.includes(query)) return true
+
+    // 2. Tokenized search: Every word in the query must match somewhere in fullText
+    const tokens = query.split(/\s+/).filter(Boolean)
+    if (tokens.length === 0) return true
+
+    return tokens.every(token => fullText.includes(token))
+}
+

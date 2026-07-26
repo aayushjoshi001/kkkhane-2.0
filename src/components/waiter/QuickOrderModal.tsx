@@ -8,6 +8,8 @@ import { createTakeoutOrder, createDeliveryOrder } from '@/app/api/takeout/actio
 import { toast } from 'react-hot-toast'
 import Select from '@/components/ui/Select'
 
+import { matchesMenuSearch } from '@/lib/utils'
+
 interface Modifier {
     id: string
     name: string
@@ -180,7 +182,7 @@ export default function QuickOrderModal({
     const filteredItems = useMemo(() => {
         return menuItems.filter(item => {
             const matchesCategory = selectedCategoryId === 'all' || item.category_id === selectedCategoryId
-            const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase())
+            const matchesSearch = matchesMenuSearch(item, searchQuery)
             return matchesCategory && matchesSearch
         })
     }, [menuItems, selectedCategoryId, searchQuery])

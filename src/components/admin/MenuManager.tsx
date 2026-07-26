@@ -18,6 +18,7 @@ import {
 import { createIngredientAction } from '@/app/(admin)/admin/ingredients/actions'
 import { convertToStockUnit } from '@/lib/conversions'
 import { getRestaurantTranslationConfig } from '@/app/(admin)/admin/menu/translation-actions'
+import { matchesMenuSearch } from '@/lib/utils'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
@@ -100,8 +101,7 @@ export default function MenuManager({
     const [categoryFilter, setCategoryFilter] = useState('all')
 
     const filteredItems = items.filter(item => {
-        const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                              (item.description?.toLowerCase() || '').includes(searchQuery.toLowerCase())
+        const matchesSearch = matchesMenuSearch(item, searchQuery)
         const matchesCategory = categoryFilter === 'all' || item.category_id === categoryFilter
         return matchesSearch && matchesCategory
     })
