@@ -5,11 +5,13 @@ import { toast } from 'react-hot-toast'
 import { Printer, RefreshCw, X } from 'lucide-react'
 import { usePrinter, type PrinterRole } from '@/lib/print/usePrinter'
 import { EscPosBuilder } from '@/lib/print/escpos'
+import { usePrinterSettingsStore } from '@/lib/stores/printerSettings'
+import { useHydratedStore } from '@/lib/stores/useHydratedStore'
 import Modal from '@/components/ui/Modal'
 import Select from '@/components/ui/Select'
 
 const ROLE_COPY: Record<PrinterRole, { title: string; hint: string }> = {
-    invoice: { title: 'Invoice Printer', hint: 'Used to print the bill automatically when a table or room is settled. Leave unset on a single-printer till to reuse the Kitchen (KOT) printer.' },
+    invoice: { title: 'Invoice Printer', hint: 'Used to print customer bills. Leave unset on a single-printer till to reuse the Kitchen (KOT) printer.' },
     kot: { title: 'Kitchen Ticket (KOT) Printer', hint: 'Used to print a ticket automatically the moment a new food order arrives.' },
     bot: { title: 'Bar Ticket (BOT) Printer', hint: 'Used to print a ticket automatically the moment a new drink order arrives.' },
 }
@@ -29,6 +31,8 @@ function buildTestTicket(): Uint8Array {
 
 export function PrinterSettingsModal({ role, open, onClose }: { role: PrinterRole; open: boolean; onClose: () => void }) {
     const { status, printers, refreshPrinters, print, selectedPrinter, selectPrinter } = usePrinter(role)
+    const autoPrintBillOnSettle = useHydratedStore(usePrinterSettingsStore, (s) => s.autoPrintBillOnSettle) ?? false
+    const setAutoPrintBillOnSettle = usePrinterSettingsStore((s) => s.setAutoPrintBillOnSettle)
     const [testing, setTesting] = useState(false)
     const copy = ROLE_COPY[role]
 
@@ -102,7 +106,24 @@ export function PrinterSettingsModal({ role, open, onClose }: { role: PrinterRol
                         ))}
                     </Select>
 
-                    <p className="mt-2 text-[11px] text-ink-subtle">Remembered on this device only — set it once per till or kitchen screen.</p>
+                    {role === 'invoice' && (
+                        <div className="mt-4 pt-3 border-t border-hairline">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={autoPrintBillOnSettle}
+                                    onChange={(e) => setAutoPrintBillOnSettle(e.target.checked)}
+                                    className="w-4 h-4 text-brand-600 rounded border-hairline-strong focus:ring-brand-500 cursor-pointer"
+                                />
+                                <span className="text-xs font-medium text-ink">Auto-print bill when marking payment as paid</span>
+                            </label>
+                            <p className="mt-1 text-[11px] text-ink-subtle pl-6">
+                                If unchecked, marking as paid will settle the order without auto-opening the printer. You can still print bills manually.
+                            </p>
+                        </div>
+                    )}
+
+                    <p className="mt-3 text-[11px] text-ink-subtle">Remembered on this device only — set it once per till or kitchen screen.</p>
                 </div>
 
                 <div className="px-6 py-4 bg-surface-muted border-t border-hairline flex justify-end gap-3 sm:rounded-b-[24px]">

@@ -98,7 +98,7 @@ export function buildInvoiceTicket(
     b.bold(false)
 
     if (invoice.type === 'room' && invoice.stayCost > 0) {
-        b.columns([
+        b.wrappedColumns([
             { text: `Room Stay (${invoice.nights}n)`, width: COL.desc },
             { text: String(invoice.nights), width: COL.qty, align: 'center' },
             { text: num(invoice.basePrice), width: COL.rate, align: 'right' },
@@ -107,7 +107,7 @@ export function buildInvoiceTicket(
     }
 
     for (const charge of invoice.manualCharges) {
-        b.columns([
+        b.wrappedColumns([
             { text: charge.description, width: COL.desc },
             { text: '1', width: COL.qty, align: 'center' },
             { text: num(charge.amount), width: COL.rate, align: 'right' },
@@ -117,7 +117,7 @@ export function buildInvoiceTicket(
 
     for (const item of invoice.qrOrders) {
         const name = invoice.type === 'room' ? `Food: ${item.name}` : item.name
-        b.columns([
+        b.wrappedColumns([
             { text: name, width: COL.desc },
             { text: String(item.quantity), width: COL.qty, align: 'center' },
             { text: num(item.unitPrice), width: COL.rate, align: 'right' },
@@ -127,7 +127,7 @@ export function buildInvoiceTicket(
 
     if (invoice.linkedOrders) {
         for (const item of invoice.linkedOrders) {
-            b.columns([
+            b.wrappedColumns([
                 { text: `Dine: ${item.name}`, width: COL.desc },
                 { text: String(item.quantity), width: COL.qty, align: 'center' },
                 { text: num(item.unitPrice), width: COL.rate, align: 'right' },
@@ -154,8 +154,11 @@ export function buildInvoiceTicket(
 
     b.divider()
     b.size({ doubleHeight: true }).bold(true)
-    const dueLabel = invoice.advancePaid && invoice.advancePaid > 0 ? 'BALANCE DUE' : 'TOTAL DUE'
-    b.line(`${dueLabel}: ${money(invoice.balanceDue ?? invoice.total)}`)
+    const totalPaid = (invoice.cashPaid ?? 0) + (invoice.qrPaid ?? 0) + (invoice.advancePaid ?? 0) + (invoice.creditPaid ?? 0)
+    const calculatedDue = Math.max(0, invoice.total - totalPaid)
+    const effectiveDue = invoice.balanceDue !== undefined ? invoice.balanceDue : calculatedDue
+    const dueLabel = (invoice.advancePaid && invoice.advancePaid > 0) || totalPaid > 0 ? 'BALANCE DUE' : 'TOTAL DUE'
+    b.line(`${dueLabel}: ${money(effectiveDue)}`)
     b.size({}).bold(false)
 
     if (invoice.paymentMethod) {
