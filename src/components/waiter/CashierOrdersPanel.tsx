@@ -5,13 +5,15 @@ import { createPortal } from 'react-dom'
 import { toast } from 'react-hot-toast'
 import {
     ClipboardCheck, ClipboardList, ChevronDown, CheckSquare, Square,
-    Trash2, Loader2, Send, CheckCircle2, XCircle, Phone, MapPin, Plus, Minus,
+    Trash2, Loader2, Send, CheckCircle2, XCircle, Phone, MapPin, Plus, Minus, Printer,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import { useFeatures } from '@/lib/contexts/FeatureContext'
 import { usePrinter } from '@/lib/print/usePrinter'
 import { buildStationTicket } from '@/lib/print/templates/stationTicket'
+import { OUTSTANDING_PRINT_SELECT } from '@/lib/print/printClaims'
+import { itemsForStation, STATION_META, type StationKind } from '@/lib/stations'
 import {
     confirmOrderItems, deleteUnconfirmedOrderItem, cancelOrder,
     markOrderItemsServed, cancelOrderItem,
@@ -96,6 +98,7 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
     const [expandedConfirmId, setExpandedConfirmId] = useState<string | null>(null)
     const [expandedStatusId, setExpandedStatusId] = useState<string | null>(null)
     const [busyId, setBusyId] = useState<string | null>(null)
+    const [reprintingId, setReprintingId] = useState<string | null>(null)
     const [cancelReason, setCancelReason] = useState('')
     const confirmRowRefs = useRef<Record<string, HTMLDivElement | null>>({})
     const statusRowRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -203,18 +206,22 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
         const { data: rawItems } = await supabaseRef.current
             .from('order_items')
             .select(`
-                id, quantity, unit_price, special_request,
+                id, quantity, unit_price, special_request, station,
                 menu_items ( id, name, station, is_combo ),
                 menu_item_variations:menu_item_variation_id ( id, name ),
                 order_item_modifiers ( modifier_name, price_adjustment )
             `)
             .in('id', itemIds)
         if (!rawItems || rawItems.length === 0) return
-        const items = rawItems as unknown as { menu_items?: { station?: string | null } | null }[]
+        const items = rawItems as unknown as KitchenOrder['order_items'] & object[]
 
         const printableOrder = { ...order, order_items: items } as unknown as KitchenOrder
-        const foodItems = items.filter(i => i.menu_items?.station !== 'bar')
-        const barItems = items.filter(i => i.menu_items?.station === 'bar')
+        // Route on order_items.station, the value frozen when the line was
+        // written — menu_items.station is null whenever an item inherits its
+        // station from the category default, which silently sent every
+        // inheriting drink to the kitchen roll.
+        const foodItems = itemsForStation(printableOrder.order_items, 'kitchen')
+        const barItems = itemsForStation(printableOrder.order_items, 'bar')
 
         if (foodItems.length > 0) {
             void printKot(buildStationTicket(printableOrder, 'kitchen', restaurantName))
@@ -223,6 +230,65 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
         if (barItems.length > 0) {
             void printBot(buildStationTicket(printableOrder, 'bar', restaurantName))
                 .catch(err => console.error('[Order Confirmation] BOT print failed:', err))
+        }
+    }
+
+    /**
+     * Reprint an order's station tickets on demand.
+     *
+     * Auto-print claims each line so two stations can't both print it, and a
+     * claim is set on the printer reporting success — which is not the same as
+     * paper existing. QZ Tray hands a job to a queue or a socket and calls that
+     * done, so a printer that is offline, out of paper or misrouted still looks
+     * like a successful print and the claim never comes back. This is the way
+     * out of that: a human decides a ticket is missing and asks again.
+     *
+     * Deliberately ignores the claim rather than releasing it. Reprinting is an
+     * override, not a correction of the record — clearing kot_printed_at would
+     * also invite every other connected station to print its own copy.
+     */
+    async function handleReprintTickets(orderId: string) {
+        setReprintingId(orderId)
+        try {
+            // The list query this panel receives is lightweight and carries no
+            // station or modifier detail, so re-read the order as the printer
+            // needs to see it.
+            const { data, error } = await supabaseRef.current
+                .from('orders')
+                .select(OUTSTANDING_PRINT_SELECT)
+                .eq('id', orderId)
+                .single()
+            if (error || !data) {
+                toast.error('Could not load that order to reprint.')
+                return
+            }
+            const full = data as unknown as KitchenOrder
+            // Cancelled lines are not cooked, and unconfirmed ones are not the
+            // kitchen's yet — neither belongs on a ticket.
+            const printable = (full.order_items || []).filter(i => i.status !== 'cancelled' && !i.needs_confirmation)
+            if (printable.length === 0) {
+                toast.error('Nothing on this order to print.')
+                return
+            }
+            const scoped = { ...full, order_items: printable }
+
+            for (const station of ['kitchen', 'bar'] as StationKind[]) {
+                if (itemsForStation(printable, station).length === 0) continue
+                const abbr = STATION_META[station].ticketAbbr
+                const send = station === 'bar' ? printBot : printKot
+                const result = await send(buildStationTicket(scoped, station, restaurantName))
+                if (result.ok) {
+                    toast.success(result.usedLocalFallback
+                        ? `${abbr} reprinted on this device — its own printer was unreachable.`
+                        : `${abbr} reprinted.`)
+                } else {
+                    toast.error(result.status === 'no-printer-selected'
+                        ? `No ${abbr} printer set — open Printer Settings.`
+                        : `${abbr} reprint failed (${result.status}).`)
+                }
+            }
+        } finally {
+            setReprintingId(null)
         }
     }
 
@@ -444,6 +510,8 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                                         onCancelOrder={(order) => handleCancelOrder(order)}
                                         onCancelItem={(orderId, itemId, label, maxQty, unitPrice) => handleCancelOrderItem(orderId, itemId, label, maxQty, unitPrice)}
                                         kotEnabled={features.kotEnabled}
+                                        reprintingId={reprintingId}
+                                        onReprint={(orderId) => handleReprintTickets(orderId)}
                                     />
                                 )}
                             </div>
@@ -665,7 +733,9 @@ function StatusDetail({
     onMarkServed,
     onCancelOrder,
     onCancelItem,
-    kotEnabled
+    kotEnabled,
+    reprintingId,
+    onReprint,
 }: {
     orders: AnyOrder[]
     money: (n: number) => string
@@ -676,6 +746,8 @@ function StatusDetail({
     onCancelOrder: (order: AnyOrder) => void
     onCancelItem: (orderId: string, itemId: string, label: string, maxQty: number, unitPrice: number) => void
     kotEnabled?: boolean
+    reprintingId: string | null
+    onReprint: (orderId: string) => void
 }) {
     return (
         <div className="px-4 pb-4 pt-1 bg-surface-muted/30 divide-y divide-hairline divide-dashed">
@@ -686,6 +758,7 @@ function StatusDetail({
                 const readyIds = items.filter(i => i.status === 'ready' && i.id).map(i => i.id!)
                 const { selected, allSelected, toggleAll, toggle } = useSelection(readyIds)
                 const isBusy = busyId === order.id
+                const isReprinting = reprintingId === order.id
                 const timeStr = formatTime(order.placed_at)
 
                 return (
@@ -693,14 +766,31 @@ function StatusDetail({
                         {/* Subheader for the order */}
                         <div className="flex items-center justify-between text-[11px] font-bold text-ink-subtle">
                             <span>Placed at {timeStr} · {money(Number(order.total_amount) || 0)}</span>
-                            <button
-                                onClick={() => onCancelOrder(order)}
-                                disabled={isBusy}
-                                className="text-red-500 hover:text-red-700 font-extrabold transition-colors flex items-center gap-1.5"
-                            >
-                                <XCircle size={12} />
-                                Cancel Order
-                            </button>
+                            <div className="flex items-center gap-3">
+                                {/* The way back from a print the printer called
+                                    successful but never put on paper. */}
+                                {kotEnabled && (
+                                    <button
+                                        onClick={() => onReprint(order.id)}
+                                        disabled={isReprinting}
+                                        className="text-ink-subtle hover:text-ink font-extrabold transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                                        title="Print this order's kitchen/bar ticket again"
+                                    >
+                                        {isReprinting
+                                            ? <Loader2 size={12} className="animate-spin" />
+                                            : <Printer size={12} />}
+                                        Reprint
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => onCancelOrder(order)}
+                                    disabled={isBusy}
+                                    className="text-red-500 hover:text-red-700 font-extrabold transition-colors flex items-center gap-1.5"
+                                >
+                                    <XCircle size={12} />
+                                    Cancel Order
+                                </button>
+                            </div>
                         </div>
 
                         {/* Items checkboxes/serving logic */}
