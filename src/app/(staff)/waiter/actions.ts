@@ -380,6 +380,8 @@ export async function linkSessionToBooking(sessionId: string, bookingId: string,
 
     revalidatePath('/waiter')
     revalidatePath('/cashier')
+    revalidatePath('/kitchen')
+    revalidatePath('/admin')
     return { success: true }
 }
 

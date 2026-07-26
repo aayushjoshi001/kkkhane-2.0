@@ -567,6 +567,23 @@ export default function CashierClient({
         setSelectedBillingTable((prev: any) => prev?.id === u.id ? { ...prev, ...patch } : prev)
     })
 
+    // Realtime subscriptions for orders — updates order state (including booking_id link) dynamically
+    useRestaurantTable(restaurantId, 'orders', (payload) => {
+        if (payload.eventType === 'INSERT') {
+            const updatedOrder = payload.new as any
+            if (updatedOrder.payment_status === 'paid') return
+            setUnpaid(prev => [...prev.filter(o => o.id !== updatedOrder.id), updatedOrder])
+        } else if (payload.eventType === 'UPDATE') {
+            const updatedOrder = payload.new as any
+            const isPaidOrCancelled = updatedOrder.payment_status === 'paid' || updatedOrder.status === 'cancelled'
+            setUnpaid(prev => isPaidOrCancelled 
+                ? prev.filter(o => o.id !== updatedOrder.id)
+                : prev.map(o => o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o)
+            )
+            setActive(prev => prev.map(o => o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o))
+        }
+    })
+
     // Load booking stay details, manual charges, and linked dining orders concurrently when room is selected
     useEffect(() => {
         if (selectedBillingRoom) {
