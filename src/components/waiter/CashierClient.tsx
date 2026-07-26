@@ -3395,7 +3395,8 @@ export default function CashierClient({
                     </div>
                 </div>,
                 document.body
-            )}
+            )
+            })()}
 
             {/* Manual Entry Modal — inline, no navigation away from the dashboard */}
             {mounted && showManualEntry && createPortal(
