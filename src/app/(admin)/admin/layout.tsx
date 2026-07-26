@@ -15,6 +15,9 @@ import type { BusinessMode } from '@/lib/businessMode'
 import { SidebarProvider } from '@/lib/contexts/SidebarContext'
 import SidebarToggle from '@/components/admin/SidebarToggle'
 import CalendarToggle from '@/components/shared/CalendarToggle'
+import BusinessSessionControl from '@/components/shared/BusinessSessionControl'
+import { getNstDateString } from '@/lib/timezone'
+
 export default async function AdminLayout({ children }: { children: ReactNode }) {
     // requireRole() uses the React.cache-wrapped getCurrentUser — no duplicate DB call
     // when the page also calls getCurrentUser().
@@ -37,8 +40,11 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     let restaurantName: string | undefined
     let features: Awaited<ReturnType<typeof getRestaurantFeatures>> = null
     let mode: BusinessMode = 'dine_in'
+    let openSession: any = null
+    const todayDate = getNstDateString()
+
     if (!isSuperAdmin && currentUser.restaurantId) {
-        const [{ data }, restaurantFeatures, restaurantMode] = await Promise.all([
+        const [{ data }, restaurantFeatures, restaurantMode, { data: sessionData }] = await Promise.all([
             adminSupabase
                 .from('restaurants')
                 .select('name')
@@ -46,10 +52,18 @@ export default async function AdminLayout({ children }: { children: ReactNode })
                 .maybeSingle(),
             getRestaurantFeatures(currentUser.restaurantId),
             getRestaurantMode(currentUser.restaurantId),
+            adminSupabase
+                .from('day_book_sessions')
+                .select('id, date, status, opening_balance, opening_bank_balance')
+                .eq('restaurant_id', currentUser.restaurantId)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle(),
         ])
         restaurantName = data?.name || undefined
         features = restaurantFeatures
         mode = restaurantMode
+        openSession = sessionData
     }
 
     return (
@@ -71,6 +85,20 @@ export default async function AdminLayout({ children }: { children: ReactNode })
                         <header className="print:hidden bg-surface border-b border-hairline px-5 md:px-8 h-16 flex items-center justify-between shrink-0 z-10">
                             <SidebarToggle isSuperAdmin={isSuperAdmin} />
                             <div className="flex items-center gap-3">
+                                {!isSuperAdmin && (
+                                    <BusinessSessionControl
+                                        initialSession={openSession ? {
+                                            id: openSession.id,
+                                            date: openSession.date,
+                                            status: openSession.status as 'open' | 'closed',
+                                            opening_balance: Number(openSession.opening_balance),
+                                            opening_bank_balance: Number(openSession.opening_bank_balance)
+                                        } : null}
+                                        userRole={roleNameRaw}
+                                        todayDate={todayDate}
+                                        variant="compact"
+                                    />
+                                )}
                                 <CalendarToggle />
                                 <CommandHint />
                                 {!isSuperAdmin && <SoundEnableButton variant="light" />}
