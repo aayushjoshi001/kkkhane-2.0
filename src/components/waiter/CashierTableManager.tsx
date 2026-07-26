@@ -754,62 +754,36 @@ export default function CashierTableManager({
                                                                      <p className="text-xs font-semibold text-warning-fg">No active check-in found for Room {roomLinkInput}</p>
                                                                  </div>
                                                              )}
-
                                                              {foundRoomBooking && (
-                                                                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2.5">
-                                                                     <div className="flex items-center justify-between text-xs">
-                                                                         <span className="font-extrabold text-emerald-900">{foundRoomBooking.guest_name}</span>
-                                                                         <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">Room {foundRoomBooking.rooms?.room_number || '?'}</span>
-                                                                     </div>
-                                                                     <p className="text-[11px] font-semibold text-emerald-800">Choose how to link orders to Room {foundRoomBooking.rooms?.room_number}:</p>
-                                                                     <div className="flex flex-col gap-2">
-                                                                         <Button
-                                                                             block
-                                                                             variant="primary"
-                                                                             icon={Hotel}
-                                                                             loading={isProcessing}
-                                                                             onClick={async () => {
-                                                                                 setIsProcessing(true)
-                                                                                 const linkRes = await linkSessionToBooking(selectedTable.activeSession!.id, foundRoomBooking.id, { closeSessionAndFreeTable: true, tableId: selectedTable.id })
-                                                                                 setIsProcessing(false)
-                                                                                 if (linkRes.error) {
-                                                                                     toast.error(linkRes.error)
-                                                                                 } else {
-                                                                                     toast.success(`Orders transferred to Room ${foundRoomBooking.rooms?.room_number || '?'} & Table ${selectedTable.label} freed!`)
-                                                                                     setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, activeSession: undefined, table_status: 'available' } : t))
-                                                                                     setSelectedTable(null)
-                                                                                     setLinkRoomOpen(false)
-                                                                                     setFoundRoomBooking(null)
-                                                                                 }
-                                                                             }}
-                                                                         >
-                                                                             Transfer to Room & Free Table
-                                                                         </Button>
-                                                                         <Button
-                                                                             block
-                                                                             variant="secondary"
-                                                                             icon={Hotel}
-                                                                             loading={isProcessing}
-                                                                             onClick={async () => {
-                                                                                 setIsProcessing(true)
-                                                                                 const linkRes = await linkSessionToBooking(selectedTable.activeSession!.id, foundRoomBooking.id, { closeSessionAndFreeTable: false })
-                                                                                 setIsProcessing(false)
-                                                                                 if (linkRes.error) {
-                                                                                     toast.error(linkRes.error)
-                                                                                 } else {
-                                                                                     toast.success(`Table ${selectedTable.label} linked to Room ${foundRoomBooking.rooms?.room_number || '?'}`)
-                                                                                     setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, activeSession: { ...t.activeSession!, booking_id: foundRoomBooking.id } } : t))
-                                                                                     setSelectedTable(prev => prev ? { ...prev, activeSession: { ...prev.activeSession!, booking_id: foundRoomBooking.id } } : null)
-                                                                                     setLinkRoomOpen(false)
-                                                                                     setFoundRoomBooking(null)
-                                                                                 }
-                                                                             }}
-                                                                         >
-                                                                             Link to Room & Keep Table Occupied
-                                                                         </Button>
-                                                                     </div>
-                                                                 </div>
-                                                             )}
+                                                                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+                                                                      <div className="flex items-center justify-between text-xs">
+                                                                          <span className="font-extrabold text-emerald-900">{foundRoomBooking.guest_name}</span>
+                                                                          <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">Room {foundRoomBooking.rooms?.room_number || '?'}</span>
+                                                                      </div>
+                                                                      <Button
+                                                                          block
+                                                                          variant="primary"
+                                                                          icon={Hotel}
+                                                                          loading={isProcessing}
+                                                                          onClick={async () => {
+                                                                              setIsProcessing(true)
+                                                                              const linkRes = await linkSessionToBooking(selectedTable.activeSession!.id, foundRoomBooking.id, selectedTable.id)
+                                                                              setIsProcessing(false)
+                                                                              if (linkRes.error) {
+                                                                                  toast.error(linkRes.error)
+                                                                              } else {
+                                                                                  toast.success(`Orders transferred to Room ${foundRoomBooking.rooms?.room_number || '?'} & Table ${selectedTable.label} freed!`)
+                                                                                  setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, activeSession: undefined, table_status: 'available' } : t))
+                                                                                  setSelectedTable(null)
+                                                                                  setLinkRoomOpen(false)
+                                                                                  setFoundRoomBooking(null)
+                                                                              }
+                                                                          }}
+                                                                      >
+                                                                          Transfer Orders to Room &amp; Free Table
+                                                                      </Button>
+                                                                  </div>
+                                                              )}
                                                          </div>
                                                      </div>
                                                  )

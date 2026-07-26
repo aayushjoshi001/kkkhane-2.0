@@ -342,36 +342,40 @@ export async function getActiveBookings(restaurantId: string) {
     return { success: true, bookings }
 }
 
-export async function linkSessionToBooking(
-    sessionId: string,
-    bookingId: string,
-    options?: { closeSessionAndFreeTable?: boolean; tableId?: string }
-) {
+export async function linkSessionToBooking(sessionId: string, bookingId: string, tableId?: string) {
     const adminSupabase = await createAdminClient()
-    const { error } = await adminSupabase
+    const now = new Date().toISOString()
+
+    // 1. Update session: set booking_id AND close session so table is freed
+    const { data: session, error } = await adminSupabase
         .from('sessions')
         .update({
             booking_id: bookingId,
-            ...(options?.closeSessionAndFreeTable ? { status: 'closed', closed_at: new Date().toISOString() } : {})
+            status: 'closed',
+            closed_at: now,
         })
         .eq('id', sessionId)
+        .select('table_id')
+        .maybeSingle()
 
     if (error) {
         console.error('[linkSessionToBooking] Error:', error)
         return { error: error.message }
     }
 
-    // Also update existing orders for this session so queries on orders.booking_id catch them
+    // 2. Also update existing orders for this session so queries on orders.booking_id catch them
     await adminSupabase
         .from('orders')
         .update({ booking_id: bookingId })
         .eq('session_id', sessionId)
 
-    if (options?.closeSessionAndFreeTable && options.tableId) {
+    // 3. Free the table (set table_status = 'available')
+    const targetTableId = tableId || session?.table_id
+    if (targetTableId) {
         await adminSupabase
             .from('tables')
             .update({ table_status: 'available' })
-            .eq('id', options.tableId)
+            .eq('id', targetTableId)
     }
 
     revalidatePath('/waiter')
