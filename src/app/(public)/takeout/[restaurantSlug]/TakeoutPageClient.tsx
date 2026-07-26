@@ -12,6 +12,7 @@ import MenuItemCard from '@/components/customer/MenuItemCard'
 import CustomerProfileSheet from '@/components/customer/CustomerProfileSheet'
 import CustomerMenuHeader from '@/components/customer/CustomerMenuHeader'
 import StickyBottomBar from '@/components/customer/StickyBottomBar'
+import { matchesMenuSearch } from '@/lib/utils'
 
 interface Category { id: string; name: string; sort_order: number }
 interface Restaurant { id: string; name: string; slug: string; description: string | null; logo_url: string | null }
@@ -60,7 +61,7 @@ function TakeoutMenu({ restaurant, categories, menuItems, comboItems }: {
     }, [restaurant.id, restaurant.slug, setSession])
 
     const filteredItems = (activeCategory ? menuItems.filter(i => i.category_id === activeCategory) : menuItems)
-        .filter(i => !searchQuery || i.name.toLowerCase().includes(searchQuery.toLowerCase()))
+        .filter(i => matchesMenuSearch(i, searchQuery))
 
     if (showCheckout) {
         return (
