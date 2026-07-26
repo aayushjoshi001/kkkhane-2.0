@@ -1208,22 +1208,25 @@ export default function CashierRoomManager({
                                 <p className="text-sm text-ink-subtle">No active booking session found.</p>
                             </div>
                         )}
-                        
-                        {/* Change Room Panel — shown when "Change Room" button is pressed */}
-                        {moveOpen && activeBooking && (() => {
+                        </div>
+
+                        {/* Change Room Panel — shown when "Change Room" button is pressed, outside the scrollable area so it's always visible */}
+                        {moveOpen && (() => {
                             const target = moveCandidates.find(r => r.id === moveTargetId) || null
                             const currentRate = selectedRoom.room_types?.base_price ?? 0
                             const newRate = target?.room_types?.base_price ?? 0
                             const rateChanged = !!target && newRate !== currentRate
-                            const heads = totalGuests(activeBooking)
+                            const heads = activeBooking ? totalGuests(activeBooking) : 0
                             const capacity = target?.room_types?.capacity ?? null
                             const tooSmall = capacity !== null && heads > capacity
 
                             return (
-                                <div className="px-6 py-4 border-t border-hairline flex-shrink-0 bg-surface-muted/30">
+                                <div className="border-t border-hairline flex-shrink-0 bg-surface-muted/30 px-6 py-4">
                                     <div className="space-y-3 border border-hairline rounded-2xl p-4 bg-surface">
                                         <div>
-                                            <p className="text-xs font-extrabold text-ink">Move {activeBooking.guest_name} out of Room {selectedRoom.room_number}</p>
+                                            <p className="text-xs font-extrabold text-ink">
+                                                Move {activeBooking?.guest_name ?? 'Guest'} out of Room {selectedRoom.room_number}
+                                            </p>
                                             <p className="text-[11px] text-ink-subtle mt-0.5">
                                                 The folio moves with the guest — orders, charges and the advance already taken all stay on this stay.
                                             </p>
@@ -1256,7 +1259,7 @@ export default function CashierRoomManager({
 
                                         {rateChanged && (
                                             <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-                                                {money(currentRate)} → {money(newRate)} per night. Nights already spent in Room {selectedRoom.room_number} stay at {money(currentRate)}; the new rate applies from tonight.
+                                                {money(currentRate)} → {money(newRate)} per night.
                                             </p>
                                         )}
                                         {tooSmall && (
@@ -1283,7 +1286,7 @@ export default function CashierRoomManager({
                                                 block
                                                 icon={ArrowLeftRight}
                                                 loading={moving}
-                                                disabled={!moveTargetId || moving}
+                                                disabled={!moveTargetId || moving || !activeBooking}
                                                 onClick={handleMoveRoom}
                                             >
                                                 Move Guest
@@ -1293,7 +1296,6 @@ export default function CashierRoomManager({
                                 </div>
                             )
                         })()}
-                        </div>
 
                         {/* Drawer Footer (Checkout and Total Billing) - sticky */}
                         <div className="border-t border-hairline px-6 py-4 flex flex-col gap-2.5 flex-shrink-0 bg-surface">
