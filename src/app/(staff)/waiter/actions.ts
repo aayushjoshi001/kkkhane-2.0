@@ -397,10 +397,17 @@ export async function moveSessionToTable(sessionId: string, targetTableId: strin
     }
 
     if (currentTableId && currentTableId !== targetTableId) {
+        // Free the old table
         await adminSupabase
             .from('tables')
             .update({ table_status: 'available' })
             .eq('id', currentTableId)
+
+        // Mark the new table as occupied
+        await adminSupabase
+            .from('tables')
+            .update({ table_status: 'occupied' })
+            .eq('id', targetTableId)
     }
 
     revalidatePath('/waiter')

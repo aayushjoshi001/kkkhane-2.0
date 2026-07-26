@@ -173,24 +173,38 @@ export default function CashierTableManager({
             const s = payload.new as Session
             const isClosed = s.status === 'closed' || s.status === 'expired'
             
-            setTables(prev => prev.map(t => {
-                if (t.activeSession?.id === s.id) {
-                    return { ...t, activeSession: isClosed ? null : s }
-                }
-                if (t.otherActiveSessions?.some(x => x.id === s.id)) {
-                    return {
-                        ...t,
-                        otherActiveSessions: isClosed
-                            ? t.otherActiveSessions.filter(x => x.id !== s.id)
-                            : t.otherActiveSessions.map(x => x.id === s.id ? s : x)
+            setTables(prev => {
+                // Detect if the session moved to a different table (table_id changed)
+                const oldTable = prev.find(t => t.activeSession?.id === s.id)
+                const movedToNewTable = !isClosed && oldTable && oldTable.id !== s.table_id
+
+                return prev.map(t => {
+                    if (t.activeSession?.id === s.id) {
+                        // Old table: if session moved away, detach it; otherwise update in-place
+                        return { ...t, activeSession: (isClosed || movedToNewTable) ? null : s }
                     }
-                }
-                return t
-            }))
+                    if (t.otherActiveSessions?.some(x => x.id === s.id)) {
+                        return {
+                            ...t,
+                            otherActiveSessions: (isClosed || movedToNewTable)
+                                ? t.otherActiveSessions.filter(x => x.id !== s.id)
+                                : t.otherActiveSessions.map(x => x.id === s.id ? s : x)
+                        }
+                    }
+                    // New table: attach the moved session
+                    if (!isClosed && movedToNewTable && t.id === s.table_id) {
+                        return { ...t, activeSession: s }
+                    }
+                    return t
+                })
+            })
             setSelectedTable(prev => {
                 if (!prev) return null
                 if (prev.activeSession?.id === s.id) {
-                    return { ...prev, activeSession: isClosed ? null : s }
+                    if (isClosed) return { ...prev, activeSession: null }
+                    // Session moved to a different table — close the old table panel
+                    if (prev.id !== s.table_id) return null
+                    return { ...prev, activeSession: s }
                 }
                 if (prev.otherActiveSessions?.some(x => x.id === s.id)) {
                     return {
