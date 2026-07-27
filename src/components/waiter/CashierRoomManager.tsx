@@ -14,6 +14,8 @@ import { describeGuestMix, totalGuests } from '@/lib/guests'
 import QuickOrderModal from './QuickOrderModal'
 import { openSession } from '@/app/(staff)/waiter/actions'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
+import { useGuestLookup, type GuestSuggestion } from '@/lib/hooks/useGuestLookup'
+import GuestSuggestionList from './GuestSuggestionList'
 import { getRoomStatusConfig } from '@/lib/roomStatus'
 import Select from '@/components/ui/Select'
 import { NepaliDateInput, NepaliDateTimeInput } from '@/components/ui/NepaliDateInput'
@@ -112,6 +114,8 @@ export default function CashierRoomManager({
         setMoveReason('')
         setBookingForm({ guest_name: '', guest_phone: '', kyc: '', check_in: '', check_out: '', adult_male: '1', adult_female: '1', children: '0' })
         setExtraRooms({})
+        setLookupField(null)
+        setGuestPicked(false)
         setAdvanceType('none')
         setAdvanceAmount('')
         setAdvanceSplitCash('')
@@ -129,6 +133,34 @@ export default function CashierRoomManager({
         adult_female: '1',
         children: '0',
     })
+    // Which field is driving the returning-guest lookup. The desk may know the
+    // number or the name, so both search — but only the one being typed in,
+    // otherwise a filled-in name would keep querying while they type the phone.
+    const [lookupField, setLookupField] = useState<'guest_phone' | 'guest_name' | null>(null)
+    // Suppressed right after a suggestion is applied: the fields now hold that
+    // guest's own details, which would otherwise match themselves and leave the
+    // list hanging open under the form.
+    const [guestPicked, setGuestPicked] = useState(false)
+
+    const { suggestions: guestSuggestions, loading: guestLookupLoading } = useGuestLookup(
+        lookupField ? bookingForm[lookupField] : '',
+        { enabled: bookingFormOpen && !guestPicked && lookupField !== null },
+    )
+
+    /** Fill the form from a past stay, so a returning guest is not retyped. */
+    const applyGuestSuggestion = (guest: GuestSuggestion) => {
+        setBookingForm(b => ({
+            ...b,
+            guest_name: guest.name || b.guest_name,
+            guest_phone: guest.phone || b.guest_phone,
+            // Only overwrite KYC when we actually have one on file — a blank
+            // from an old stay must not wipe what the cashier just typed.
+            kyc: guest.kyc || b.kyc,
+        }))
+        setGuestPicked(true)
+        setLookupField(null)
+    }
+
     // Extra rooms this same guest is taking, keyed by room id. The room the
     // front desk clicked is always the first room of the reservation and isn't
     // in here; anything added makes this a multi-room booking, which the API
@@ -781,17 +813,41 @@ export default function CashierRoomManager({
                                                 type="text"
                                                 placeholder="e.g. John Doe"
                                                 value={bookingForm.guest_name}
-                                                onChange={e => setBookingForm(b => ({ ...b, guest_name: e.target.value }))}
+                                                onChange={e => {
+                                                    setBookingForm(b => ({ ...b, guest_name: e.target.value }))
+                                                    setLookupField('guest_name')
+                                                    // Typing again means the desk is looking for someone
+                                                    // else, so start offering matches once more.
+                                                    setGuestPicked(false)
+                                                }}
+                                                onFocus={() => setLookupField('guest_name')}
                                                 className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                            />
+                                        </div>
+                                        <div className="col-span-2 -mt-1">
+                                            {/* Returning-guest suggestions sit under the pair of fields
+                                                they draw from, so whichever the cashier is typing in the
+                                                list appears in the same place. */}
+                                            <GuestSuggestionList
+                                                suggestions={guestSuggestions}
+                                                loading={guestLookupLoading}
+                                                onPick={applyGuestSuggestion}
+                                                formatDate={formatDateTime}
                                             />
                                         </div>
                                         <div>
                                             <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Phone *</label>
                                             <input
                                                 type="text"
+                                                inputMode="tel"
                                                 placeholder="9841234567"
                                                 value={bookingForm.guest_phone}
-                                                onChange={e => setBookingForm(b => ({ ...b, guest_phone: e.target.value }))}
+                                                onChange={e => {
+                                                    setBookingForm(b => ({ ...b, guest_phone: e.target.value }))
+                                                    setLookupField('guest_phone')
+                                                    setGuestPicked(false)
+                                                }}
+                                                onFocus={() => setLookupField('guest_phone')}
                                                 className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
                                             />
                                         </div>
