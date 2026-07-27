@@ -3,10 +3,10 @@
 import { useState, useMemo, useRef } from 'react'
 import {
     Landmark, ArrowRightLeft, TrendingUp, TrendingDown, FileText, LandmarkIcon,
-    Plus, X, Loader2, Printer
+    Plus, X, Loader2, Printer, Edit2, ShieldAlert
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
-import { createBankAccountAction } from '../bank-book/actions'
+import { createBankAccountAction, saveBankOpeningBalanceAction } from '../bank-book/actions'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
 import { downloadCsv, downloadExcel } from '@/lib/exportCsv'
@@ -104,6 +104,59 @@ export default function BankLedgerManager({
     const [ownershipType, setOwnershipType] = useState<'company' | 'personal' | ''>('')
     const [submittingBank, setSubmittingBank] = useState(false)
 
+    // Opening Balance Modal state
+    const [obModalOpen, setObModalOpen] = useState(false)
+    const [obAmount, setObAmount] = useState('')
+    const [obReason, setObReason] = useState('')
+    const [isObEdit, setIsObEdit] = useState(false)
+    const [submittingOb, setSubmittingOb] = useState(false)
+
+    const handleOpenAddOb = (currentBal: number) => {
+        setObAmount(currentBal > 0 ? String(currentBal) : '')
+        setObReason('')
+        setIsObEdit(false)
+        setObModalOpen(true)
+    }
+
+    const handleOpenEditOb = (currentBal: number) => {
+        setObAmount(String(currentBal))
+        setObReason('')
+        setIsObEdit(true)
+        setObModalOpen(true)
+    }
+
+    const handleSaveOpeningBalance = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!selectedBankId) return
+        const amt = parseFloat(obAmount)
+        if (isNaN(amt)) { toast.error('Opening balance must be a valid number'); return }
+        if (isObEdit && !obReason.trim()) {
+            toast.error('Reason for editing opening balance is required')
+            return
+        }
+
+        setSubmittingOb(true)
+        try {
+            const res = await saveBankOpeningBalanceAction({
+                bank_account_id: selectedBankId,
+                opening_balance: amt,
+                reason: obReason.trim(),
+                is_edit: isObEdit,
+            })
+            if (res.error) {
+                toast.error(res.error)
+            } else {
+                setBankAccountsList(prev => prev.map(b => b.id === selectedBankId ? { ...b, opening_balance: amt } : b))
+                setObModalOpen(false)
+                toast.success(isObEdit ? 'Opening balance updated successfully' : 'Opening balance added successfully')
+            }
+        } catch (err) {
+            toast.error('Failed to save opening balance')
+        } finally {
+            setSubmittingOb(false)
+        }
+    }
+
     const handleAddBank = async (e: React.FormEvent) => {
         e.preventDefault()
         const bName = newBankName.trim()
@@ -200,10 +253,12 @@ export default function BankLedgerManager({
             return true
         })
 
-        // 3. Sort ascending (oldest first) to compute running balance correctly
+        // 3. Sort non-opening-balance transactions chronologically
         const sorted = [...filtered].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 
-        let runningBal = Number(activeBankAccount.opening_balance)
+        const obAmount = Number(activeBankAccount.opening_balance || 0)
+        let runningBal = obAmount
+
         const entriesWithBalance = sorted.map(e => {
             const amount = Number(e.amount)
             if (e.type === 'bank_in') {
@@ -218,8 +273,22 @@ export default function BankLedgerManager({
             }
         })
 
-        // Reverse to display newest first
-        return entriesWithBalance.reverse()
+        // Always pin Opening Balance at Row #1 (Very Top)
+        const obRow = {
+            id: `ob-${activeBankAccount.id}`,
+            created_at: activeBankAccount.created_at || new Date().toISOString(),
+            bank_name: activeBankAccount.bank_name || '',
+            account_number: activeBankAccount.account_number || '',
+            type: 'bank_in' as const,
+            amount: obAmount,
+            description: 'Opening Balance (Initial Bank Balance)',
+            category: 'opening_balance',
+            isOpeningBalance: true,
+            runningBalance: obAmount,
+            day_book_sessions: undefined
+        }
+
+        return [obRow, ...entriesWithBalance]
     }, [activeBankAccount, bankEntries, timeFilter])
 
     // Summary calculations for the selected bank in the selected time filter
@@ -355,24 +424,43 @@ export default function BankLedgerManager({
                                     </p>
                                 </div>
 
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs font-bold text-ink-subtle whitespace-nowrap">Filter:</span>
-                                    <div className="flex bg-surface-muted/50 border border-hairline rounded-[var(--r-md)] p-1 shrink-0">
-                                        {(['this_month', 'this_year', 'all'] as const).map(f => {
-                                            const labels = { this_month: 'This Month', this_year: 'This Year', all: 'All Time' }
-                                            const active = timeFilter === f
-                                            return (
-                                                <button
-                                                    key={f}
-                                                    onClick={() => setTimeFilter(f)}
-                                                    className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-[var(--r-md)] transition-all focus:outline-none ${
-                                                        active ? 'bg-brand-500 text-white shadow-sm' : 'text-ink-subtle hover:text-ink'
-                                                    }`}
-                                                >
-                                                    {labels[f]}
-                                                </button>
-                                            )
-                                        })}
+                                <div className="flex flex-wrap items-center gap-3">
+                                    {activeBankAccount.opening_balance > 0 ? (
+                                        <button
+                                            onClick={() => handleOpenEditOb(activeBankAccount.opening_balance)}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold border border-amber-200 rounded-xl text-xs transition-all shadow-sm"
+                                            title="Edit Opening Balance (requires reason)"
+                                        >
+                                            <Edit2 size={13} /> Edit Opening Balance ({formatCurrency(activeBankAccount.opening_balance)})
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => handleOpenAddOb(0)}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold border border-emerald-200 rounded-xl text-xs transition-all shadow-sm"
+                                        >
+                                            <Plus size={13} /> Add Opening Balance
+                                        </button>
+                                    )}
+
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-ink-subtle whitespace-nowrap">Filter:</span>
+                                        <div className="flex bg-surface-muted/50 border border-hairline rounded-[var(--r-md)] p-1 shrink-0">
+                                            {(['this_month', 'this_year', 'all'] as const).map(f => {
+                                                const labels = { this_month: 'This Month', this_year: 'This Year', all: 'All Time' }
+                                                const active = timeFilter === f
+                                                return (
+                                                    <button
+                                                        key={f}
+                                                        onClick={() => setTimeFilter(f)}
+                                                        className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-[var(--r-md)] transition-all focus:outline-none ${
+                                                            active ? 'bg-brand-500 text-white shadow-sm' : 'text-ink-subtle hover:text-ink'
+                                                        }`}
+                                                    >
+                                                        {labels[f]}
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -592,6 +680,74 @@ export default function BankLedgerManager({
                                 Register Bank Account
                             </button>
                         </form>
+                </Modal>
+            )}
+
+            {/* Opening Balance Modal */}
+            {obModalOpen && activeBankAccount && (
+                <Modal open onClose={() => setObModalOpen(false)} size="md" ariaLabel={isObEdit ? "Edit Opening Balance" : "Add Opening Balance"} className="bg-surface overflow-hidden">
+                    <div className="p-5 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
+                        <div>
+                            <h3 className="font-extrabold text-ink text-sm flex items-center gap-2">
+                                {isObEdit ? <Edit2 size={16} className="text-amber-500" /> : <Plus size={16} className="text-emerald-500" />}
+                                {isObEdit ? `Edit Opening Balance for ${activeBankAccount.name}` : `Add Opening Balance for ${activeBankAccount.name}`}
+                            </h3>
+                            <p className="text-[10px] text-ink-subtle mt-0.5">
+                                {isObEdit ? 'A reason is required before editing an existing opening balance.' : 'Set the initial balance for this bank account.'}
+                            </p>
+                        </div>
+                        <button 
+                            onClick={() => setObModalOpen(false)}
+                            className="p-1.5 hover:bg-surface-muted rounded-xl text-ink-subtle hover:text-ink-subtle transition-colors"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                    
+                    <form onSubmit={handleSaveOpeningBalance} className="p-5 space-y-4">
+                        <div>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Opening Balance Amount (Rs.) *</label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                value={obAmount}
+                                onChange={e => setObAmount(e.target.value)}
+                                required
+                                className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">
+                                {isObEdit ? 'Reason for Editing *' : 'Note / Reference (Optional)'}
+                            </label>
+                            <textarea
+                                placeholder={isObEdit ? 'State the reason for modifying the opening balance...' : 'e.g. Initial bank deposit'}
+                                value={obReason}
+                                onChange={e => setObReason(e.target.value)}
+                                required={isObEdit}
+                                rows={3}
+                                className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-semibold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
+                            />
+                            {isObEdit && (
+                                <p className="text-[10px] text-amber-600 font-semibold flex items-center gap-1 mt-1">
+                                    <ShieldAlert size={12} /> This reason will be permanently recorded in the Manager Activities Log.
+                                </p>
+                            )}
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={submittingOb}
+                            className={`w-full mt-2 py-3 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition-colors shadow-md flex items-center justify-center gap-2 focus-ring disabled:opacity-50 ${
+                                isObEdit ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/15' : 'bg-brand-500 hover:bg-[#e04f00] shadow-brand-500/15'
+                            }`}
+                        >
+                            {submittingOb ? <Loader2 size={16} className="animate-spin" /> : isObEdit ? <Edit2 size={16} /> : <Plus size={16} />}
+                            {isObEdit ? 'Save Changes with Reason' : 'Save Opening Balance'}
+                        </button>
+                    </form>
                 </Modal>
             )}
 

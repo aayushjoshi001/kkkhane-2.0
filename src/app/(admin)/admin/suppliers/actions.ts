@@ -648,4 +648,112 @@ export async function getSupplierSettlementsAction(expenseIds: string[]) {
     return { data: data || [] }
 }
 
+export async function saveSupplierOpeningBalanceAction(input: {
+    supplier_id?: string
+    supplier_name: string
+    amount: number
+    reason: string
+    is_edit: boolean
+}) {
+    let user
+    try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
+
+    const supplierName = input.supplier_name?.trim()
+    if (!supplierName) return { error: 'Supplier name is required.' }
+    if (!Number.isFinite(input.amount) || input.amount < 0) return { error: 'Opening balance amount must be non-negative.' }
+    const reason = input.reason?.trim()
+    if (input.is_edit && !reason) return { error: 'Reason for editing opening balance is required.' }
+
+    const supabase = await createAdminClient()
+
+    // Get an expense category or use a default one for opening balance
+    const { data: categories } = await supabase
+        .from('expense_categories')
+        .select('id')
+        .eq('restaurant_id', user.restaurantId)
+        .limit(1)
+
+    const categoryId = categories && categories.length > 0 ? categories[0].id : null
+    if (!categoryId) return { error: 'No expense category found. Please create an expense category first.' }
+
+    // Find existing Opening Balance expense for this supplier
+    const { data: existingExpenses } = await supabase
+        .from('expenses')
+        .select('*')
+        .eq('restaurant_id', user.restaurantId)
+        .ilike('vendor_name', supplierName)
+        .ilike('description', '%Opening Balance%')
+        .order('created_at', { ascending: true })
+
+    const existingOb = existingExpenses && existingExpenses.length > 0 ? existingExpenses[0] : null
+    let oldBalance = 0
+
+    if (existingOb) {
+        try {
+            const parsed = JSON.parse(existingOb.description)
+            oldBalance = Number(existingOb.amount || 0)
+        } catch {
+            oldBalance = Number(existingOb.amount || 0)
+        }
+    }
+
+    const descObj = {
+        text_desc: reason ? `Opening Balance (${reason})` : 'Opening Balance',
+        quantity: null,
+        rate: null,
+        unit: '',
+        paid_amount: 0,
+        payment_type: 'UNPAID',
+    }
+    const descJson = JSON.stringify(descObj)
+
+    let resultData = null
+
+    if (existingOb) {
+        const { data: updated, error: updateErr } = await supabase
+            .from('expenses')
+            .update({
+                amount: input.amount,
+                description: descJson,
+            })
+            .eq('id', existingOb.id)
+            .select()
+            .single()
+
+        if (updateErr) return { error: updateErr.message }
+        resultData = updated
+    } else {
+        const { data: inserted, error: insertErr } = await supabase
+            .from('expenses')
+            .insert({
+                restaurant_id: user.restaurantId,
+                category_id: categoryId,
+                amount: input.amount,
+                description: descJson,
+                vendor_name: supplierName,
+                status: 'paid',
+                created_by: user.id,
+            })
+            .select()
+            .single()
+
+        if (insertErr) return { error: insertErr.message }
+        resultData = inserted
+    }
+
+    const { logAudit } = await import('@/lib/audit')
+    await logAudit({
+        restaurantId: user.restaurantId,
+        userId: user.id,
+        action: input.is_edit ? 'opening_balance_edited' : 'opening_balance_added',
+        entityType: 'supplier',
+        entityId: input.supplier_id || null,
+        oldValue: { supplier_name: supplierName, opening_balance: oldBalance },
+        newValue: { supplier_name: supplierName, opening_balance: input.amount, reason: reason || 'Initial opening balance set' },
+    })
+
+    revalidatePath(PATH)
+    return { data: resultData }
+}
+
 
