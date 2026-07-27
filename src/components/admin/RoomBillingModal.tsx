@@ -70,6 +70,21 @@ interface RoomBillingModalProps {
 const money = (amount: number) =>
     'Rs. ' + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+/** The other rooms billing onto this same folio (see /api/bookings/group). */
+interface GroupBill {
+    groupId: string
+    rooms: Array<{
+        bookingId: string
+        roomId: string
+        roomNumber: string
+        nights: number
+        stayCost: number
+        paidAmount: number
+    }>
+    stayCost: number
+    advancePaid: number
+}
+
 const calculateStayCost = (room: Room, booking: Booking) => {
     const price = room.room_types?.base_price || 0
     const nights = calculateNights(booking.check_in, booking.check_out)
@@ -170,13 +185,40 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         return () => { cancelled = true }
     }, [booking])
 
+    // A multi-room reservation settles as one bill, so this modal has to show
+    // every room on it — not just the one the cashier happened to click. The
+    // server is still authoritative (see computeFolioForStays); this is the
+    // preview the cashier confirms before taking the money.
+    const [loadedGroupBill, setLoadedGroupBill] = useState<GroupBill | null>(null)
+    const [groupBillLoadedFor, setGroupBillLoadedFor] = useState<string | null>(null)
+    // Derived rather than cleared in the effect, matching chargesLoadedFor
+    // above: until the fetch lands for THIS booking, there is no group bill, so
+    // a previous room's reservation can never bleed into the one on screen.
+    const groupBill = booking && groupBillLoadedFor === booking.id ? loadedGroupBill : null
+    useEffect(() => {
+        if (!booking) return
+        let cancelled = false
+        fetch(`/api/bookings/group?bookingId=${booking.id}`)
+            .then(r => r.json())
+            .then(data => {
+                if (cancelled) return
+                setLoadedGroupBill(data.success && data.isGroup ? data : null)
+                setGroupBillLoadedFor(booking.id)
+            })
+            .catch(err => console.error('Error loading group bill:', err))
+        return () => { cancelled = true }
+    }, [booking])
+
     // The room's own QR session carries booking_id, so its orders arrive in BOTH
     // qrOrderItems (by session) and linkedDiningOrders (by booking) — dedupe by
     // order-item id so the displayed total matches what the server bills.
     const allServiceOrderItems = Array.from(
         new Map([...qrOrderItems, ...linkedDiningOrders].map(it => [it.id, it])).values()
     ).filter((it: any) => it.status !== 'cancelled')
-    const stayCost = booking ? calculateStayCost(room, booking) : 0
+    // For a group the room cost is every room's cost, since the guest pays once.
+    const stayCost = groupBill
+        ? groupBill.stayCost
+        : (booking ? calculateStayCost(room, booking) : 0)
     const qrOrdersTotal = allServiceOrderItems.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
     const manualChargesTotal = charges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
 
@@ -197,7 +239,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const effectiveOrdersTotal = Math.max(0, qrOrdersTotal - orderDiscountVal)
 
     const grandTotal = effectiveStayCost + effectiveOrdersTotal + manualChargesTotal + extraHourChargeVal
-    const advancePaid = Number(booking?.paid_amount) || 0
+    // Advances were taken per room, so a reservation's advance is their sum.
+    const advancePaid = groupBill ? groupBill.advancePaid : (Number(booking?.paid_amount) || 0)
     const balanceDue = Math.max(0, grandTotal - advancePaid)
 
     const checkOutTime = booking ? new Date(booking.check_out) : null
@@ -437,10 +480,28 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                     <div className="flex justify-between items-center p-4 text-xs">
                                         <div>
                                             <p className="font-extrabold text-ink">Room Stay Cost</p>
-                                            <p className="text-[10px] text-ink-subtle">{money(room.room_types?.base_price || 0)} / Night</p>
+                                            {groupBill ? (
+                                                <p className="text-[10px] text-ink-subtle">{groupBill.rooms.length} rooms on one bill</p>
+                                            ) : (
+                                                <p className="text-[10px] text-ink-subtle">{money(room.room_types?.base_price || 0)} / Night</p>
+                                            )}
                                         </div>
                                         <span className="font-extrabold text-ink-subtle tabular-nums">{money(stayCost)}</span>
                                     </div>
+
+                                    {/* A reservation's rooms itemized, so the cashier can see what the
+                                        combined figure above is actually made of before charging it. */}
+                                    {groupBill && groupBill.rooms.map(r => (
+                                        <div key={r.bookingId} className="flex justify-between items-center py-2 px-4 pl-8 text-[11px] bg-surface-muted/30">
+                                            <span className="font-bold text-ink-subtle">
+                                                Room {r.roomNumber}
+                                                <span className="ml-1.5 font-semibold opacity-70">
+                                                    {r.nights} night{r.nights === 1 ? '' : 's'}
+                                                </span>
+                                            </span>
+                                            <span className="font-bold text-ink-subtle tabular-nums">{money(r.stayCost)}</span>
+                                        </div>
+                                    ))}
 
                                     {extraHourChargeVal > 0 && (
                                         <div className="flex justify-between items-center p-4 text-xs bg-rose-50/20">

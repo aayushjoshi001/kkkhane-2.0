@@ -111,6 +111,7 @@ export default function CashierRoomManager({
         setMoveTargetId('')
         setMoveReason('')
         setBookingForm({ guest_name: '', guest_phone: '', kyc: '', check_in: '', check_out: '', adult_male: '1', adult_female: '1', children: '0' })
+        setExtraRooms({})
         setAdvanceType('none')
         setAdvanceAmount('')
         setAdvanceSplitCash('')
@@ -128,6 +129,12 @@ export default function CashierRoomManager({
         adult_female: '1',
         children: '0',
     })
+    // Extra rooms this same guest is taking, keyed by room id. The room the
+    // front desk clicked is always the first room of the reservation and isn't
+    // in here; anything added makes this a multi-room booking, which the API
+    // turns into one reservation group billing onto a single folio.
+    const [extraRooms, setExtraRooms] = useState<Record<string, { adult_male: string; adult_female: string; children: string }>>({})
+
     const [advanceType, setAdvanceType] = useState<'none' | 'full' | 'partial'>('none')
     const [advanceAmount, setAdvanceAmount] = useState<string>('')
     const [advancePayMethod, setAdvancePayMethod] = useState<'cash' | 'qr_digital' | 'split'>('cash')
@@ -144,6 +151,44 @@ export default function CashierRoomManager({
         const female = n(bookingForm.adult_female)
         return { male, female, adults: male + female, children: n(bookingForm.children) }
     }, [bookingForm.adult_male, bookingForm.adult_female, bookingForm.children])
+
+    /** Rooms the front desk can add to this booking: free, not the one already
+     * selected, and not held by a live stay. Same availability rule as a room
+     * move, so the two can't disagree about what "free" means. */
+    const addableRooms = useMemo(() => {
+        const heldRoomIds = new Set(
+            (bookings || [])
+                .filter(b => b.status === 'checked_in' || b.status === 'pending')
+                .map(b => b.room_id),
+        )
+        return rooms
+            .filter(r => r.id !== selectedRoom?.id && !heldRoomIds.has(r.id) && r.status === 'available')
+            .sort((a, b) => a.room_number.localeCompare(b.room_number, undefined, { numeric: true }))
+    }, [rooms, bookings, selectedRoom?.id])
+
+    const selectedExtraIds = useMemo(() => Object.keys(extraRooms), [extraRooms])
+
+    /** room id → how many rooms its reservation holds. 0/1 for a normal stay. */
+    const groupSizeByRoomId = useMemo(() => {
+        const countByGroup = new Map<string, number>()
+        const live = (bookings || []).filter(b =>
+            b.group_id && (b.status === 'checked_in' || b.status === 'pending')
+        )
+        for (const b of live) {
+            countByGroup.set(b.group_id, (countByGroup.get(b.group_id) ?? 0) + 1)
+        }
+        return new Map(live.map(b => [b.room_id as string, countByGroup.get(b.group_id) ?? 1]))
+    }, [bookings])
+
+    /** Nightly rate across every room on the reservation — what a "full"
+     * advance has to cover once more than one room is involved. */
+    const combinedNightlyRate = useMemo(() => {
+        const base = selectedRoom?.room_types?.base_price || 0
+        return selectedExtraIds.reduce((sum, id) => {
+            const room = rooms.find(r => r.id === id)
+            return sum + (room?.room_types?.base_price || 0)
+        }, base)
+    }, [selectedRoom, selectedExtraIds, rooms])
 
     useEffect(() => {
         setMounted(true)
@@ -451,13 +496,26 @@ export default function CashierRoomManager({
         // the adult the room is registered to.
         if (guestTotals.adults < 1) { toast.error('Enter at least one adult guest'); return }
 
-        // Calculate advance amount to send
-        const basePrice = selectedRoom.room_types?.base_price || 0
+        // Every extra room needs an adult on it too — the same rule the API
+        // enforces, checked here so the front desk gets a pointed message
+        // instead of a generic rejection.
+        for (const roomId of selectedExtraIds) {
+            const g = extraRooms[roomId]
+            const adults = Math.max(0, Math.trunc(Number(g.adult_male) || 0)) + Math.max(0, Math.trunc(Number(g.adult_female) || 0))
+            if (adults < 1) {
+                const number = rooms.find(r => r.id === roomId)?.room_number ?? ''
+                toast.error(`Room ${number} needs at least one adult guest`)
+                return
+            }
+        }
+
+        // Calculate advance amount to send. A "full" advance covers every room
+        // on the reservation, not just the one that was clicked.
         const inDate = new Date(bookingForm.check_in)
         const outDate = new Date(bookingForm.check_out)
         const diffMs = outDate.getTime() - inDate.getTime()
         const nights = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)))
-        const fullCost = basePrice * nights
+        const fullCost = combinedNightlyRate * nights
 
         let resolvedAdvance = 0
         if (advanceType === 'full') {
@@ -482,15 +540,27 @@ export default function CashierRoomManager({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    room_id: selectedRoom.id,
+                    // The clicked room first, then any extras. The API creates a
+                    // reservation group whenever this is longer than one.
+                    rooms: [
+                        {
+                            room_id: selectedRoom.id,
+                            adult_male: bookingForm.adult_male,
+                            adult_female: bookingForm.adult_female,
+                            children: bookingForm.children,
+                        },
+                        ...selectedExtraIds.map(roomId => ({
+                            room_id: roomId,
+                            adult_male: extraRooms[roomId].adult_male,
+                            adult_female: extraRooms[roomId].adult_female,
+                            children: extraRooms[roomId].children,
+                        })),
+                    ],
                     guest_name: bookingForm.guest_name,
                     guest_phone: bookingForm.guest_phone,
                     kyc: bookingForm.kyc,
                     check_in: bookingForm.check_in,
                     check_out: bookingForm.check_out,
-                    adult_male: bookingForm.adult_male,
-                    adult_female: bookingForm.adult_female,
-                    children: bookingForm.children,
                     advance_amount: resolvedAdvance,
                     advance_payment_method: resolvedAdvance > 0 ? (irdSyncEnabled ? advancePayMethod : 'cash') : 'none',
                     advance_cash_amount: (irdSyncEnabled && isSplit) ? splitCash : undefined,
@@ -503,9 +573,15 @@ export default function CashierRoomManager({
             const data = await res.json()
             if (!res.ok) throw new Error(data.error)
 
-            toast.success(`Room ${selectedRoom.room_number} booked!${resolvedAdvance > 0 ? ` Advance: Rs. ${resolvedAdvance.toLocaleString()}` : ''}`)
-            setRooms(prev => prev.map(r => r.id === selectedRoom.id ? { ...r, status: 'occupied' } : r))
-            setBookings(prev => [...prev, data.data])
+            const bookedIds = new Set<string>([selectedRoom.id, ...selectedExtraIds])
+            const roomLabel = [selectedRoom.room_number, ...selectedExtraIds.map(id => rooms.find(r => r.id === id)?.room_number).filter(Boolean)].join(', ')
+            toast.success(
+                `${bookedIds.size > 1 ? `${bookedIds.size} rooms (${roomLabel})` : `Room ${selectedRoom.room_number}`} booked!` +
+                (resolvedAdvance > 0 ? ` Advance: Rs. ${resolvedAdvance.toLocaleString()}` : '')
+            )
+            setRooms(prev => prev.map(r => bookedIds.has(r.id) ? { ...r, status: 'occupied' } : r))
+            setBookings(prev => [...prev, ...(data.bookings || [data.data])])
+            setExtraRooms({})
             setBookingFormOpen(false)
             setSelectedRoom(null)
             setAdvanceSplitCash('')
@@ -563,6 +639,10 @@ export default function CashierRoomManager({
                 ) : (
                     filteredRooms.map(room => {
                         const cfg = getRoomStatusConfig(room.status)
+                        // Rooms held by the same reservation are marked so the
+                        // front desk can see at a glance that checking one out
+                        // will settle and release the others with it.
+                        const groupSize = groupSizeByRoomId.get(room.id) ?? 0
 
                         return (
                             <button
@@ -585,6 +665,14 @@ export default function CashierRoomManager({
                                     {cfg.label}
                                 </span>
                                 <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${cfg.dot} ${cfg.pulse ? 'animate-pulse' : ''}`} />
+                                {groupSize > 1 && (
+                                    <span
+                                        className="absolute top-1.5 left-1.5 text-[8px] font-black px-1.5 py-0.5 rounded-md bg-brand-500 text-white"
+                                        title={`Part of a ${groupSize}-room booking — these rooms bill and check out together`}
+                                    >
+                                        {groupSize} ROOMS
+                                    </span>
+                                )}
                             </button>
                         )
                     })
@@ -718,14 +806,95 @@ export default function CashierRoomManager({
                                             </div>
                                         </div>
 
+                                        {/* Extra rooms for the same guest. Adding any turns this into
+                                            one reservation: the rooms share a stay window, bill onto a
+                                            single folio, and check out together. */}
+                                        {addableRooms.length > 0 && (
+                                            <div className="col-span-2 border border-hairline rounded-2xl p-3 space-y-2 bg-surface-muted/30">
+                                                <div className="flex items-baseline justify-between">
+                                                    <p className="text-[10px] font-black text-ink-subtle uppercase tracking-wider">More rooms for this guest</p>
+                                                    <span className="text-[10px] font-bold text-ink-subtle">
+                                                        {selectedExtraIds.length + 1} room{selectedExtraIds.length ? 's' : ''} total
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {addableRooms.map(room => {
+                                                        const picked = !!extraRooms[room.id]
+                                                        return (
+                                                            <button
+                                                                key={room.id}
+                                                                type="button"
+                                                                aria-pressed={picked}
+                                                                onClick={() => setExtraRooms(prev => {
+                                                                    const next = { ...prev }
+                                                                    if (picked) delete next[room.id]
+                                                                    else next[room.id] = { adult_male: '1', adult_female: '0', children: '0' }
+                                                                    return next
+                                                                })}
+                                                                className={`px-2.5 py-1.5 rounded-xl border-2 text-[10px] font-bold transition-all ${
+                                                                    picked
+                                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                                        : 'border-hairline bg-surface text-ink-subtle hover:border-brand-300'
+                                                                }`}
+                                                            >
+                                                                {room.room_number}
+                                                                {room.room_types?.base_price ? (
+                                                                    <span className="ml-1 font-semibold opacity-70">{money(room.room_types.base_price)}</span>
+                                                                ) : null}
+                                                            </button>
+                                                        )
+                                                    })}
+                                                </div>
+
+                                                {/* Per-room guest mix — a family taking three rooms rarely
+                                                    splits evenly across them. */}
+                                                {selectedExtraIds.map(roomId => {
+                                                    const room = rooms.find(r => r.id === roomId)
+                                                    const guests = extraRooms[roomId]
+                                                    return (
+                                                        <div key={roomId} className="border-t border-hairline pt-2">
+                                                            <p className="text-[10px] font-bold text-ink mb-1">
+                                                                Room {room?.room_number}
+                                                                {room?.room_types?.capacity != null && (
+                                                                    <span className="ml-1 font-semibold text-ink-subtle">· sleeps {room.room_types.capacity}</span>
+                                                                )}
+                                                            </p>
+                                                            <div className="grid grid-cols-3 gap-2">
+                                                                {([
+                                                                    ['adult_male', 'Male'],
+                                                                    ['adult_female', 'Female'],
+                                                                    ['children', 'Children'],
+                                                                ] as const).map(([key, label]) => (
+                                                                    <div key={key}>
+                                                                        <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-0.5">{label}</label>
+                                                                        <input
+                                                                            type="number"
+                                                                            min="0"
+                                                                            inputMode="numeric"
+                                                                            aria-label={`Number of ${label.toLowerCase()} guests in room ${room?.room_number ?? ''}`}
+                                                                            value={guests[key]}
+                                                                            onChange={e => setExtraRooms(prev => ({
+                                                                                ...prev,
+                                                                                [roomId]: { ...prev[roomId], [key]: e.target.value },
+                                                                            }))}
+                                                                            className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold tabular-nums"
+                                                                        />
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                        )}
+
                                         {/* Advance Payment Section */}
                                         {(() => {
-                                            const basePrice = selectedRoom.room_types?.base_price || 0
                                             const inDate = new Date(bookingForm.check_in)
                                             const outDate = new Date(bookingForm.check_out)
                                             const diffMs = outDate.getTime() - inDate.getTime()
                                             const nights = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)))
-                                            const fullCost = basePrice * nights
+                                            const fullCost = combinedNightlyRate * nights
                                             return (
                                                 <div className="col-span-2 border border-hairline rounded-2xl p-3 space-y-2 bg-surface-muted/30">
                                                     <p className="text-[10px] font-black text-ink-subtle uppercase tracking-wider">Advance Payment</p>

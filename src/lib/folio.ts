@@ -25,7 +25,19 @@ export interface FolioCharge {
     chargeType: string
 }
 
+/** One room on the bill. A single-room stay has exactly one of these. */
+export interface FolioRoomLine {
+    bookingId: string
+    roomId: string
+    roomNumber: string
+    nights: number
+    /** This room's own share of the stay cost, before any discount. */
+    stayCost: number
+}
+
 export interface FolioBreakdown {
+    /** Nights on the longest stay in the bill — for a group, all rooms share a
+     * window, so this reads the same as it does for a single room. */
     nights: number
     stayCost: number
     discountAmount: number
@@ -35,6 +47,17 @@ export interface FolioBreakdown {
     total: number
     orders: FolioOrderLine[]
     charges: FolioCharge[]
+    /** Per-room split of `stayCost`. Lets a multi-room bill itemize each room
+     * instead of showing one opaque lump. */
+    rooms: FolioRoomLine[]
+}
+
+/** One room-stay to be billed. A group folio passes several. */
+export interface FolioStay {
+    bookingId: string
+    roomId: string
+    checkIn: string
+    checkOut: string
 }
 
 /**
@@ -105,7 +128,78 @@ export async function computeFolioTotal(
         discountAmount?: number
     }
 ): Promise<FolioBreakdown> {
-    const { restaurantId, bookingId, roomId, checkIn, checkOut, sessionId, discountAmount: rawDiscount } = opts
+    return computeFolioForStays(supabase, {
+        restaurantId: opts.restaurantId,
+        stays: [{
+            bookingId: opts.bookingId,
+            roomId: opts.roomId,
+            checkIn: opts.checkIn,
+            checkOut: opts.checkOut,
+        }],
+        sessionId: opts.sessionId,
+        discountAmount: opts.discountAmount,
+    })
+}
+
+/**
+ * The combined folio for a multi-room reservation.
+ *
+ * Every room in the group bills onto one bill: each room's own nightly rate
+ * over its own nights, all manual charges, and every unpaid room-service order
+ * from any of the rooms — with one discount and one VAT line across the whole
+ * thing, because the guest pays once.
+ *
+ * Returns null if the group has no billable stays left (all cancelled, or the
+ * group id is stale), so callers can fall back to a single-booking folio.
+ */
+export async function computeGroupFolioTotal(
+    supabase: SupabaseClient,
+    opts: {
+        restaurantId: string
+        groupId: string
+        sessionId: string | null
+        discountAmount?: number
+    }
+): Promise<FolioBreakdown | null> {
+    const { data: members } = await supabase
+        .from('bookings')
+        .select('id, room_id, check_in, check_out')
+        .eq('group_id', opts.groupId)
+        .neq('status', 'cancelled')
+        .order('created_at', { ascending: true })
+
+    if (!members || members.length === 0) return null
+
+    return computeFolioForStays(supabase, {
+        restaurantId: opts.restaurantId,
+        stays: members.map((m) => ({
+            bookingId: m.id as string,
+            roomId: m.room_id as string,
+            checkIn: m.check_in as string,
+            checkOut: m.check_out as string,
+        })),
+        sessionId: opts.sessionId,
+        discountAmount: opts.discountAmount,
+    })
+}
+
+export async function computeFolioForStays(
+    supabase: SupabaseClient,
+    opts: {
+        restaurantId: string
+        /** One entry for a normal stay, several for a multi-room reservation. */
+        stays: FolioStay[]
+        sessionId: string | null
+        // A staff-applied bargain rate, reducing the room stay cost
+        // specifically (so VAT below is computed on the net rate, not the
+        // standard one) — see bookings.discount_amount. One discount covers the
+        // whole bill, however many rooms are on it.
+        discountAmount?: number
+    }
+): Promise<FolioBreakdown> {
+    const { restaurantId, stays, sessionId, discountAmount: rawDiscount } = opts
+    const bookingIds = stays.map(s => s.bookingId)
+    const roomIds = [...new Set(stays.map(s => s.roomId))]
 
     // Fetch partner restaurant/hotel if linked
     const { data: currentRest } = await supabase
@@ -147,10 +241,9 @@ export async function computeFolioTotal(
     const [roomRes, bookingsCountRes, roomsCountRes, rulesRes, segmentsRes] = await Promise.all([
         supabase
             .from('rooms')
-            .select('room_types:type_id(base_price)')
-            .eq('id', roomId)
-            .eq('restaurant_id', hotelId)
-            .maybeSingle(),
+            .select('id, room_number, room_types:type_id(base_price)')
+            .in('id', roomIds)
+            .eq('restaurant_id', hotelId),
         supabase
             .from('bookings')
             .select('*', { count: 'exact', head: true })
@@ -166,61 +259,100 @@ export async function computeFolioTotal(
             .select('*')
             .eq('restaurant_id', hotelId)
             .eq('is_active', true),
-        // Rooms this stay has occupied, oldest first. A stay that was never
+        // Rooms each stay has occupied, oldest first. A stay that was never
         // moved has a single segment and prices exactly as it did before.
         supabase
             .from('booking_room_stays')
-            .select('room_id, from_ts, rooms:room_id(room_types:type_id(base_price))')
-            .eq('booking_id', bookingId)
+            .select('booking_id, room_id, from_ts, rooms:room_id(room_types:type_id(base_price))')
+            .in('booking_id', bookingIds)
             .order('from_ts', { ascending: true })
     ])
 
-    const basePrice = Number((roomRes.data?.room_types as { base_price?: number } | null)?.base_price) || 0
-    const nights = calculateNights(checkIn, checkOut)
+    const roomInfo = new Map(
+        (roomRes.data || []).map((r) => [
+            r.id as string,
+            {
+                roomNumber: (r.room_number as string) || '',
+                basePrice: Number((r.room_types as { base_price?: number } | null)?.base_price) || 0,
+            },
+        ])
+    )
 
-    const segments: RoomRateSegment[] = (segmentsRes.data || []).map((seg) => ({
-        fromTs: seg.from_ts as string,
-        // A segment whose room lost its type would otherwise price its nights at
-        // zero; fall back to the booking's current room rate.
-        price:
-            Number(((seg.rooms as { room_types?: { base_price?: number } | null } | null)?.room_types)?.base_price) ||
-            basePrice,
-    }))
-    const rateForNight = (nightStart: Date) => resolveNightlyRate(segments, nightStart, basePrice)
-    
+    // Move segments, bucketed by the stay they belong to.
+    const segmentsByBooking = new Map<string, RoomRateSegment[]>()
+    for (const seg of segmentsRes.data || []) {
+        const bookingId = seg.booking_id as string
+        const bucket = segmentsByBooking.get(bookingId) ?? []
+        bucket.push({
+            fromTs: seg.from_ts as string,
+            // A segment whose room lost its type would otherwise price its
+            // nights at zero; fall back to that stay's current room rate.
+            price:
+                Number(((seg.rooms as { room_types?: { base_price?: number } | null } | null)?.room_types)?.base_price) ||
+                0,
+        })
+        segmentsByBooking.set(bookingId, bucket)
+    }
+
     // Calculate current occupancy rate
     const totalRoomsCount = roomsCountRes.count || 1
     const activeBookingsCount = bookingsCountRes.count || 0
     const occupancyPct = (activeBookingsCount / totalRoomsCount) * 100
 
-    let stayCost = 0
-    const start = new Date(checkIn)
     const pricingRules = rulesRes.data || []
 
-    if (nights > 0) {
-        for (let i = 0; i < nights; i++) {
+    // Price each room's nights independently — a group can hold rooms of
+    // different types, so one blended rate would misprice every one of them.
+    const roomLines: FolioRoomLine[] = []
+    let stayCost = 0
+    let nights = 0
+
+    for (const stay of stays) {
+        const info = roomInfo.get(stay.roomId)
+        const basePrice = info?.basePrice ?? 0
+        const stayNights = calculateNights(stay.checkIn, stay.checkOut)
+        const segments = (segmentsByBooking.get(stay.bookingId) ?? []).map(seg => ({
+            fromTs: seg.fromTs,
+            price: seg.price || basePrice,
+        }))
+        const rateForNight = (nightStart: Date) => resolveNightlyRate(segments, nightStart, basePrice)
+
+        const start = new Date(stay.checkIn)
+        let roomStayCost = 0
+
+        for (let i = 0; i < stayNights; i++) {
             const nightDate = new Date(start)
             nightDate.setDate(start.getDate() + i)
-            
+
             let nightMultiplier = 1.0
-            
+
             // Apply weekend rules (Friday / Saturday nights)
             const weekendRule = pricingRules.find(r => r.rule_type === 'weekend')
             if (weekendRule && (nightDate.getDay() === 5 || nightDate.getDay() === 6)) {
                 nightMultiplier *= Number(weekendRule.multiplier)
             }
-            
+
             // Apply occupancy rules
-            const occupancyRule = pricingRules.find(r => 
-                r.rule_type === 'occupancy' && 
+            const occupancyRule = pricingRules.find(r =>
+                r.rule_type === 'occupancy' &&
                 occupancyPct >= Number(r.occupancy_threshold_pct || 0)
             )
             if (occupancyRule) {
                 nightMultiplier *= Number(occupancyRule.multiplier)
             }
-            
-            stayCost += rateForNight(nightDate) * nightMultiplier
+
+            roomStayCost += rateForNight(nightDate) * nightMultiplier
         }
+
+        stayCost += roomStayCost
+        nights = Math.max(nights, stayNights)
+        roomLines.push({
+            bookingId: stay.bookingId,
+            roomId: stay.roomId,
+            roomNumber: info?.roomNumber ?? '',
+            nights: stayNights,
+            stayCost: round2(roomStayCost),
+        })
     }
 
     // Clamped so a stale/oversized discount can never push the room cost
@@ -229,11 +361,12 @@ export async function computeFolioTotal(
     const discountAmount = Math.min(Math.max(Number(rawDiscount) || 0, 0), stayCost)
     const netStayCost = stayCost - discountAmount
 
-    // Manual charges added during the stay (minibar, laundry, …).
+    // Manual charges added during the stay (minibar, laundry, …), across every
+    // room on the bill.
     const { data: chargeRows } = await supabase
         .from('room_charges')
         .select('id, amount, description, charge_type')
-        .eq('booking_id', bookingId)
+        .in('booking_id', bookingIds)
         .eq('restaurant_id', hotelId)
         .order('created_at', { ascending: true })
     const charges: FolioCharge[] = (chargeRows || []).map((c) => ({
@@ -249,10 +382,13 @@ export async function computeFolioTotal(
     //   • orders keyed directly to the stay (room QR)   → orders.booking_id
     //   • orders in the room's active QR session        → sessions.id = sessionId
     //   • orders in dining sessions linked to the stay  → sessions.booking_id
+    // On a group bill this sweeps every room's orders onto the one folio, and
+    // the dedupe means an order reachable from two of those routes still counts
+    // once.
     const { data: linkedSessions } = await supabase
         .from('sessions')
         .select('id')
-        .eq('booking_id', bookingId)
+        .in('booking_id', bookingIds)
     const sessionIds = new Set<string>((linkedSessions || []).map((s: { id: string }) => s.id))
     if (sessionId) sessionIds.add(sessionId)
 
@@ -273,7 +409,7 @@ export async function computeFolioTotal(
         .from('orders')
         .select('id, placed_at, order_items(status, quantity, unit_price)')
         .in('restaurant_id', targetRestaurantIds)
-        .eq('booking_id', bookingId)
+        .in('booking_id', bookingIds)
         .neq('status', 'cancelled')
         .neq('payment_status', 'paid')
     addOrders(byBooking as never)
@@ -310,5 +446,6 @@ export async function computeFolioTotal(
         total,
         orders,
         charges,
+        rooms: roomLines,
     }
 }
