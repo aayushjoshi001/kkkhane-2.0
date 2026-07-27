@@ -231,6 +231,7 @@ export default function InvoiceReceipt({
                             {invoice.paymentMethod === 'cash' ? 'CASH'
                                 : invoice.paymentMethod === 'qr_digital' ? 'QR / DIGITAL'
                                 : invoice.paymentMethod === 'credit' ? 'CREDIT'
+                                : invoice.paymentMethod === 'none' ? 'NOT YET'
                                 : 'SPLIT'}
                         </span>
                     </div>

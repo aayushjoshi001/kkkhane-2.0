@@ -44,7 +44,7 @@ export interface ActiveInvoice {
     advancePaid?: number
     advanceMethod?: AdvancePaymentMethod | null
     balanceDue?: number
-    paymentMethod?: 'cash' | 'qr_digital' | 'both' | 'credit'
+    paymentMethod?: 'cash' | 'qr_digital' | 'both' | 'credit' | 'none'
     cashPaid?: number
     qrPaid?: number
     creditPaid?: number
@@ -170,6 +170,7 @@ export function buildInvoiceTicket(
         const label = invoice.paymentMethod === 'cash' ? 'CASH'
             : invoice.paymentMethod === 'qr_digital' ? 'QR / DIGITAL'
             : invoice.paymentMethod === 'credit' ? 'CREDIT'
+            : invoice.paymentMethod === 'none' ? 'NOT YET'
             : 'SPLIT'
         b.line(`Payment: ${label}`)
         if (invoice.paymentMethod === 'both') {
