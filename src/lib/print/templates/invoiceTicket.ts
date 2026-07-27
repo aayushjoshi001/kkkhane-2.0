@@ -41,6 +41,11 @@ export interface ActiveInvoice {
     nights: number
     basePrice: number
     stayCost: number
+    subtotal?: number
+    serviceCharge?: number
+    service_charge_amount?: number
+    taxAmount?: number
+    tax_amount?: number
     /**
      * Set only for a multi-room reservation, which settles on one bill: the
      * per-room split of `stayCost`, printed as a line each so the guest sees
@@ -175,11 +180,20 @@ export function buildInvoiceTicket(
     }
 
     b.divider()
-    if (invoice.extraHourCharge && invoice.extraHourCharge > 0) {
-        b.columns([{ text: 'EXTRA HOUR CHARGE', width: LINE_WIDTH - 14 }, { text: money(invoice.extraHourCharge), width: 14, align: 'right' }])
+    const rawSubtotal = invoice.subtotal != null ? invoice.subtotal : ((invoice.stayCost || 0) + (invoice.qrOrdersTotal || 0) + (invoice.linkedOrdersTotal || 0) + (invoice.manualChargesTotal || 0) + (invoice.extraHourCharge || 0))
+    const scAmount = invoice.serviceCharge || invoice.service_charge_amount || 0
+    const taxAmount = invoice.taxAmount || invoice.tax_amount || 0
+    const discount = invoice.discountAmount || 0
+
+    b.columns([{ text: 'SUBTOTAL', width: LINE_WIDTH - 14 }, { text: money(rawSubtotal), width: 14, align: 'right' }])
+    if (scAmount > 0) {
+        b.columns([{ text: 'SERVICE CHARGE', width: LINE_WIDTH - 14 }, { text: `+${money(scAmount)}`, width: 14, align: 'right' }])
     }
-    if (invoice.discountAmount && invoice.discountAmount > 0) {
-        b.columns([{ text: 'TOTAL DISCOUNT', width: LINE_WIDTH - 14 }, { text: `-${money(invoice.discountAmount)}`, width: 14, align: 'right' }])
+    if (discount > 0) {
+        b.columns([{ text: 'DISCOUNT', width: LINE_WIDTH - 14 }, { text: `-${money(discount)}`, width: 14, align: 'right' }])
+    }
+    if (taxAmount > 0) {
+        b.columns([{ text: 'TAX (VAT)', width: LINE_WIDTH - 14 }, { text: `+${money(taxAmount)}`, width: 14, align: 'right' }])
     }
     b.bold(true)
     b.columns([{ text: 'GRAND TOTAL', width: LINE_WIDTH - 14 }, { text: money(invoice.total), width: 14, align: 'right' }])

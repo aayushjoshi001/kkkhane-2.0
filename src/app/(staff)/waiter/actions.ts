@@ -635,6 +635,7 @@ export async function placeRoomOrderDirect(
 
     const orderId = orderRow.id
     let subtotal = 0
+    let foodSubtotal = 0
 
     // 3. Insert order items with needs_confirmation: true
     for (const item of items) {
@@ -642,6 +643,7 @@ export async function placeRoomOrderDirect(
         let menuItemId = item.menuItemId
         let specialRequest = item.specialRequest || null
         let variationId = null
+        let itemStation = 'kitchen'
 
         if (item.isOutsideFood) {
             const outsideFoodId = await getOrCreateOutsideFoodItem(adminSupabase, restaurantId)
@@ -651,13 +653,14 @@ export async function placeRoomOrderDirect(
         } else {
             const { data: menuItem } = await adminSupabase
                 .from('menu_items')
-                .select('id, price, is_available')
+                .select('id, price, is_available, station')
                 .eq('id', item.menuItemId)
                 .single()
 
             if (!menuItem?.id || menuItem.is_available === false) continue
             menuItemId = menuItem.id
             unitPrice = Number(menuItem.price ?? 0)
+            itemStation = menuItem.station || 'kitchen'
 
             if (item.variationId) {
                 const { data: variation } = await adminSupabase
@@ -717,6 +720,9 @@ export async function placeRoomOrderDirect(
         }
 
         subtotal += itemTotal
+        if (itemStation === 'kitchen') {
+            foodSubtotal += itemTotal
+        }
     }
 
     // 4. Calculate Taxes and Service Charge
@@ -733,8 +739,8 @@ export async function placeRoomOrderDirect(
     const roomScRooms = Array.isArray(featuresV2?.roomServiceChargeRooms) ? featuresV2.roomServiceChargeRooms : []
     const isRoomScApplicable = roomScEnabled && booking.room_id && roomScRooms.includes(booking.room_id)
 
-    // Direct room orders have a 10% service charge on all items, if enabled for this room
-    const serviceCharge = isRoomScApplicable ? (Math.round(subtotal * 0.10 * 100) / 100) : 0
+    // Direct room orders have a 10% service charge on food items only, if enabled for this room
+    const serviceCharge = isRoomScApplicable ? (Math.round(foodSubtotal * 0.10 * 100) / 100) : 0
 
     const tax = Math.round((subtotal + serviceCharge) * (taxRate / 100) * 100) / 100
     const total = Math.max(0, subtotal + serviceCharge + tax)
@@ -890,10 +896,11 @@ export async function recalculateAndUpdateOrderTotals(
         const isRoomScApplicable = roomScEnabled && orderRoomId && roomScRooms.includes(orderRoomId)
 
         if (!orderData.session_id) {
-            // Direct room order: 10% service charge on all items (if enabled for room)
+            // Direct room order: 10% service charge on food items only (if enabled for room)
             if (isRoomScApplicable) {
-                const netSubtotal = Math.max(0, subtotal - discountAmount)
-                serviceCharge = Math.round(netSubtotal * 0.10 * 100) / 100
+                const foodRatio = subtotal > 0 ? (foodSubtotal / subtotal) : 0
+                const discountedFoodSubtotal = Math.max(0, foodSubtotal - (discountAmount * foodRatio))
+                serviceCharge = Math.round(discountedFoodSubtotal * 0.10 * 100) / 100
             } else {
                 serviceCharge = 0
             }
