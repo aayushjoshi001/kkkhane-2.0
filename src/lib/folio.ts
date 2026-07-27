@@ -443,7 +443,17 @@ export async function computeFolioForStays(
             let roomId: string | null = null
             let isDirectRoomOrder = false
             if (o.session_id) {
-                roomId = sessionRoomId.get(o.session_id) ?? null
+                // Both the guest's own in-room QR order and a cashier placing an
+                // order straight into that same room's live session bind the
+                // ORDER's booking_id the moment it's placed, but never touch
+                // sessions.booking_id — so a session missing from sessionRoomId
+                // (as opposed to present but mapping to null, which means a
+                // confirmed ordinary dine-in table) isn't "not a room order",
+                // it just means we have to read the room off the order's own
+                // booking_id instead.
+                roomId = sessionRoomId.has(o.session_id)
+                    ? sessionRoomId.get(o.session_id) ?? null
+                    : (o.booking_id ? roomIdByBooking.get(o.booking_id) ?? null : null)
             } else if (o.booking_id) {
                 roomId = roomIdByBooking.get(o.booking_id) ?? null
                 isDirectRoomOrder = !!roomId
