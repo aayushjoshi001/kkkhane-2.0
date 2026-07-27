@@ -915,10 +915,9 @@ export async function recalculateAndUpdateOrderTotals(
                     serviceCharge = 0
                 }
             } else {
-                // Dine-in order linked to room: standard service charge from settings
-                serviceCharge = scEnabled 
-                    ? Math.round((subtotal - discountAmount) * (scRate / 100) * 100) / 100 
-                    : 0
+                // Dine-in order merely linked/billed to a room stay: not a room
+                // order, so no service charge — matches folio.ts's live recompute.
+                serviceCharge = 0
             }
         }
     } else {
