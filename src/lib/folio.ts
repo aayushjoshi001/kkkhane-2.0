@@ -8,7 +8,7 @@
 
 import { SupabaseClient } from '@supabase/supabase-js'
 import { getRestaurantFeatures } from '@/lib/features'
-import { calculateNights, NEPAL_TZ } from '@/lib/utils'
+import { calculateNights, lateCheckoutNights, resolveDeparture, NEPAL_TZ } from '@/lib/utils'
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
@@ -30,9 +30,12 @@ export interface FolioRoomLine {
     bookingId: string
     roomId: string
     roomNumber: string
+    /** Booked nights plus any charged for a late departure. */
     nights: number
     /** This room's own share of the stay cost, before any discount. */
     stayCost: number
+    /** Nights included above solely because the guest checked out late. */
+    lateNights: number
 }
 
 export interface FolioBreakdown {
@@ -57,7 +60,12 @@ export interface FolioStay {
     bookingId: string
     roomId: string
     checkIn: string
+    /** The departure the guest booked, not necessarily the one that happened. */
     checkOut: string
+    /** When the guest actually left. NULL while they are still in house. */
+    checkedOutAt?: string | null
+    /** Used only to read a NULL checkedOutAt correctly — see resolveDeparture. */
+    status?: string | null
 }
 
 /**
@@ -121,6 +129,9 @@ export async function computeFolioTotal(
         roomId: string
         checkIn: string
         checkOut: string
+        /** Actual departure, for billing a late checkout. See FolioStay. */
+        checkedOutAt?: string | null
+        status?: string | null
         sessionId: string | null
         // A staff-applied bargain rate, reducing the room stay cost
         // specifically (so VAT below is computed on the net rate, not the
@@ -135,6 +146,8 @@ export async function computeFolioTotal(
             roomId: opts.roomId,
             checkIn: opts.checkIn,
             checkOut: opts.checkOut,
+            checkedOutAt: opts.checkedOutAt,
+            status: opts.status,
         }],
         sessionId: opts.sessionId,
         discountAmount: opts.discountAmount,
@@ -163,7 +176,7 @@ export async function computeGroupFolioTotal(
 ): Promise<FolioBreakdown | null> {
     const { data: members } = await supabase
         .from('bookings')
-        .select('id, room_id, check_in, check_out')
+        .select('id, room_id, check_in, check_out, checked_out_at, status')
         .eq('group_id', opts.groupId)
         .neq('status', 'cancelled')
         .order('created_at', { ascending: true })
@@ -177,6 +190,8 @@ export async function computeGroupFolioTotal(
             roomId: m.room_id as string,
             checkIn: m.check_in as string,
             checkOut: m.check_out as string,
+            checkedOutAt: m.checked_out_at as string | null,
+            status: m.status as string | null,
         })),
         sessionId: opts.sessionId,
         discountAmount: opts.discountAmount,
@@ -307,10 +322,24 @@ export async function computeFolioForStays(
     let stayCost = 0
     let nights = 0
 
+    const now = new Date()
+
     for (const stay of stays) {
         const info = roomInfo.get(stay.roomId)
         const basePrice = info?.basePrice ?? 0
-        const stayNights = calculateNights(stay.checkIn, stay.checkOut)
+        // Booked nights, plus any the guest owes for leaving late. The late
+        // nights are appended to the booked window rather than folded into
+        // calculateNights: that function ceilings the whole span, so passing it
+        // the real departure would tip a stay into an extra night the moment it
+        // crossed a 24h boundary, ignoring the grace period entirely.
+        const bookedNights = calculateNights(stay.checkIn, stay.checkOut)
+        const departure = resolveDeparture({
+            check_out: stay.checkOut,
+            checked_out_at: stay.checkedOutAt,
+            status: stay.status,
+        }, now)
+        const lateNights = lateCheckoutNights(stay.checkOut, departure)
+        const stayNights = bookedNights + lateNights
         const segments = (segmentsByBooking.get(stay.bookingId) ?? []).map(seg => ({
             fromTs: seg.fromTs,
             price: seg.price || basePrice,
@@ -352,6 +381,7 @@ export async function computeFolioForStays(
             roomNumber: info?.roomNumber ?? '',
             nights: stayNights,
             stayCost: round2(roomStayCost),
+            lateNights,
         })
     }
 

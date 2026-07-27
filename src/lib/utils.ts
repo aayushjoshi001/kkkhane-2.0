@@ -212,6 +212,68 @@ export function advanceMethodLabel(method: AdvancePaymentMethod | null | undefin
 /**
  * Calculate stay night duration (ceiling value, minimum 1 night).
  */
+/**
+ * How long a guest may stay past checkout before the room is billed for
+ * another day. Four hours covers a late morning flight or a delayed taxi;
+ * beyond that the room cannot be turned around and re-let that day, so it
+ * costs the hotel a full night either way.
+ */
+export const LATE_CHECKOUT_GRACE_HOURS = 4
+
+/** The booking fields the late-checkout rule reads, as they come out of the DB. */
+export interface StayDeparture {
+    /** The departure the guest booked, not necessarily the one that happened. */
+    check_out: string
+    /** When the guest actually left. NULL while they are still in house. */
+    checked_out_at?: string | null
+    status?: string | null
+}
+
+/**
+ * The moment to bill a stay up to.
+ *
+ * While the guest is in house this is now, so an overstay shows on the bill as
+ * it accrues. Once they have left it is the recorded departure, which has to be
+ * stable: the folio is recomputed after checkout (the receipt email does this),
+ * and reading the clock there would keep inflating an already-settled bill.
+ *
+ * A stay already checked out with no recorded departure predates that column.
+ * Those are treated as having left exactly on time, so historical bills
+ * reproduce what was actually charged instead of growing by however many days
+ * have passed since.
+ *
+ * Lives here rather than in lib/folio so the cashier's on-screen preview and
+ * the server's authoritative total apply one definition — folio.ts pulls in
+ * server-only code and cannot be imported into a client bundle.
+ */
+export function resolveDeparture(stay: StayDeparture, now: Date = new Date()): Date {
+    if (stay.checked_out_at) return new Date(stay.checked_out_at)
+    if (stay.status === 'checked_out') return new Date(stay.check_out)
+    return now
+}
+
+/**
+ * Nights owed beyond the booked window because the guest left late.
+ *
+ * Past the grace period a late departure is charged as whole days: a guest who
+ * checks out five hours late owes one more night, one who leaves a day and five
+ * hours late owes two. Anything inside the grace period adds nothing here — the
+ * cashier can still apply a manual charge for it at checkout.
+ */
+export function lateCheckoutNights(
+    scheduledCheckOut: string | Date,
+    departure: Date,
+    graceHours: number = LATE_CHECKOUT_GRACE_HOURS,
+): number {
+    const overstayMs = departure.getTime() - new Date(scheduledCheckOut).getTime()
+    if (overstayMs <= 0) return 0
+
+    const overstayHours = overstayMs / (1000 * 60 * 60)
+    if (overstayHours <= graceHours) return 0
+
+    return Math.ceil(overstayHours / 24)
+}
+
 export function calculateNights(checkIn: string | Date, checkOut: string | Date): number {
     const inDate = typeof checkIn === 'string' ? new Date(checkIn) : checkIn
     const outDate = typeof checkOut === 'string' ? new Date(checkOut) : checkOut

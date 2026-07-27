@@ -6,7 +6,7 @@ import { X, Loader2, CheckCircle2, Percent, Clock, Printer } from 'lucide-react'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
-import { calculateNights, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
+import { calculateNights, lateCheckoutNights, resolveDeparture, LATE_CHECKOUT_GRACE_HOURS, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
 import { buildInvoiceTicket, type ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import { usePrinter } from '@/lib/print/usePrinter'
@@ -85,9 +85,13 @@ interface GroupBill {
     advancePaid: number
 }
 
+// Mirrors the server folio, including the late-checkout rule — if this preview
+// left the overstay out, the cashier would quote a total the server then
+// charged more than.
 const calculateStayCost = (room: Room, booking: Booking) => {
     const price = room.room_types?.base_price || 0
     const nights = calculateNights(booking.check_in, booking.check_out)
+        + lateCheckoutNights(booking.check_out, resolveDeparture(booking))
     return price * nights
 }
 
@@ -248,6 +252,13 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const isExceeded = checkOutTime ? currentTime > checkOutTime : false
     const extraHours = isExceeded && checkOutTime
         ? Math.ceil((currentTime.getTime() - checkOutTime.getTime()) / (1000 * 60 * 60))
+        : 0
+    // Nights the overstay has already added to the room cost above. Past the
+    // grace period the stay is billed another full day automatically, so the
+    // manual extra-hour field must not be offered for the same time again —
+    // that would charge the guest twice for one overstay.
+    const autoLateNights = booking
+        ? lateCheckoutNights(booking.check_out, resolveDeparture(booking))
         : 0
 
     const resolvedCash = paymentMethod === 'cash' ? balanceDue
@@ -469,7 +480,12 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                     <p className="font-semibold text-ink-subtle">In: {formatDateTime(booking.check_in)}</p>
                                     <p className="font-semibold text-ink-subtle">Out: {formatDateTime(booking.check_out)}</p>
                                     {isExceeded && (
-                                        <p className="text-[9px] text-rose-600 font-bold mt-1">⚠ Exceeded by {extraHours} hr(s)</p>
+                                        <p className="text-[9px] text-rose-600 font-bold mt-1">
+                                            ⚠ Exceeded by {extraHours} hr(s)
+                                            {autoLateNights > 0
+                                                ? ` — billed as ${autoLateNights} extra day${autoLateNights === 1 ? '' : 's'}`
+                                                : ` — within ${LATE_CHECKOUT_GRACE_HOURS}h grace`}
+                                        </p>
                                     )}
                                 </div>
                             </div>
@@ -636,11 +652,25 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         </div>
                                         <div>
                                             <p className="text-xs font-black text-rose-800 uppercase tracking-wider">Late Checkout Alert</p>
-                                            <p className="text-[10px] text-rose-700/70 font-semibold">Exceeded by {extraHours} hour(s)</p>
+                                            <p className="text-[10px] text-rose-700/70 font-semibold">
+                                                Exceeded by {extraHours} hour(s)
+                                                {autoLateNights > 0 && ` · ${autoLateNights} extra day${autoLateNights === 1 ? '' : 's'} already in the room cost`}
+                                            </p>
                                         </div>
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="block text-[9px] font-black text-rose-800 uppercase">Extra Hour Charge (Optional)</label>
+                                        <label className="block text-[9px] font-black text-rose-800 uppercase">
+                                            {autoLateNights > 0 ? 'Additional Charge (Optional)' : 'Extra Hour Charge (Optional)'}
+                                        </label>
+                                        {autoLateNights > 0 && (
+                                            /* The overstay is already priced as whole days above. Anything
+                                               typed here is on top of that, so say so — otherwise the
+                                               obvious reading is that this is where the late fee goes, and
+                                               the guest pays for the same hours twice. */
+                                            <p className="text-[9px] text-rose-700/70 font-semibold">
+                                                Past {LATE_CHECKOUT_GRACE_HOURS}h the stay is billed a full extra day automatically. Only add here if you are charging something beyond that.
+                                            </p>
+                                        )}
                                         <div className="relative">
                                             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-rose-700">Rs.</span>
                                             <input

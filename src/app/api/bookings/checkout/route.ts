@@ -224,7 +224,7 @@ export async function POST(req: Request) {
         // with the advance already collected and to recompute its folio.
         const { data: booking, error: fetchError } = await supabase
             .from('bookings')
-            .select('id, paid_amount, status, check_in, check_out, room_id, group_id, guest_name, guest_phone, guest_email, restaurant_id')
+            .select('id, paid_amount, status, check_in, check_out, checked_out_at, room_id, group_id, guest_name, guest_phone, guest_email, restaurant_id')
             .eq('id', booking_id)
             .in('restaurant_id', targetRestaurantIds)
             .maybeSingle()
@@ -243,6 +243,8 @@ export async function POST(req: Request) {
             room_id: string
             check_in: string
             check_out: string
+            checked_out_at: string | null
+            status: string | null
             paid_amount: number | null
         }
         let members: Member[] = [{
@@ -250,13 +252,15 @@ export async function POST(req: Request) {
             room_id: booking.room_id || room_id,
             check_in: booking.check_in,
             check_out: booking.check_out,
+            checked_out_at: booking.checked_out_at ?? null,
+            status: booking.status ?? null,
             paid_amount: booking.paid_amount,
         }]
 
         if (booking.group_id) {
             const { data: groupRows } = await supabase
                 .from('bookings')
-                .select('id, room_id, check_in, check_out, paid_amount')
+                .select('id, room_id, check_in, check_out, checked_out_at, status, paid_amount')
                 .eq('group_id', booking.group_id)
                 .neq('status', 'cancelled')
                 .order('created_at', { ascending: true })
@@ -277,6 +281,11 @@ export async function POST(req: Request) {
                 roomId: m.room_id,
                 checkIn: m.check_in,
                 checkOut: m.check_out,
+                // Still in house at this point, so the folio bills the overstay
+                // up to now — which is the moment the RPC below stamps as the
+                // departure, keeping the charge and the record consistent.
+                checkedOutAt: m.checked_out_at,
+                status: m.status,
             })),
             sessionId: session_id || null,
             discountAmount,
@@ -308,7 +317,14 @@ export async function POST(req: Request) {
             // reservation, since they settled on one bill.
             const { error: bookingErr } = await supabase
                 .from('bookings')
-                .update({ status: 'checked_out', payment_status: 'paid' })
+                .update({
+                    status: 'checked_out',
+                    payment_status: 'paid',
+                    // Freezes the overstay: without it the folio would read the
+                    // clock on every later recompute and a settled bill would
+                    // keep growing.
+                    checked_out_at: new Date().toISOString(),
+                })
                 .in('id', memberIds)
             if (bookingErr) throw bookingErr
 

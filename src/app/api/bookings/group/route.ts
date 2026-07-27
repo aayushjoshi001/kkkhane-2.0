@@ -55,7 +55,7 @@ export async function GET(req: Request) {
 
         const { data: members } = await supabase
             .from('bookings')
-            .select('id, room_id, check_in, check_out, paid_amount, discount_amount, rooms:room_id(room_number)')
+            .select('id, room_id, check_in, check_out, checked_out_at, status, paid_amount, discount_amount, rooms:room_id(room_number)')
             .eq('group_id', booking.group_id)
             .neq('status', 'cancelled')
             .order('created_at', { ascending: true })
@@ -71,6 +71,8 @@ export async function GET(req: Request) {
                 roomId: m.room_id as string,
                 checkIn: m.check_in as string,
                 checkOut: m.check_out as string,
+                checkedOutAt: m.checked_out_at as string | null,
+                status: m.status as string | null,
             })),
             sessionId: null,
             discountAmount: 0,

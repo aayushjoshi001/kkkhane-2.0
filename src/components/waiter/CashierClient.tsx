@@ -30,7 +30,7 @@ import type { BankAccount, ExpenseCategory, Supplier, Session } from '@/types/da
 import QuickOrderModal from './QuickOrderModal'
 
 
-import { calculateNights, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
+import { calculateNights, lateCheckoutNights, resolveDeparture, LATE_CHECKOUT_GRACE_HOURS, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 
 // Auto-print retry/fallback tuning, matching the kitchen screen's.
@@ -686,10 +686,14 @@ export default function CashierClient({
         setQrReceivedAmount('')
     }, [selectedBillingOrder?.id])
 
+    // Mirrors the server folio, including the late-checkout rule — if this
+    // preview left the overstay out, the cashier would quote a total the
+    // server then charged more than.
     const calculateStayCost = (room: any, booking: any) => {
         if (!room || !booking) return 0
         const price = room.room_types?.base_price || 0
         const nights = calculateNights(booking.check_in, booking.check_out)
+            + lateCheckoutNights(booking.check_out, resolveDeparture(booking))
         return price * nights
     }
 

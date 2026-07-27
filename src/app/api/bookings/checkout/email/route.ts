@@ -27,7 +27,7 @@ export async function POST(req: Request) {
         const { data: booking, error: fetchError } = await supabase
             .from('bookings')
             .select(`
-                id, check_in, check_out, room_id, guest_name, guest_phone, discount_amount, paid_amount,
+                id, check_in, check_out, checked_out_at, status, room_id, guest_name, guest_phone, discount_amount, paid_amount,
                 rooms!inner (
                     room_number,
                     room_types ( name, base_price )
@@ -47,12 +47,17 @@ export async function POST(req: Request) {
         const roomTypeName = room?.room_types?.name || 'Standard'
 
         // 2. Compute authoritative folio details
+        // This runs after settlement, so the recorded departure is what makes
+        // the emailed total match the amount actually charged — reading the
+        // clock here would re-price a late checkout on every resend.
         const folio = await computeFolioTotal(supabase, {
             restaurantId: currentUser.restaurantId,
             bookingId: booking_id,
             roomId: booking.room_id,
             checkIn: booking.check_in,
             checkOut: booking.check_out,
+            checkedOutAt: booking.checked_out_at,
+            status: booking.status,
             sessionId: null,
             discountAmount: Number(booking.discount_amount) || 0
         })

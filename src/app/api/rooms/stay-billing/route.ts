@@ -40,7 +40,7 @@ export async function GET(req: Request) {
         // 2. Fetch active booking details
         const { data: booking } = await supabase
             .from('bookings')
-            .select('id, check_in, check_out, paid_amount, room_id, group_id, discount_amount')
+            .select('id, check_in, check_out, checked_out_at, status, paid_amount, room_id, group_id, discount_amount')
             .eq('id', roomContext.bookingId)
             .single()
 
@@ -55,7 +55,7 @@ export async function GET(req: Request) {
         if (booking.group_id) {
             const { data: groupRows } = await supabase
                 .from('bookings')
-                .select('id, check_in, check_out, paid_amount, room_id, group_id, discount_amount')
+                .select('id, check_in, check_out, checked_out_at, status, paid_amount, room_id, group_id, discount_amount')
                 .eq('group_id', booking.group_id)
                 .neq('status', 'cancelled')
                 .order('created_at', { ascending: true })
@@ -81,6 +81,8 @@ export async function GET(req: Request) {
                 roomId: s.room_id,
                 checkIn: s.check_in,
                 checkOut: s.check_out,
+                checkedOutAt: s.checked_out_at,
+                status: s.status,
             })),
             sessionId: activeSession?.id ?? null,
             discountAmount: stays.reduce((sum, s) => sum + (Number(s.discount_amount) || 0), 0),
