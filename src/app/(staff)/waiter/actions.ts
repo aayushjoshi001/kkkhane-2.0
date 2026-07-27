@@ -585,15 +585,16 @@ export async function placeRoomOrderDirect(
     const restaurantId = currentUser?.restaurantId || booking.restaurant_id
     if (!restaurantId) return { error: 'Unauthorized' }
 
-    // 2. Create pending order row
+    // 2. Create pending order row with needs_confirmation: true and status: 'pending'
+    // so Realtime does not broadcast an unconfirmed/empty order to kitchen/cashier.
     const { data: orderRow, error: orderInsertError } = await adminSupabase
         .from('orders')
         .insert({
             restaurant_id: restaurantId,
             booking_id: bookingId,
             customer_note: customerNote || null,
-            status: 'confirmed',
-            needs_confirmation: false,
+            status: 'pending',
+            needs_confirmation: true,
             payment_status: 'unpaid',
             order_type: 'takeout',
             placed_at: new Date().toISOString(),
@@ -611,7 +612,7 @@ export async function placeRoomOrderDirect(
     const orderId = orderRow.id
     let subtotal = 0
 
-    // 3. Insert order items
+    // 3. Insert order items with needs_confirmation: true
     for (const item of items) {
         const { data: menuItem } = await adminSupabase
             .from('menu_items')
@@ -646,7 +647,8 @@ export async function placeRoomOrderDirect(
                 quantity: item.quantity,
                 unit_price: unitPrice,
                 special_request: specialRequest,
-                status: 'pending'
+                status: 'pending',
+                needs_confirmation: true
             })
             .select('id')
             .single()
@@ -702,11 +704,19 @@ export async function placeRoomOrderDirect(
     const tax = Math.round((subtotal + serviceCharge) * (taxRate / 100) * 100) / 100
     const total = Math.max(0, subtotal + serviceCharge + tax)
 
-    // Update totals on order with database schema fallback
+    // 5. Unmark needs_confirmation on order_items now that all items and modifiers are written
+    await adminSupabase
+        .from('order_items')
+        .update({ needs_confirmation: false })
+        .eq('order_id', orderId)
+
+    // 6. Update order status to 'confirmed' and needs_confirmation: false along with totals
     try {
         const { error: updateError } = await adminSupabase
             .from('orders')
             .update({
+                status: 'confirmed',
+                needs_confirmation: false,
                 subtotal_amount: subtotal,
                 service_charge_amount: serviceCharge,
                 tax_amount: tax,
@@ -719,6 +729,8 @@ export async function placeRoomOrderDirect(
                 await adminSupabase
                     .from('orders')
                     .update({
+                        status: 'confirmed',
+                        needs_confirmation: false,
                         subtotal_amount: subtotal,
                         tax_amount: tax,
                         total_amount: total
@@ -733,6 +745,8 @@ export async function placeRoomOrderDirect(
         await adminSupabase
             .from('orders')
             .update({
+                status: 'confirmed',
+                needs_confirmation: false,
                 subtotal_amount: subtotal,
                 tax_amount: tax,
                 total_amount: total
