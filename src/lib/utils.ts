@@ -220,8 +220,6 @@ export function advanceMethodLabel(method: AdvancePaymentMethod | null | undefin
  */
 export const LATE_CHECKOUT_GRACE_HOURS = 4
 
-
-
 /** The booking fields the late-checkout rule reads, as they come out of the DB. */
 export interface StayDeparture {
     /** The departure the guest booked, not necessarily the one that happened. */
@@ -261,6 +259,11 @@ export function resolveDeparture(stay: StayDeparture, now: Date = new Date()): D
  * checks out five hours late owes one more night, one who leaves a day and five
  * hours late owes two. Anything inside the grace period adds nothing here — the
  * cashier can still apply a manual charge for it at checkout.
+ *
+ * Applies to every unsettled stay, including those already in house. A stay
+ * that was checked out before departures were recorded reads as having left on
+ * time (see resolveDeparture), so settled history stays frozen at what was
+ * actually charged rather than growing an extra night per day since.
  */
 export function lateCheckoutNights(
     scheduledCheckOut: string | Date,
@@ -268,8 +271,6 @@ export function lateCheckoutNights(
     graceHours: number = LATE_CHECKOUT_GRACE_HOURS,
 ): number {
     const scheduled = new Date(scheduledCheckOut)
-
-
     const overstayMs = departure.getTime() - scheduled.getTime()
     if (overstayMs <= 0) return 0
 
