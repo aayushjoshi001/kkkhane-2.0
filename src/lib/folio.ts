@@ -411,7 +411,6 @@ export async function computeFolioForStays(
         .in('restaurant_id', targetRestaurantIds)
         .in('booking_id', bookingIds)
         .neq('status', 'cancelled')
-        .neq('payment_status', 'paid')
     addOrders(byBooking as never)
 
     if (sessionIds.size > 0) {
@@ -421,7 +420,6 @@ export async function computeFolioForStays(
             .in('restaurant_id', targetRestaurantIds)
             .in('session_id', Array.from(sessionIds))
             .neq('status', 'cancelled')
-            .neq('payment_status', 'paid')
         addOrders(bySession as never)
     }
     const orders = Array.from(orderTotals.values())

@@ -92,8 +92,8 @@ export default function InvoiceReceipt({
                     <p className="text-[9px]" style={{ color: '#000' }}>Tel: {restaurantPhone.trim()}</p>
                 ) : null}
                 <div className="border-t border-dashed border-black my-1.5" />
-                <p className="font-bold text-[11px] uppercase tracking-wider">*** INVOICE ***</p>
-                <p className="text-[9px] font-mono" style={{ color: '#000' }}>No: INV-{invoice.id.slice(0, 8).toUpperCase()}</p>
+                <p className="font-bold text-[11px] uppercase tracking-wider">*** ESTIMATE BILL ***</p>
+                <p className="text-[9px] font-mono" style={{ color: '#000' }}>ESTIMATE BILL No: EST-{invoice.id.slice(0, 8).toUpperCase()}</p>
                 <p className="text-[9px] font-mono" style={{ color: '#000' }}>Date: {formatDate ? formatDate(now) : now.toLocaleString()}</p>
             </div>
 
@@ -231,6 +231,7 @@ export default function InvoiceReceipt({
                             {invoice.paymentMethod === 'cash' ? 'CASH'
                                 : invoice.paymentMethod === 'qr_digital' ? 'QR / DIGITAL'
                                 : invoice.paymentMethod === 'credit' ? 'CREDIT'
+                                : invoice.paymentMethod === 'none' ? 'NOT YET'
                                 : 'SPLIT'}
                         </span>
                     </div>
@@ -267,6 +268,11 @@ export default function InvoiceReceipt({
             <div className="text-center text-[9px] uppercase tracking-widest leading-normal pt-1 pb-2" style={{ color: '#000' }}>
                 <p>*** THANK YOU! ***</p>
                 <p>WE HOPE TO SEE YOU AGAIN</p>
+            </div>
+
+            {/* Unofficial bill warning note */}
+            <div className="text-center pt-2 pb-2 text-[11px] font-black text-black border-t border-dashed border-black uppercase tracking-wider leading-relaxed">
+                <p>It is not official bill, for official bill ask to the counter</p>
             </div>
 
             {/* Brand footer — mirrors the ESC/POS templates' appendBrandFooter */}

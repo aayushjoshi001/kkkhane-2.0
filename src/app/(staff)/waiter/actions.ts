@@ -467,8 +467,12 @@ export async function placeStaffOrder(
         return { error: 'Table session is invalid or closed.' }
     }
 
+    // Split items into regular and outside items
+    const outsideItems = items.filter((i) => i.isOutsideFood)
+    const regularItems = items.filter((i) => !i.isOutsideFood)
+
     // Format items for RPC
-    const payload = items.map((i) => {
+    const payload = regularItems.map((i) => {
         let specialRequest = i.specialRequest || ''
         if (i.variationName) {
             specialRequest = specialRequest
@@ -505,6 +509,26 @@ export async function placeStaffOrder(
         const result = data as { order_id: string }
         if (!result || !result.order_id) {
             return { error: 'Failed to place order.' }
+        }
+
+        // Insert outside items directly if present
+        if (outsideItems.length > 0) {
+            const outsideFoodId = await getOrCreateOutsideFoodItem(adminSupabase, session.restaurant_id)
+            for (const item of outsideItems) {
+                const specialRequest = `[Outside: ${item.name}]${item.specialRequest ? ' ' + item.specialRequest : ''}`
+                await adminSupabase
+                    .from('order_items')
+                    .insert({
+                        order_id: result.order_id,
+                        menu_item_id: outsideFoodId,
+                        quantity: item.quantity,
+                        unit_price: Number(item.price ?? 0),
+                        special_request: specialRequest,
+                        status: 'pending'
+                    })
+            }
+            // Recalculate totals
+            await recalculateAndUpdateOrderTotals(adminSupabase, result.order_id, session.restaurant_id)
         }
 
         // If this session is for a hotel room, bind the order to the active booking
@@ -572,7 +596,7 @@ export async function placeRoomOrderDirect(
     // 1. Fetch booking to make sure it's active
     const { data: booking, error: bookingErr } = await adminSupabase
         .from('bookings')
-        .select('id, status, restaurant_id')
+        .select('id, status, restaurant_id, room_id')
         .eq('id', bookingId)
         .single()
 
@@ -614,35 +638,45 @@ export async function placeRoomOrderDirect(
 
     // 3. Insert order items with needs_confirmation: true
     for (const item of items) {
-        const { data: menuItem } = await adminSupabase
-            .from('menu_items')
-            .select('id, price, is_available')
-            .eq('id', item.menuItemId)
-            .single()
-
-        if (!menuItem?.id || menuItem.is_available === false) continue
-
-        let unitPrice = Number(menuItem.price ?? 0)
+        let unitPrice = 0
+        let menuItemId = item.menuItemId
+        let specialRequest = item.specialRequest || null
         let variationId = null
-        if (item.variationId) {
-            const { data: variation } = await adminSupabase
-                .from('menu_item_variations')
-                .select('id, price')
-                .eq('id', item.variationId)
+
+        if (item.isOutsideFood) {
+            const outsideFoodId = await getOrCreateOutsideFoodItem(adminSupabase, restaurantId)
+            menuItemId = outsideFoodId
+            unitPrice = Number(item.price ?? 0)
+            specialRequest = `[Outside: ${item.name}]${item.specialRequest ? ' ' + item.specialRequest : ''}`
+        } else {
+            const { data: menuItem } = await adminSupabase
+                .from('menu_items')
+                .select('id, price, is_available')
+                .eq('id', item.menuItemId)
                 .single()
-            if (variation) {
-                unitPrice = Number(variation.price)
-                variationId = variation.id
+
+            if (!menuItem?.id || menuItem.is_available === false) continue
+            menuItemId = menuItem.id
+            unitPrice = Number(menuItem.price ?? 0)
+
+            if (item.variationId) {
+                const { data: variation } = await adminSupabase
+                    .from('menu_item_variations')
+                    .select('id, price')
+                    .eq('id', item.variationId)
+                    .single()
+                if (variation) {
+                    unitPrice = Number(variation.price)
+                    variationId = variation.id
+                }
             }
         }
-
-        const specialRequest = item.specialRequest || null
 
         const { data: orderItemRow, error: orderItemInsertError } = await adminSupabase
             .from('order_items')
             .insert({
                 order_id: orderId,
-                menu_item_id: menuItem.id,
+                menu_item_id: menuItemId,
                 menu_item_variation_id: variationId,
                 quantity: item.quantity,
                 unit_price: unitPrice,
@@ -694,12 +728,13 @@ export async function placeRoomOrderDirect(
     
     const featuresV2 = settings?.features_v2 as any
     const taxRate = Number(featuresV2?.defaultTaxRate ?? 0)
-    const scEnabled = featuresV2?.serviceChargeEnabled === true
-    const scRate = Number(featuresV2?.serviceChargeRate ?? 10)
 
-    const serviceCharge = scEnabled 
-        ? Math.round(subtotal * (scRate / 100) * 100) / 100 
-        : 0
+    const roomScEnabled = featuresV2?.roomServiceChargeEnabled === true
+    const roomScRooms = Array.isArray(featuresV2?.roomServiceChargeRooms) ? featuresV2.roomServiceChargeRooms : []
+    const isRoomScApplicable = roomScEnabled && booking.room_id && roomScRooms.includes(booking.room_id)
+
+    // Direct room orders have a 10% service charge on all items, if enabled for this room
+    const serviceCharge = isRoomScApplicable ? (Math.round(subtotal * 0.10 * 100) / 100) : 0
 
     const tax = Math.round((subtotal + serviceCharge) * (taxRate / 100) * 100) / 100
     const total = Math.max(0, subtotal + serviceCharge + tax)
@@ -762,5 +797,164 @@ export async function placeRoomOrderDirect(
 
     revalidatePath('/cashier')
     return { success: true, orderId }
+}
+
+export async function getOrCreateOutsideFoodItem(adminSupabase: any, restaurantId: string): Promise<string> {
+    // Check if there is already a menu item named 'Outside Food' for this restaurant
+    const { data, error } = await adminSupabase
+        .from('menu_items')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .eq('name', 'Outside Food')
+        .limit(1)
+        .maybeSingle()
+
+    if (data?.id) {
+        return data.id
+    }
+
+    // If not, create it
+    const { data: newItem, error: createError } = await adminSupabase
+        .from('menu_items')
+        .insert({
+            restaurant_id: restaurantId,
+            name: 'Outside Food',
+            description: 'Temporary outside food item',
+            price: 0,
+            is_available: true,
+            is_combo: false
+        })
+        .select('id')
+        .single()
+
+    if (createError || !newItem) {
+        console.error('Failed to create Outside Food menu item:', createError)
+        throw new Error('Failed to configure outside food')
+    }
+
+    return newItem.id
+}
+
+export async function recalculateAndUpdateOrderTotals(
+    adminSupabase: any,
+    orderId: string,
+    restaurantId: string
+) {
+    // Fetch order to check session_id and booking_id
+    const { data: orderData } = await adminSupabase
+        .from('orders')
+        .select('session_id, booking_id, discount_amount, booking:booking_id(room_id)')
+        .eq('id', orderId)
+        .single()
+
+    // Fetch all order items and modifiers to recalculate subtotal
+    const { data: allOrderItems } = await adminSupabase
+        .from('order_items')
+        .select('id, quantity, unit_price, station, order_item_modifiers(price_adjustment)')
+        .eq('order_id', orderId)
+
+    let subtotal = 0
+    let foodSubtotal = 0
+    for (const oi of allOrderItems || []) {
+        const itemTotal = Number(oi.unit_price ?? 0) * oi.quantity
+        const modifiersTotal = (oi.order_item_modifiers || []).reduce((sum: number, m: any) => sum + (Number(m.price_adjustment ?? 0) * oi.quantity), 0)
+        const totalLinePrice = itemTotal + modifiersTotal
+        subtotal += totalLinePrice
+        
+        if (oi.station === 'kitchen') {
+            foodSubtotal += totalLinePrice
+        }
+    }
+
+    // Get settings for tax
+    const { data: settings } = await adminSupabase
+        .from('settings')
+        .select('features_v2')
+        .eq('restaurant_id', restaurantId)
+        .single()
+    
+    const featuresV2 = settings?.features_v2 as any
+    const taxRate = Number(featuresV2?.defaultTaxRate ?? 0)
+    const scEnabled = featuresV2?.serviceChargeEnabled === true
+    const scRate = Number(featuresV2?.serviceChargeRate ?? 10)
+
+    const roomScEnabled = featuresV2?.roomServiceChargeEnabled === true
+    const roomScRooms = Array.isArray(featuresV2?.roomServiceChargeRooms) ? featuresV2.roomServiceChargeRooms : []
+
+    const discountAmount = Number(orderData?.discount_amount ?? 0)
+
+    // Determine if it is a room stay order, and if so, what kind
+    let serviceCharge = 0
+    if (orderData?.booking_id) {
+        const orderRoomId = (orderData.booking as any)?.room_id
+        const isRoomScApplicable = roomScEnabled && orderRoomId && roomScRooms.includes(orderRoomId)
+
+        if (!orderData.session_id) {
+            // Direct room order: 10% service charge on all items (if enabled for room)
+            if (isRoomScApplicable) {
+                const netSubtotal = Math.max(0, subtotal - discountAmount)
+                serviceCharge = Math.round(netSubtotal * 0.10 * 100) / 100
+            } else {
+                serviceCharge = 0
+            }
+        } else {
+            // Check if the session belongs to a room table
+            const { data: sessionTable } = await adminSupabase
+                .from('sessions')
+                .select('tables(room_id)')
+                .eq('id', orderData.session_id)
+                .single()
+            
+            if (sessionTable?.tables?.room_id) {
+                // Room QR order: 10% service charge on food items only (if enabled for room)
+                if (isRoomScApplicable) {
+                    const foodRatio = subtotal > 0 ? (foodSubtotal / subtotal) : 0
+                    const discountedFoodSubtotal = Math.max(0, foodSubtotal - (discountAmount * foodRatio))
+                    serviceCharge = Math.round(discountedFoodSubtotal * 0.10 * 100) / 100
+                } else {
+                    serviceCharge = 0
+                }
+            } else {
+                // Dine-in order linked to room: standard service charge from settings
+                serviceCharge = scEnabled 
+                    ? Math.round((subtotal - discountAmount) * (scRate / 100) * 100) / 100 
+                    : 0
+            }
+        }
+    } else {
+        // Standard order: service charge from settings
+        serviceCharge = scEnabled 
+            ? Math.round((subtotal - discountAmount) * (scRate / 100) * 100) / 100 
+            : 0
+    }
+
+    const tax = Math.round((subtotal - discountAmount + serviceCharge) * (taxRate / 100) * 100) / 100
+    const total = Math.max(0, subtotal - discountAmount + serviceCharge + tax)
+
+    // Update totals
+    try {
+        const { error: updateError } = await adminSupabase
+            .from('orders')
+            .update({
+                subtotal_amount: subtotal,
+                service_charge_amount: serviceCharge,
+                tax_amount: tax,
+                total_amount: total
+            })
+            .eq('id', orderId)
+        
+        if (updateError) {
+            await adminSupabase
+                .from('orders')
+                .update({
+                    subtotal_amount: subtotal,
+                    tax_amount: tax,
+                    total_amount: total
+                })
+                .eq('id', orderId)
+        }
+    } catch (err) {
+        console.error('[recalculateAndUpdateOrderTotals] Error updating totals:', err)
+    }
 }
 

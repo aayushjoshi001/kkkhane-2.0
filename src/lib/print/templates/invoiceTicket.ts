@@ -44,7 +44,7 @@ export interface ActiveInvoice {
     advancePaid?: number
     advanceMethod?: AdvancePaymentMethod | null
     balanceDue?: number
-    paymentMethod?: 'cash' | 'qr_digital' | 'both' | 'credit'
+    paymentMethod?: 'cash' | 'qr_digital' | 'both' | 'credit' | 'none'
     cashPaid?: number
     qrPaid?: number
     creditPaid?: number
@@ -82,8 +82,8 @@ export function buildInvoiceTicket(
     if (restaurantPhone.trim()) {
         b.line(`Tel: ${restaurantPhone.trim()}`)
     }
-    b.line('*** INVOICE ***')
-    b.line(`No: INV-${invoice.id.slice(0, 8).toUpperCase()}`)
+    b.line('*** ESTIMATE BILL ***')
+    b.line(`ESTIMATE BILL No: EST-${invoice.id.slice(0, 8).toUpperCase()}`)
     b.line(`Date: ${formatDateTime(new Date(), calendar)}`)
     b.divider()
 
@@ -170,6 +170,7 @@ export function buildInvoiceTicket(
         const label = invoice.paymentMethod === 'cash' ? 'CASH'
             : invoice.paymentMethod === 'qr_digital' ? 'QR / DIGITAL'
             : invoice.paymentMethod === 'credit' ? 'CREDIT'
+            : invoice.paymentMethod === 'none' ? 'NOT YET'
             : 'SPLIT'
         b.line(`Payment: ${label}`)
         if (invoice.paymentMethod === 'both') {
@@ -188,6 +189,14 @@ export function buildInvoiceTicket(
     b.align('center')
     b.line('*** THANK YOU! ***')
     b.line('WE HOPE TO SEE YOU AGAIN')
+
+    b.divider()
+    b.align('center')
+    b.bold(true)
+    b.line('IT IS NOT OFFICIAL BILL,')
+    b.line('FOR OFFICIAL BILL ASK TO THE COUNTER')
+    b.bold(false)
+    b.divider()
 
     appendBrandFooter(b)
 

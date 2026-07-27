@@ -416,6 +416,14 @@ export function getItemKOTDisplay(
     let variationName = item.menu_item_variations?.name
     let note = item.special_request || ''
 
+    if (name === 'Outside Food') {
+        const matchOutside = note.match(/^\[Outside:\s*(.*?)\]\s*(.*)$/)
+        if (matchOutside) {
+            name = matchOutside[1]
+            note = matchOutside[2]
+        }
+    }
+
     // Parse out variation name if formatted in brackets, e.g., "[Veg] note"
     const match = note.match(/^\[(.*?)\]\s*(.*)$/)
     if (match) {
@@ -454,6 +462,14 @@ export function getItemDisplayName(item: {
     if (!item) return 'Item'
 
     let name = item.name || item.menu_items?.name || 'Item'
+    
+    if ((name === 'Outside Food' || item.menu_items?.name === 'Outside Food') && item.special_request) {
+        const matchOutside = item.special_request.match(/^\[Outside:\s*(.*?)\]/)
+        if (matchOutside) {
+            return matchOutside[1]
+        }
+    }
+
     let variationName = item.variation_name || item.menu_item_variations?.name
 
     // If variationName wasn't joined directly, try parsing from special_request "[VariationName]"
