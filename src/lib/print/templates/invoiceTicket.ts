@@ -192,7 +192,10 @@ export function buildInvoiceTicket(
 
     b.divider()
     b.align('center')
-    b.line('It is not official bill, for official bill ask to the counter')
+    b.bold(true)
+    b.line('IT IS NOT OFFICIAL BILL,')
+    b.line('FOR OFFICIAL BILL ASK TO THE COUNTER')
+    b.bold(false)
     b.divider()
 
     appendBrandFooter(b)

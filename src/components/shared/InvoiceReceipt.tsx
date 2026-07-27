@@ -271,7 +271,7 @@ export default function InvoiceReceipt({
             </div>
 
             {/* Unofficial bill warning note */}
-            <div className="text-center pt-1 pb-1 text-[9px] font-bold text-black border-t border-dashed border-black">
+            <div className="text-center pt-2 pb-2 text-[11px] font-black text-black border-t border-dashed border-black uppercase tracking-wider leading-relaxed">
                 <p>It is not official bill, for official bill ask to the counter</p>
             </div>
 
