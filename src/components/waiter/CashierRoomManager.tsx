@@ -69,6 +69,7 @@ export default function CashierRoomManager({
     const [loadingBooking, setLoadingBooking] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
     const [mounted, setMounted] = useState(false)
+    const [applyRoomServiceCharge, setApplyRoomServiceCharge] = useState(true)
     const features = useFeatures()
     const irdSyncEnabled = features?.irdSyncEnabled ?? false
     const money = useCurrency()
@@ -515,14 +516,21 @@ export default function CashierRoomManager({
         return { nights, cost }
     }, [selectedRoom, activeBooking, stayGroup])
 
+    const roomServiceChargeAmount = useMemo(() => {
+        if (!applyRoomServiceCharge) return 0
+        const roomFoodItems = linkedDiningOrders.filter(o => o.is_room_order && o.status !== 'cancelled' && (o.station === 'kitchen' || o.menu_items?.station === 'kitchen'))
+        const foodSubtotal = roomFoodItems.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
+        return Math.round(foodSubtotal * 0.10 * 100) / 100
+    }, [applyRoomServiceCharge, linkedDiningOrders])
+
     // Grand total
     const grandTotal = useMemo(() => {
         const roomStayCost = stayPriceDetails.cost
         const qrOrdersTotal = qrOrdersDetails?.total || 0
         const manualChargesTotal = manualCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
         const linkedDiningTotal = filteredLinkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
-        return roomStayCost + qrOrdersTotal + manualChargesTotal + linkedDiningTotal
-    }, [stayPriceDetails, qrOrdersDetails, manualCharges, filteredLinkedDiningOrders])
+        return roomStayCost + qrOrdersTotal + manualChargesTotal + linkedDiningTotal + roomServiceChargeAmount
+    }, [stayPriceDetails, qrOrdersDetails, manualCharges, filteredLinkedDiningOrders, roomServiceChargeAmount])
 
     // Change room status helper
     const handleStatusChange = async (roomId: string, newStatus: 'available' | 'dirty' | 'maintenance') => {

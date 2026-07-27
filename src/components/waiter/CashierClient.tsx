@@ -57,6 +57,9 @@ type BookingRoomRef = { id: string; rooms?: { id: string; room_number: string } 
 export type UnpaidOrder = {
     id: string
     status?: string
+    subtotal_amount?: number
+    service_charge_amount?: number
+    tax_amount?: number
     total_amount: number
     placed_at: string
     delivered_at: string | null
@@ -76,6 +79,9 @@ export type UnpaidOrder = {
 export type ActiveOrder = {
     id: string
     status: string
+    subtotal_amount?: number
+    service_charge_amount?: number
+    tax_amount?: number
     total_amount: number
     placed_at: string
     session_id: string | null
@@ -1173,15 +1179,13 @@ export default function CashierClient({
             const table = item
             const sessionOrders = getTableSessionItems(table)
             const itemsSubtotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
-            // The authoritative, tax-inclusive total — /api/tables/checkout
-            // bills off the same orders.total_amount field, so the bargain
-            // rate must be calculated against this, not itemsSubtotal (which
-            // is pre-tax and would understate what's actually charged).
-            const subtotal = getTableSessionOrdersTotal(table)
+            const sessionOrdersList = [...active, ...unpaid].filter(o => o.session_id === table?.activeSession?.id && o.status !== 'cancelled')
+            const serviceCharge = sessionOrdersList.reduce((sum, o) => sum + (Number((o as any).service_charge_amount) || 0), 0)
+            const taxAmount = sessionOrdersList.reduce((sum, o) => sum + (Number((o as any).tax_amount) || 0), 0)
 
             // Food Discount: discount amount entered directly
             const discountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
-            const total = Math.max(0, subtotal - discountAmount)
+            const total = Math.max(0, itemsSubtotal + serviceCharge - discountAmount + taxAmount)
 
             const resolvedCash = billingPaymentMethod === 'cash' ? total
                 : billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0)
@@ -1205,6 +1209,9 @@ export default function CashierClient({
                 nights: 0,
                 basePrice: 0,
                 stayCost: 0,
+                subtotal: itemsSubtotal,
+                serviceCharge,
+                taxAmount,
                 qrOrders: sessionOrders,
                 qrOrdersTotal: itemsSubtotal,
                 manualCharges: [],
@@ -1662,7 +1669,7 @@ export default function CashierClient({
                 .single()
             // Previously silent — if this fetch fails (RLS, network, ...) the new
             // order just never shows up anywhere in Billing/Orders, with no sign why.
-            if (error) console.error('[Cashier orders realtime] INSERT fetch failed:', error)
+            if (error) console.error('[Cashier orders realtime] INSERT fetch failed:', error.message || error)
             if (data) {
                 // Guard against a duplicate/replayed INSERT event (reconnects,
                 // redelivery) adding the same order twice — React then throws
@@ -2861,24 +2868,56 @@ export default function CashierClient({
                                 // above which is pre-tax and would understate it.
                                 const itemsSubtotal = getTableSessionItems(selectedBillingTable).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
                                 const tableSubtotal = getTableSessionOrdersTotal(selectedBillingTable)
-                                const taxOrServiceAdjustment = tableSubtotal - itemsSubtotal
                                 const tableDiscountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
                                 const tableDiscountInvalid = tableDiscountAmount < 0 || tableDiscountAmount > tableSubtotal
+                                const finalCalculatedTotal = Math.max(0, tableSubtotal - tableDiscountAmount)
+
+                                const sessionOrders = [...active, ...unpaid].filter(o => o.session_id === selectedBillingTable?.activeSession?.id && o.status !== 'cancelled')
+                                const sessionSc = sessionOrders.reduce((sum, o) => sum + (Number(o.service_charge_amount) || 0), 0)
+                                const sessionTax = sessionOrders.reduce((sum, o) => sum + (Number(o.tax_amount) || 0), 0)
+                                const residualAdjustment = tableSubtotal - (itemsSubtotal + sessionSc + sessionTax)
 
                                 return (
                                     <div className="space-y-6">
-                                        {Math.abs(taxOrServiceAdjustment) > 0.01 && (
-                                            <div className="flex justify-between items-center px-1 text-xs">
-                                                <span className="text-ink-subtle font-semibold">Tax / Service charge</span>
-                                                <span className="font-bold text-ink-muted tabular-nums">{money(taxOrServiceAdjustment)}</span>
+                                        <div className="space-y-2 px-1 text-xs">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-ink-subtle font-semibold">Subtotal</span>
+                                                <span className="font-bold text-ink tabular-nums">{money(itemsSubtotal)}</span>
                                             </div>
-                                        )}
-                                        {tableDiscountAmount > 0 && (
-                                            <div className="flex justify-between items-center px-1 text-xs text-rose-600">
-                                                <span className="font-semibold">Food Discount</span>
-                                                <span className="font-extrabold tabular-nums">− {money(tableDiscountAmount)}</span>
+
+                                            {tableDiscountAmount > 0 && (
+                                                <div className="flex justify-between items-center text-rose-600">
+                                                    <span className="font-semibold">Discount</span>
+                                                    <span className="font-extrabold tabular-nums">− {money(tableDiscountAmount)}</span>
+                                                </div>
+                                            )}
+
+                                            {sessionSc > 0 && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-ink-subtle font-semibold">Service Charge</span>
+                                                    <span className="font-bold text-ink tabular-nums">{money(sessionSc)}</span>
+                                                </div>
+                                            )}
+
+                                            {sessionTax > 0 && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-ink-subtle font-semibold">Tax (VAT)</span>
+                                                    <span className="font-bold text-ink tabular-nums">{money(sessionTax)}</span>
+                                                </div>
+                                            )}
+
+                                            {Math.abs(residualAdjustment) > 0.01 && sessionSc === 0 && sessionTax === 0 && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-ink-subtle font-semibold">Tax / Service charge</span>
+                                                    <span className="font-bold text-ink tabular-nums">{money(residualAdjustment)}</span>
+                                                </div>
+                                            )}
+
+                                            <div className="flex justify-between items-center pt-2 border-t border-dashed border-hairline font-extrabold text-sm">
+                                                <span className="text-ink">Grand Total</span>
+                                                <span className="text-brand-600 tabular-nums text-base">{money(finalCalculatedTotal)}</span>
                                             </div>
-                                        )}
+                                        </div>
 
                                         {/* Food Discount */}
                                         <div className="border-2 border-amber-200 rounded-2xl p-4 space-y-3 bg-amber-50/60 shadow-sm">

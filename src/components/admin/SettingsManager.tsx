@@ -175,6 +175,7 @@ export default function SettingsManager({
     }, [formData.id])
 
     const [taxRateStr, setTaxRateStr] = useState((initialRestaurant.tax_rate ?? 13).toString())
+    const [scRateStr, setScRateStr] = useState((initialFeatures?.serviceChargeRate ?? 10).toString())
     const [businessHours, setBusinessHours] = useState<BusinessHours>(() => buildBusinessHours(initialBusinessHours))
 
     const updateDayHours = (day: string, patch: Partial<DayHours>) => {
@@ -273,7 +274,8 @@ export default function SettingsManager({
         setIsSubmitting(true)
         setIsSuccess(false)
 
-        const finalTaxRate = features.irdSyncEnabled ? (taxRateStr === '' ? 0 : Number.parseFloat(taxRateStr)) : 0
+        const finalTaxRate = taxRateStr === '' ? 0 : Number.parseFloat(taxRateStr) || 0
+        const finalScRate = scRateStr === '' ? 0 : Number.parseFloat(scRateStr) || 0
 
         // Save restaurant, features and business hours in parallel
         const [resRestaurant, resFeatures, resHours] = await Promise.all([
@@ -292,6 +294,8 @@ export default function SettingsManager({
                 defaultTaxRate: finalTaxRate,
                 currency: features.currency,
                 currencySymbol: features.currencySymbol,
+                serviceChargeEnabled: !!features.serviceChargeEnabled,
+                serviceChargeRate: finalScRate,
                 vatEnabled: features.irdSyncEnabled ? features.vatEnabled : false,
                 nepalPayEnabled: features.irdSyncEnabled ? features.nepalPayEnabled : false,
             }),
@@ -619,101 +623,148 @@ export default function SettingsManager({
             </div>
 
             {/* Financial Details */}
-            {features.irdSyncEnabled && (
-                <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden">
-                    <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-500/20 shadow-[inset_0_2px_4px_rgba(16,185,129,0.05)]">
-                            <Percent size={20} />
+            <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden">
+                <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-500/20 shadow-[inset_0_2px_4px_rgba(16,185,129,0.05)]">
+                        <Percent size={20} />
+                    </div>
+                    <div>
+                        <h3 className="text-h3 font-extrabold text-ink">Financial Rules</h3>
+                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Taxes, service charges, and currency settings</p>
+                    </div>
+                </div>
+
+                <div className="p-6 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Tax Rate (%) *</label>
+                            <div className="relative bg-surface border border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus-within:ring-4 focus-within:ring-brand-500/10 focus-within:border-brand-500 transition-all overflow-hidden">
+                                <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    name="tax_rate"
+                                    value={taxRateStr}
+                                    onChange={e => {
+                                        const value = e.target.value
+                                        if (/^(\d+(\.\d*)?)?$/.test(value)) {
+                                            setTaxRateStr(value)
+                                        }
+                                    }}
+                                    disabled={!canEdit || isSubmitting}
+                                    className="w-full py-2.5 pl-4 pr-10 border-none bg-transparent text-sm font-bold text-ink focus:ring-0 tabular-nums disabled:opacity-50"
+                                    placeholder="e.g. 13"
+                                    required
+                                />
+                                <div className="absolute inset-y-0 right-0 flex items-center pointer-events-none pr-4">
+                                    <span className="text-ink-subtle text-sm font-bold">%</span>
+                                </div>
+                            </div>
+                            <p className="mt-2 text-[11px] font-bold text-ink-muted uppercase tracking-wider">Applied automatically to all menu item purchases (0% to disable).</p>
                         </div>
                         <div>
-                            <h3 className="text-h3 font-extrabold text-ink">Financial Rules</h3>
-                            <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Taxes, service charges, and currency settings</p>
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Currency Code *</label>
+                            <input
+                                type="text"
+                                name="currency"
+                                value={features.currency || ''}
+                                onChange={e => {
+                                    const value = e.target.value
+                                    setFeatures(prev => {
+                                        const code = value.toUpperCase()
+                                        const guessedSymbol = CURRENCY_MAP[code]
+                                        return {
+                                            ...prev,
+                                            currency: value,
+                                            ...(guessedSymbol ? { currencySymbol: guessedSymbol } : {})
+                                        }
+                                    })
+                                }}
+                                disabled={!canEdit || isSubmitting}
+                                maxLength={3}
+                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink uppercase focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
+                                placeholder="USD"
+                                required
+                            />
+                            <p className="mt-2 text-[11px] font-bold text-ink-muted uppercase tracking-wider">Standard 3-letter currency code (e.g., NPR, USD, EUR).</p>
                         </div>
                     </div>
 
-                    <div className="p-6 space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Tax Rate (%) *</label>
-                                <div className="relative bg-surface border border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus-within:ring-4 focus-within:ring-brand-500/10 focus-within:border-brand-500 transition-all overflow-hidden">
-                                    <input
-                                        type="text"
-                                        inputMode="decimal"
-                                        name="tax_rate"
-                                        value={taxRateStr}
-                                        onChange={e => {
-                                            const value = e.target.value
-                                            if (/^(\d+(\.\d*)?)?$/.test(value)) {
-                                                setTaxRateStr(value)
-                                            }
-                                        }}
-                                        disabled={!canEdit || isSubmitting}
-                                        className="w-full py-2.5 pl-4 pr-10 border-none bg-transparent text-sm font-bold text-ink focus:ring-0 tabular-nums disabled:opacity-50"
-                                        placeholder="e.g. 13"
-                                        required
-                                    />
-                                    <div className="absolute inset-y-0 right-0 flex items-center pointer-events-none pr-4">
-                                        <span className="text-ink-subtle text-sm font-bold">%</span>
-                                    </div>
-                                </div>
-                                <p className="mt-2 text-[11px] font-bold text-ink-muted uppercase tracking-wider">Applied automatically to all menu item purchases.</p>
-                            </div>
-                            <div>
-                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Currency Code *</label>
-                                <input
-                                    type="text"
-                                    name="currency"
-                                    value={features.currency || ''}
-                                    onChange={e => {
-                                        const value = e.target.value
-                                        setFeatures(prev => {
-                                            const code = value.toUpperCase()
-                                            const guessedSymbol = CURRENCY_MAP[code]
-                                            return {
-                                                ...prev,
-                                                currency: value,
-                                                ...(guessedSymbol ? { currencySymbol: guessedSymbol } : {})
-                                            }
-                                        })
-                                    }}
-                                    disabled={!canEdit || isSubmitting}
-                                    maxLength={3}
-                                    className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink uppercase focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
-                                    placeholder="USD"
-                                    required
-                                />
-                                <p className="mt-2 text-[11px] font-bold text-ink-muted uppercase tracking-wider">Standard 3-letter currency code (e.g., NPR, USD, EUR).</p>
-                            </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Currency Symbol</label>
+                            <input
+                                type="text"
+                                name="currency_symbol"
+                                value={features.currencySymbol || ''}
+                                onChange={e => {
+                                    const value = e.target.value
+                                    setFeatures(prev => {
+                                        const guessedCode = SYMBOL_MAP[value]
+                                        return {
+                                            ...prev,
+                                            currencySymbol: value,
+                                            ...(guessedCode ? { currency: guessedCode } : {})
+                                        }
+                                    })
+                                }}
+                                disabled={!canEdit || isSubmitting}
+                                maxLength={5}
+                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
+                                placeholder="Rs."
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-hairline">
+                        <div>
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Standard Service Charge</label>
+                            <button
+                                type="button"
+                                onClick={() => setFeatures(prev => ({ ...prev, serviceChargeEnabled: !prev.serviceChargeEnabled }))}
+                                disabled={!canEdit || isSubmitting}
+                                className={`w-full flex items-center justify-between p-3 rounded-[var(--r-md)] border text-xs font-bold transition ${
+                                    features.serviceChargeEnabled
+                                        ? 'bg-emerald-50/20 border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
+                                        : 'bg-surface border-hairline text-ink-muted hover:bg-surface-muted/50'
+                                }`}
+                            >
+                                <span>General Service Charge ({features.serviceChargeEnabled ? 'Enabled' : 'Disabled'})</span>
+                                {features.serviceChargeEnabled ? (
+                                    <ToggleRight size={22} className="text-emerald-500 shrink-0" />
+                                ) : (
+                                    <ToggleLeft size={22} className="text-ink-muted shrink-0" />
+                                )}
+                            </button>
+                            <p className="mt-2 text-[11px] font-bold text-ink-muted uppercase tracking-wider">Applies service charge to standard dine-in and takeout orders.</p>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Currency Symbol</label>
+                        <div>
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Service Charge Rate (%)</label>
+                            <div className="relative bg-surface border border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus-within:ring-4 focus-within:ring-brand-500/10 focus-within:border-brand-500 transition-all overflow-hidden">
                                 <input
                                     type="text"
-                                    name="currency_symbol"
-                                    value={features.currencySymbol || ''}
+                                    inputMode="decimal"
+                                    value={scRateStr}
                                     onChange={e => {
                                         const value = e.target.value
-                                        setFeatures(prev => {
-                                            const guessedCode = SYMBOL_MAP[value]
-                                            return {
-                                                ...prev,
-                                                currencySymbol: value,
-                                                ...(guessedCode ? { currency: guessedCode } : {})
-                                            }
-                                        })
+                                        if (/^(\d+(\.\d*)?)?$/.test(value)) {
+                                            setScRateStr(value)
+                                            setFeatures(prev => ({ ...prev, serviceChargeRate: parseFloat(value) || 0 }))
+                                        }
                                     }}
-                                    disabled={!canEdit || isSubmitting}
-                                    maxLength={5}
-                                    className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
-                                    placeholder="Rs."
+                                    disabled={!canEdit || isSubmitting || !features.serviceChargeEnabled}
+                                    className="w-full py-2.5 pl-4 pr-10 border-none bg-transparent text-sm font-bold text-ink focus:ring-0 tabular-nums disabled:opacity-50"
+                                    placeholder="e.g. 10"
                                 />
+                                <div className="absolute inset-y-0 right-0 flex items-center pointer-events-none pr-4">
+                                    <span className="text-ink-subtle text-sm font-bold">%</span>
+                                </div>
                             </div>
+                            <p className="mt-2 text-[11px] font-bold text-ink-muted uppercase tracking-wider">Percentage added to subtotal (standard is 10%).</p>
                         </div>
                     </div>
                 </div>
-            )}
+            </div>
 
             {/* Business Hours */}
             <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden mt-6">

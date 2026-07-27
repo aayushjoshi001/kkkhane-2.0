@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useSyncExternalStore } from 'react'
+import { useState, useEffect, useSyncExternalStore, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Loader2, CheckCircle2, Percent, Clock, Printer } from 'lucide-react'
 import type { Booking, Room } from '@/types/database'
@@ -114,6 +114,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const [orderDiscount, setOrderDiscount] = useState('')
     const [discountReason, setDiscountReason] = useState('')
     const [extraHourCharge, setExtraHourCharge] = useState('')
+    const [applyRoomServiceCharge, setApplyRoomServiceCharge] = useState(true)
     const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qr_digital' | 'split' | 'credit'>('cash')
     const [splitCashAmount, setSplitCashAmount] = useState('')
     const [splitQrAmount, setSplitQrAmount] = useState('')
@@ -242,7 +243,15 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const effectiveStayCost = Math.max(0, stayCost - roomDiscountVal)
     const effectiveOrdersTotal = Math.max(0, qrOrdersTotal - orderDiscountVal)
 
-    const grandTotal = effectiveStayCost + effectiveOrdersTotal + manualChargesTotal + extraHourChargeVal
+    // Service Charge (10% on food items for direct room orders & room QR orders only; excludes linked dining tables)
+    const roomFoodSubtotal = useMemo(() => {
+        const roomFoodItems = allServiceOrderItems.filter((it: any) => it.is_room_order && it.status !== 'cancelled' && (it.station === 'kitchen' || it.menu_items?.station === 'kitchen'))
+        return roomFoodItems.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+    }, [allServiceOrderItems])
+
+    const roomServiceChargeAmount = applyRoomServiceCharge ? Math.round(roomFoodSubtotal * 0.10 * 100) / 100 : 0
+
+    const grandTotal = effectiveStayCost + effectiveOrdersTotal + manualChargesTotal + extraHourChargeVal + roomServiceChargeAmount
     // Advances were taken per room, so a reservation's advance is their sum.
     const advancePaid = groupBill ? groupBill.advancePaid : (Number(booking?.paid_amount) || 0)
     const balanceDue = Math.max(0, grandTotal - advancePaid)
@@ -584,6 +593,33 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* Room Service Charge (10% Food Only) Toggle */}
+                                    <div className="p-4 border-t border-hairline bg-surface-muted/20 space-y-2">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div>
+                                                <p className="text-xs font-extrabold text-ink">Room Service Charge (10% Food Only)</p>
+                                                <p className="text-[10px] text-ink-subtle">Applies to room QR & direct room food orders (excludes linked dining tables)</p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setApplyRoomServiceCharge(!applyRoomServiceCharge)}
+                                                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                                                    applyRoomServiceCharge
+                                                        ? 'bg-brand-500 text-white shadow-sm'
+                                                        : 'bg-surface-muted text-ink-subtle border border-hairline hover:bg-surface-muted/80'
+                                                }`}
+                                            >
+                                                {applyRoomServiceCharge ? 'ON (+10%)' : 'OFF'}
+                                            </button>
+                                        </div>
+                                        {applyRoomServiceCharge && roomServiceChargeAmount > 0 && (
+                                            <div className="flex justify-between items-center text-xs pt-1 font-extrabold text-brand-700">
+                                                <span>10% Room Food Service Charge</span>
+                                                <span className="tabular-nums">+{money(roomServiceChargeAmount)}</span>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
