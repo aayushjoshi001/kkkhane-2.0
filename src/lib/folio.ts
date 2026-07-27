@@ -252,8 +252,8 @@ export async function computeFolioForStays(
         targetRestaurantIds.push(partnerRestaurantId)
     }
 
-    // Fetch dynamic pricing rules, total rooms, and checked-in bookings count
-    const [roomRes, bookingsCountRes, roomsCountRes, rulesRes, segmentsRes] = await Promise.all([
+    // Fetch dynamic pricing rules, total rooms, checked-in bookings count, and features
+    const [roomRes, bookingsCountRes, roomsCountRes, rulesRes, segmentsRes, features] = await Promise.all([
         supabase
             .from('rooms')
             .select('id, room_number, room_types:type_id(base_price)')
@@ -280,7 +280,8 @@ export async function computeFolioForStays(
             .from('booking_room_stays')
             .select('booking_id, room_id, from_ts, rooms:room_id(room_types:type_id(base_price))')
             .in('booking_id', bookingIds)
-            .order('from_ts', { ascending: true })
+            .order('from_ts', { ascending: true }),
+        getRestaurantFeatures(hotelId),
     ])
 
     const roomInfo = new Map(
@@ -415,29 +416,94 @@ export async function computeFolioForStays(
     // On a group bill this sweeps every room's orders onto the one folio, and
     // the dedupe means an order reachable from two of those routes still counts
     // once.
-    const { data: linkedSessions } = await supabase
-        .from('sessions')
-        .select('id')
-        .in('booking_id', bookingIds)
-    const sessionIds = new Set<string>((linkedSessions || []).map((s: { id: string }) => s.id))
+    //
+    // Each session also carries which room its table belongs to, if any — needed
+    // below to tell an in-room QR order (service charge on food only) apart from
+    // a normal dine-in order that happens to be billed to this stay (no room
+    // service charge).
+    const [linkedSessionsRes, extraSessionRes] = await Promise.all([
+        supabase
+            .from('sessions')
+            .select('id, booking_id, tables(room_id)')
+            .in('booking_id', bookingIds),
+        sessionId
+            ? supabase.from('sessions').select('id, booking_id, tables(room_id)').eq('id', sessionId).maybeSingle()
+            : Promise.resolve({ data: null }),
+    ])
+    const sessionRoomId = new Map<string, string | null>()
+    for (const s of linkedSessionsRes.data || []) {
+        sessionRoomId.set(s.id as string, ((s.tables as { room_id?: string } | null)?.room_id) ?? null)
+    }
+    if (extraSessionRes.data) {
+        const s = extraSessionRes.data as { id: string; tables: { room_id?: string } | null }
+        sessionRoomId.set(s.id, s.tables?.room_id ?? null)
+    }
+    const sessionIds = new Set<string>(sessionRoomId.keys())
     if (sessionId) sessionIds.add(sessionId)
+
+    // Room this stay's own direct (non-QR) orders bill to, so a manager
+    // switching the room service charge on/off is reflected on this folio
+    // immediately — including orders placed before the toggle, since this is
+    // always computed against current settings rather than a value stored on
+    // the order at placement time.
+    const roomIdByBooking = new Map(stays.map((s) => [s.bookingId, s.roomId]))
+    const roomScEnabled = !!features?.roomServiceChargeEnabled
+    const roomScRooms = Array.isArray(features?.roomServiceChargeRooms) ? features!.roomServiceChargeRooms! : []
 
     const orderTotals = new Map<string, FolioOrderLine>()
     const addOrders = (
-        rows: Array<{ id: string; placed_at: string; order_items?: Array<{ status?: string; quantity: number; unit_price: number }> }> | null
+        rows: Array<{
+            id: string
+            placed_at: string
+            booking_id: string | null
+            session_id: string | null
+            order_items?: Array<{ status?: string; quantity: number; unit_price: number; station?: string | null }>
+        }> | null
     ) => {
         for (const o of rows || []) {
-            const sum = (o.order_items || [])
-                .filter((it: any) => it.status !== 'cancelled')
-                .reduce(
-                    (s, it) => s + (Number(it.unit_price) || 0) * (Number(it.quantity) || 0), 0)
-            orderTotals.set(o.id, { id: o.id, total: sum, placedAt: o.placed_at })
+            const lineTotal = (it: { quantity: number; unit_price: number }) =>
+                (Number(it.unit_price) || 0) * (Number(it.quantity) || 0)
+            const items = (o.order_items || []).filter((it) => it.status !== 'cancelled')
+            const subtotal = items.reduce((s, it) => s + lineTotal(it), 0)
+
+            // A direct room order (placed by staff straight onto the stay, no
+            // QR session) is charged on every item; an in-room QR order is
+            // charged on food items only — the same split applied when the
+            // order's own totals are first computed.
+            let roomId: string | null = null
+            let isDirectRoomOrder = false
+            if (o.session_id) {
+                // Both the guest's own in-room QR order and a cashier placing an
+                // order straight into that same room's live session bind the
+                // ORDER's booking_id the moment it's placed, but never touch
+                // sessions.booking_id — so a session missing from sessionRoomId
+                // (as opposed to present but mapping to null, which means a
+                // confirmed ordinary dine-in table) isn't "not a room order",
+                // it just means we have to read the room off the order's own
+                // booking_id instead.
+                roomId = sessionRoomId.has(o.session_id)
+                    ? sessionRoomId.get(o.session_id) ?? null
+                    : (o.booking_id ? roomIdByBooking.get(o.booking_id) ?? null : null)
+            } else if (o.booking_id) {
+                roomId = roomIdByBooking.get(o.booking_id) ?? null
+                isDirectRoomOrder = !!roomId
+            }
+
+            let serviceCharge = 0
+            if (roomScEnabled && roomId && roomScRooms.includes(roomId)) {
+                const base = isDirectRoomOrder
+                    ? subtotal
+                    : items.filter((it) => it.station === 'kitchen').reduce((s, it) => s + lineTotal(it), 0)
+                serviceCharge = round2(base * 0.10)
+            }
+
+            orderTotals.set(o.id, { id: o.id, total: round2(subtotal + serviceCharge), placedAt: o.placed_at })
         }
     }
 
     const { data: byBooking } = await supabase
         .from('orders')
-        .select('id, placed_at, order_items(status, quantity, unit_price)')
+        .select('id, placed_at, booking_id, session_id, order_items(status, quantity, unit_price, station)')
         .in('restaurant_id', targetRestaurantIds)
         .in('booking_id', bookingIds)
         .neq('status', 'cancelled')
@@ -446,7 +512,7 @@ export async function computeFolioForStays(
     if (sessionIds.size > 0) {
         const { data: bySession } = await supabase
             .from('orders')
-            .select('id, placed_at, order_items(status, quantity, unit_price)')
+            .select('id, placed_at, booking_id, session_id, order_items(status, quantity, unit_price, station)')
             .in('restaurant_id', targetRestaurantIds)
             .in('session_id', Array.from(sessionIds))
             .neq('status', 'cancelled')
@@ -458,7 +524,6 @@ export async function computeFolioForStays(
     // VAT (Nepal) applies to the room + manual charges only; room-service items are
     // already priced with their own tax at order time, so taxing them again here
     // would double-charge. Off unless the tenant has vatEnabled set.
-    const features = await getRestaurantFeatures(hotelId)
     const vatEnabled = !!features?.vatEnabled
     const taxRate = Number(features?.defaultTaxRate) || 0
     const vat = vatEnabled ? round2((netStayCost + chargesTotal) * (taxRate / 100)) : 0
