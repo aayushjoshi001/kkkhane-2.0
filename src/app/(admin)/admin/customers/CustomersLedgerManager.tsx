@@ -2,13 +2,14 @@
 
 import { useState, useMemo, useRef } from 'react'
 import {
-    Plus, X, Search, Loader2, Trash2, Edit2, FileText, Phone, Users, Download, Printer, HandCoins, TrendingUp, TrendingDown
+    Plus, X, Search, Loader2, Trash2, Edit2, FileText, Phone, Users, Download, Printer, HandCoins, TrendingUp, TrendingDown, ShieldAlert, Eye, Receipt, CreditCard, CheckCircle2, ChevronDown, ChevronUp, Info
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import {
     createCustomerCreditAccountAction, updateCustomerCreditAccountAction, deleteCustomerCreditAccountAction,
-    createReceivableTransactionAction, deleteReceivableTransactionAction,
+    createReceivableTransactionAction, deleteReceivableTransactionAction, saveCustomerOpeningBalanceAction, getTransactionDetailsAction
 } from '../finance/receivables/actions'
+import Modal from '@/components/ui/Modal'
 import { formatCurrency } from '@/lib/utils'
 import { downloadCsv, downloadExcel } from '@/lib/exportCsv'
 import { downloadPdf } from '@/lib/exportPdf'
@@ -48,6 +49,105 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
     const [txnAmount, setTxnAmount] = useState('')
     const [txnDesc, setTxnDesc] = useState('')
     const [submittingTxn, setSubmittingTxn] = useState(false)
+
+    // Detailed Bill / Order Breakdown Modal state
+    const [selectedTxnDetails, setSelectedTxnDetails] = useState<ReceivableTransaction | null>(null)
+    const [fetchingTxnDetails, setFetchingTxnDetails] = useState(false)
+    const [txnDetailData, setTxnDetailData] = useState<any>(null)
+
+    // Optional breakdown fields in Record Transaction form
+    const [showBreakdownFields, setShowBreakdownFields] = useState(false)
+    const [bdSubtotal, setBdSubtotal] = useState('')
+    const [bdDiscount, setBdDiscount] = useState('')
+    const [bdServiceCharge, setBdServiceCharge] = useState('')
+    const [bdTax, setBdTax] = useState('')
+    const [bdPaymentMethod, setBdPaymentMethod] = useState('credit')
+
+    const openTxnDetailsModal = async (txn: ReceivableTransaction) => {
+        setSelectedTxnDetails(txn)
+        setFetchingTxnDetails(true)
+        setTxnDetailData(null)
+        try {
+            const res = await getTransactionDetailsAction(txn.id)
+            if (res.data) {
+                setTxnDetailData(res.data)
+            }
+        } catch {
+            toast.error('Failed to load transaction breakdown details')
+        } finally {
+            setFetchingTxnDetails(false)
+        }
+    }
+
+    const getCleanDescription = (descString: string) => {
+        if (!descString) return '—'
+        if (descString.startsWith('{')) {
+            try {
+                const parsed = JSON.parse(descString)
+                return parsed.text_desc || parsed.text || 'Ledger Transaction'
+            } catch {
+                return descString
+            }
+        }
+        return descString
+    }
+
+    // Opening balance modal state
+    const [obModalOpen, setObModalOpen] = useState(false)
+    const [obAmount, setObAmount] = useState('')
+    const [obReason, setObReason] = useState('')
+    const [isObEdit, setIsObEdit] = useState(false)
+    const [submittingOb, setSubmittingOb] = useState(false)
+
+    const handleOpenAddCustomerOb = () => {
+        setObAmount('')
+        setObReason('')
+        setIsObEdit(false)
+        setObModalOpen(true)
+    }
+
+    const handleOpenEditCustomerOb = (currentAmt: number) => {
+        setObAmount(String(currentAmt))
+        setObReason('')
+        setIsObEdit(true)
+        setObModalOpen(true)
+    }
+
+    const handleSaveCustomerOb = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!ledgerAccount) return
+        const amt = parseFloat(obAmount)
+        if (isNaN(amt) || amt < 0) { toast.error('Opening balance amount must be non-negative'); return }
+        if (isObEdit && !obReason.trim()) {
+            toast.error('Reason for editing opening balance is required')
+            return
+        }
+
+        setSubmittingOb(true)
+        try {
+            const res = await saveCustomerOpeningBalanceAction({
+                customer_credit_account_id: ledgerAccount.id,
+                amount: amt,
+                reason: obReason.trim(),
+                is_edit: isObEdit,
+            })
+            if (res.error) {
+                toast.error(res.error)
+            } else if (res.data) {
+                const newOrUpdated = res.data as ReceivableTransaction
+                setTransactions(prev => {
+                    const filtered = prev.filter(t => t.id !== newOrUpdated.id)
+                    return [newOrUpdated, ...filtered]
+                })
+                setObModalOpen(false)
+                toast.success(isObEdit ? 'Opening balance updated' : 'Opening balance added')
+            }
+        } catch (err) {
+            toast.error('Failed to save opening balance')
+        } finally {
+            setSubmittingOb(false)
+        }
+    }
 
     const openAddModal = () => {
         setName('')
@@ -136,6 +236,13 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                 type: txnType,
                 amount,
                 description: txnDesc.trim(),
+                breakdown: showBreakdownFields ? {
+                    subtotal: bdSubtotal ? parseFloat(bdSubtotal) : undefined,
+                    discount: bdDiscount ? parseFloat(bdDiscount) : undefined,
+                    service_charge: bdServiceCharge ? parseFloat(bdServiceCharge) : undefined,
+                    tax: bdTax ? parseFloat(bdTax) : undefined,
+                    payment_method: bdPaymentMethod,
+                } : undefined,
             })
             if (res.error) {
                 toast.error(res.error)
@@ -146,6 +253,12 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                 setTxnType('charge')
                 setTxnAmount('')
                 setTxnDesc('')
+                setShowBreakdownFields(false)
+                setBdSubtotal('')
+                setBdDiscount('')
+                setBdServiceCharge('')
+                setBdTax('')
+                setBdPaymentMethod('credit')
                 toast.success('Transaction recorded')
 
                 // Calculate if running balance reaches zero
@@ -219,21 +332,26 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
     // Ledger statement transactions with running balance (charge increases what's owed, payment reduces it)
     const customerLedgerEntries = useMemo(() => {
         if (!ledgerAccount) return []
-        const filtered = transactions
-            .filter(t => t.customer_credit_account_id === ledgerAccount.id)
+        const filtered = transactions.filter(t => t.customer_credit_account_id === ledgerAccount.id)
+
+        // Separate Opening Balance to pin at Row #1 (Very Top)
+        const obTxns = filtered.filter(t => t.description.toLowerCase().startsWith('opening balance'))
+        const otherTxns = filtered.filter(t => !t.description.toLowerCase().startsWith('opening balance'))
             .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 
+        const ordered = [...obTxns, ...otherTxns]
+
         let cumulativeBalance = 0
-        const mapped = filtered.map(t => {
+        const mapped = ordered.map(t => {
             cumulativeBalance += t.type === 'charge' ? t.amount : -t.amount
             return { ...t, runningBalance: cumulativeBalance }
         })
-        return mapped.reverse()
+        return mapped
     }, [ledgerAccount, transactions])
 
     const totalCharged = useMemo(() => customerLedgerEntries.reduce((sum, t) => sum + (t.type === 'charge' ? t.amount : 0), 0), [customerLedgerEntries])
     const totalCollected = useMemo(() => customerLedgerEntries.reduce((sum, t) => sum + (t.type === 'payment' ? t.amount : 0), 0), [customerLedgerEntries])
-    const outstandingBalance = useMemo(() => customerLedgerEntries[0]?.runningBalance ?? 0, [customerLedgerEntries])
+    const outstandingBalance = useMemo(() => customerLedgerEntries[customerLedgerEntries.length - 1]?.runningBalance ?? 0, [customerLedgerEntries])
 
     const printRef = useRef<PrintableReportHandle>(null)
     const reportColumns = [
@@ -252,6 +370,10 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
         paid: t.type === 'payment' ? formatCurrency(t.amount) : '',
         running_balance: formatCurrency(t.runningBalance),
     }))
+    const existingObTxn = useMemo(() => {
+        return customerLedgerEntries.find(t => t.description.toLowerCase().startsWith('opening balance'))
+    }, [customerLedgerEntries])
+
     const handleExportCsv = () => downloadCsv(`customer-statement-${ledgerAccount?.customer_name || 'customer'}`, reportColumns, reportRows)
     const handleExportExcel = () => downloadExcel(`customer-statement-${ledgerAccount?.customer_name || 'customer'}`, reportColumns, reportRows)
     const handleExportPdf = () => {
@@ -442,48 +564,64 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
             {ledgerAccount && (
                 <div className="fixed inset-0 z-40 bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4">
                     <div className="bg-surface rounded-2xl border border-hairline shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
-                        <div className="px-6 py-4 border-b border-hairline bg-surface-muted/50 flex items-center justify-between">
-                            <div>
-                                <span className="text-[9px] font-black uppercase text-brand-600 tracking-wider">Customer Account Statement</span>
-                                <h2 className="text-xl font-extrabold text-ink mt-0.5">{ledgerAccount.customer_name}</h2>
-                                <p className="text-xs text-ink-subtle mt-1">
+                        <div className="px-6 py-4 border-b border-hairline bg-surface-muted/50 flex flex-wrap items-center justify-between gap-3">
+                            <div className="min-w-0 pr-2">
+                                <span className="text-[9px] font-black uppercase text-brand-600 tracking-wider block">Customer Account Statement</span>
+                                <h2 className="text-lg sm:text-xl font-extrabold text-ink mt-0.5 truncate">{ledgerAccount.customer_name}</h2>
+                                <p className="text-xs text-ink-subtle mt-0.5 truncate">
                                     {[ledgerAccount.customer_phone && `Phone: ${ledgerAccount.customer_phone}`, `Credit Limit: ${formatCurrency(ledgerAccount.credit_limit)}`].filter(Boolean).join(' | ')}
                                 </p>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex flex-wrap items-center gap-2 shrink-0">
                                 {customerLedgerEntries.length > 0 && (
-                                    <>
+                                    <div className="flex items-center gap-1.5 shrink-0">
                                         <button
                                             onClick={handleExportCsv}
-                                            className="flex items-center gap-1 px-2.5 py-2 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-xs border border-hairline transition-all"
+                                            className="flex items-center gap-1 px-2.5 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[11px] border border-hairline transition-all whitespace-nowrap"
                                         >
-                                            <Download size={14} /> CSV
+                                            <Download size={13} /> CSV
                                         </button>
                                         <button
                                             onClick={handleExportExcel}
-                                            className="flex items-center gap-1 px-2.5 py-2 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-xs border border-hairline transition-all"
+                                            className="flex items-center gap-1 px-2.5 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[11px] border border-hairline transition-all whitespace-nowrap"
                                         >
-                                            <Download size={14} /> Excel
+                                            <Download size={13} /> Excel
                                         </button>
                                         <button
                                             onClick={handleExportPdf}
-                                            className="flex items-center gap-1 px-2.5 py-2 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-xs border border-hairline transition-all"
+                                            className="flex items-center gap-1 px-2.5 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[11px] border border-hairline transition-all whitespace-nowrap"
                                         >
-                                            <Download size={14} /> PDF
+                                            <Download size={13} /> PDF
                                         </button>
                                         <button
                                             onClick={() => printRef.current?.print()}
-                                            className="flex items-center gap-1.5 px-3 py-2 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-xs border border-hairline transition-all"
+                                            className="flex items-center gap-1 px-2.5 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[11px] border border-hairline transition-all whitespace-nowrap"
                                         >
-                                            <Printer size={14} /> Print
+                                            <Printer size={13} /> Print
                                         </button>
-                                    </>
+                                    </div>
+                                )}
+                                {existingObTxn ? (
+                                    <button
+                                        onClick={() => handleOpenEditCustomerOb(existingObTxn.amount)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold border border-amber-200 rounded-xl text-[11px] transition-all whitespace-nowrap"
+                                        title="Edit Opening Balance (requires reason)"
+                                    >
+                                        <Edit2 size={13} /> Edit Opening Balance ({formatCurrency(existingObTxn.amount)})
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={handleOpenAddCustomerOb}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold border border-emerald-200 rounded-xl text-[11px] transition-all whitespace-nowrap"
+                                    >
+                                        <Plus size={13} /> Add Opening Balance
+                                    </button>
                                 )}
                                 <button
                                     onClick={() => setTxnModalOpen(true)}
-                                    className="flex items-center gap-1.5 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white font-extrabold rounded-xl text-xs shadow-sm transition-colors"
+                                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-brand-500 hover:bg-brand-600 text-white font-extrabold rounded-xl text-[11px] shadow-sm transition-colors whitespace-nowrap"
                                 >
-                                    <Plus size={14} /> Record Transaction
+                                    <Plus size={13} /> Record Transaction
                                 </button>
                                 <button
                                     onClick={() => setLedgerAccount(null)}
@@ -541,7 +679,17 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                                                             {t.type === 'charge' ? 'Charge' : 'Payment'}
                                                         </span>
                                                     </td>
-                                                    <td className="px-4 py-3 font-bold text-ink">{t.description}</td>
+                                                    <td className="px-4 py-3 font-bold text-ink max-w-xs sm:max-w-sm md:max-w-md break-words whitespace-normal">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openTxnDetailsModal(t)}
+                                                            className="text-left font-bold text-brand-600 hover:text-brand-700 hover:underline inline-flex items-start gap-1.5 leading-snug break-words max-w-full focus:outline-none transition-colors"
+                                                            title="Click to view full Order / Bill History details (Discounts, Service Charges, Tax, Cash/QR split)"
+                                                        >
+                                                            <Eye size={13} className="text-brand-500 shrink-0 mt-0.5" />
+                                                            <span className="break-words">{getCleanDescription(t.description)}</span>
+                                                        </button>
+                                                    </td>
                                                     <td className="px-4 py-3 text-right font-black text-rose-600">
                                                         {t.type === 'charge' ? formatCurrency(t.amount) : <span className="text-ink-subtle">—</span>}
                                                     </td>
@@ -697,6 +845,84 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                                         className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                     />
                                 </div>
+
+                                {/* Optional Breakdown Fields Toggle */}
+                                <div className="border-t border-hairline pt-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowBreakdownFields(prev => !prev)}
+                                        className="text-xs font-extrabold text-brand-600 hover:text-brand-700 flex items-center gap-1.5"
+                                    >
+                                        {showBreakdownFields ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                        {showBreakdownFields ? 'Hide Itemized Bill Breakdown' : '+ Add Itemized Bill Breakdown (Discount, Service Charge, Tax, Payment Mode)'}
+                                    </button>
+
+                                    {showBreakdownFields && (
+                                        <div className="mt-3 p-3.5 bg-surface-muted/60 border border-hairline rounded-xl space-y-3 animate-fade-in">
+                                            <div className="grid grid-cols-2 gap-2.5">
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase tracking-wider mb-1">Subtotal (Rs.)</label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        placeholder="0.00"
+                                                        value={bdSubtotal}
+                                                        onChange={e => setBdSubtotal(e.target.value)}
+                                                        className="w-full px-3 py-1.5 bg-surface border border-hairline rounded-lg text-xs font-bold text-ink"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase tracking-wider mb-1">Discount Given (Rs.)</label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        placeholder="0.00"
+                                                        value={bdDiscount}
+                                                        onChange={e => setBdDiscount(e.target.value)}
+                                                        className="w-full px-3 py-1.5 bg-surface border border-hairline rounded-lg text-xs font-bold text-ink"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase tracking-wider mb-1">Service Charge (Rs.)</label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        placeholder="0.00"
+                                                        value={bdServiceCharge}
+                                                        onChange={e => setBdServiceCharge(e.target.value)}
+                                                        className="w-full px-3 py-1.5 bg-surface border border-hairline rounded-lg text-xs font-bold text-ink"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase tracking-wider mb-1">Tax / VAT (Rs.)</label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        placeholder="0.00"
+                                                        value={bdTax}
+                                                        onChange={e => setBdTax(e.target.value)}
+                                                        className="w-full px-3 py-1.5 bg-surface border border-hairline rounded-lg text-xs font-bold text-ink"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-ink-subtle uppercase tracking-wider mb-1">Payment Method Mode</label>
+                                                <Select
+                                                    value={bdPaymentMethod}
+                                                    onChange={e => setBdPaymentMethod(e.target.value)}
+                                                    className="w-full px-3 py-1.5 bg-surface border border-hairline rounded-lg text-xs font-bold text-ink"
+                                                >
+                                                    <option value="credit">Credit (Unpaid)</option>
+                                                    <option value="cash">Cash Payment</option>
+                                                    <option value="qr">QR Code (Digital / Fonepay)</option>
+                                                    <option value="card">Card Payment</option>
+                                                    <option value="bank_transfer">Bank Transfer</option>
+                                                </Select>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                             <div className="px-6 py-4 border-t border-hairline bg-surface-muted flex items-center justify-end gap-3">
                                 <button type="button" onClick={() => setTxnModalOpen(false)} className="px-4 py-2 text-ink-subtle hover:text-ink-subtle font-bold text-sm">
@@ -714,6 +940,258 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                         </form>
                     </div>
                 </div>
+            )}
+
+            {/* ── FAIR TRANSACTION / BILL BREAKDOWN MODAL ── */}
+            {selectedTxnDetails && (
+                <Modal
+                    open
+                    onClose={() => setSelectedTxnDetails(null)}
+                    size="lg"
+                    ariaLabel="Transaction & Bill History Details"
+                    className="bg-surface overflow-hidden"
+                >
+                    <div className="p-6 border-b border-hairline bg-surface-muted/50 flex items-center justify-between">
+                        <div className="flex items-center gap-3 min-w-0 pr-3">
+                            <div className="w-10 h-10 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center shrink-0">
+                                <Receipt size={20} className="text-brand-500" />
+                            </div>
+                            <div className="min-w-0">
+                                <span className="text-[10px] font-black uppercase text-brand-600 tracking-wider block">Fair Transaction & Bill History</span>
+                                <h3 className="text-base sm:text-lg font-extrabold text-ink leading-snug break-words">
+                                    {getCleanDescription(selectedTxnDetails.description)}
+                                </h3>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setSelectedTxnDetails(null)}
+                            className="p-1.5 hover:bg-surface-muted rounded-xl text-ink-subtle hover:text-ink transition-colors shrink-0"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
+
+                    <div className="p-6 max-h-[75vh] overflow-y-auto space-y-6">
+                        {fetchingTxnDetails ? (
+                            <div className="py-12 text-center text-ink-subtle space-y-2">
+                                <Loader2 size={28} className="animate-spin mx-auto text-brand-500" />
+                                <p className="text-xs font-bold">Fetching bill details & order history...</p>
+                            </div>
+                        ) : (
+                            (() => {
+                                const meta = txnDetailData?.parsedMeta || {}
+                                const order = txnDetailData?.orderData || null
+                                const booking = txnDetailData?.bookingData || null
+                                const items = (txnDetailData?.finalItems && txnDetailData.finalItems.length > 0)
+                                    ? txnDetailData.finalItems
+                                    : (txnDetailData?.orderItems || [])
+
+                                const subtotal = order?.subtotal_amount ?? meta.subtotal ?? selectedTxnDetails.amount
+                                const discount = order?.discount_amount ?? meta.discount ?? 0
+                                const serviceCharge = order?.service_charge_amount ?? meta.service_charge ?? 0
+                                const tax = order?.tax_amount ?? meta.tax ?? 0
+                                const grandTotal = order?.total_amount ?? meta.grand_total ?? selectedTxnDetails.amount
+                                const paidAmount = meta.paid_amount ?? (selectedTxnDetails.type === 'payment' ? selectedTxnDetails.amount : 0)
+                                const payMethod = order?.payment_method || meta.payment_method || (selectedTxnDetails.type === 'payment' ? 'cash' : 'credit')
+
+                                return (
+                                    <div className="space-y-5">
+                                        {/* Basic Metadata Header Cards */}
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                            <div className="p-3 bg-surface-muted/50 border border-hairline rounded-xl min-w-0 overflow-hidden flex flex-col justify-between">
+                                                <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Transaction Type</span>
+                                                <div className="mt-1">
+                                                    <span className={`inline-flex text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
+                                                        selectedTxnDetails.type === 'charge' ? 'bg-orange-50 text-orange-700 border border-orange-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                    }`}>
+                                                        {selectedTxnDetails.type === 'charge' ? 'Charge (Bill)' : 'Payment Collection'}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div className="p-3 bg-surface-muted/50 border border-hairline rounded-xl min-w-0 overflow-hidden flex flex-col justify-between">
+                                                <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Posted Date</span>
+                                                <div className="mt-1 min-w-0 overflow-hidden">
+                                                    <DateCell value={selectedTxnDetails.created_at} className="text-xs font-bold leading-tight block text-ink overflow-hidden" />
+                                                </div>
+                                            </div>
+
+                                            <div className="p-3 bg-surface-muted/50 border border-hairline rounded-xl min-w-0 overflow-hidden flex flex-col justify-between">
+                                                <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Payment Mode</span>
+                                                <span className="text-xs font-extrabold text-ink uppercase block mt-1 truncate">
+                                                    {payMethod === 'qr' ? 'QR Code (Digital)' : payMethod === 'cash' ? 'Cash Payment' : payMethod === 'card' ? 'Card Payment' : payMethod}
+                                                </span>
+                                            </div>
+
+                                            <div className="p-3 bg-surface-muted/50 border border-hairline rounded-xl min-w-0 overflow-hidden flex flex-col justify-between">
+                                                <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Ledger Amount</span>
+                                                <span className="text-xs font-black text-brand-600 block mt-1 truncate">
+                                                    {formatCurrency(selectedTxnDetails.amount)}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Order & Service Itemization (Room, Food, Services) */}
+                                        {items.length > 0 && (
+                                            <div className="border border-hairline rounded-xl overflow-hidden">
+                                                <div className="px-4 py-2.5 bg-surface-muted border-b border-hairline flex items-center justify-between">
+                                                    <span className="text-xs font-extrabold text-ink flex items-center gap-1.5">
+                                                        <FileText size={14} className="text-brand-500" /> Itemized Bill Breakdown (Room, Food & Services)
+                                                    </span>
+                                                    <span className="text-[10px] font-bold text-ink-subtle">
+                                                        {booking ? `Booking #${booking.id.slice(0, 8)}` : order ? `Order #${order.id.slice(0, 8)}` : `${items.length} Item(s)`}
+                                                    </span>
+                                                </div>
+                                                <table className="w-full text-left text-xs">
+                                                    <thead>
+                                                        <tr className="bg-surface-muted/30 border-b border-hairline text-ink-subtle font-bold">
+                                                            <th className="px-4 py-2">Item Description</th>
+                                                            <th className="px-4 py-2 text-center w-16">Qty</th>
+                                                            <th className="px-4 py-2 text-right w-24">Rate</th>
+                                                            <th className="px-4 py-2 text-right w-28">Total</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-hairline">
+                                                        {items.map((it: any, index: number) => (
+                                                            <tr key={it.id || index} className="hover:bg-surface-muted/30">
+                                                                <td className="px-4 py-2.5 font-semibold text-ink">
+                                                                    {it.name || it.menu_items?.name || it.item_name || 'Bill Item'}
+                                                                </td>
+                                                                <td className="px-4 py-2.5 text-center font-bold text-ink">{it.quantity}</td>
+                                                                <td className="px-4 py-2.5 text-right font-medium text-ink-subtle">{formatCurrency(it.unit_price)}</td>
+                                                                <td className="px-4 py-2.5 text-right font-extrabold text-ink">{formatCurrency(it.quantity * it.unit_price)}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+
+                                        {/* Financial Bill Summary Card (Fair Audit) */}
+                                        <div className="bg-surface border border-hairline rounded-xl p-4 space-y-3 shadow-sm">
+                                            <div className="border-b border-hairline pb-2 flex items-center justify-between">
+                                                <span className="text-xs font-black uppercase text-ink tracking-wider">Bill Calculation Breakdown</span>
+                                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Fair Transaction Verified</span>
+                                            </div>
+
+                                            <div className="space-y-2 text-xs">
+                                                <div className="flex items-center justify-between text-ink-subtle font-semibold">
+                                                    <span>Subtotal Amount</span>
+                                                    <span className="font-bold text-ink">{formatCurrency(subtotal)}</span>
+                                                </div>
+
+                                                {discount > 0 && (
+                                                    <div className="flex items-center justify-between text-emerald-700 font-bold bg-emerald-50/60 px-2 py-1 rounded border border-emerald-100">
+                                                        <span>Discount Given (-)</span>
+                                                        <span>- {formatCurrency(discount)}</span>
+                                                    </div>
+                                                )}
+
+                                                {serviceCharge > 0 && (
+                                                    <div className="flex items-center justify-between text-ink-subtle font-semibold">
+                                                        <span>Service Charge (+)</span>
+                                                        <span>{formatCurrency(serviceCharge)}</span>
+                                                    </div>
+                                                )}
+
+                                                {tax > 0 && (
+                                                    <div className="flex items-center justify-between text-ink-subtle font-semibold">
+                                                        <span>VAT / Tax (+)</span>
+                                                        <span>{formatCurrency(tax)}</span>
+                                                    </div>
+                                                )}
+
+                                                <div className="border-t border-hairline pt-2 flex items-center justify-between text-sm font-extrabold text-ink">
+                                                    <span>Grand Total Bill</span>
+                                                    <span className="text-base font-black text-brand-600">{formatCurrency(grandTotal)}</span>
+                                                </div>
+
+                                                <div className="flex items-center justify-between text-xs font-extrabold text-emerald-600 pt-1">
+                                                    <span>Paid Amount ({payMethod === 'qr' ? 'QR Code' : payMethod === 'cash' ? 'Cash' : payMethod})</span>
+                                                    <span>{formatCurrency(paidAmount)}</span>
+                                                </div>
+
+                                                <div className="flex items-center justify-between text-xs font-extrabold text-rose-600 border-t border-dashed border-hairline pt-2">
+                                                    <span>Net Posted to Customer Ledger</span>
+                                                    <span className="text-sm font-black">{formatCurrency(selectedTxnDetails.amount)}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            })()
+                        )}
+                    </div>
+                </Modal>
+            )}
+
+            {/* ── CUSTOMER OPENING BALANCE MODAL ── */}
+            {obModalOpen && ledgerAccount && (
+                <Modal open onClose={() => setObModalOpen(false)} size="md" ariaLabel={isObEdit ? "Edit Opening Balance" : "Add Opening Balance"} className="bg-surface overflow-hidden">
+                    <div className="p-5 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
+                        <div>
+                            <h3 className="font-extrabold text-ink text-sm flex items-center gap-2">
+                                {isObEdit ? <Edit2 size={16} className="text-amber-500" /> : <Plus size={16} className="text-emerald-500" />}
+                                {isObEdit ? `Edit Opening Balance for ${ledgerAccount.customer_name}` : `Add Opening Balance for ${ledgerAccount.customer_name}`}
+                            </h3>
+                            <p className="text-[10px] text-ink-subtle mt-0.5">
+                                {isObEdit ? 'A reason is required before editing an existing opening balance.' : 'Set the initial outstanding balance for this customer.'}
+                            </p>
+                        </div>
+                        <button 
+                            onClick={() => setObModalOpen(false)}
+                            className="p-1.5 hover:bg-surface-muted rounded-xl text-ink-subtle hover:text-ink-subtle transition-colors"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                    
+                    <form onSubmit={handleSaveCustomerOb} className="p-5 space-y-4">
+                        <div>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Opening Balance Amount (Rs.) *</label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                value={obAmount}
+                                onChange={e => setObAmount(e.target.value)}
+                                required
+                                className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-sm"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">
+                                {isObEdit ? 'Reason for Editing *' : 'Note / Reference (Optional)'}
+                            </label>
+                            <textarea
+                                placeholder={isObEdit ? 'State the reason for modifying the opening balance...' : 'e.g. Previous pending ledger balance'}
+                                value={obReason}
+                                onChange={e => setObReason(e.target.value)}
+                                required={isObEdit}
+                                rows={3}
+                                className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-semibold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-sm"
+                            />
+                            {isObEdit && (
+                                <p className="text-[10px] text-amber-600 font-semibold flex items-center gap-1 mt-1">
+                                    <ShieldAlert size={12} /> This reason will be permanently recorded in the Manager Activities Log.
+                                </p>
+                            )}
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={submittingOb}
+                            className={`w-full mt-2 py-3 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition-colors shadow-md flex items-center justify-center gap-2 focus-ring disabled:opacity-50 ${
+                                isObEdit ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/15' : 'bg-brand-500 hover:bg-brand-600 shadow-brand-500/15'
+                            }`}
+                        >
+                            {submittingOb ? <Loader2 size={16} className="animate-spin" /> : isObEdit ? <Edit2 size={16} /> : <Plus size={16} />}
+                            {isObEdit ? 'Save Changes with Reason' : 'Save Opening Balance'}
+                        </button>
+                    </form>
+                </Modal>
             )}
 
             {ledgerAccount && (

@@ -95,8 +95,9 @@ const PrintableReport = forwardRef<PrintableReportHandle, PrintableReportProps>(
                                         style={{
                                             textAlign: c.align || 'left',
                                             borderBottom: '1px solid #ddd',
-                                            padding: '3px 5px',
-                                            whiteSpace: c.dateStacked ? 'normal' : 'nowrap',
+                                            padding: '4px 6px',
+                                            wordBreak: 'break-word',
+                                            whiteSpace: 'normal',
                                         }}
                                     >
                                         {renderCell(row[c.key], c.dateStacked)}
@@ -109,7 +110,7 @@ const PrintableReport = forwardRef<PrintableReportHandle, PrintableReportProps>(
                         <tfoot>
                             <tr>
                                 {columns.map(c => (
-                                    <td key={c.key} style={{ textAlign: c.align || 'left', borderTop: '2px solid #000', padding: '4px 5px', fontWeight: 700, whiteSpace: c.dateStacked ? 'normal' : 'nowrap' }}>
+                                    <td key={c.key} style={{ textAlign: c.align || 'left', borderTop: '2px solid #000', padding: '4px 6px', fontWeight: 700, wordBreak: 'break-word', whiteSpace: 'normal' }}>
                                         {renderCell(totalsRow[c.key], c.dateStacked)}
                                     </td>
                                 ))}
