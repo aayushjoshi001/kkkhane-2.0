@@ -1311,10 +1311,15 @@ export default function QuickOrderModal({
                                     <input
                                         type="number"
                                         min="1"
-                                        value={row.quantity}
+                                        value={row.quantity === 0 ? '' : row.quantity}
                                         onChange={e => {
-                                            const val = Math.max(1, parseInt(e.target.value) || 1)
-                                            setOutsideFoodRows(prev => prev.map((r, i) => i === index ? { ...r, quantity: val } : r))
+                                            const valStr = e.target.value
+                                            if (valStr === '') {
+                                                setOutsideFoodRows(prev => prev.map((r, i) => i === index ? { ...r, quantity: '' as any } : r))
+                                                return
+                                            }
+                                            const val = parseInt(valStr)
+                                            setOutsideFoodRows(prev => prev.map((r, i) => i === index ? { ...r, quantity: isNaN(val) ? 1 : val } : r))
                                         }}
                                         className="w-full px-3 py-2 border border-hairline focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white text-ink focus:outline-none text-center"
                                         required
@@ -1326,10 +1331,15 @@ export default function QuickOrderModal({
                                         type="number"
                                         min="0"
                                         placeholder="Rate"
-                                        value={row.price || ''}
+                                        value={row.price === 0 ? '' : row.price}
                                         onChange={e => {
-                                            const val = Math.max(0, parseFloat(e.target.value) || 0)
-                                            setOutsideFoodRows(prev => prev.map((r, i) => i === index ? { ...r, price: val } : r))
+                                            const valStr = e.target.value
+                                            if (valStr === '') {
+                                                setOutsideFoodRows(prev => prev.map((r, i) => i === index ? { ...r, price: '' as any } : r))
+                                                return
+                                            }
+                                            const val = parseFloat(valStr)
+                                            setOutsideFoodRows(prev => prev.map((r, i) => i === index ? { ...r, price: isNaN(val) ? 0 : val } : r))
                                         }}
                                         className="w-full px-3 py-2 border border-hairline focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white text-ink focus:outline-none text-right"
                                         required
@@ -1389,12 +1399,14 @@ export default function QuickOrderModal({
 
                             const newCartItems = outsideFoodRows.map((row, idx) => {
                                 const uniqueId = `outside-${Date.now()}-${idx}`
+                                const qty = Math.max(1, parseInt(row.quantity as any) || 1)
+                                const priceVal = Math.max(0, parseFloat(row.price as any) || 0)
                                 return {
                                     id: uniqueId,
                                     menuItemId: 'outside_food',
                                     name: row.name.trim(),
-                                    price: row.price,
-                                    quantity: row.quantity,
+                                    price: priceVal,
+                                    quantity: qty,
                                     specialRequest: row.note.trim(),
                                     modifiers: [],
                                     isOutsideFood: true
