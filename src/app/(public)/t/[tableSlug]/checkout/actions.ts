@@ -289,10 +289,11 @@ export async function placeOrder(
 
         const { data: dbOrderItems } = await supabase
             .from('order_items')
-            .select('id, menu_item_id, quantity, special_request, unit_price')
+            .select('id, menu_item_id, quantity, special_request, unit_price, station')
             .eq('order_id', result.order_id)
 
         let calculatedSubtotal = 0
+        let foodSubtotal = 0
         if (dbOrderItems && dbOrderItems.length > 0) {
             const matchedDbItemIds = new Set<string>()
 
@@ -324,7 +325,12 @@ export async function placeOrder(
                     if (v) basePrice = Number(v.price)
                 }
                 const modifierTotal = (item.modifiers || []).reduce((sum, mod) => sum + mod.priceAdjustment, 0)
-                calculatedSubtotal += (basePrice + modifierTotal) * item.quantity
+                const itemTotal = (basePrice + modifierTotal) * item.quantity
+                calculatedSubtotal += itemTotal
+
+                if (match && match.station === 'kitchen') {
+                    foodSubtotal += itemTotal
+                }
 
                 if (match) {
                     matchedDbItemIds.add(match.id)
@@ -372,9 +378,17 @@ export async function placeOrder(
 
             const discountAmount = Number(orderData?.discount_amount ?? 0)
             
-            const finalServiceCharge = scEnabled 
-                ? Math.round((calculatedSubtotal - discountAmount) * (scRate / 100) * 100) / 100 
-                : 0
+            let finalServiceCharge = 0
+            if (isHotelRoom) {
+                // Room QR orders get 10% service charge on food items only
+                const foodRatio = calculatedSubtotal > 0 ? (foodSubtotal / calculatedSubtotal) : 0
+                const discountedFoodSubtotal = Math.max(0, foodSubtotal - (discountAmount * foodRatio))
+                finalServiceCharge = Math.round(discountedFoodSubtotal * 0.10 * 100) / 100
+            } else {
+                finalServiceCharge = scEnabled 
+                    ? Math.round((calculatedSubtotal - discountAmount) * (scRate / 100) * 100) / 100 
+                    : 0
+            }
 
             const finalTax = Math.round((calculatedSubtotal - discountAmount + finalServiceCharge) * (taxRate / 100) * 100) / 100
             const finalOrderTotal = Math.max(0, calculatedSubtotal - discountAmount + finalServiceCharge + finalTax)

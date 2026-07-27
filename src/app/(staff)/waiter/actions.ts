@@ -729,9 +729,8 @@ export async function placeRoomOrderDirect(
     const scEnabled = featuresV2?.serviceChargeEnabled === true
     const scRate = Number(featuresV2?.serviceChargeRate ?? 10)
 
-    const serviceCharge = scEnabled 
-        ? Math.round(subtotal * (scRate / 100) * 100) / 100 
-        : 0
+    // Direct room orders always have a 10% service charge on all items
+    const serviceCharge = Math.round(subtotal * 0.10 * 100) / 100
 
     const tax = Math.round((subtotal + serviceCharge) * (taxRate / 100) * 100) / 100
     const total = Math.max(0, subtotal + serviceCharge + tax)
@@ -825,17 +824,30 @@ export async function recalculateAndUpdateOrderTotals(
     orderId: string,
     restaurantId: string
 ) {
+    // Fetch order to check session_id and booking_id
+    const { data: orderData } = await adminSupabase
+        .from('orders')
+        .select('session_id, booking_id, discount_amount')
+        .eq('id', orderId)
+        .single()
+
     // Fetch all order items and modifiers to recalculate subtotal
     const { data: allOrderItems } = await adminSupabase
         .from('order_items')
-        .select('id, quantity, unit_price, order_item_modifiers(price_adjustment)')
+        .select('id, quantity, unit_price, station, order_item_modifiers(price_adjustment)')
         .eq('order_id', orderId)
 
     let subtotal = 0
+    let foodSubtotal = 0
     for (const oi of allOrderItems || []) {
         const itemTotal = Number(oi.unit_price ?? 0) * oi.quantity
         const modifiersTotal = (oi.order_item_modifiers || []).reduce((sum: number, m: any) => sum + (Number(m.price_adjustment ?? 0) * oi.quantity), 0)
-        subtotal += itemTotal + modifiersTotal
+        const totalLinePrice = itemTotal + modifiersTotal
+        subtotal += totalLinePrice
+        
+        if (oi.station === 'kitchen') {
+            foodSubtotal += totalLinePrice
+        }
     }
 
     // Get settings for tax
@@ -850,12 +862,44 @@ export async function recalculateAndUpdateOrderTotals(
     const scEnabled = featuresV2?.serviceChargeEnabled === true
     const scRate = Number(featuresV2?.serviceChargeRate ?? 10)
 
-    const serviceCharge = scEnabled 
-        ? Math.round(subtotal * (scRate / 100) * 100) / 100 
-        : 0
+    const discountAmount = Number(orderData?.discount_amount ?? 0)
 
-    const tax = Math.round((subtotal + serviceCharge) * (taxRate / 100) * 100) / 100
-    const total = Math.max(0, subtotal + serviceCharge + tax)
+    // Determine if it is a room stay order, and if so, what kind
+    let serviceCharge = 0
+    if (orderData?.booking_id) {
+        if (!orderData.session_id) {
+            // Direct room order: 10% service charge on all items
+            const netSubtotal = Math.max(0, subtotal - discountAmount)
+            serviceCharge = Math.round(netSubtotal * 0.10 * 100) / 100
+        } else {
+            // Check if the session belongs to a room table
+            const { data: sessionTable } = await adminSupabase
+                .from('sessions')
+                .select('tables(room_id)')
+                .eq('id', orderData.session_id)
+                .single()
+            
+            if (sessionTable?.tables?.room_id) {
+                // Room QR order: 10% service charge on food items only
+                const foodRatio = subtotal > 0 ? (foodSubtotal / subtotal) : 0
+                const discountedFoodSubtotal = Math.max(0, foodSubtotal - (discountAmount * foodRatio))
+                serviceCharge = Math.round(discountedFoodSubtotal * 0.10 * 100) / 100
+            } else {
+                // Dine-in order linked to room: standard service charge from settings
+                serviceCharge = scEnabled 
+                    ? Math.round((subtotal - discountAmount) * (scRate / 100) * 100) / 100 
+                    : 0
+            }
+        }
+    } else {
+        // Standard order: service charge from settings
+        serviceCharge = scEnabled 
+            ? Math.round((subtotal - discountAmount) * (scRate / 100) * 100) / 100 
+            : 0
+    }
+
+    const tax = Math.round((subtotal - discountAmount + serviceCharge) * (taxRate / 100) * 100) / 100
+    const total = Math.max(0, subtotal - discountAmount + serviceCharge + tax)
 
     // Update totals
     try {
