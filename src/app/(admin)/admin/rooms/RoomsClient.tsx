@@ -91,6 +91,10 @@ export default function RoomsClient({
         advance_qr_amount: '',
         advance_qr_code_id: ''
     })
+    // Extra rooms the same guest is taking. Any entry here makes this one
+    // reservation: the rooms bill onto a single folio and check out together.
+    const [extraRoomIds, setExtraRoomIds] = useState<string[]>([])
+
     const [isSubmittingRoom, setIsSubmittingRoom] = useState(false)
     const [isSubmittingType, setIsSubmittingType] = useState(false)
     const [isSubmittingBooking, setIsSubmittingBooking] = useState(false)
@@ -332,8 +336,14 @@ export default function RoomsClient({
             advance_qr_amount: '',
             advance_qr_code_id: ''
         })
+        setExtraRoomIds([])
         setIsBookModalOpen(true)
     }
+
+    /** Other free rooms this guest can take on the same reservation. */
+    const addableRooms = rooms
+        .filter(r => r.id !== selectedRoom?.id && r.status === 'available')
+        .sort((a, b) => a.room_number.localeCompare(b.room_number, undefined, { numeric: true }))
 
     // Create Room Booking handler
     const handleCreateBooking = async () => {
@@ -367,7 +377,14 @@ export default function RoomsClient({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    room_id: selectedRoom!.id,
+                    // The selected room first, then any extras. More than one
+                    // makes this a single reservation covering all of them.
+                    rooms: [selectedRoom!.id, ...extraRoomIds].map(id => ({
+                        room_id: id,
+                        adult_male: maleCount,
+                        adult_female: femaleCount,
+                        children: childCount,
+                    })),
                     guest_name: bookingForm.guest_name,
                     guest_phone: bookingForm.guest_phone,
                     kyc: bookingForm.kyc,
@@ -395,10 +412,12 @@ export default function RoomsClient({
             }
             if (!res.ok) throw new Error(data.error)
 
-            setRooms(prev => prev.map(r => r.id === selectedRoom!.id ? { ...r, status: 'occupied' } : r))
+            const bookedIds = new Set([selectedRoom!.id, ...extraRoomIds])
+            setRooms(prev => prev.map(r => bookedIds.has(r.id) ? { ...r, status: 'occupied' } : r))
             setSelectedRoom(prev => prev ? { ...prev, status: 'occupied' } : null)
             setIsBookModalOpen(false)
-            toast.success('Room booked successfully!')
+            setExtraRoomIds([])
+            toast.success(bookedIds.size > 1 ? `${bookedIds.size} rooms booked on one reservation!` : 'Room booked successfully!')
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'Failed to book room')
         } finally {
@@ -990,7 +1009,46 @@ export default function RoomsClient({
                                         </div>
                                     ))}
                                 </div>
+                                <p className="text-[10px] text-ink-subtle font-semibold mt-1.5">
+                                    Applied to each room on this reservation.
+                                </p>
                             </div>
+
+                            {/* Extra rooms for the same guest. Picking any makes this one
+                                reservation: the rooms share the stay window, bill onto a
+                                single folio, and check out together. */}
+                            {addableRooms.length > 0 && (
+                                <div>
+                                    <label className="block text-small font-bold text-ink mb-1.5">
+                                        More rooms for this guest
+                                        <span className="ml-2 text-[10px] font-bold text-ink-subtle uppercase">
+                                            {extraRoomIds.length + 1} room{extraRoomIds.length ? 's' : ''} total
+                                        </span>
+                                    </label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {addableRooms.map(room => {
+                                            const picked = extraRoomIds.includes(room.id)
+                                            return (
+                                                <button
+                                                    key={room.id}
+                                                    type="button"
+                                                    aria-pressed={picked}
+                                                    onClick={() => setExtraRoomIds(prev =>
+                                                        picked ? prev.filter(id => id !== room.id) : [...prev, room.id]
+                                                    )}
+                                                    className={`px-3 py-2 rounded-[var(--r-md)] border-2 text-xs font-bold transition-all ${
+                                                        picked
+                                                            ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                            : 'border-hairline bg-surface text-ink-subtle hover:border-brand-300'
+                                                    }`}
+                                                >
+                                                    {room.room_number}
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                            )}
 
                              <div className={irdSyncEnabled ? "grid grid-cols-2 gap-4" : ""}>
                                  <div>
