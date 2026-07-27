@@ -28,6 +28,92 @@ export const TIER_LIMITS: Record<Tier, { max_staff: number; max_menu_items: numb
 /** Tiers whose plan includes the accounting/finance module. */
 export const FINANCE_TIERS: readonly Tier[] = ['premium', 'platinum', 'enterprise']
 
+/**
+ * Which major modules each plan includes.
+ *
+ * These flags gate whole sections of the admin panel, and they were missing
+ * from TIER_FEATURES entirely — so buildFeaturesV2 never wrote them, every
+ * restaurant had the keys absent rather than set, and the server treated
+ * absent as "off" while the client treated it as "on". The result was a
+ * sidebar link to a page that redirected straight back to the dashboard, with
+ * no way for a manager to fix it.
+ *
+ * Grounded in the published plans in lib/pricing.ts: every tier down to Free
+ * advertises user logins and a table count, so staff and table management are
+ * available on all of them — the Premium differentiator is *custom roles*, not
+ * having staff records at all. Accounting is Premium and above, matching
+ * FINANCE_TIERS above.
+ */
+export const TIER_MODULES: Record<Tier, {
+    staffManagementEnabled: boolean
+    tableManagementEnabled: boolean
+    financeEnabled: boolean
+}> = {
+    free:       { staffManagementEnabled: true, tableManagementEnabled: true, financeEnabled: false },
+    basic:      { staffManagementEnabled: true, tableManagementEnabled: true, financeEnabled: false },
+    premium:    { staffManagementEnabled: true, tableManagementEnabled: true, financeEnabled: true  },
+    platinum:   { staffManagementEnabled: true, tableManagementEnabled: true, financeEnabled: true  },
+    enterprise: { staffManagementEnabled: true, tableManagementEnabled: true, financeEnabled: true  },
+}
+
+/** The module flags, as a list — for callers that need to iterate them. */
+export const MODULE_KEYS = [
+    'staffManagementEnabled',
+    'tableManagementEnabled',
+    'financeEnabled',
+] as const
+
+export type ModuleKey = typeof MODULE_KEYS[number]
+
+/**
+ * Whether a module is on by default once the plan allows it.
+ *
+ * Entitlement and default state are separate questions. Staff and table
+ * management are core to running the place, so they are on unless someone
+ * turns them off — which is also what the client has always assumed for them.
+ * Accounting is a substantial module a restaurant opts into; a plan including
+ * it means the manager *may* switch it on, not that it appears unannounced.
+ */
+export const MODULE_DEFAULT_ON: Record<ModuleKey, boolean> = {
+    staffManagementEnabled: true,
+    tableManagementEnabled: true,
+    financeEnabled: false,
+}
+
+/** Does this plan include the given module? Unknown tiers fall back to Free. */
+export function tierIncludesModule(tier: Tier | string | null | undefined, key: ModuleKey): boolean {
+    const modules = TIER_MODULES[tier as Tier] ?? TIER_MODULES.free
+    return modules[key]
+}
+
+/**
+ * Fill in module flags the stored settings never wrote.
+ *
+ * The single place a missing module flag is resolved. Both the server
+ * (getRestaurantFeatures) and anything rendering from it go through here, so
+ * the two can no longer reach opposite conclusions about the same absent key —
+ * which is the bug that made the staff page unreachable.
+ *
+ * An explicitly stored value always wins, so a tenant who has deliberately
+ * switched a module off keeps it off. Only a plan that does not include the
+ * module can override that, since entitlement outranks preference.
+ */
+export function applyTierModuleDefaults<T extends Record<string, unknown>>(
+    features: T,
+    tier: Tier | string | null | undefined,
+): T & Record<ModuleKey, boolean> {
+    const resolved = { ...features } as T & Record<ModuleKey, boolean>
+    for (const key of MODULE_KEYS) {
+        if (!tierIncludesModule(tier, key)) {
+            resolved[key] = false
+            continue
+        }
+        const stored = features[key]
+        resolved[key] = stored === undefined ? MODULE_DEFAULT_ON[key] : !!stored
+    }
+    return resolved
+}
+
 /** Every tier, cheapest first — the order admin pickers render them in. */
 export const TIERS: readonly Tier[] = ['free', 'basic', 'premium', 'platinum', 'enterprise']
 
@@ -180,6 +266,9 @@ export function buildFeaturesV2(tier: Tier, mode: BusinessMode) {
 
     return {
         ...TIER_FEATURES[tier],
+        // Written explicitly at provisioning rather than left absent — an
+        // absent flag is what the server and client used to disagree about.
+        ...applyTierModuleDefaults({}, tier),
         ...modeOverlay,
         defaultTaxRate: 13,
         currency: 'NPR',
