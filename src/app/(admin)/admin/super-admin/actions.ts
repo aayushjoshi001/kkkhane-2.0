@@ -872,10 +872,10 @@ export async function getSystemAdvertisementsAction() {
                 {
                     id: '2',
                     badge: 'HARDWARE CORNER',
-                    title: 'Compatible 80mm Direct Thermal Kitchen Printer',
-                    description: 'Need fast, smudge-proof KOT ticket printouts? Get the pre-configured high-speed USB/Ethernet printer for your cashier counter.',
-                    cta: 'Order Printer',
-                    link: 'https://github.com/aayushjoshi001/kkkhane-'
+                    title: 'Auto-Print KOTs to Your Thermal Printer',
+                    description: 'Point your 80mm LAN printer at the cashier counter and KOT tickets print the moment an order is confirmed. No manual reprints.',
+                    cta: 'Set Up Printer',
+                    link: '/admin/printers'
                 },
                 {
                     id: '3',
