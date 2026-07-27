@@ -136,6 +136,59 @@ export default function CashierRoomManager({
     const [advanceQrCodeId, setAdvanceQrCodeId] = useState<string>('')
     const qrCodes = useQrCodes()
 
+    const [addPaymentOpen, setAddPaymentOpen] = useState(false)
+    const [addPaymentAmount, setAddPaymentAmount] = useState('')
+    const [addPaymentMethod, setAddPaymentMethod] = useState<'cash' | 'qr_digital' | 'split'>('cash')
+    const [addPaymentSplitCash, setAddPaymentSplitCash] = useState('')
+    const [addPaymentSplitQr, setAddPaymentSplitQr] = useState('')
+    const [addPaymentQrId, setAddPaymentQrId] = useState('')
+    const [submittingPayment, setSubmittingPayment] = useState(false)
+
+    const handleAddMidStayPayment = async () => {
+        if (!activeBooking) return
+        
+        let resolvedAmount = 0
+        if (addPaymentMethod === 'split') {
+            const splitCash = parseFloat(addPaymentSplitCash) || 0
+            const splitQr = parseFloat(addPaymentSplitQr) || 0
+            resolvedAmount = splitCash + splitQr
+        } else {
+            resolvedAmount = parseFloat(addPaymentAmount) || 0
+        }
+
+        if (resolvedAmount <= 0) {
+            toast.error('Please enter a valid amount greater than 0')
+            return
+        }
+
+        setSubmittingPayment(true)
+        try {
+            const res = await fetch('/api/bookings/advance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    bookingId: activeBooking.id,
+                    amount: resolvedAmount,
+                    paymentMethod: addPaymentMethod,
+                    cashAmount: addPaymentSplitCash,
+                    qrAmount: addPaymentSplitQr,
+                    qrCodeId: addPaymentQrId || (qrCodes.length === 1 ? qrCodes[0].id : null)
+                })
+            })
+
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Failed to add payment')
+
+            toast.success(`Payment of Rs. ${resolvedAmount.toLocaleString()} recorded successfully!`)
+            setAddPaymentOpen(false)
+            setRefreshTrigger(prev => prev + 1)
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to record payment')
+        } finally {
+            setSubmittingPayment(false)
+        }
+    }
+
     // Parsed once so the header count, the capacity hint and the submit guard
     // all read the same numbers rather than each re-parsing the inputs.
     const guestTotals = useMemo(() => {
@@ -1327,37 +1380,243 @@ export default function CashierRoomManager({
                                                 <p className="text-2xl font-black text-brand-600 tabular-nums">{money(balanceDue)}</p>
                                             </div>
                                             <div className="flex gap-2">
-                                                <Button
-                                                    variant="secondary"
-                                                    onClick={() => setSelectedRoom(null)}
-                                                    className="px-5 font-bold"
-                                                >
-                                                    Close
-                                                </Button>
-                                                <Button
-                                                    variant="secondary"
-                                                    icon={ArrowLeftRight}
-                                                    onClick={() => { setMoveTargetId(''); setMoveReason(''); setMoveOpen(true) }}
-                                                    className="px-5 font-bold"
-                                                >
-                                                    Change Room
-                                                </Button>
-                                                <Button
-                                                    variant="danger"
-                                                    icon={CreditCard}
-                                                    onClick={() => {
-                                                        if (onGoToBilling) onGoToBilling(selectedRoom)
-                                                        setSelectedRoom(null)
-                                                    }}
-                                                    className="px-6 font-bold"
-                                                >
-                                                    Go to Billing
-                                                </Button>
+                                                 <Button
+                                                     variant="secondary"
+                                                     onClick={() => setSelectedRoom(null)}
+                                                     className="px-5 font-bold"
+                                                 >
+                                                     Close
+                                                 </Button>
+                                                 <Button
+                                                     variant="secondary"
+                                                     icon={Landmark}
+                                                     onClick={() => {
+                                                         setAddPaymentAmount('')
+                                                         setAddPaymentMethod('cash')
+                                                         setAddPaymentSplitCash('')
+                                                         setAddPaymentSplitQr('')
+                                                         setAddPaymentQrId('')
+                                                         setAddPaymentOpen(true)
+                                                     }}
+                                                     className="px-5 font-bold !text-emerald-600 !border-emerald-200 hover:bg-emerald-50"
+                                                 >
+                                                     Add Payment
+                                                 </Button>
+                                                 <Button
+                                                     variant="secondary"
+                                                     icon={ArrowLeftRight}
+                                                     onClick={() => { setMoveTargetId(''); setMoveReason(''); setMoveOpen(true) }}
+                                                     className="px-5 font-bold"
+                                                 >
+                                                     Change Room
+                                                 </Button>
+                                                 <Button
+                                                     variant="danger"
+                                                     icon={CreditCard}
+                                                     onClick={() => {
+                                                         if (onGoToBilling) onGoToBilling(selectedRoom)
+                                                         setSelectedRoom(null)
+                                                     }}
+                                                     className="px-6 font-bold"
+                                                 >
+                                                     Go to Billing
+                                                 </Button>
                                             </div>
                                         </div>
                                     </>
                                 )
                             })()}
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {addPaymentOpen && activeBooking && createPortal(
+                <div 
+                    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-all duration-300"
+                    onClick={() => setAddPaymentOpen(false)}
+                >
+                    <div 
+                        className="bg-surface rounded-[24px] border border-hairline shadow-2xl w-full max-w-md flex flex-col overflow-hidden transform transition-all animate-in zoom-in-95 duration-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
+                            <div>
+                                <h3 className="text-body font-black text-ink">Record Mid-Stay Payment</h3>
+                                <p className="text-[10px] text-ink-subtle mt-0.5">Add payments to Guest {activeBooking.guest_name}&apos;s billing folio</p>
+                            </div>
+                            <button 
+                                onClick={() => setAddPaymentOpen(false)}
+                                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink-muted"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            {/* Current paid summary */}
+                            <div className="bg-emerald-50 border border-emerald-100 p-3.5 rounded-2xl flex justify-between items-center text-xs">
+                                <span className="font-bold text-emerald-800">Current Paid / Advance:</span>
+                                <span className="font-black text-emerald-700 tabular-nums">{money(Number(activeBooking.paid_amount || 0))}</span>
+                            </div>
+
+                            {/* Payment Method Selector */}
+                            <div className="space-y-1.5">
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase">Payment Method</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setAddPaymentMethod('cash')}
+                                        className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition ${
+                                            addPaymentMethod === 'cash'
+                                                ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                : 'border-hairline bg-surface text-ink-muted hover:border-brand-200'
+                                        }`}
+                                    >
+                                        Cash
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAddPaymentMethod('qr_digital')}
+                                        className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition ${
+                                            addPaymentMethod === 'qr_digital'
+                                                ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                : 'border-hairline bg-surface text-ink-muted hover:border-brand-200'
+                                        }`}
+                                    >
+                                        QR / Digital
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAddPaymentMethod('split')}
+                                        className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition ${
+                                            addPaymentMethod === 'split'
+                                                ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                : 'border-hairline bg-surface text-ink-muted hover:border-brand-200'
+                                        }`}
+                                    >
+                                        Split (Both)
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Amount inputs */}
+                            {addPaymentMethod !== 'split' ? (
+                                <div className="space-y-1">
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase">Amount (Rs.)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-ink-subtle">Rs.</span>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            placeholder="0.00"
+                                            value={addPaymentAmount === '0' ? '' : addPaymentAmount}
+                                            onChange={e => {
+                                                const valStr = e.target.value
+                                                if (valStr === '') {
+                                                    setAddPaymentAmount('')
+                                                    return
+                                                }
+                                                const val = parseFloat(valStr)
+                                                setAddPaymentAmount(isNaN(val) ? '0' : val.toString())
+                                            }}
+                                            className="w-full pl-9 pr-3 py-2.5 border border-hairline focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white font-extrabold text-ink focus:outline-none"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-3 p-3.5 bg-surface-muted/40 border border-hairline rounded-2xl">
+                                    <div className="space-y-1">
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase">Cash Amount</label>
+                                        <div className="relative">
+                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                placeholder="0.00"
+                                                value={addPaymentSplitCash === '0' ? '' : addPaymentSplitCash}
+                                                onChange={e => {
+                                                    const valStr = e.target.value
+                                                    if (valStr === '') {
+                                                        setAddPaymentSplitCash('')
+                                                        return
+                                                    }
+                                                    const val = parseFloat(valStr)
+                                                    setAddPaymentSplitCash(isNaN(val) ? '0' : val.toString())
+                                                }}
+                                                className="w-full pl-8 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-white focus:outline-none"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase">QR Amount</label>
+                                        <div className="relative">
+                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                placeholder="0.00"
+                                                value={addPaymentSplitQr === '0' ? '' : addPaymentSplitQr}
+                                                onChange={e => {
+                                                    const valStr = e.target.value
+                                                    if (valStr === '') {
+                                                        setAddPaymentSplitQr('')
+                                                        return
+                                                    }
+                                                    const val = parseFloat(valStr)
+                                                    setAddPaymentSplitQr(isNaN(val) ? '0' : val.toString())
+                                                }}
+                                                className="w-full pl-8 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-white focus:outline-none"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* QR Code Selector if QR is chosen */}
+                            {(addPaymentMethod === 'qr_digital' || addPaymentMethod === 'split') && qrCodes.length > 1 && (
+                                <div className="space-y-1">
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase">Select QR Account / Gateway</label>
+                                    <select
+                                        value={addPaymentQrId}
+                                        onChange={e => setAddPaymentQrId(e.target.value)}
+                                        className="w-full px-3 py-2 border border-hairline focus:border-brand-500 rounded-xl text-xs bg-white text-ink focus:outline-none"
+                                    >
+                                        <option value="">-- Choose Account --</option>
+                                        {qrCodes.map(qr => (
+                                            <option key={qr.id} value={qr.id}>{qr.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-4 border-t border-hairline bg-surface-muted/20 flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setAddPaymentOpen(false)}
+                                className="flex-1 py-2.5 rounded-xl border border-hairline bg-surface hover:bg-surface-muted text-ink text-label font-bold transition"
+                                disabled={submittingPayment}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleAddMidStayPayment}
+                                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-label font-bold transition shadow-sm flex items-center justify-center gap-1.5"
+                                disabled={submittingPayment}
+                            >
+                                {submittingPayment ? (
+                                    <>
+                                        <Loader2 className="animate-spin" size={14} />
+                                        Saving...
+                                    </>
+                                ) : (
+                                    'Record Payment'
+                                )}
+                            </button>
                         </div>
                     </div>
                 </div>,
