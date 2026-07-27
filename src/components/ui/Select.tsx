@@ -118,8 +118,14 @@ export default function Select({
                 </span>
                 <ChevronDown size={16} className={`text-ink-subtle shrink-0 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
             </button>
+            {/* The open panel grows past the trigger when the labels need it.
+                Pinning it to the trigger's width meant a narrow filter control
+                (e.g. the room-type filter at w-48) clipped every option to an
+                ellipsis, so the list couldn't be read — which is the one thing
+                an open dropdown has to do. Never narrower than the trigger,
+                never wider than the viewport. */}
             {open && (
-                <div className="absolute z-50 mt-1.5 w-full bg-surface border border-hairline rounded-[var(--r-md)] shadow-2xl animate-in fade-in zoom-in-95 duration-150 overflow-hidden">
+                <div className="absolute z-50 mt-1.5 min-w-full w-max max-w-[min(90vw,26rem)] bg-surface border border-hairline rounded-[var(--r-md)] shadow-2xl animate-in fade-in zoom-in-95 duration-150 overflow-hidden">
                     {searchable && (
                         <div className="flex items-center gap-2 px-3 py-2 border-b border-hairline">
                             <Search size={14} className="text-ink-subtle shrink-0" />
@@ -152,7 +158,10 @@ export default function Select({
                                     opt.value === value ? 'bg-brand-50 text-brand-700 font-bold' : 'text-ink hover:bg-surface-muted font-semibold'
                                 } disabled:opacity-40 disabled:cursor-not-allowed`}
                             >
-                                <span className="truncate">{opt.label}</span>
+                                {/* Wraps rather than truncates — the panel above already
+                                    widens to fit, so this only engages for labels longer
+                                    than the max width. */}
+                                <span className="text-left break-words">{opt.label}</span>
                                 {opt.value === value && <Check size={14} className="text-brand-500 shrink-0" />}
                             </button>
                         ))}

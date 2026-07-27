@@ -709,12 +709,13 @@ export default function CashierRoomManager({
                                 <span className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-ink leading-tight text-center">
                                     {room.room_number}
                                 </span>
-                                {/* 110%, not 100%: the card is square and the padding leaves the
-                                    label narrower than the room type names actually are, so a
-                                    full-width cap still truncated them. Overflowing the card
-                                    slightly fits the names without resizing the grid. */}
+                                {/* Wraps instead of truncating: the room type is how staff tell
+                                    a Deluxe from a Deluxe Twin at a glance, so an ellipsis can
+                                    hide the one word that distinguishes them. The card is square
+                                    with room to spare under the number, so a second line costs
+                                    nothing. */}
                                 {room.room_types && (
-                                    <span className="text-[10px] font-bold text-ink-subtle mt-0.5 truncate max-w-[110%] px-1.5">
+                                    <span className="text-[10px] font-bold text-ink-subtle mt-0.5 px-1 w-full text-center leading-tight break-words">
                                         {room.room_types.name}
                                     </span>
                                 )}
