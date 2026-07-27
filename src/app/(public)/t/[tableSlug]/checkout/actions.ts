@@ -378,8 +378,12 @@ export async function placeOrder(
 
             const discountAmount = Number(orderData?.discount_amount ?? 0)
             
+            const roomScEnabled = (featuresV2 as any)?.roomServiceChargeEnabled === true
+            const roomScRooms = Array.isArray((featuresV2 as any)?.roomServiceChargeRooms) ? (featuresV2 as any).roomServiceChargeRooms : []
+            const isRoomScApplicable = roomScEnabled && roomContext?.roomId && roomScRooms.includes(roomContext.roomId)
+
             let finalServiceCharge = 0
-            if (isHotelRoom) {
+            if (isHotelRoom && isRoomScApplicable) {
                 // Room QR orders get 10% service charge on food items only
                 const foodRatio = calculatedSubtotal > 0 ? (foodSubtotal / calculatedSubtotal) : 0
                 const discountedFoodSubtotal = Math.max(0, foodSubtotal - (discountAmount * foodRatio))

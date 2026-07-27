@@ -596,7 +596,7 @@ export async function placeRoomOrderDirect(
     // 1. Fetch booking to make sure it's active
     const { data: booking, error: bookingErr } = await adminSupabase
         .from('bookings')
-        .select('id, status, restaurant_id')
+        .select('id, status, restaurant_id, room_id')
         .eq('id', bookingId)
         .single()
 
@@ -726,11 +726,13 @@ export async function placeRoomOrderDirect(
     
     const featuresV2 = settings?.features_v2 as any
     const taxRate = Number(featuresV2?.defaultTaxRate ?? 0)
-    const scEnabled = featuresV2?.serviceChargeEnabled === true
-    const scRate = Number(featuresV2?.serviceChargeRate ?? 10)
 
-    // Direct room orders always have a 10% service charge on all items
-    const serviceCharge = Math.round(subtotal * 0.10 * 100) / 100
+    const roomScEnabled = featuresV2?.roomServiceChargeEnabled === true
+    const roomScRooms = Array.isArray(featuresV2?.roomServiceChargeRooms) ? featuresV2.roomServiceChargeRooms : []
+    const isRoomScApplicable = roomScEnabled && booking.room_id && roomScRooms.includes(booking.room_id)
+
+    // Direct room orders have a 10% service charge on all items, if enabled for this room
+    const serviceCharge = isRoomScApplicable ? (Math.round(subtotal * 0.10 * 100) / 100) : 0
 
     const tax = Math.round((subtotal + serviceCharge) * (taxRate / 100) * 100) / 100
     const total = Math.max(0, subtotal + serviceCharge + tax)
@@ -827,7 +829,7 @@ export async function recalculateAndUpdateOrderTotals(
     // Fetch order to check session_id and booking_id
     const { data: orderData } = await adminSupabase
         .from('orders')
-        .select('session_id, booking_id, discount_amount')
+        .select('session_id, booking_id, discount_amount, booking:booking_id(room_id)')
         .eq('id', orderId)
         .single()
 
@@ -862,15 +864,25 @@ export async function recalculateAndUpdateOrderTotals(
     const scEnabled = featuresV2?.serviceChargeEnabled === true
     const scRate = Number(featuresV2?.serviceChargeRate ?? 10)
 
+    const roomScEnabled = featuresV2?.roomServiceChargeEnabled === true
+    const roomScRooms = Array.isArray(featuresV2?.roomServiceChargeRooms) ? featuresV2.roomServiceChargeRooms : []
+
     const discountAmount = Number(orderData?.discount_amount ?? 0)
 
     // Determine if it is a room stay order, and if so, what kind
     let serviceCharge = 0
     if (orderData?.booking_id) {
+        const orderRoomId = (orderData.booking as any)?.room_id
+        const isRoomScApplicable = roomScEnabled && orderRoomId && roomScRooms.includes(orderRoomId)
+
         if (!orderData.session_id) {
-            // Direct room order: 10% service charge on all items
-            const netSubtotal = Math.max(0, subtotal - discountAmount)
-            serviceCharge = Math.round(netSubtotal * 0.10 * 100) / 100
+            // Direct room order: 10% service charge on all items (if enabled for room)
+            if (isRoomScApplicable) {
+                const netSubtotal = Math.max(0, subtotal - discountAmount)
+                serviceCharge = Math.round(netSubtotal * 0.10 * 100) / 100
+            } else {
+                serviceCharge = 0
+            }
         } else {
             // Check if the session belongs to a room table
             const { data: sessionTable } = await adminSupabase
@@ -880,10 +892,14 @@ export async function recalculateAndUpdateOrderTotals(
                 .single()
             
             if (sessionTable?.tables?.room_id) {
-                // Room QR order: 10% service charge on food items only
-                const foodRatio = subtotal > 0 ? (foodSubtotal / subtotal) : 0
-                const discountedFoodSubtotal = Math.max(0, foodSubtotal - (discountAmount * foodRatio))
-                serviceCharge = Math.round(discountedFoodSubtotal * 0.10 * 100) / 100
+                // Room QR order: 10% service charge on food items only (if enabled for room)
+                if (isRoomScApplicable) {
+                    const foodRatio = subtotal > 0 ? (foodSubtotal / subtotal) : 0
+                    const discountedFoodSubtotal = Math.max(0, foodSubtotal - (discountAmount * foodRatio))
+                    serviceCharge = Math.round(discountedFoodSubtotal * 0.10 * 100) / 100
+                } else {
+                    serviceCharge = 0
+                }
             } else {
                 // Dine-in order linked to room: standard service charge from settings
                 serviceCharge = scEnabled 

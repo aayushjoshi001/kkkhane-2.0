@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { Save, Store, Mail, Phone, MapPin, Building, Percent, Check, Loader2, Shield, ToggleLeft, ToggleRight, Upload, X, Bell, Play, Clock, Crown } from 'lucide-react'
@@ -142,9 +142,38 @@ export default function SettingsManager({
             showInvoiceEnabled: true,
             kotEnabled: false,
             kdsEnabled: true,
+            roomServiceChargeEnabled: false,
+            roomServiceChargeRooms: [],
             ...(base as any)
         } as Features
     })
+    const [rooms, setRooms] = useState<{ id: string; room_number: string }[]>([])
+
+    useEffect(() => {
+        // Fetch active rooms for this restaurant
+        async function loadRooms() {
+            const { createClient } = await import('@/lib/supabase/client')
+            const supabase = createClient()
+            const { data } = await supabase
+                .from('rooms')
+                .select('id, room_number')
+                .eq('restaurant_id', formData.id)
+                .eq('is_active', true)
+                .order('room_number', { ascending: true })
+            if (data) {
+                // Natural sort of room numbers
+                const sorted = [...data].sort((a, b) => {
+                    const aNum = parseInt(a.room_number.replace(/\D/g, ''), 10)
+                    const bNum = parseInt(b.room_number.replace(/\D/g, ''), 10)
+                    if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum
+                    return a.room_number.localeCompare(b.room_number, undefined, { numeric: true, sensitivity: 'base' })
+                })
+                setRooms(sorted)
+            }
+        }
+        loadRooms()
+    }, [formData.id])
+
     const [taxRateStr, setTaxRateStr] = useState((initialRestaurant.tax_rate ?? 13).toString())
     const [businessHours, setBusinessHours] = useState<BusinessHours>(() => buildBusinessHours(initialBusinessHours))
 
@@ -278,6 +307,70 @@ export default function SettingsManager({
         }
 
         setIsSubmitting(false)
+    }
+
+    const toggleRoomScEnabled = async () => {
+        if (!canEdit) return
+        const newVal = !features.roomServiceChargeEnabled
+        const updated = { ...features, roomServiceChargeEnabled: newVal }
+        setFeatures(updated)
+        setIsSavingFeatures(true)
+        const res = await updateFeaturesAction(formData.id, { roomServiceChargeEnabled: newVal })
+        if (!res.success) {
+            setFeatures(features)
+            toast.error('Failed to update service charge toggle')
+        } else {
+            toast.success(`Room service charge ${newVal ? 'enabled' : 'disabled'}`)
+        }
+        setIsSavingFeatures(false)
+    }
+
+    const toggleRoomScForRoom = async (roomId: string) => {
+        if (!canEdit) return
+        const currentRooms = Array.isArray(features.roomServiceChargeRooms) ? features.roomServiceChargeRooms : []
+        const newRooms = currentRooms.includes(roomId)
+            ? currentRooms.filter(id => id !== roomId)
+            : [...currentRooms, roomId]
+        const updated = { ...features, roomServiceChargeRooms: newRooms }
+        setFeatures(updated)
+        setIsSavingFeatures(true)
+        const res = await updateFeaturesAction(formData.id, { roomServiceChargeRooms: newRooms })
+        if (!res.success) {
+            setFeatures(features)
+            toast.error('Failed to update room selection')
+        }
+        setIsSavingFeatures(false)
+    }
+
+    const selectAllRoomsSc = async () => {
+        if (!canEdit) return
+        const allRoomIds = rooms.map(r => r.id)
+        const updated = { ...features, roomServiceChargeRooms: allRoomIds }
+        setFeatures(updated)
+        setIsSavingFeatures(true)
+        const res = await updateFeaturesAction(formData.id, { roomServiceChargeRooms: allRoomIds })
+        if (!res.success) {
+            setFeatures(features)
+            toast.error('Failed to select all rooms')
+        } else {
+            toast.success('All rooms selected')
+        }
+        setIsSavingFeatures(false)
+    }
+
+    const deselectAllRoomsSc = async () => {
+        if (!canEdit) return
+        const updated = { ...features, roomServiceChargeRooms: [] }
+        setFeatures(updated)
+        setIsSavingFeatures(true)
+        const res = await updateFeaturesAction(formData.id, { roomServiceChargeRooms: [] })
+        if (!res.success) {
+            setFeatures(features)
+            toast.error('Failed to deselect rooms')
+        } else {
+            toast.success('All rooms deselected')
+        }
+        setIsSavingFeatures(false)
     }
 
     const toggleFeature = async (key: keyof Features) => {
@@ -962,6 +1055,100 @@ export default function SettingsManager({
                     })}
                 </div>
             </div>
+        </div>
+
+        {/* Room stay 10% Service Charge Settings */}
+        <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden mt-6 max-w-4xl">
+            <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 shadow-[inset_0_2px_4px_rgba(251,99,3,0.05)]">
+                        {isSavingFeatures ? <Loader2 size={20} className="animate-spin" /> : <Percent size={20} />}
+                    </div>
+                    <div>
+                        <h3 className="text-h3 font-extrabold text-ink">Room Service Charge Settings</h3>
+                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Toggle 10% service charge on room stays and select applicable rooms</p>
+                    </div>
+                </div>
+                <button
+                    type="button"
+                    onClick={toggleRoomScEnabled}
+                    disabled={!canEdit || isSavingFeatures}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition ${
+                        features.roomServiceChargeEnabled
+                            ? 'bg-brand-50 border-brand-500/30 text-brand-700'
+                            : 'bg-surface border-hairline text-ink hover:bg-surface-muted/50'
+                    }`}
+                >
+                    {features.roomServiceChargeEnabled ? (
+                        <>
+                            <ToggleRight size={20} className="text-brand-500" />
+                            Enabled
+                        </>
+                    ) : (
+                        <>
+                            <ToggleLeft size={20} className="text-ink-muted" />
+                            Disabled
+                        </>
+                    )}
+                </button>
+            </div>
+
+            {features.roomServiceChargeEnabled && (
+                <div className="p-6 space-y-4">
+                    <div className="flex items-center justify-between border-b border-dashed border-hairline pb-3">
+                        <span className="text-xs font-bold text-ink-muted uppercase tracking-wider">Select Rooms Subject to 10% Service Charge</span>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={selectAllRoomsSc}
+                                disabled={!canEdit || isSavingFeatures || rooms.length === 0}
+                                className="px-3 py-1.5 rounded-lg border border-hairline bg-surface hover:bg-surface-muted/40 text-[10px] font-extrabold text-ink uppercase transition"
+                            >
+                                Select All
+                            </button>
+                            <button
+                                type="button"
+                                onClick={deselectAllRoomsSc}
+                                disabled={!canEdit || isSavingFeatures || rooms.length === 0}
+                                className="px-3 py-1.5 rounded-lg border border-hairline bg-surface hover:bg-surface-muted/40 text-[10px] font-extrabold text-ink uppercase transition"
+                            >
+                                Deselect All
+                            </button>
+                        </div>
+                    </div>
+
+                    {rooms.length === 0 ? (
+                        <p className="text-center text-xs font-bold text-ink-subtle uppercase py-6">No active rooms found.</p>
+                    ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                            {rooms.map(room => {
+                                const selectedRooms = Array.isArray(features.roomServiceChargeRooms) ? features.roomServiceChargeRooms : []
+                                const isChecked = selectedRooms.includes(room.id)
+                                return (
+                                    <button
+                                        type="button"
+                                        key={room.id}
+                                        onClick={() => toggleRoomScForRoom(room.id)}
+                                        disabled={!canEdit || isSavingFeatures}
+                                        className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition-all focus:outline-none ${
+                                            isChecked
+                                                ? 'bg-brand-50/50 border-brand-500 text-brand-700 shadow-sm'
+                                                : 'bg-surface border-hairline text-ink-muted hover:border-brand-200'
+                                        }`}
+                                    >
+                                        <span className="text-xs font-extrabold">Room {room.room_number}</span>
+                                        <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full ${
+                                            isChecked ? 'bg-brand-100/50 text-brand-600' : 'bg-surface-muted text-ink-subtle'
+                                        }`}>
+                                            {isChecked ? 'SC ON' : 'SC OFF'}
+                                        </span>
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
 
         {/* In-Room Service — reception phone the Call-for-Service button dials */}

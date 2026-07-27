@@ -424,6 +424,8 @@ export interface Settings {
         showInvoiceEnabled?: boolean
         kotEnabled?: boolean
         kdsEnabled?: boolean
+        roomServiceChargeEnabled?: boolean
+        roomServiceChargeRooms?: string[]
     }
     business_hours: BusinessHours | null
     updated_at: string

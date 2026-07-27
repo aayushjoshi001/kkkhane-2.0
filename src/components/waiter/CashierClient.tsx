@@ -2679,7 +2679,16 @@ export default function CashierClient({
                                                     </div>
                                                     <div className="flex gap-2 items-center">
                                                         <Button variant="secondary" onClick={() => setSelectedBillingRoom(null)}>Close</Button>
-                                                        {!irdSyncEnabled ? (
+                                                        {billingPaymentMethod === 'none' ? (
+                                                            <Button
+                                                                variant="primary"
+                                                                disabled={discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
+                                                                onClick={() => compileInvoice('room', selectedBillingRoom)}
+                                                                className="px-6 text-xs animate-scale-in"
+                                                            >
+                                                                Generate Estimate
+                                                            </Button>
+                                                        ) : !irdSyncEnabled ? (
                                                             <Button
                                                                 variant="primary"
                                                                 loading={isDirectCheckingOut}
@@ -2696,7 +2705,7 @@ export default function CashierClient({
                                                                 onClick={() => compileInvoice('room', selectedBillingRoom)}
                                                                 className="px-6 text-xs animate-scale-in"
                                                             >
-                                                                Generate Invoice
+                                                                Generate Estimate
                                                             </Button>
                                                         )}
                                                     </div>
@@ -2904,7 +2913,19 @@ export default function CashierClient({
                                     </div>
                                     <div className="flex gap-2 items-center">
                                         <Button variant="secondary" onClick={() => setSelectedBillingTable(null)}>Close</Button>
-                                        {!irdSyncEnabled ? (
+                                        {billingPaymentMethod === 'none' ? (
+                                            <Button
+                                                variant="primary"
+                                                disabled={
+                                                    tableDiscountInvalid ||
+                                                    (tableDiscountAmount > 0 && !tableDiscountReason.trim())
+                                                }
+                                                onClick={() => compileInvoice('table', selectedBillingTable)}
+                                                className="px-6 text-xs animate-scale-in"
+                                            >
+                                                Generate Estimate
+                                            </Button>
+                                        ) : !irdSyncEnabled ? (
                                             <Button
                                                 variant="primary"
                                                 onClick={() => {
@@ -2927,7 +2948,7 @@ export default function CashierClient({
                                                 onClick={() => compileInvoice('table', selectedBillingTable)}
                                                 className="px-6 text-xs animate-scale-in"
                                             >
-                                                Generate Invoice
+                                                Generate Estimate
                                             </Button>
                                         )}
                                     </div>
@@ -3105,7 +3126,19 @@ export default function CashierClient({
                                         </div>
                                         <div className="flex gap-2 items-center">
                                             <Button variant="secondary" onClick={() => setSelectedBillingOrder(null)}>Close</Button>
-                                            {!irdSyncEnabled ? (
+                                            {billingPaymentMethod === 'none' ? (
+                                                <Button
+                                                    variant="primary"
+                                                    disabled={
+                                                        orderDiscountInvalid ||
+                                                        (orderDiscountAmount > 0 && !tableBargainReason.trim())
+                                                    }
+                                                    onClick={() => compileInvoice(invoiceType, selectedBillingOrder)}
+                                                    className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                >
+                                                    Generate Estimate
+                                                </Button>
+                                            ) : !irdSyncEnabled ? (
                                                 <Button
                                                     variant="primary"
                                                     onClick={() => {
@@ -3128,7 +3161,7 @@ export default function CashierClient({
                                                     onClick={() => compileInvoice(invoiceType, selectedBillingOrder)}
                                                     className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
                                                 >
-                                                    Generate Invoice
+                                                    Generate Estimate
                                                 </Button>
                                             )}
                                         </div>
