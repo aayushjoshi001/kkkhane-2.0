@@ -1372,57 +1372,55 @@ export default function CashierRoomManager({
                                                 </div>
                                             </div>
                                         )}
-                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                            <div>
-                                                <span className="text-[10px] font-bold text-ink-subtle uppercase">
-                                                    {advancePaid > 0 ? 'Balance due at checkout' : 'Total bill amount'}
-                                                </span>
-                                                <p className="text-2xl font-black text-brand-600 tabular-nums">{money(balanceDue)}</p>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                 <Button
-                                                     variant="secondary"
-                                                     onClick={() => setSelectedRoom(null)}
-                                                     className="px-5 font-bold"
-                                                 >
-                                                     Close
-                                                 </Button>
-                                                 <Button
-                                                     variant="secondary"
-                                                     icon={Landmark}
-                                                     onClick={() => {
-                                                         setAddPaymentAmount('')
-                                                         setAddPaymentMethod('cash')
-                                                         setAddPaymentSplitCash('')
-                                                         setAddPaymentSplitQr('')
-                                                         setAddPaymentQrId('')
-                                                         setAddPaymentOpen(true)
-                                                     }}
-                                                     className="px-5 font-bold !text-emerald-600 !border-emerald-200 hover:bg-emerald-50"
-                                                 >
-                                                     Add Payment
-                                                 </Button>
-                                                 <Button
-                                                     variant="secondary"
-                                                     icon={ArrowLeftRight}
-                                                     onClick={() => { setMoveTargetId(''); setMoveReason(''); setMoveOpen(true) }}
-                                                     className="px-5 font-bold"
-                                                 >
-                                                     Change Room
-                                                 </Button>
-                                                 <Button
-                                                     variant="danger"
-                                                     icon={CreditCard}
-                                                     onClick={() => {
-                                                         if (onGoToBilling) onGoToBilling(selectedRoom)
-                                                         setSelectedRoom(null)
-                                                     }}
-                                                     className="px-6 font-bold"
-                                                 >
-                                                     Go to Billing
-                                                 </Button>
-                                            </div>
-                                        </div>
+                                        <div className="flex justify-between items-center border-b border-dashed border-hairline pb-3 mb-1">
+                                             <span className="text-xs font-bold text-ink-subtle uppercase">
+                                                 {advancePaid > 0 ? 'Balance due at checkout' : 'Total bill amount'}
+                                             </span>
+                                             <p className="text-2xl font-black text-brand-600 tabular-nums">{money(balanceDue)}</p>
+                                         </div>
+                                         <div className="flex flex-wrap gap-2 justify-end">
+                                              <Button
+                                                  variant="secondary"
+                                                  onClick={() => setSelectedRoom(null)}
+                                                  className="px-5 font-bold"
+                                              >
+                                                  Close
+                                              </Button>
+                                              <Button
+                                                  variant="secondary"
+                                                  icon={Landmark}
+                                                  onClick={() => {
+                                                      setAddPaymentAmount('')
+                                                      setAddPaymentMethod('cash')
+                                                      setAddPaymentSplitCash('')
+                                                      setAddPaymentSplitQr('')
+                                                      setAddPaymentQrId('')
+                                                      setAddPaymentOpen(true)
+                                                  }}
+                                                  className="px-5 font-bold !text-emerald-600 !border-emerald-200 hover:bg-emerald-50"
+                                              >
+                                                  Add Payment
+                                              </Button>
+                                              <Button
+                                                  variant="secondary"
+                                                  icon={ArrowLeftRight}
+                                                  onClick={() => { setMoveTargetId(''); setMoveReason(''); setMoveOpen(true) }}
+                                                  className="px-5 font-bold"
+                                              >
+                                                  Change Room
+                                              </Button>
+                                              <Button
+                                                  variant="danger"
+                                                  icon={CreditCard}
+                                                  onClick={() => {
+                                                      if (onGoToBilling) onGoToBilling(selectedRoom)
+                                                      setSelectedRoom(null)
+                                                  }}
+                                                  className="px-6 font-bold"
+                                              >
+                                                  Go to Billing
+                                              </Button>
+                                         </div>
                                     </>
                                 )
                             })()}
