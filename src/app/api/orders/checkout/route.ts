@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
 import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense } from '@/lib/ledger'
-import { findOrCreateCustomerCreditAccount, postCreditCharge, postLoyaltyEarn } from '@/lib/customerCredit'
+import { findOrCreateCustomerCreditAccount, postCreditCharge, settleLoyalty } from '@/lib/customerCredit'
 import { syncInvoiceToIrd } from '@/lib/irdSync'
 
 const round2 = (n: number) => Math.round(n * 100) / 100
@@ -208,24 +208,17 @@ export async function POST(req: Request) {
                 })
             }
 
-            // Loyalty points (5% earn on Cash/QR payments)
-            const phone = customerPhone || order.customer_phone || ''
-            const name = customerName || order.customer_name || 'Walk-in Guest'
-            if (phone && (cashPaid > 0 || qrPaid > 0)) {
-                const pointsToEarn = Math.round((cashPaid + qrPaid) * 0.05)
-                if (pointsToEarn > 0) {
-                    const { data: account } = await supabase
-                        .from('customer_credit_accounts')
-                        .select('id')
-                        .eq('restaurant_id', currentUser.restaurantId)
-                        .eq('customer_phone', phone)
-                        .maybeSingle()
-
-                    if (account) {
-                        await postLoyaltyEarn(supabase, currentUser.restaurantId, account.id, pointsToEarn, `Earned from ${orderLabel}`)
-                    }
-                }
-            }
+            // Loyalty points (5% earn on Cash/QR payments). settleLoyalty
+            // creates the guest's CRM record if this is their first visit — read
+            // only, a cash-paying guest never had one and so never earned anything.
+            await settleLoyalty(supabase, currentUser.restaurantId, currentUser.id, {
+                name: customerName || order.customer_name || 'Walk-in Guest',
+                phone: customerPhone || order.customer_phone || '',
+                earnPoints: Math.round((cashPaid + qrPaid) * 0.05),
+                redeemPoints: 0,
+                earnDescription: `Earned from ${orderLabel}`,
+                redeemDescription: '',
+            })
         }
 
         void logAudit({

@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
 import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense } from '@/lib/ledger'
-import { findOrCreateCustomerCreditAccount, postCreditCharge, postLoyaltyEarn, postLoyaltyRedeem } from '@/lib/customerCredit'
+import { findOrCreateCustomerCreditAccount, postCreditCharge, settleLoyalty } from '@/lib/customerCredit'
 import { markTableDirtyForSession } from '@/lib/tableLifecycle'
 import { syncInvoiceToIrd } from '@/lib/irdSync'
 
@@ -297,28 +297,17 @@ export async function POST(req: Request) {
                 })
             }
 
-            // Handle loyalty points (5% earn on Cash/QR payments)
-            const rPoints = Number(redeemed_points) || 0
-            const phone = customerPhone ? customerPhone.trim() : ''
-            const name = customerName ? customerName.trim() : 'Table Guest'
-            if (phone && (cashPaid > 0 || qrPaid > 0 || rPoints > 0)) {
-                const pointsToEarn = Math.round((cashPaid + qrPaid) * 0.05)
-                const { data: account } = await supabase
-                    .from('customer_credit_accounts')
-                    .select('id')
-                    .eq('restaurant_id', currentUser.restaurantId)
-                    .eq('customer_phone', phone)
-                    .maybeSingle()
-
-                if (account) {
-                    if (pointsToEarn > 0) {
-                        await postLoyaltyEarn(supabase, currentUser.restaurantId, account.id, pointsToEarn, `Earned from Table ${tableLabel} bill`)
-                    }
-                    if (rPoints > 0) {
-                        await postLoyaltyRedeem(supabase, currentUser.restaurantId, account.id, rPoints, `Redeemed on Table ${tableLabel} bill`)
-                    }
-                }
-            }
+            // Handle loyalty points (5% earn on Cash/QR payments). settleLoyalty
+            // creates the guest's CRM record if this is their first visit — read
+            // only, a cash-paying guest never had one and so never earned anything.
+            await settleLoyalty(supabase, currentUser.restaurantId, currentUser.id, {
+                name: customerName ? customerName.trim() : 'Table Guest',
+                phone: customerPhone ? customerPhone.trim() : '',
+                earnPoints: Math.round((cashPaid + qrPaid) * 0.05),
+                redeemPoints: Number(redeemed_points) || 0,
+                earnDescription: `Earned from Table ${tableLabel} bill`,
+                redeemDescription: `Redeemed on Table ${tableLabel} bill`,
+            })
         }
 
         void logAudit({
