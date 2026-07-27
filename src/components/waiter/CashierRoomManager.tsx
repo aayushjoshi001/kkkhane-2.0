@@ -9,6 +9,7 @@ import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCurrency, useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { type TableWithSession } from './CashierTableManager'
+import { type GroupBill } from '@/lib/bookingGroup'
 import { calculateNights, advanceMethodLabel, getItemDisplayName, defaultStayWindowInputs } from '@/lib/utils'
 import { describeGuestMix, totalGuests } from '@/lib/guests'
 import QuickOrderModal from './QuickOrderModal'
@@ -83,6 +84,11 @@ export default function CashierRoomManager({
     // Manual charge addition states
     const [manualCharges, setManualCharges] = useState<any[]>([])
     const [linkedDiningOrders, setLinkedDiningOrders] = useState<any[]>([])
+    // The rest of the reservation when this room is one of several booked
+    // together (see /api/bookings/group). They settle on one bill, so the room
+    // cost and advance shown in this drawer have to be the reservation's, not
+    // just this room's share. Null for an ordinary single-room stay.
+    const [stayGroup, setStayGroup] = useState<GroupBill | null>(null)
     const filteredLinkedDiningOrders = (() => {
         return linkedDiningOrders.filter(o => !o.is_room_order && o.status !== 'cancelled')
     })()
@@ -396,12 +402,15 @@ export default function CashierRoomManager({
                         const booking = data.data
                         try {
                             setLoadingCharges(true)
-                            // Concurrently fetch charges and linked dining orders
-                            const [chargesRes, linkedRes] = await Promise.all([
+                            // Concurrently fetch charges, linked dining orders,
+                            // and the rest of the reservation if this room is
+                            // part of a multi-room one.
+                            const [chargesRes, linkedRes, groupRes] = await Promise.all([
                                 fetch(`/api/rooms/charges?bookingId=${booking.id}`).then(r => r.json()),
-                                fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`).then(r => r.json())
+                                fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`).then(r => r.json()),
+                                fetch(`/api/bookings/group?bookingId=${booking.id}`).then(r => r.json())
                             ])
-                            
+
                             // Set all states simultaneously
                             setActiveBooking(booking)
                             if (chargesRes.success) {
@@ -410,12 +419,14 @@ export default function CashierRoomManager({
                             if (linkedRes.success) {
                                 setLinkedDiningOrders(linkedRes.items || [])
                             }
+                            setStayGroup(groupRes?.success && groupRes.isGroup ? groupRes : null)
                         } catch (err) {
                             console.error("Error fetching secondary stay details:", err)
                             // Set basic stay booking at least
                             setActiveBooking(booking)
                             setManualCharges([])
                             setLinkedDiningOrders([])
+                            setStayGroup(null)
                         } finally {
                             setLoadingCharges(false)
                         }
@@ -423,6 +434,7 @@ export default function CashierRoomManager({
                         setActiveBooking(null)
                         setManualCharges([])
                         setLinkedDiningOrders([])
+                        setStayGroup(null)
                     }
                 })
                 .catch(err => {
@@ -430,6 +442,7 @@ export default function CashierRoomManager({
                     setActiveBooking(null)
                     setManualCharges([])
                     setLinkedDiningOrders([])
+                    setStayGroup(null)
                 })
                 .finally(() => {
                     setLoadingBooking(false)
@@ -438,6 +451,7 @@ export default function CashierRoomManager({
             setActiveBooking(null)
             setManualCharges([])
             setLinkedDiningOrders([])
+            setStayGroup(null)
             setShowAddChargeForm(false)
             setCreatedSessionId(null)
         }
@@ -487,16 +501,19 @@ export default function CashierRoomManager({
         return { items, total }
     }, [selectedRoom, activeBooking, linkedDiningOrders])
 
-    // Stay night and price calculations
+    // Stay night and price calculations. A multi-room reservation bills as one
+    // folio, so the room charge here is every room's — priced server-side,
+    // since the rooms can be of different types.
     const stayPriceDetails = useMemo(() => {
+        if (stayGroup) return { nights: stayGroup.nights, cost: stayGroup.stayCost }
         if (!selectedRoom || !activeBooking) return { nights: 0, cost: 0 }
-        
+
         const price = selectedRoom.room_types?.base_price || 0
         const nights = calculateNights(activeBooking.check_in, activeBooking.check_out)
         const cost = price * nights
 
         return { nights, cost }
-    }, [selectedRoom, activeBooking])
+    }, [selectedRoom, activeBooking, stayGroup])
 
     // Grand total
     const grandTotal = useMemo(() => {
@@ -1406,15 +1423,45 @@ export default function CashierRoomManager({
                                         <span className="text-brand-500 normal-case tabular-nums">{stayPriceDetails.nights} Night(s)</span>
                                     </h4>
 
+                                    {/* Several rooms booked together settle on one bill, so
+                                        this drawer is showing the whole reservation, not this
+                                        room's share of it. */}
+                                    {stayGroup && (
+                                        <div className="border border-brand-200 bg-brand-50/60 rounded-2xl p-4 text-xs">
+                                            <p className="font-black text-brand-700 uppercase text-[10px] tracking-wider">
+                                                Combined bill · {stayGroup.rooms.length} rooms
+                                            </p>
+                                            <p className="text-[10px] text-ink-muted font-semibold mt-1">
+                                                Rooms {stayGroup.rooms.map(r => r.roomNumber).filter(Boolean).join(', ')} are on one
+                                                reservation and check out together on a single payment.
+                                            </p>
+                                        </div>
+                                    )}
+
                                     <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-gray-100 bg-surface">
                                         {/* Room Stay Row */}
                                         <div className="flex justify-between items-center p-4 text-xs">
                                             <div>
                                                 <p className="font-extrabold text-ink">Room Stay Charge</p>
-                                                <p className="text-[10px] text-ink-subtle">{money(selectedRoom.room_types?.base_price || 0)} / Night</p>
+                                                <p className="text-[10px] text-ink-subtle">
+                                                    {stayGroup
+                                                        ? `${stayGroup.rooms.length} rooms on this reservation`
+                                                        : `${money(selectedRoom.room_types?.base_price || 0)} / Night`}
+                                                </p>
                                             </div>
                                             <span className="font-extrabold text-ink-muted tabular-nums">{money(stayPriceDetails.cost)}</span>
                                         </div>
+
+                                        {stayGroup && (
+                                            <div className="p-4 space-y-1.5">
+                                                {stayGroup.rooms.map(r => (
+                                                    <div key={r.bookingId} className="flex justify-between text-[10px] text-ink-muted">
+                                                        <span className="font-semibold">Room {r.roomNumber} · {r.nights}n</span>
+                                                        <span className="tabular-nums font-semibold">{money(r.stayCost)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
 
                                         {/* QR Orders Row */}
                                         {qrOrdersDetails && qrOrdersDetails.items.length > 0 && (
@@ -1583,7 +1630,10 @@ export default function CashierRoomManager({
                         {/* Drawer Footer (Checkout and Total Billing) - sticky */}
                         <div className="border-t border-hairline px-6 py-4 flex flex-col gap-2.5 flex-shrink-0 bg-surface">
                             {(() => {
-                                const advancePaid = Number(activeBooking?.paid_amount) || 0
+                                // On a reservation the advance was split across its
+                                // rooms at booking time, so what the guest has already
+                                // paid on this one bill is their sum.
+                                const advancePaid = stayGroup ? stayGroup.advancePaid : (Number(activeBooking?.paid_amount) || 0)
                                 const balanceDue = Math.max(0, grandTotal - advancePaid)
                                 return (
                                     <>

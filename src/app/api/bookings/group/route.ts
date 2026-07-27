@@ -41,7 +41,7 @@ export async function GET(req: Request) {
 
         const { data: booking } = await supabase
             .from('bookings')
-            .select('id, group_id, restaurant_id')
+            .select('id, group_id, restaurant_id, guest_name')
             .eq('id', bookingId)
             .in('restaurant_id', targetRestaurantIds)
             .maybeSingle()
@@ -84,6 +84,11 @@ export async function GET(req: Request) {
             success: true,
             isGroup: true,
             groupId: booking.group_id,
+            guestName: booking.guest_name ?? '',
+            // Nights on the longest room, matching FolioBreakdown.nights — the
+            // receipt prints per-room nights from `rooms` below, this is only
+            // for the one-line summaries.
+            nights: folio.nights,
             // Every room the bill covers, each with the cost it contributes.
             rooms: members.map(m => {
                 const line = stayCostFor.get(m.id as string)

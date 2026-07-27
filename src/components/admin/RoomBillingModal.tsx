@@ -302,13 +302,21 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const invoiceData: ActiveInvoice | null = booking ? {
         type: 'room',
         id: booking.id,
-        label: `Room ${room.room_number}`,
-        roomType: room.room_types?.name,
+        // A multi-room reservation settles on one bill, so the receipt names
+        // every room it covers and itemizes them below. Its rooms can be of
+        // different types, so no single type name would be right.
+        label: groupBill
+            ? `Rooms ${groupBill.rooms.map(r => r.roomNumber).filter(Boolean).join(', ')}`
+            : `Room ${room.room_number}`,
+        roomType: groupBill ? undefined : room.room_types?.name,
         guestName: booking.guest_name,
         guestPhone: booking.guest_phone,
         nights: calculateNights(booking.check_in, booking.check_out),
         basePrice: room.room_types?.base_price || 0,
         stayCost: stayCost,
+        roomLines: groupBill
+            ? groupBill.rooms.map(r => ({ roomNumber: r.roomNumber, nights: r.nights, stayCost: r.stayCost }))
+            : undefined,
         qrOrders: mergeLineItems(allServiceOrderItems),
         qrOrdersTotal,
         manualCharges: charges.map(c => ({ id: c.id, description: c.description, amount: Number(c.amount) })),

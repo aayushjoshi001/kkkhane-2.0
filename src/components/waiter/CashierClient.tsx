@@ -31,6 +31,7 @@ import QuickOrderModal from './QuickOrderModal'
 
 
 import { calculateNights, lateCheckoutNights, resolveDeparture, LATE_CHECKOUT_GRACE_HOURS, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
+import { type GroupBill } from '@/lib/bookingGroup'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 
 // Auto-print retry/fallback tuning, matching the kitchen screen's.
@@ -383,6 +384,13 @@ export default function CashierClient({
     const [billingStayBooking, setBillingStayBooking] = useState<any | null>(null)
     const [billingRoomCharges, setBillingRoomCharges] = useState<any[]>([])
     const [billingLinkedOrders, setBillingLinkedOrders] = useState<any[]>([])
+    // The rest of the reservation, when this room is one of several a guest
+    // took on a single booking (see /api/bookings/group). Those rooms settle on
+    // ONE bill, so the room cost and the advance shown here have to be the
+    // reservation's, not this room's share of it — quoting one room's figures
+    // was undercharging the guest by every other room on the folio. Null for an
+    // ordinary single-room stay, which keeps its original per-room math.
+    const [billingGroup, setBillingGroup] = useState<GroupBill | null>(null)
     const filteredRoomOrders = useMemo(() => {
         return billingLinkedOrders.filter(o => o.is_room_order && o.status !== 'cancelled')
     }, [billingLinkedOrders])
@@ -595,6 +603,7 @@ export default function CashierClient({
             setBillingStayBooking(null)
             setBillingRoomCharges([])
             setBillingLinkedOrders([])
+            setBillingGroup(null)
             setLoadingStayDetails(true)
 
             // Fetch newest checked_in booking from API (ORDER BY created_at DESC)
@@ -605,12 +614,15 @@ export default function CashierClient({
                     if (data.success && data.data) {
                         const booking = data.data
                         try {
-                            // Concurrently fetch charges and linked dining orders
-                            const [chargesRes, ordersRes] = await Promise.all([
+                            // Concurrently fetch charges, linked dining orders,
+                            // and the rest of the reservation if this room is
+                            // part of a multi-room one.
+                            const [chargesRes, ordersRes, groupRes] = await Promise.all([
                                 fetch(`/api/rooms/charges?bookingId=${booking.id}`).then(r => r.json()),
-                                fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`).then(r => r.json())
+                                fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`).then(r => r.json()),
+                                fetch(`/api/bookings/group?bookingId=${booking.id}`).then(r => r.json())
                             ])
-                            
+
                             // Set all states simultaneously
                             setBillingStayBooking(booking)
                             if (chargesRes.success) {
@@ -619,17 +631,20 @@ export default function CashierClient({
                             if (ordersRes.success) {
                                 setBillingLinkedOrders(ordersRes.items || [])
                             }
+                            setBillingGroup(groupRes?.success && groupRes.isGroup ? groupRes : null)
                         } catch (err) {
                             console.error('Error loading secondary billing details:', err)
                             // Set basic stay booking at least
                             setBillingStayBooking(booking)
                             setBillingRoomCharges([])
                             setBillingLinkedOrders([])
+                            setBillingGroup(null)
                         }
                     } else {
                         setBillingStayBooking(null)
                         setBillingRoomCharges([])
                         setBillingLinkedOrders([])
+                        setBillingGroup(null)
                     }
                 })
                 .catch(err => {
@@ -637,12 +652,14 @@ export default function CashierClient({
                     setBillingStayBooking(null)
                     setBillingRoomCharges([])
                     setBillingLinkedOrders([])
+                    setBillingGroup(null)
                 })
                 .finally(() => setLoadingStayDetails(false))
         } else {
             setBillingStayBooking(null)
             setBillingRoomCharges([])
             setBillingLinkedOrders([])
+            setBillingGroup(null)
             setBillingPaymentMethod('none')
             setSplitCashAmount('')
             setSplitQrAmount('')
@@ -690,12 +707,24 @@ export default function CashierClient({
     // preview left the overstay out, the cashier would quote a total the
     // server then charged more than.
     const calculateStayCost = (room: any, booking: any) => {
+        // A multi-room reservation is billed as one folio, so the room charge is
+        // every room's, priced server-side (each room can be a different type).
+        if (billingGroup) return billingGroup.stayCost
         if (!room || !booking) return 0
         const price = room.room_types?.base_price || 0
         const nights = calculateNights(booking.check_in, booking.check_out)
             + lateCheckoutNights(booking.check_out, resolveDeparture(booking))
         return price * nights
     }
+
+    /**
+     * What the guest has already handed over on this folio. On a reservation the
+     * advance was split across its rooms at booking time, so the amount to
+     * deduct is their sum — deducting only the clicked room's share left the
+     * rest of the advance uncredited and overstated the balance due.
+     */
+    const advancePaidFor = (booking: any) =>
+        billingGroup ? billingGroup.advancePaid : (Number(booking?.paid_amount) || 0)
 
     const getRoomQrOrders = (room: any) => {
         if (!room) return []
@@ -1031,8 +1060,23 @@ export default function CashierClient({
             if (!booking) return null
 
             const price = room.room_types?.base_price || 0
-            const nights = calculateNights(booking.check_in, booking.check_out)
-            const stayCost = price * nights
+            // Late-checkout aware (and reservation-wide when this room is part
+            // of one), so the printed room line adds up to the total charged
+            // rather than quietly omitting the overstay night.
+            const stayCost = calculateStayCost(room, booking)
+            const nights = billingGroup
+                ? billingGroup.nights
+                : calculateNights(booking.check_in, booking.check_out)
+                    + lateCheckoutNights(booking.check_out, resolveDeparture(booking))
+            // One printed line per room when several settle together, so the
+            // guest can see what each room cost instead of one opaque lump.
+            const roomLines = billingGroup
+                ? billingGroup.rooms.map(r => ({
+                    roomNumber: r.roomNumber,
+                    nights: r.nights,
+                    stayCost: r.stayCost,
+                }))
+                : undefined
 
             // Merge duplicate items (same dish ordered at different times in the same session)
             const mergeFn = (rawItems: any[]) => {
@@ -1059,7 +1103,7 @@ export default function CashierClient({
             const total = calculateGrandTotal(room, booking)
 
             // Advance already paid at booking
-            const advancePaid = Number(booking.paid_amount) || 0
+            const advancePaid = advancePaidFor(booking)
             const balanceDue = Math.max(0, total - advancePaid)
 
             // Resolve split amounts (apply to balance due, not gross total).
@@ -1084,8 +1128,13 @@ export default function CashierClient({
             return {
                 type: 'room',
                 id: room.id,
-                label: `Room ${room.room_number}`,
-                roomType: room.room_types?.name || 'Deluxe',
+                label: billingGroup
+                    ? `Rooms ${billingGroup.rooms.map(r => r.roomNumber).filter(Boolean).join(', ')}`
+                    : `Room ${room.room_number}`,
+                // A reservation can hold rooms of different types, so naming one
+                // of them on a combined bill would be wrong.
+                roomType: billingGroup ? undefined : (room.room_types?.name || 'Deluxe'),
+                roomLines,
                 guestName: booking.guest_name,
                 guestPhone: booking.guest_phone,
                 checkIn: booking.check_in,
@@ -1291,7 +1340,7 @@ export default function CashierClient({
             if (!booking) return
 
             const total = calculateGrandTotal(room, booking)
-            const advancePaid = Number(booking.paid_amount) || 0
+            const advancePaid = advancePaidFor(booking)
             const balanceDue = Math.max(0, total - advancePaid)
             const matchingTable = tablesState.find(t => t.room_id === room.id)
             const sessionId = matchingTable?.activeSession?.id
@@ -2429,14 +2478,45 @@ export default function CashierClient({
 
                                 <div className="space-y-4">
                                     <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Stay billing breakdown</h4>
+
+                                    {/* A reservation covering several rooms settles here as one bill,
+                                        so say so plainly — the cashier is closing every one of these
+                                        rooms, not just the one they clicked. */}
+                                    {billingGroup && (
+                                        <div className="border border-brand-200 bg-brand-50/60 rounded-2xl p-4 text-xs space-y-2">
+                                            <p className="font-black text-brand-700 uppercase text-[10px] tracking-wider">
+                                                Combined bill · {billingGroup.rooms.length} rooms
+                                            </p>
+                                            <p className="text-[10px] text-ink-muted font-semibold">
+                                                {billingGroup.guestName || billingStayBooking.guest_name} booked these rooms together. Settling
+                                                here checks all of them out and takes one payment.
+                                            </p>
+                                        </div>
+                                    )}
+
                                     <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-gray-100 bg-surface">
                                         <div className="flex justify-between items-center p-4 text-xs">
                                             <div>
                                                 <p className="font-extrabold text-ink">Room Stay Cost</p>
-                                                <p className="text-[10px] text-ink-subtle">{money(selectedBillingRoom.room_types?.base_price || 0)} / Night</p>
+                                                <p className="text-[10px] text-ink-subtle">
+                                                    {billingGroup
+                                                        ? `${billingGroup.rooms.length} rooms on this reservation`
+                                                        : `${money(selectedBillingRoom.room_types?.base_price || 0)} / Night`}
+                                                </p>
                                             </div>
                                             <span className="font-extrabold text-ink-muted tabular-nums">{money(stayCost)}</span>
                                         </div>
+
+                                        {billingGroup && (
+                                            <div className="p-4 space-y-1.5">
+                                                {billingGroup.rooms.map(r => (
+                                                    <div key={r.bookingId} className="flex justify-between text-[10px] text-ink-muted">
+                                                        <span className="font-semibold">Room {r.roomNumber} · {r.nights}n</span>
+                                                        <span className="tabular-nums font-semibold">{money(r.stayCost)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
 
                                         {extraHourChargeVal > 0 && (
                                             <div className="flex justify-between items-center p-4 text-xs bg-rose-50/20">
@@ -2648,7 +2728,7 @@ export default function CashierClient({
 
                                     {(() => {
                                         const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
-                                        const advancePaid = Number(billingStayBooking?.paid_amount) || 0
+                                        const advancePaid = advancePaidFor(billingStayBooking)
                                         const balanceDue = Math.max(0, grandTotal - advancePaid)
                                         return renderPaymentInputsAndCalculator(balanceDue)
                                     })()}
@@ -2659,7 +2739,7 @@ export default function CashierClient({
                                     {/* Gross Total + Advance row */}
                                     {(() => {
                                         const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
-                                        const advancePaid = Number(billingStayBooking?.paid_amount) || 0
+                                        const advancePaid = advancePaidFor(billingStayBooking)
                                         const balanceDue = Math.max(0, grandTotal - advancePaid)
                                         return (
                                             <>

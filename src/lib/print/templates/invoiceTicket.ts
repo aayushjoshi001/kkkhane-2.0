@@ -22,6 +22,13 @@ export interface InvoiceManualCharge {
     amount: number
 }
 
+/** One room on a bill covering several of them. */
+export interface InvoiceRoomLine {
+    roomNumber: string
+    nights: number
+    stayCost: number
+}
+
 export interface ActiveInvoice {
     type: 'room' | 'table' | 'takeout' | 'delivery'
     id: string
@@ -34,6 +41,13 @@ export interface ActiveInvoice {
     nights: number
     basePrice: number
     stayCost: number
+    /**
+     * Set only for a multi-room reservation, which settles on one bill: the
+     * per-room split of `stayCost`, printed as a line each so the guest sees
+     * what every room cost. Absent for a normal stay, which prints the single
+     * "Room Stay" line it always did.
+     */
+    roomLines?: InvoiceRoomLine[]
     qrOrders: InvoiceLineItem[]
     qrOrdersTotal: number
     linkedOrders?: InvoiceLineItem[]
@@ -104,12 +118,30 @@ export function buildInvoiceTicket(
     b.bold(false)
 
     if (invoice.type === 'room' && invoice.stayCost > 0) {
-        b.wrappedColumns([
-            { text: `Room Stay (${invoice.nights}n)`, width: COL.desc },
-            { text: String(invoice.nights), width: COL.qty, align: 'center' },
-            { text: num(invoice.basePrice), width: COL.rate, align: 'right' },
-            { text: num(invoice.stayCost), width: COL.amt, align: 'right' },
-        ])
+        // Several rooms on one reservation itemize per room; a normal stay
+        // prints the single line it always has.
+        const stayLines = invoice.roomLines?.length
+            ? invoice.roomLines.map(r => ({
+                desc: `Room ${r.roomNumber} (${r.nights}n)`,
+                nights: r.nights,
+                rate: r.nights > 0 ? r.stayCost / r.nights : r.stayCost,
+                amount: r.stayCost,
+            }))
+            : [{
+                desc: `Room Stay (${invoice.nights}n)`,
+                nights: invoice.nights,
+                rate: invoice.basePrice,
+                amount: invoice.stayCost,
+            }]
+
+        for (const line of stayLines) {
+            b.wrappedColumns([
+                { text: line.desc, width: COL.desc },
+                { text: String(line.nights), width: COL.qty, align: 'center' },
+                { text: num(line.rate), width: COL.rate, align: 'right' },
+                { text: num(line.amount), width: COL.amt, align: 'right' },
+            ])
+        }
     }
 
     for (const charge of invoice.manualCharges) {

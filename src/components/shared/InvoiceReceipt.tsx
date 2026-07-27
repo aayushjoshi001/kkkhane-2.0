@@ -135,14 +135,27 @@ export default function InvoiceReceipt({
                 </div>
 
                 <div className="divide-y divide-dashed divide-gray-200 text-[10px] space-y-1 pt-1.5">
-                    {/* Stay Charge (if room) */}
+                    {/* Stay Charge (if room). A multi-room reservation settles on
+                        one bill, so it itemizes a line per room; a normal stay
+                        prints the single line it always has. */}
                     {invoice.type === 'room' && invoice.stayCost > 0 && (
-                        <div className="flex items-start justify-between py-0.5">
-                            <span className="w-1/2 text-left break-words pr-1">Room Stay ({invoice.nights}n)</span>
-                            <span className="w-12 text-center">{invoice.nights}</span>
-                            <span className="w-16 text-right">{num(invoice.basePrice)}</span>
-                            <span className="w-16 text-right font-bold text-black">{num(invoice.stayCost)}</span>
-                        </div>
+                        invoice.roomLines?.length
+                            ? invoice.roomLines.map((r, idx) => (
+                                <div key={`${r.roomNumber}-${idx}`} className="flex items-start justify-between py-0.5">
+                                    <span className="w-1/2 text-left break-words pr-1">Room {r.roomNumber} ({r.nights}n)</span>
+                                    <span className="w-12 text-center">{r.nights}</span>
+                                    <span className="w-16 text-right">{num(r.nights > 0 ? r.stayCost / r.nights : r.stayCost)}</span>
+                                    <span className="w-16 text-right font-bold text-black">{num(r.stayCost)}</span>
+                                </div>
+                            ))
+                            : (
+                                <div className="flex items-start justify-between py-0.5">
+                                    <span className="w-1/2 text-left break-words pr-1">Room Stay ({invoice.nights}n)</span>
+                                    <span className="w-12 text-center">{invoice.nights}</span>
+                                    <span className="w-16 text-right">{num(invoice.basePrice)}</span>
+                                    <span className="w-16 text-right font-bold text-black">{num(invoice.stayCost)}</span>
+                                </div>
+                            )
                     )}
 
                     {/* Additional charges */}

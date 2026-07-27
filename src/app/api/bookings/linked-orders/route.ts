@@ -1,13 +1,20 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { resolveFolioBookingIds } from '@/lib/bookingGroup'
 
 /**
  * GET /api/bookings/linked-orders?bookingId=<uuid>
- * 
+ *
  * Fetches all order items from dining sessions linked to a booking via booking_id.
  * Used by the billing modal to show dining orders placed at restaurant tables
  * that were linked to a hotel guest's booking.
+ *
+ * On a multi-room reservation this returns every room's orders, because they
+ * all settle on one bill — a family that ordered room service to room 306 pays
+ * for it on the reservation's single folio, whichever of their rooms the
+ * cashier opened. `resolveFolioBookingIds` returns a one-element list for a
+ * normal stay, which is exactly the query this route always ran.
  */
 export async function GET(req: NextRequest) {
     try {
@@ -24,6 +31,10 @@ export async function GET(req: NextRequest) {
 
         const supabase = await createAdminClient()
 
+        // Every booking on this folio — the one asked for, plus its siblings if
+        // it belongs to a multi-room reservation.
+        const folioBookingIds = await resolveFolioBookingIds(supabase, bookingId)
+
         // Find all sessions linked to this booking. Pull the session's table so we
         // can tell an ordinary dining table (room_id NULL) from the room's own
         // in-room QR table.
@@ -35,7 +46,7 @@ export async function GET(req: NextRequest) {
         const { data: linkedSessions, error: sessErr } = await supabase
             .from('sessions')
             .select('id')
-            .eq('booking_id', bookingId)
+            .in('booking_id', folioBookingIds)
 
         if (sessErr) {
             console.error('[linked-orders] Error fetching sessions:', sessErr)
@@ -75,9 +86,9 @@ export async function GET(req: NextRequest) {
         }
 
         if (sessionIds.length > 0) {
-            query = query.or(`booking_id.eq.${bookingId},session_id.in.(${sessionIds.join(',')})`)
+            query = query.or(`booking_id.in.(${folioBookingIds.join(',')}),session_id.in.(${sessionIds.join(',')})`)
         } else {
-            query = query.eq('booking_id', bookingId)
+            query = query.in('booking_id', folioBookingIds)
         }
 
         const { data: orders, error: ordErr } = await query

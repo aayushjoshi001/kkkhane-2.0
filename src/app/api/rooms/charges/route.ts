@@ -1,7 +1,16 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { resolveFolioBookingIds } from '@/lib/bookingGroup'
 
+/**
+ * Manual charges (minibar, laundry, …) on a stay's folio.
+ *
+ * A multi-room reservation bills as one folio, so this returns the charges from
+ * every room on it — otherwise a charge posted to room 306 would drop off the
+ * bill whenever the cashier settled from room 303. A single-room stay resolves
+ * to just itself and behaves exactly as before.
+ */
 export async function GET(req: Request) {
     try {
         const currentUser = await getCurrentUser()
@@ -16,10 +25,11 @@ export async function GET(req: Request) {
         }
 
         const supabase = await createAdminClient()
+        const folioBookingIds = await resolveFolioBookingIds(supabase, bookingId)
         const { data, error } = await supabase
             .from('room_charges')
             .select('*')
-            .eq('booking_id', bookingId)
+            .in('booking_id', folioBookingIds)
             .eq('restaurant_id', currentUser.restaurantId)
             .order('created_at', { ascending: true })
 
