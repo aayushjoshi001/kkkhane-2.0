@@ -131,7 +131,7 @@ export async function POST(req: Request) {
         // this restaurant before touching anything.
         const { data: session, error: fetchError } = await supabase
             .from('sessions')
-            .select('id, table_id, seat_number, tables:table_id(label)')
+            .select('id, table_id, booking_id, seat_number, tables:table_id(label)')
             .eq('id', session_id)
             .eq('restaurant_id', currentUser.restaurantId)
             .maybeSingle()
@@ -226,6 +226,24 @@ export async function POST(req: Request) {
             return null
         }
         await settleOrders(supabase, currentUser.restaurantId, currentUser.id, orders || [], methodForOrder)
+
+        // 1b. If this session was linked to a hotel room booking, credit the table payment to the booking's paid_amount
+        if (session.booking_id) {
+            const { data: booking } = await supabase
+                .from('bookings')
+                .select('paid_amount')
+                .eq('id', session.booking_id)
+                .single()
+            
+            if (booking) {
+                const currentPaid = Number(booking.paid_amount || 0)
+                const addPaid = cashPaid + qrPaid
+                await supabase
+                    .from('bookings')
+                    .update({ paid_amount: currentPaid + addPaid })
+                    .eq('id', session.booking_id)
+            }
+        }
 
         // 2. Post the actual money collected / owed.
         if (isInvoiceEnabled) {
