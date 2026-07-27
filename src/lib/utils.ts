@@ -220,6 +220,23 @@ export function advanceMethodLabel(method: AdvancePaymentMethod | null | undefin
  */
 export const LATE_CHECKOUT_GRACE_HOURS = 4
 
+/**
+ * The rule does not reach backwards.
+ *
+ * Guests already in house when this shipped agreed to a bill that had no late
+ * fee in it, and several stays had been sitting days past their checkout —
+ * abandoned records nobody had closed. Switching the rule on for those would
+ * have presented real guests with days they never agreed to pay, for time that
+ * had already passed and could not be avoided by leaving promptly.
+ *
+ * So it applies only to stays whose scheduled checkout falls on or after this
+ * instant: nobody in house at the time is charged retroactively, and every
+ * booking from here on is billed under the stated policy. Once the last stay
+ * scheduled before this date is settled, this constant only ever returns false
+ * and can be deleted.
+ */
+export const LATE_CHECKOUT_RULE_ACTIVE_FROM = new Date('2026-07-28T00:00:00+05:45')
+
 /** The booking fields the late-checkout rule reads, as they come out of the DB. */
 export interface StayDeparture {
     /** The departure the guest booked, not necessarily the one that happened. */
@@ -265,7 +282,12 @@ export function lateCheckoutNights(
     departure: Date,
     graceHours: number = LATE_CHECKOUT_GRACE_HOURS,
 ): number {
-    const overstayMs = departure.getTime() - new Date(scheduledCheckOut).getTime()
+    const scheduled = new Date(scheduledCheckOut)
+    // Guarded here rather than at each call site so the server total and the
+    // cashier's preview cannot disagree about who the rule covers.
+    if (scheduled < LATE_CHECKOUT_RULE_ACTIVE_FROM) return 0
+
+    const overstayMs = departure.getTime() - scheduled.getTime()
     if (overstayMs <= 0) return 0
 
     const overstayHours = overstayMs / (1000 * 60 * 60)
