@@ -95,6 +95,10 @@ export default function QuickOrderModal({
     const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all')
     const [searchQuery, setSearchQuery] = useState('')
     const [cart, setCart] = useState<CartItem[]>([])
+    const [showOutsideFoodModal, setShowOutsideFoodModal] = useState(false)
+    const [outsideFoodRows, setOutsideFoodRows] = useState<{ name: string; quantity: number; price: number; note: string }[]>([
+        { name: '', quantity: 1, price: 0, note: '' }
+    ])
     const [customerNote, setCustomerNote] = useState('')
     const [selectedSession, setSelectedSession] = useState<{ id: string; token: string; label: string } | null>(null)
     const [showMobileCart, setShowMobileCart] = useState(false)
@@ -610,23 +614,36 @@ export default function QuickOrderModal({
                         <div className={`flex-1 flex flex-col bg-surface overflow-hidden ${showMobileCart ? 'hidden md:flex' : ''}`}>
                             {/* Search Bar */}
                             <div className="p-4 border-b border-hairline bg-surface-muted/20 flex flex-col gap-3 shrink-0">
-                                <div className="relative">
-                                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
-                                    <input
-                                        type="text"
-                                        value={searchQuery}
-                                        onChange={e => setSearchQuery(e.target.value)}
-                                        placeholder="Search dish by name..."
-                                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-hairline bg-surface text-ink text-body focus:outline-none focus:ring-2 focus:ring-brand-500"
-                                    />
-                                    {searchQuery && (
-                                        <button 
-                                            onClick={() => setSearchQuery('')}
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-ink"
-                                        >
-                                            <X size={14} />
-                                        </button>
-                                    )}
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                    <div className="relative flex-1">
+                                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
+                                        <input
+                                            type="text"
+                                            value={searchQuery}
+                                            onChange={e => setSearchQuery(e.target.value)}
+                                            placeholder="Search dish by name..."
+                                            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-hairline bg-surface text-ink text-body focus:outline-none focus:ring-2 focus:ring-brand-500"
+                                        />
+                                        {searchQuery && (
+                                            <button 
+                                                onClick={() => setSearchQuery('')}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-ink"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setOutsideFoodRows([{ name: '', quantity: 1, price: 0, note: '' }])
+                                            setShowOutsideFoodModal(true)
+                                        }}
+                                        className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2 px-4 rounded-xl flex items-center justify-center gap-1.5 transition text-caption sm:text-xs select-none h-11 shrink-0 shadow-sm"
+                                    >
+                                        <Plus size={16} />
+                                        Add Outside Food
+                                    </button>
                                 </div>
 
                                 <div className="flex bg-surface-muted p-1 rounded-xl border border-hairline select-none">
@@ -1231,6 +1248,166 @@ export default function QuickOrderModal({
                     >
                         {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
                         Confirm &amp; Place Order
+                    </button>
+                </div>
+            </Modal>
+
+            {/* Outside Food Modal */}
+            <Modal
+                open={showOutsideFoodModal}
+                onClose={() => setShowOutsideFoodModal(false)}
+                size="lg"
+                layer="top"
+                backdropClassName="!z-[999999]"
+                ariaLabel="Add Outside Food"
+                className="flex flex-col overflow-hidden max-h-[85vh] w-full max-w-2xl"
+            >
+                <div className="px-5 py-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
+                    <div>
+                        <h4 className="text-body font-black text-ink">Add Outside Food Items</h4>
+                        <p className="text-[10px] text-ink-subtle">These items are temporary and added only to this customer's bill.</p>
+                    </div>
+                    <button 
+                        onClick={() => setShowOutsideFoodModal(false)}
+                        className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle"
+                    >
+                        <X size={14} />
+                    </button>
+                </div>
+
+                <div className="p-5 overflow-y-auto space-y-4 flex-1">
+                    {outsideFoodRows.map((row, index) => (
+                        <div key={index} className="bg-surface bg-surface-muted/30 p-4 rounded-xl border border-hairline space-y-3 relative">
+                            {outsideFoodRows.length > 1 && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setOutsideFoodRows(prev => prev.filter((_, i) => i !== index))
+                                    }}
+                                    className="absolute top-2 right-2 p-1 text-ink-subtle hover:text-danger-fg hover:bg-danger/10 rounded-lg transition"
+                                    title="Remove item"
+                                >
+                                    <Trash2 size={14} />
+                                </button>
+                            )}
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 pt-1">
+                                <div className="md:col-span-6 space-y-1">
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase">Item Name</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Birthday Cake, Heineken Beer"
+                                        value={row.name}
+                                        onChange={e => {
+                                            const val = e.target.value
+                                            setOutsideFoodRows(prev => prev.map((r, i) => i === index ? { ...r, name: val } : r))
+                                        }}
+                                        className="w-full px-3 py-2 border border-hairline focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white text-ink focus:outline-none"
+                                        required
+                                    />
+                                </div>
+                                <div className="md:col-span-2 space-y-1">
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase">Qty</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={row.quantity}
+                                        onChange={e => {
+                                            const val = Math.max(1, parseInt(e.target.value) || 1)
+                                            setOutsideFoodRows(prev => prev.map((r, i) => i === index ? { ...r, quantity: val } : r))
+                                        }}
+                                        className="w-full px-3 py-2 border border-hairline focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white text-ink focus:outline-none text-center"
+                                        required
+                                    />
+                                </div>
+                                <div className="md:col-span-2 space-y-1">
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase">Rate (Rs.)</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        placeholder="Rate"
+                                        value={row.price || ''}
+                                        onChange={e => {
+                                            const val = Math.max(0, parseFloat(e.target.value) || 0)
+                                            setOutsideFoodRows(prev => prev.map((r, i) => i === index ? { ...r, price: val } : r))
+                                        }}
+                                        className="w-full px-3 py-2 border border-hairline focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white text-ink focus:outline-none text-right"
+                                        required
+                                    />
+                                </div>
+                                <div className="md:col-span-2 flex flex-col justify-end text-right pb-2">
+                                    <span className="text-[9px] font-bold text-ink-subtle uppercase block mb-1">Total</span>
+                                    <span className="text-xs font-black text-ink">Rs. {row.quantity * row.price}</span>
+                                </div>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase">Notes (Optional)</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Served by customer, keep in fridge"
+                                    value={row.note}
+                                    onChange={e => {
+                                        const val = e.target.value
+                                        setOutsideFoodRows(prev => prev.map((r, i) => i === index ? { ...r, note: val } : r))
+                                    }}
+                                    className="w-full px-3 py-1.5 border border-hairline focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white text-ink focus:outline-none"
+                                />
+                            </div>
+                        </div>
+                    ))}
+
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setOutsideFoodRows(prev => [...prev, { name: '', quantity: 1, price: 0, note: '' }])
+                        }}
+                        className="w-full py-2.5 rounded-xl border-2 border-dashed border-hairline hover:border-brand-500/50 hover:bg-brand-500/[0.02] text-brand-500 text-caption font-bold transition flex items-center justify-center gap-1.5"
+                    >
+                        <Plus size={14} />
+                        Add Another Outside Food Item
+                    </button>
+                </div>
+
+                <div className="p-4 border-t border-hairline bg-surface-muted/20 flex gap-2 shrink-0">
+                    <button
+                        type="button"
+                        onClick={() => setShowOutsideFoodModal(false)}
+                        className="flex-1 py-2.5 rounded-xl border border-hairline bg-surface hover:bg-surface-muted text-ink text-label font-bold transition"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            // Validate rows
+                            const invalidRow = outsideFoodRows.find(r => !r.name.trim())
+                            if (invalidRow) {
+                                toast.error('Please fill in the item name for all rows.')
+                                return
+                            }
+
+                            const newCartItems = outsideFoodRows.map((row, idx) => {
+                                const uniqueId = `outside-${Date.now()}-${idx}`
+                                return {
+                                    id: uniqueId,
+                                    menuItemId: 'outside_food',
+                                    name: row.name.trim(),
+                                    price: row.price,
+                                    quantity: row.quantity,
+                                    specialRequest: row.note.trim(),
+                                    modifiers: [],
+                                    isOutsideFood: true
+                                }
+                            })
+
+                            setCart(prev => [...prev, ...newCartItems])
+                            toast.success('Outside food items added to basket')
+                            setShowOutsideFoodModal(false)
+                        }}
+                        className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-label font-bold transition shadow-sm"
+                    >
+                        Add to Basket
                     </button>
                 </div>
             </Modal>

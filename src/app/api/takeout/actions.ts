@@ -6,6 +6,7 @@ import { sendOrderReadySms } from '@/lib/sms'
 import type { CartItem, TakeoutOrder } from '@/types/database'
 import { checkAndAlertLowStock } from '@/app/(admin)/admin/ingredients/actions'
 import { requireRole, getOptionalUser } from '@/lib/auth'
+import { getOrCreateOutsideFoodItem, recalculateAndUpdateOrderTotals } from '@/app/(staff)/waiter/actions'
 import {
     TAKEOUT_ORDER_SELECT,
     TAKEOUT_STATUS_TO_ORDER,
@@ -100,7 +101,9 @@ export async function createDeliveryOrder(
 ): Promise<{ orderId?: string; total?: number; code?: string; error?: string }> {
     const supabase = await createAdminClient()
 
-    const payload = buildOrderItemsPayload(input.items)
+    const outsideItems = input.items.filter((i: any) => i.isOutsideFood)
+    const regularItems = input.items.filter((i: any) => !i.isOutsideFood)
+    const payload = buildOrderItemsPayload(regularItems)
 
     // Auto-link loyalty account if phone matches
     let finalLoyaltyId = input.loyaltyMemberId || null
@@ -143,8 +146,37 @@ export async function createDeliveryOrder(
 
     const result = data as { order_id: string; total: number; code: string }
     if (result.order_id) {
+        if (outsideItems.length > 0) {
+            const outsideFoodId = await getOrCreateOutsideFoodItem(supabase, input.restaurantId)
+            for (const item of outsideItems) {
+                const specialRequest = `[Outside: ${item.name}]${item.specialRequest ? ' ' + item.specialRequest : ''}`
+                await supabase
+                    .from('order_items')
+                    .insert({
+                        order_id: result.order_id,
+                        menu_item_id: outsideFoodId,
+                        quantity: item.quantity,
+                        unit_price: Number((item as any).price ?? 0),
+                        special_request: specialRequest,
+                        status: 'pending'
+                    })
+            }
+            await recalculateAndUpdateOrderTotals(supabase, result.order_id, input.restaurantId)
+        }
         void checkAndAlertLowStock(input.restaurantId)
         await autoConfirmIfStaff(supabase, result.order_id, input.restaurantId)
+    }
+
+    let finalTotal = result.total
+    if (outsideItems.length > 0 && result.order_id) {
+        const { data: updatedOrder } = await supabase
+            .from('orders')
+            .select('total_amount')
+            .eq('id', result.order_id)
+            .single()
+        if (updatedOrder) {
+            finalTotal = Number(updatedOrder.total_amount) || 0
+        }
     }
 
     revalidatePath('/kitchen')
@@ -152,7 +184,7 @@ export async function createDeliveryOrder(
     revalidatePath('/admin/takeout')
     revalidatePath('/cashier')
 
-    return { orderId: result.order_id, total: result.total, code: result.code }
+    return { orderId: result.order_id, total: finalTotal, code: result.code }
 }
 
 /**
@@ -165,7 +197,9 @@ export async function createTakeoutOrder(
 ): Promise<{ orderId?: string; total?: number; error?: string }> {
     const supabase = await createAdminClient()
 
-    const payload = buildOrderItemsPayload(input.items)
+    const outsideItems = input.items.filter((i: any) => i.isOutsideFood)
+    const regularItems = input.items.filter((i: any) => !i.isOutsideFood)
+    const payload = buildOrderItemsPayload(regularItems)
 
     // Auto-link loyalty account if phone matches
     let finalLoyaltyId = input.loyaltyMemberId || null
@@ -210,8 +244,37 @@ export async function createTakeoutOrder(
 
     // Low-stock check in the background (never blocks the order).
     if (result.order_id) {
+        if (outsideItems.length > 0) {
+            const outsideFoodId = await getOrCreateOutsideFoodItem(supabase, input.restaurantId)
+            for (const item of outsideItems) {
+                const specialRequest = `[Outside: ${item.name}]${item.specialRequest ? ' ' + item.specialRequest : ''}`
+                await supabase
+                    .from('order_items')
+                    .insert({
+                        order_id: result.order_id,
+                        menu_item_id: outsideFoodId,
+                        quantity: item.quantity,
+                        unit_price: Number((item as any).price ?? 0),
+                        special_request: specialRequest,
+                        status: 'pending'
+                    })
+            }
+            await recalculateAndUpdateOrderTotals(supabase, result.order_id, input.restaurantId)
+        }
         void checkAndAlertLowStock(input.restaurantId)
         await autoConfirmIfStaff(supabase, result.order_id, input.restaurantId)
+    }
+
+    let finalTotal = result.total
+    if (outsideItems.length > 0 && result.order_id) {
+        const { data: updatedOrder } = await supabase
+            .from('orders')
+            .select('total_amount')
+            .eq('id', result.order_id)
+            .single()
+        if (updatedOrder) {
+            finalTotal = Number(updatedOrder.total_amount) || 0
+        }
     }
 
     revalidatePath('/takeout')
@@ -220,7 +283,7 @@ export async function createTakeoutOrder(
     revalidatePath('/admin/takeout')
     revalidatePath('/cashier')
 
-    return { orderId: result.order_id, total: result.total }
+    return { orderId: result.order_id, total: finalTotal }
 }
 
 // Active (kitchen-relevant) takeout statuses.

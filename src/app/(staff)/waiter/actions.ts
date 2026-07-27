@@ -467,8 +467,12 @@ export async function placeStaffOrder(
         return { error: 'Table session is invalid or closed.' }
     }
 
+    // Split items into regular and outside items
+    const outsideItems = items.filter((i) => i.isOutsideFood)
+    const regularItems = items.filter((i) => !i.isOutsideFood)
+
     // Format items for RPC
-    const payload = items.map((i) => {
+    const payload = regularItems.map((i) => {
         let specialRequest = i.specialRequest || ''
         if (i.variationName) {
             specialRequest = specialRequest
@@ -505,6 +509,26 @@ export async function placeStaffOrder(
         const result = data as { order_id: string }
         if (!result || !result.order_id) {
             return { error: 'Failed to place order.' }
+        }
+
+        // Insert outside items directly if present
+        if (outsideItems.length > 0) {
+            const outsideFoodId = await getOrCreateOutsideFoodItem(adminSupabase, session.restaurant_id)
+            for (const item of outsideItems) {
+                const specialRequest = `[Outside: ${item.name}]${item.specialRequest ? ' ' + item.specialRequest : ''}`
+                await adminSupabase
+                    .from('order_items')
+                    .insert({
+                        order_id: result.order_id,
+                        menu_item_id: outsideFoodId,
+                        quantity: item.quantity,
+                        unit_price: Number(item.price ?? 0),
+                        special_request: specialRequest,
+                        status: 'pending'
+                    })
+            }
+            // Recalculate totals
+            await recalculateAndUpdateOrderTotals(adminSupabase, result.order_id, session.restaurant_id)
         }
 
         // If this session is for a hotel room, bind the order to the active booking
@@ -613,35 +637,45 @@ export async function placeRoomOrderDirect(
 
     // 3. Insert order items
     for (const item of items) {
-        const { data: menuItem } = await adminSupabase
-            .from('menu_items')
-            .select('id, price, is_available')
-            .eq('id', item.menuItemId)
-            .single()
-
-        if (!menuItem?.id || menuItem.is_available === false) continue
-
-        let unitPrice = Number(menuItem.price ?? 0)
+        let unitPrice = 0
+        let menuItemId = item.menuItemId
+        let specialRequest = item.specialRequest || null
         let variationId = null
-        if (item.variationId) {
-            const { data: variation } = await adminSupabase
-                .from('menu_item_variations')
-                .select('id, price')
-                .eq('id', item.variationId)
+
+        if (item.isOutsideFood) {
+            const outsideFoodId = await getOrCreateOutsideFoodItem(adminSupabase, restaurantId)
+            menuItemId = outsideFoodId
+            unitPrice = Number(item.price ?? 0)
+            specialRequest = `[Outside: ${item.name}]${item.specialRequest ? ' ' + item.specialRequest : ''}`
+        } else {
+            const { data: menuItem } = await adminSupabase
+                .from('menu_items')
+                .select('id, price, is_available')
+                .eq('id', item.menuItemId)
                 .single()
-            if (variation) {
-                unitPrice = Number(variation.price)
-                variationId = variation.id
+
+            if (!menuItem?.id || menuItem.is_available === false) continue
+            menuItemId = menuItem.id
+            unitPrice = Number(menuItem.price ?? 0)
+
+            if (item.variationId) {
+                const { data: variation } = await adminSupabase
+                    .from('menu_item_variations')
+                    .select('id, price')
+                    .eq('id', item.variationId)
+                    .single()
+                if (variation) {
+                    unitPrice = Number(variation.price)
+                    variationId = variation.id
+                }
             }
         }
-
-        const specialRequest = item.specialRequest || null
 
         const { data: orderItemRow, error: orderItemInsertError } = await adminSupabase
             .from('order_items')
             .insert({
                 order_id: orderId,
-                menu_item_id: menuItem.id,
+                menu_item_id: menuItemId,
                 menu_item_variation_id: variationId,
                 quantity: item.quantity,
                 unit_price: unitPrice,
@@ -748,5 +782,105 @@ export async function placeRoomOrderDirect(
 
     revalidatePath('/cashier')
     return { success: true, orderId }
+}
+
+export async function getOrCreateOutsideFoodItem(adminSupabase: any, restaurantId: string): Promise<string> {
+    // Check if there is already a menu item named 'Outside Food' for this restaurant
+    const { data, error } = await adminSupabase
+        .from('menu_items')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .eq('name', 'Outside Food')
+        .limit(1)
+        .maybeSingle()
+
+    if (data?.id) {
+        return data.id
+    }
+
+    // If not, create it
+    const { data: newItem, error: createError } = await adminSupabase
+        .from('menu_items')
+        .insert({
+            restaurant_id: restaurantId,
+            name: 'Outside Food',
+            description: 'Temporary outside food item',
+            price: 0,
+            is_available: true,
+            is_combo: false
+        })
+        .select('id')
+        .single()
+
+    if (createError || !newItem) {
+        console.error('Failed to create Outside Food menu item:', createError)
+        throw new Error('Failed to configure outside food')
+    }
+
+    return newItem.id
+}
+
+export async function recalculateAndUpdateOrderTotals(
+    adminSupabase: any,
+    orderId: string,
+    restaurantId: string
+) {
+    // Fetch all order items and modifiers to recalculate subtotal
+    const { data: allOrderItems } = await adminSupabase
+        .from('order_items')
+        .select('id, quantity, unit_price, order_item_modifiers(price_adjustment)')
+        .eq('order_id', orderId)
+
+    let subtotal = 0
+    for (const oi of allOrderItems || []) {
+        const itemTotal = Number(oi.unit_price ?? 0) * oi.quantity
+        const modifiersTotal = (oi.order_item_modifiers || []).reduce((sum: number, m: any) => sum + (Number(m.price_adjustment ?? 0) * oi.quantity), 0)
+        subtotal += itemTotal + modifiersTotal
+    }
+
+    // Get settings for tax
+    const { data: settings } = await adminSupabase
+        .from('settings')
+        .select('features_v2')
+        .eq('restaurant_id', restaurantId)
+        .single()
+    
+    const featuresV2 = settings?.features_v2 as any
+    const taxRate = Number(featuresV2?.defaultTaxRate ?? 0)
+    const scEnabled = featuresV2?.serviceChargeEnabled === true
+    const scRate = Number(featuresV2?.serviceChargeRate ?? 10)
+
+    const serviceCharge = scEnabled 
+        ? Math.round(subtotal * (scRate / 100) * 100) / 100 
+        : 0
+
+    const tax = Math.round((subtotal + serviceCharge) * (taxRate / 100) * 100) / 100
+    const total = Math.max(0, subtotal + serviceCharge + tax)
+
+    // Update totals
+    try {
+        const { error: updateError } = await adminSupabase
+            .from('orders')
+            .update({
+                subtotal_amount: subtotal,
+                service_charge_amount: serviceCharge,
+                tax_amount: tax,
+                total_amount: total
+            })
+            .eq('id', orderId)
+        
+        if (updateError) {
+            await adminSupabase
+                .from('orders')
+                .update({
+                    subtotal_amount: subtotal,
+                    tax_amount: tax,
+                    total_amount: total
+                })
+                .eq('id', orderId)
+        }
+    } catch (err) {
+        console.error('[recalculateAndUpdateOrderTotals] Error updating totals:', err)
+    }
 }
 
