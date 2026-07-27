@@ -682,7 +682,10 @@ export default function CashierRoomManager({
                 (resolvedAdvance > 0 ? ` Advance: Rs. ${resolvedAdvance.toLocaleString()}` : '')
             )
             setRooms(prev => prev.map(r => bookedIds.has(r.id) ? { ...r, status: 'occupied' } : r))
-            setBookings(prev => [...prev, ...(data.bookings || [data.data])])
+            setBookings(prev => {
+                const newB = data.bookings || [data.data]
+                return [...prev, ...newB.filter((nb: any) => !prev.some(p => p.id === nb.id))]
+            })
             setExtraRooms({})
             setBookingFormOpen(false)
             setSelectedRoom(null)

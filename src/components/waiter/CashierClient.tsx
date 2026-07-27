@@ -489,7 +489,10 @@ export default function CashierClient({
     // Realtime subscriptions for bookings
     useRestaurantTable(restaurantId, 'bookings', (payload) => {
         if (payload.eventType === 'INSERT') {
-            setBookings((prev: any[]) => [...prev, payload.new])
+            setBookings((prev: any[]) => {
+                if (prev.some(b => b.id === payload.new.id)) return prev
+                return [...prev, payload.new]
+            })
         } else if (payload.eventType === 'UPDATE') {
             const b = payload.new as any
             setBookings((prev: any[]) => prev.map(item => item.id === b.id ? b : item))
