@@ -82,8 +82,8 @@ export function buildInvoiceTicket(
     if (restaurantPhone.trim()) {
         b.line(`Tel: ${restaurantPhone.trim()}`)
     }
-    b.line('*** INVOICE ***')
-    b.line(`No: INV-${invoice.id.slice(0, 8).toUpperCase()}`)
+    b.line('*** ESTIMATE BILL ***')
+    b.line(`ESTIMATE BILL No: EST-${invoice.id.slice(0, 8).toUpperCase()}`)
     b.line(`Date: ${formatDateTime(new Date(), calendar)}`)
     b.divider()
 
@@ -188,6 +188,11 @@ export function buildInvoiceTicket(
     b.align('center')
     b.line('*** THANK YOU! ***')
     b.line('WE HOPE TO SEE YOU AGAIN')
+
+    b.divider()
+    b.align('center')
+    b.line('It is not official bill, for official bill ask to the counter')
+    b.divider()
 
     appendBrandFooter(b)
 

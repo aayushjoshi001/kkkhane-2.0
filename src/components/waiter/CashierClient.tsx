@@ -389,7 +389,9 @@ export default function CashierClient({
     const filteredLinkedOrders = useMemo(() => {
         return billingLinkedOrders.filter(o => !o.is_room_order && o.status !== 'cancelled')
     }, [billingLinkedOrders])
-    const [billingPaymentMethod, setBillingPaymentMethod] = useState<'cash' | 'qr_digital' | 'both' | 'credit'>('cash')
+    const [billingPaymentMethod, setBillingPaymentMethod] = useState<'none' | 'cash' | 'qr_digital' | 'both' | 'credit'>('none')
+    const [cashReceivedAmount, setCashReceivedAmount] = useState<string>('')
+    const [qrReceivedAmount, setQrReceivedAmount] = useState<string>('')
     const [splitCashAmount, setSplitCashAmount] = useState<string>('')
     const [splitQrAmount, setSplitQrAmount] = useState<string>('')
     const [billingQrCodeId, setBillingQrCodeId] = useState<string>('')
@@ -412,12 +414,14 @@ export default function CashierClient({
         setFoodDiscount('')
         setDiscountReason('')
         setExtraHourCharge('')
-        setBillingPaymentMethod('cash')
+        setBillingPaymentMethod('none')
         setSplitCashAmount('')
         setSplitQrAmount('')
         setBillingQrCodeId('')
         setCreditCustomerName('')
         setCreditCustomerPhone('')
+        setCashReceivedAmount('')
+        setQrReceivedAmount('')
     }, [selectedBillingRoom?.id])
     // Shared by both the room and table billing panels below — only one is
     // ever open at a time, so one pair of fields is enough. Only ever read
@@ -639,12 +643,14 @@ export default function CashierClient({
             setBillingStayBooking(null)
             setBillingRoomCharges([])
             setBillingLinkedOrders([])
-            setBillingPaymentMethod('cash')
+            setBillingPaymentMethod('none')
             setSplitCashAmount('')
             setSplitQrAmount('')
             setBillingQrCodeId('')
             setCreditCustomerName('')
             setCreditCustomerPhone('')
+            setCashReceivedAmount('')
+            setQrReceivedAmount('')
         }
     }, [selectedBillingRoom, bookings])
 
@@ -652,7 +658,7 @@ export default function CashierClient({
     // also fires when switching straight from one table to another, not just
     // on close.
     useEffect(() => {
-        setBillingPaymentMethod('cash')
+        setBillingPaymentMethod('none')
         setSplitCashAmount('')
         setSplitQrAmount('')
         setBillingQrCodeId('')
@@ -660,13 +666,15 @@ export default function CashierClient({
         setTableDiscountReason('')
         setCreditCustomerName('')
         setCreditCustomerPhone('')
+        setCashReceivedAmount('')
+        setQrReceivedAmount('')
     }, [selectedBillingTable?.id])
 
     // Same reset for the takeaway/delivery order billing panel — shares the
     // table panel's bargain-rate/payment-method state since only one of the
     // two panels is ever open at a time.
     useEffect(() => {
-        setBillingPaymentMethod('cash')
+        setBillingPaymentMethod('none')
         setSplitCashAmount('')
         setSplitQrAmount('')
         setBillingQrCodeId('')
@@ -674,6 +682,8 @@ export default function CashierClient({
         setTableBargainReason('')
         setCreditCustomerName(selectedBillingOrder?.customer_name || '')
         setCreditCustomerPhone(selectedBillingOrder?.customer_phone || '')
+        setCashReceivedAmount('')
+        setQrReceivedAmount('')
     }, [selectedBillingOrder?.id])
 
     const calculateStayCost = (room: any, booking: any) => {
@@ -827,6 +837,181 @@ export default function CashierClient({
         const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
         const extraHourChargeVal = extraHourCharge.trim() !== '' ? parseFloat(extraHourCharge) || 0 : 0
         return effectiveStayCost + effectiveFoodOrders + manualChargesTotal + extraHourChargeVal
+    }
+
+    const renderPaymentInputsAndCalculator = (balanceDue: number) => {
+        if (billingPaymentMethod === 'none') {
+            return (
+                <div className="mt-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl text-center">
+                    <p className="text-xs font-bold text-ink-subtle">
+                        No payment method selected. Clicking "Generate Estimate" below will print/preview the estimate bill.
+                    </p>
+                </div>
+            )
+        }
+
+        if (billingPaymentMethod === 'cash') {
+            const cashVal = parseFloat(cashReceivedAmount) || 0
+            const changeToReturn = cashVal > balanceDue ? cashVal - balanceDue : 0
+            const remainingBalance = cashVal < balanceDue ? balanceDue - cashVal : 0
+
+            return (
+                <div className="mt-3 space-y-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl">
+                    <div>
+                        <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Amount Received (Cash)</label>
+                        <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                            <input
+                                type="number"
+                                min="0"
+                                placeholder={balanceDue.toFixed(2)}
+                                value={cashReceivedAmount}
+                                onChange={e => setCashReceivedAmount(e.target.value)}
+                                className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                            />
+                        </div>
+                    </div>
+                    {cashReceivedAmount.trim() !== '' && (
+                        <div className="text-center space-y-1">
+                            {changeToReturn > 0.01 && (
+                                <p className="text-xs font-black text-emerald-600 animate-scale-in">
+                                    Return / Change: {money(changeToReturn)}
+                                </p>
+                            )}
+                            {remainingBalance > 0.01 && (
+                                <p className="text-xs font-black text-brand-600 animate-scale-in">
+                                    Balance Due: {money(remainingBalance)}
+                                </p>
+                            )}
+                            {Math.abs(changeToReturn) <= 0.01 && Math.abs(remainingBalance) <= 0.01 && (
+                                <p className="text-[10px] font-bold text-emerald-600">✓ Exact Amount Received</p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )
+        }
+
+        if (billingPaymentMethod === 'qr_digital') {
+            const qrVal = parseFloat(qrReceivedAmount) || 0
+            const remainingBalance = qrVal < balanceDue ? balanceDue - qrVal : 0
+
+            return (
+                <div className="mt-3 space-y-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl">
+                    <div>
+                        <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Amount Received (QR / Digital)</label>
+                        <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                            <input
+                                type="number"
+                                min="0"
+                                placeholder={balanceDue.toFixed(2)}
+                                value={qrReceivedAmount}
+                                onChange={e => setQrReceivedAmount(e.target.value)}
+                                className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                            />
+                        </div>
+                    </div>
+                    {qrReceivedAmount.trim() !== '' && remainingBalance > 0.01 && (
+                        <div className="text-center">
+                            <p className="text-xs font-black text-brand-600 animate-scale-in">
+                                Balance Due: {money(remainingBalance)}
+                            </p>
+                        </div>
+                    )}
+                    {qrCodes.length > 1 && (
+                        <div>
+                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
+                            <Select
+                                value={billingQrCodeId}
+                                onChange={e => setBillingQrCodeId(e.target.value)}
+                                className="w-full text-xs font-bold"
+                            >
+                                <option value="">Select QR Account</option>
+                                {qrCodes.map(qr => (
+                                    <option key={qr.id} value={qr.id}>{qr.label}</option>
+                                ))}
+                            </Select>
+                        </div>
+                    )}
+                </div>
+            )
+        }
+
+        if (billingPaymentMethod === 'both') {
+            const cash = parseFloat(splitCashAmount) || 0
+            const qr = parseFloat(splitQrAmount) || 0
+            const totalPaid = cash + qr
+            const changeToReturn = totalPaid > balanceDue ? totalPaid - balanceDue : 0
+            const remainingBalance = totalPaid < balanceDue ? balanceDue - totalPaid : 0
+
+            return (
+                <div className="mt-3 space-y-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl">
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash Amount</label>
+                            <div className="relative">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="0.00"
+                                    value={splitCashAmount}
+                                    onChange={e => setSplitCashAmount(e.target.value)}
+                                    className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">QR / Digital Amount</label>
+                            <div className="relative">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="0.00"
+                                    value={splitQrAmount}
+                                    onChange={e => setSplitQrAmount(e.target.value)}
+                                    className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    <div className="text-center space-y-1">
+                        {changeToReturn > 0.01 && (
+                            <p className="text-xs font-black text-emerald-600 animate-scale-in">
+                                Return / Change: {money(changeToReturn)}
+                            </p>
+                        )}
+                        {remainingBalance > 0.01 && (
+                            <p className="text-xs font-black text-brand-600 animate-scale-in">
+                                Balance Due: {money(remainingBalance)}
+                            </p>
+                        )}
+                        {Math.abs(changeToReturn) <= 0.01 && Math.abs(remainingBalance) <= 0.01 && (
+                            <p className="text-[10px] font-bold text-emerald-600">✓ Amounts Balanced</p>
+                        )}
+                    </div>
+                    {qrCodes.length > 1 && (
+                        <div>
+                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
+                            <Select
+                                value={billingQrCodeId}
+                                onChange={e => setBillingQrCodeId(e.target.value)}
+                                className="w-full text-xs font-bold"
+                            >
+                                <option value="">Select QR Account</option>
+                                {qrCodes.map(qr => (
+                                    <option key={qr.id} value={qr.id}>{qr.label}</option>
+                                ))}
+                            </Select>
+                        </div>
+                    )}
+                </div>
+            )
+        }
+
+        return null
     }
 
     // Pure computation — no side effects — so compileInvoice below can inspect
@@ -2457,91 +2642,12 @@ export default function CashierClient({
                                         </button>
                                     </div>
 
-                                    {billingPaymentMethod === 'credit' && (
-                                        <p className="mt-3 text-[10px] text-ink-subtle font-semibold text-center">
-                                            You&apos;ll confirm the customer&apos;s name and phone in the next step.
-                                        </p>
-                                    )}
-
-                                    {/* Split amount inputs — shown only when Both is selected */}
-                                    {billingPaymentMethod === 'both' && (() => {
-                                        const total = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
+                                    {(() => {
+                                        const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
                                         const advancePaid = Number(billingStayBooking?.paid_amount) || 0
-                                        const balanceDue = Math.max(0, total - advancePaid)
-                                        return (
-                                            <div className="mt-3 grid grid-cols-2 gap-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl">
-                                                <div>
-                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash Amount</label>
-                                                    <div className="relative">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            max={balanceDue}
-                                                            placeholder="0.00"
-                                                            value={splitCashAmount}
-                                                            onChange={e => setSplitCashAmount(e.target.value)}
-                                                            className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">QR / Digital Amount</label>
-                                                    <div className="relative">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            max={balanceDue}
-                                                            placeholder="0.00"
-                                                            value={splitQrAmount}
-                                                            onChange={e => setSplitQrAmount(e.target.value)}
-                                                            className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
-                                                        />
-                                                    </div>
-                                                </div>
-                                                {/* Balance check — a shortfall is no longer an error: it becomes
-                                                    credit, confirmed (with customer details) in the next step. */}
-                                                {(() => {
-                                                    const cash = parseFloat(splitCashAmount) || 0
-                                                    const qr = parseFloat(splitQrAmount) || 0
-                                                    const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
-                                                    const advancePaid = Number(billingStayBooking?.paid_amount) || 0
-                                                    const balanceDue = Math.max(0, grandTotal - advancePaid)
-                                                    const remainder = balanceDue - cash - qr
-                                                    if (remainder > 0.01) return (
-                                                        <p className="col-span-2 text-[9px] text-amber-600 font-bold text-center">
-                                                            Rs. {remainder.toFixed(2)} left over will go on customer credit
-                                                        </p>
-                                                    )
-                                                    if (remainder < -0.01) return (
-                                                        <p className="col-span-2 text-[9px] text-rose-500 font-bold text-center">
-                                                            ⚠ Cash + QR exceeds the bill by {money(Math.abs(remainder))}
-                                                        </p>
-                                                    )
-                                                    return (
-                                                        <p className="col-span-2 text-[9px] text-emerald-600 font-bold text-center">✓ Amounts balanced</p>
-                                                    )
-                                                })()}
-                                            </div>
-                                        )
+                                        const balanceDue = Math.max(0, grandTotal - advancePaid)
+                                        return renderPaymentInputsAndCalculator(balanceDue)
                                     })()}
-
-                                    {(billingPaymentMethod === 'qr_digital' || billingPaymentMethod === 'both') && qrCodes.length > 1 && (
-                                        <div className="mt-3">
-                                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
-                                            <Select
-                                                value={billingQrCodeId}
-                                                onChange={e => setBillingQrCodeId(e.target.value)}
-                                                className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
-                                            >
-                                                <option value="">Select QR code…</option>
-                                                {qrCodes.map(qr => (
-                                                    <option key={qr.id} value={qr.id}>{qr.label}</option>
-                                                ))}
-                                            </Select>
-                                        </div>
-                                    )}
                                 </div>
                                 )}
                             </div>
@@ -2775,80 +2881,7 @@ export default function CashierClient({
                                                 </button>
                                             </div>
 
-                                            {billingPaymentMethod === 'both' && (
-                                                <div className="mt-3 grid grid-cols-2 gap-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl">
-                                                    <div>
-                                                        <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash Amount</label>
-                                                        <div className="relative">
-                                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
-                                                            <input
-                                                                type="number"
-                                                                min="0"
-                                                                max={tableSubtotal - tableDiscountAmount}
-                                                                placeholder="0.00"
-                                                                value={splitCashAmount}
-                                                                onChange={e => setSplitCashAmount(e.target.value)}
-                                                                className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">QR / Digital Amount</label>
-                                                        <div className="relative">
-                                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
-                                                            <input
-                                                                type="number"
-                                                                min="0"
-                                                                max={tableSubtotal - tableDiscountAmount}
-                                                                placeholder="0.00"
-                                                                value={splitQrAmount}
-                                                                onChange={e => setSplitQrAmount(e.target.value)}
-                                                                className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    {(() => {
-                                                        const cash = parseFloat(splitCashAmount) || 0
-                                                        const qr = parseFloat(splitQrAmount) || 0
-                                                        const remainder = (tableSubtotal - tableDiscountAmount) - cash - qr
-                                                        if (remainder > 0.01) return (
-                                                            <p className="col-span-2 text-[9px] text-amber-600 font-bold text-center">
-                                                                Rs. {remainder.toFixed(2)} left over will go on customer credit
-                                                            </p>
-                                                        )
-                                                        if (remainder < -0.01) return (
-                                                            <p className="col-span-2 text-[9px] text-rose-500 font-bold text-center">
-                                                                ⚠ Cash + QR exceeds the bill by {money(Math.abs(remainder))}
-                                                            </p>
-                                                        )
-                                                        return (
-                                                            <p className="col-span-2 text-[9px] text-emerald-600 font-bold text-center">✓ Amounts balanced</p>
-                                                        )
-                                                    })()}
-                                                </div>
-                                            )}
-
-                                            {billingPaymentMethod === 'qr_digital' && qrCodes.length > 1 && (
-                                                <div className="mt-3">
-                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
-                                                    <Select
-                                                        value={billingQrCodeId}
-                                                        onChange={e => setBillingQrCodeId(e.target.value)}
-                                                        className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
-                                                    >
-                                                        <option value="">Select QR code…</option>
-                                                        {qrCodes.map(qr => (
-                                                            <option key={qr.id} value={qr.id}>{qr.label}</option>
-                                                        ))}
-                                                    </Select>
-                                                </div>
-                                            )}
-
-                                            {billingPaymentMethod === 'credit' && (
-                                                <p className="mt-3 text-[10px] text-ink-subtle font-semibold text-center">
-                                                    You&apos;ll confirm the customer&apos;s name and phone in the next step.
-                                                </p>
-                                            )}
+                                            {renderPaymentInputsAndCalculator(tableSubtotal - tableDiscountAmount)}
                                         </div>
                                         )}
                                     </div>
@@ -3061,82 +3094,9 @@ export default function CashierClient({
                                             </button>
                                         </div>
 
-                                        {billingPaymentMethod === 'both' && (
-                                            <div className="mt-3 grid grid-cols-2 gap-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl">
-                                                <div>
-                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash Amount</label>
-                                                    <div className="relative">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            max={orderTotal}
-                                                            placeholder="0.00"
-                                                            value={splitCashAmount}
-                                                            onChange={e => setSplitCashAmount(e.target.value)}
-                                                            className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">QR / Digital Amount</label>
-                                                    <div className="relative">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            max={orderTotal}
-                                                            placeholder="0.00"
-                                                            value={splitQrAmount}
-                                                            onChange={e => setSplitQrAmount(e.target.value)}
-                                                            className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
-                                                        />
-                                                    </div>
-                                                </div>
-                                                {(() => {
-                                                    const cash = parseFloat(splitCashAmount) || 0
-                                                    const qr = parseFloat(splitQrAmount) || 0
-                                                    const remainder = orderTotal - cash - qr
-                                                    if (remainder > 0.01) return (
-                                                        <p className="col-span-2 text-[9px] text-amber-600 font-bold text-center">
-                                                            Rs. {remainder.toFixed(2)} left over will go on customer credit
-                                                        </p>
-                                                    )
-                                                    if (remainder < -0.01) return (
-                                                        <p className="col-span-2 text-[9px] text-rose-500 font-bold text-center">
-                                                            ⚠ Cash + QR exceeds the bill by {money(Math.abs(remainder))}
-                                                        </p>
-                                                    )
-                                                    return (
-                                                        <p className="col-span-2 text-[9px] text-emerald-600 font-bold text-center">✓ Amounts balanced</p>
-                                                    )
-                                                })()}
-                                            </div>
+                                            {renderPaymentInputsAndCalculator(orderTotal)}
+                                        </div>
                                         )}
-
-                                        {billingPaymentMethod === 'qr_digital' && qrCodes.length > 1 && (
-                                            <div className="mt-3">
-                                                <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
-                                                <Select
-                                                    value={billingQrCodeId}
-                                                    onChange={e => setBillingQrCodeId(e.target.value)}
-                                                    className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
-                                                >
-                                                    <option value="">Select QR code…</option>
-                                                    {qrCodes.map(qr => (
-                                                        <option key={qr.id} value={qr.id}>{qr.label}</option>
-                                                    ))}
-                                                </Select>
-                                            </div>
-                                        )}
-
-                                        {billingPaymentMethod === 'credit' && (
-                                            <p className="mt-3 text-[10px] text-ink-subtle font-semibold text-center">
-                                                You&apos;ll confirm the customer&apos;s name and phone in the next step.
-                                            </p>
-                                        )}
-                                    </div>
-                                    )}
 
                                     <div className="border-t border-hairline pt-4 flex items-center justify-between mt-2">
                                         <div>
