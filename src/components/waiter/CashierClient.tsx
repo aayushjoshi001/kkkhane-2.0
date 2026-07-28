@@ -485,6 +485,8 @@ export default function CashierClient({
     const [showSettlementConfirm, setShowSettlementConfirm] = useState(false)
     const [pendingInvoice, setPendingInvoice] = useState<{ type: 'room' | 'table' | 'takeout' | 'delivery'; item: any; data: any } | null>(null)
     const [isDirectCheckingOut, setIsDirectCheckingOut] = useState(false)
+    const qrCodes = useQrCodes()
+
     const [mounted, setMounted] = useState(false)
     useEffect(() => {
         setMounted(true)
