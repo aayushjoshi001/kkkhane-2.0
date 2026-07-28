@@ -666,7 +666,6 @@ export default function CashierRoomManager({
         } else if (advanceType === 'partial') {
             resolvedAdvance = Math.max(0, parseFloat(advanceAmount) || 0)
             if (resolvedAdvance <= 0) { toast.error('Please enter a valid advance amount'); return }
-            if (resolvedAdvance >= fullCost) { toast.error('Partial advance must be less than total room cost'); return }
         }
 
         const isSplit = advanceType !== 'none' && advancePayMethod === 'split'
@@ -1102,18 +1101,26 @@ export default function CashierRoomManager({
                                                                 <input
                                                                     type="number"
                                                                     min="1"
-                                                                    max={fullCost - 1}
                                                                     placeholder="e.g. 500"
                                                                     value={advanceAmount}
                                                                     onChange={e => setAdvanceAmount(e.target.value)}
                                                                     className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
                                                                 />
                                                             </div>
-                                                            {advanceAmount && fullCost > 0 && (
-                                                                <p className="text-[9px] text-amber-600 font-bold mt-1">
-                                                                    Balance due at checkout: Rs. {Math.max(0, fullCost - (parseFloat(advanceAmount) || 0)).toLocaleString()}
-                                                                </p>
-                                                            )}
+                                                            {advanceAmount && fullCost > 0 && (() => {
+                                                                const amt = parseFloat(advanceAmount) || 0
+                                                                const diff = amt - fullCost
+                                                                if (diff > 0) return (
+                                                                    <p className="text-[9px] text-emerald-600 font-bold mt-1">
+                                                                        Return to guest at checkout: Rs. {diff.toLocaleString()}
+                                                                    </p>
+                                                                )
+                                                                return (
+                                                                    <p className="text-[9px] text-amber-600 font-bold mt-1">
+                                                                        Balance due at checkout: Rs. {Math.max(0, fullCost - amt).toLocaleString()}
+                                                                    </p>
+                                                                )
+                                                            })()}
                                                         </div>
                                                     )}
 
@@ -1759,7 +1766,9 @@ export default function CashierRoomManager({
                                 // rooms at booking time, so what the guest has already
                                 // paid on this one bill is their sum.
                                 const advancePaid = stayGroup ? stayGroup.advancePaid : (Number(activeBooking?.paid_amount) || 0)
-                                const balanceDue = Math.max(0, grandTotal - advancePaid)
+                                const netBalance = grandTotal - advancePaid
+                                const balanceDue = Math.max(0, netBalance)
+                                const returnAmount = netBalance < 0 ? Math.abs(netBalance) : 0
                                 return (
                                     <>
                                         {advancePaid > 0 && (
@@ -1783,10 +1792,12 @@ export default function CashierRoomManager({
                                             </div>
                                         )}
                                         <div className="flex justify-between items-center border-b border-dashed border-hairline pb-3 mb-1">
-                                             <span className="text-xs font-bold text-ink-subtle uppercase">
-                                                 {advancePaid > 0 ? 'Balance due at checkout' : 'Total bill amount'}
+                                             <span className={`text-xs font-bold uppercase ${returnAmount > 0 ? 'text-emerald-600' : 'text-ink-subtle'}`}>
+                                                 {returnAmount > 0 ? 'Return to guest' : advancePaid > 0 ? 'Balance due at checkout' : 'Total bill amount'}
                                              </span>
-                                             <p className="text-2xl font-black text-brand-600 tabular-nums">{money(balanceDue)}</p>
+                                             <p className={`text-2xl font-black tabular-nums ${returnAmount > 0 ? 'text-emerald-600' : 'text-brand-600'}`}>
+                                                 {returnAmount > 0 ? money(returnAmount) : money(balanceDue)}
+                                             </p>
                                          </div>
                                          <div className="flex flex-wrap gap-2 justify-end">
                                               <Button
