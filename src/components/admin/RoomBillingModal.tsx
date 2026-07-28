@@ -288,7 +288,9 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const grandTotal = effectiveStayCost + effectiveOrdersTotal + manualChargesTotal + extraHourChargeVal + roomServiceChargeAmount
     // Advances were taken per room, so a reservation's advance is their sum.
     const advancePaid = groupBill ? groupBill.advancePaid : (Number(booking?.paid_amount) || 0)
-    const balanceDue = Math.max(0, grandTotal - advancePaid)
+    const netBalance = grandTotal - advancePaid
+    const balanceDue = Math.max(0, netBalance)
+    const returnAmount = netBalance < 0 ? Math.abs(netBalance) : 0
 
     const checkOutTime = booking ? new Date(booking.check_out) : null
     const currentTime = new Date()
@@ -1001,8 +1003,12 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                             )}
                             <div className="flex items-center justify-between pt-1 border-t border-dashed border-hairline">
                                 <div>
-                                    <span className="text-[10px] font-bold text-ink-subtle uppercase">{advancePaid > 0 ? 'Balance Due' : 'Total Due'}</span>
-                                    <p className="text-2xl font-black text-brand-500 tabular-nums">{money(balanceDue)}</p>
+                                    <span className={`text-[10px] font-bold uppercase ${returnAmount > 0 ? 'text-emerald-600' : 'text-ink-subtle'}`}>
+                                        {returnAmount > 0 ? 'Return to Guest' : advancePaid > 0 ? 'Balance Due' : 'Total Due'}
+                                    </span>
+                                    <p className={`text-2xl font-black tabular-nums ${returnAmount > 0 ? 'text-emerald-600' : 'text-brand-500'}`}>
+                                        {returnAmount > 0 ? money(returnAmount) : money(balanceDue)}
+                                    </p>
                                 </div>
                                 <div className="flex gap-2">
                                     {invoiceSettled ? (
