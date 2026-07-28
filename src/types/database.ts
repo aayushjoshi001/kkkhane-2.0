@@ -296,6 +296,8 @@ export interface Order {
     seat_id: string | null
     claimed_by: string | null
     claimed_at: string | null
+    /** Staff member who settled this order at checkout; null until it's paid. */
+    cashier_id?: string | null
     // Joined fields
     order_items?: OrderItem[]
     sessions?: Session
@@ -1014,6 +1016,8 @@ export interface Booking {
      *  rules produce. Null means no override — recompute from the rules; 0
      *  means the charge was deliberately waived. */
     service_charge_override?: number | null
+    /** Staff member who settled this stay at checkout; null while in house. */
+    cashier_id?: string | null
     rooms?: Room | null
 }
 

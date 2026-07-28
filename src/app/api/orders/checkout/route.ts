@@ -124,6 +124,7 @@ export async function POST(req: Request) {
                 delivered_at: new Date().toISOString(),
                 payment_status: 'paid',
                 paid_at: new Date().toISOString(),
+                cashier_id: currentUser.id,
             })
             .eq('id', order_id)
             .eq('restaurant_id', currentUser.restaurantId)

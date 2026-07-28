@@ -121,6 +121,12 @@ export default function InvoiceReceipt({
                         <span>{invoice.roomType}</span>
                     </div>
                 )}
+                {invoice.cashierName?.trim() && (
+                    <div className="flex justify-between">
+                        <span className="font-bold">CASHIER:</span>
+                        <span>{invoice.cashierName.trim()}</span>
+                    </div>
+                )}
             </div>
 
             <div className="border-t border-dashed border-black my-1.5" />
