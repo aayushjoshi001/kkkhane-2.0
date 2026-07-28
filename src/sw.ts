@@ -37,9 +37,18 @@ const serwist = new Serwist({
         ],
     },
     runtimeCaching: [
-        // Kitchen & waiter pages — network only (must never show stale order state)
+        // Kitchen, waiter & cashier pages — network only (must never show stale
+        // order state).
+        //
+        // `cashier` was missing, so the billing screen was the one staff route
+        // falling through to defaultCache, whose RSC entry is NetworkFirst: on a
+        // flaky desk connection it replays a stored payload. That payload carries
+        // the calendar the *previous* render read from the cookie, so the BS/AD
+        // toggle — which works by writing the cookie and calling router.refresh()
+        // — silently snaps back. Stale unpaid totals on a till are the worse half
+        // of the same bug.
         {
-            matcher: /^\/(kitchen|waiter)(\/|$)/i,
+            matcher: /^\/(kitchen|waiter|cashier)(\/|$)/i,
             handler: new NetworkOnly(),
         },
         // Menu & order status pages — network first with 10s timeout, fallback to cache
