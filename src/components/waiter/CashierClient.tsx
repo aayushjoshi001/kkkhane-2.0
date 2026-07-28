@@ -10,6 +10,7 @@ import { updateTakeoutStatusAction } from '@/app/(admin)/admin/takeout/actions'
 import { useCurrency, useFeatureEnabled, useDateFormatter, useFeatures } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
+import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent, PenLine, Printer, Search } from 'lucide-react'
 import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent, PenLine, Printer, History, Utensils, QrCode } from 'lucide-react'
 import AdvancePaymentHistoryModal from '@/components/admin/AdvancePaymentHistoryModal'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
@@ -139,6 +140,35 @@ export function tableLabel(
     const seat = sessions?.seat_number ?? 1
     if (seat >= 2 || (sessions?.id && splitSessionIds?.has(sessions.id))) return `${base}-${seat}`
     return base
+}
+
+/**
+ * Does this guest's name or phone match what the cashier typed?
+ *
+ * Names match on any part, not just the start: the desk is told "the bill for
+ * Mohan" and a booking registered as "MOHAN THAKUR" has to come back for
+ * "thakur" too. Case is ignored because check-in entries are typed however the
+ * cashier felt at the time — production holds both "MOHAN THAKUR" and
+ * "manoj bartaula".
+ *
+ * Phone matching compares digits only, on both sides. A number written down as
+ * "980-718-5400" or "+977 9807185400" must still find the stay saved as
+ * "9807185400", and a search for a name never reaches this because stripping a
+ * name of non-digits leaves nothing to match on.
+ */
+export function matchesGuestSearch(
+    query: string,
+    fields: (string | null | undefined)[],
+): boolean {
+    const needle = query.trim().toLowerCase()
+    if (!needle) return true
+
+    const present = fields.filter((f): f is string => !!f && f.trim() !== '')
+    if (present.some(f => f.toLowerCase().includes(needle))) return true
+
+    const digits = needle.replace(/\D/g, '')
+    if (!digits) return false
+    return present.some(f => f.replace(/\D/g, '').includes(digits))
 }
 
 export default function CashierClient({
@@ -352,6 +382,11 @@ export default function CashierClient({
             .filter(r => r.status === 'occupied')
             .filter(r => billingRoomTypeFilter === 'all' || r.type_id === billingRoomTypeFilter)
     }, [roomsState, billingRoomTypeFilter])
+
+    // Who the cashier is looking for, by the name or number taken at check-in.
+    // The desk is given a name at settling time — "the bill for Mohan" — and had
+    // to know which room that was to find it in a grid keyed by room number.
+    const [billingSearch, setBillingSearch] = useState('')
 
     const [bookings, setBookings] = useState<any[]>(initialBookings)
     const [billingSubTab, setBillingSubTab] = useState<'all' | 'rooms' | 'tables' | 'takeout' | 'delivery'>('rooms')
@@ -1782,6 +1817,47 @@ export default function CashierClient({
     const billingTakeoutEntries = useMemo(() => unpaid.filter(o => o.order_type === 'takeout' && !o.booking_id), [unpaid])
     const billingDeliveryEntries = useMemo(() => unpaid.filter(o => o.order_type === 'delivery' && !o.booking_id), [unpaid])
 
+    // ── Billing search ──────────────────────────────────────────────────────
+    // Each kind of bill knows its guest differently. A room's guest is the stay
+    // checked into it, which is where the name and number the desk is quoting
+    // were taken. A takeaway or delivery order carries its own customer. A
+    // dine-in table has no guest of its own at all, so it matches on the orders
+    // sitting against it — a walk-in table with nothing named stays unmatched
+    // rather than pretending to be a hit.
+    const roomMatchesSearch = useCallback((room: any) => {
+        if (!billingSearch.trim()) return true
+        const booking = bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
+        return matchesGuestSearch(billingSearch, [booking?.guest_name, booking?.guest_phone])
+    }, [billingSearch, bookings])
+
+    const tableMatchesSearch = useCallback((entry: any) => {
+        if (!billingSearch.trim()) return true
+        const sessionId = entry.activeSession?.id
+        if (!sessionId) return false
+        return unpaid.some(o => o.session_id === sessionId
+            && matchesGuestSearch(billingSearch, [o.customer_name, o.customer_phone]))
+    }, [billingSearch, unpaid])
+
+    const orderMatchesSearch = useCallback((order: UnpaidOrder) =>
+        matchesGuestSearch(billingSearch, [order.customer_name, order.customer_phone]),
+    [billingSearch])
+
+    // Every occupied room, before the room-type filter — what the All tab lists.
+    const occupiedBillingRooms = useMemo(
+        () => (isHotel ? roomsState.filter((r: any) => r.status === 'occupied') : []),
+        [isHotel, roomsState])
+
+    const searchedOccupiedRooms = useMemo(
+        () => occupiedBillingRooms.filter(roomMatchesSearch), [occupiedBillingRooms, roomMatchesSearch])
+    const searchedBillingRooms = useMemo(
+        () => filteredBillingRooms.filter(roomMatchesSearch), [filteredBillingRooms, roomMatchesSearch])
+    const searchedTableEntries = useMemo(
+        () => billingTableEntries.filter(tableMatchesSearch), [billingTableEntries, tableMatchesSearch])
+    const searchedTakeoutEntries = useMemo(
+        () => billingTakeoutEntries.filter(orderMatchesSearch), [billingTakeoutEntries, orderMatchesSearch])
+    const searchedDeliveryEntries = useMemo(
+        () => billingDeliveryEntries.filter(orderMatchesSearch), [billingDeliveryEntries, orderMatchesSearch])
+
     // Group unpaid by session
     const unpaidBySession = useMemo(() => {
         const groups = new Map<string, { label: string; orders: UnpaidOrder[]; total: number }>()
@@ -2093,7 +2169,30 @@ export default function CashierClient({
                                     <Receipt size={14} className="text-red-400" />
                                     Awaiting Payment
                                 </h2>
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    {/* Find a bill by the guest rather than by the room
+                                        number — the desk is given a name, not a number. */}
+                                    <div className="relative">
+                                        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" />
+                                        <input
+                                            type="text"
+                                            value={billingSearch}
+                                            onChange={(e) => setBillingSearch(e.target.value)}
+                                            placeholder="Search guest name or phone"
+                                            aria-label="Search bills by guest name or phone"
+                                            className="w-56 pl-8 pr-7 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                        />
+                                        {billingSearch && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setBillingSearch('')}
+                                                aria-label="Clear search"
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-ink"
+                                            >
+                                                <X size={13} />
+                                            </button>
+                                        )}
+                                    </div>
                                     {billingSubTab === 'rooms' && (
                                         <div className="flex items-center gap-1.5">
                                             <span className="text-[10px] font-black text-ink-subtle uppercase shrink-0">Type:</span>
@@ -2117,8 +2216,8 @@ export default function CashierClient({
                                             }`}
                                         >
                                             All ({
-                                                (isHotel ? roomsState.filter(r => r.status === 'occupied').length : 0)
-                                                + billingTableEntries.length + billingTakeoutEntries.length + billingDeliveryEntries.length
+                                                searchedOccupiedRooms.length + searchedTableEntries.length
+                                                + searchedTakeoutEntries.length + searchedDeliveryEntries.length
                                             })
                                         </button>
                                         {isHotel && (
@@ -2128,7 +2227,7 @@ export default function CashierClient({
                                                     billingSubTab === 'rooms' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
                                                 }`}
                                             >
-                                                Rooms ({roomsState.filter(r => r.status === 'occupied').length})
+                                                Rooms ({searchedOccupiedRooms.length})
                                             </button>
                                         )}
                                         <button
@@ -2137,7 +2236,7 @@ export default function CashierClient({
                                                 billingSubTab === 'tables' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
                                             }`}
                                         >
-                                            Tables ({billingTableEntries.length})
+                                            Tables ({searchedTableEntries.length})
                                         </button>
                                         <button
                                             onClick={() => setBillingSubTab('takeout')}
@@ -2145,7 +2244,7 @@ export default function CashierClient({
                                                 billingSubTab === 'takeout' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
                                             }`}
                                         >
-                                            Takeaway ({billingTakeoutEntries.length})
+                                            Takeaway ({searchedTakeoutEntries.length})
                                         </button>
                                         <button
                                             onClick={() => setBillingSubTab('delivery')}
@@ -2153,21 +2252,46 @@ export default function CashierClient({
                                                 billingSubTab === 'delivery' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
                                             }`}
                                         >
-                                            Delivery ({billingDeliveryEntries.length})
+                                            Delivery ({searchedDeliveryEntries.length})
                                         </button>
                                     </div>
                                 </div>
                             </div>
 
                             {(() => {
-                                const occupiedRooms = isHotel ? roomsState.filter((r: any) => r.status === 'occupied') : []
-                                const activeList = billingSubTab === 'all' ? [...occupiedRooms, ...billingTableEntries, ...billingTakeoutEntries, ...billingDeliveryEntries]
-                                    : billingSubTab === 'rooms' ? filteredBillingRooms
-                                    : billingSubTab === 'tables' ? billingTableEntries
-                                    : billingSubTab === 'takeout' ? billingTakeoutEntries
-                                    : billingDeliveryEntries
+                                const occupiedRooms = searchedOccupiedRooms
+                                const activeList = billingSubTab === 'all' ? [...occupiedRooms, ...searchedTableEntries, ...searchedTakeoutEntries, ...searchedDeliveryEntries]
+                                    : billingSubTab === 'rooms' ? searchedBillingRooms
+                                    : billingSubTab === 'tables' ? searchedTableEntries
+                                    : billingSubTab === 'takeout' ? searchedTakeoutEntries
+                                    : searchedDeliveryEntries
 
                                 if (activeList.length === 0) {
+                                    // An empty grid means two different things. "All bills
+                                    // settled" under an active search would be a lie — the
+                                    // bills are there, they just don't match — and would
+                                    // send the cashier looking for a stay they were told
+                                    // had already been paid.
+                                    if (billingSearch.trim()) {
+                                        return (
+                                            <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-10 text-center">
+                                                <Search size={32} className="mx-auto text-ink-subtle/40 mb-2" />
+                                                <p className="text-sm font-medium text-ink-subtle">
+                                                    No unpaid bill for &ldquo;{billingSearch.trim()}&rdquo;
+                                                </p>
+                                                <p className="text-xs text-gray-300 mt-1">
+                                                    Searches the guest name and phone taken at check-in. Check another category, or clear the search.
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setBillingSearch('')}
+                                                    className="mt-3 px-3 py-1.5 rounded-lg text-xs font-bold bg-surface-muted text-ink-muted hover:text-ink transition-colors"
+                                                >
+                                                    Clear search
+                                                </button>
+                                            </div>
+                                        )
+                                    }
                                     return (
                                         <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-10 text-center">
                                             <CheckCircle size={32} className="mx-auto text-emerald-300 mb-2" />
@@ -2205,7 +2329,7 @@ export default function CashierClient({
                                                     </button>
                                                 )
                                             })}
-                                            {billingTableEntries.map(table => {
+                                            {searchedTableEntries.map(table => {
                                                 const sessionItems = getTableSessionItems(table)
                                                 return (
                                                     <button
@@ -2222,7 +2346,7 @@ export default function CashierClient({
                                                     </button>
                                                 )
                                             })}
-                                            {[...billingTakeoutEntries, ...billingDeliveryEntries].map(order => (
+                                            {[...searchedTakeoutEntries, ...searchedDeliveryEntries].map(order => (
                                                 <button
                                                     key={`order:${order.id}`}
                                                     onClick={() => setSelectedBillingOrder(order)}
