@@ -10,8 +10,7 @@ import { updateTakeoutStatusAction } from '@/app/(admin)/admin/takeout/actions'
 import { useCurrency, useFeatureEnabled, useDateFormatter, useFeatures } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
-import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent, PenLine, Printer, Search } from 'lucide-react'
-import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent, PenLine, Printer, History, Utensils, QrCode } from 'lucide-react'
+import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent, PenLine, Printer, Search, History, Utensils, QrCode } from 'lucide-react'
 import AdvancePaymentHistoryModal from '@/components/admin/AdvancePaymentHistoryModal'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import Button from '@/components/ui/Button'
@@ -486,6 +485,8 @@ export default function CashierClient({
     const [showSettlementConfirm, setShowSettlementConfirm] = useState(false)
     const [pendingInvoice, setPendingInvoice] = useState<{ type: 'room' | 'table' | 'takeout' | 'delivery'; item: any; data: any } | null>(null)
     const [isDirectCheckingOut, setIsDirectCheckingOut] = useState(false)
+    const qrCodes = useQrCodes()
+
     const [mounted, setMounted] = useState(false)
     useEffect(() => {
         setMounted(true)

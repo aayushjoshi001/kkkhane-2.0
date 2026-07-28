@@ -265,6 +265,11 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
 
     const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost || orderDiscountVal < 0 || orderDiscountVal > qrOrdersTotal
     const effectiveStayCost = Math.max(0, stayCost - roomDiscountVal)
+    // What the guest owes for orders: every service order against the stay,
+    // room service and linked dine-in tables alike, less the order discount.
+    const effectiveOrdersTotal = Math.max(0, qrOrdersTotal - orderDiscountVal)
+    // The service charge is levied on room service alone, so it needs its own
+    // narrower base — dine-in tables are excluded from SC but still billed above.
     const effectiveRoomOrdersTotal = Math.max(0, qrRoomServiceTotal - orderDiscountVal)
 
     // Service Charge: 10% on room service order items only (excludes linked dining tables).
