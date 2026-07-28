@@ -73,6 +73,8 @@ export default function CashierRoomManager({
     const [applyRoomServiceCharge, setApplyRoomServiceCharge] = useState(true)
     const features = useFeatures()
     const irdSyncEnabled = features?.irdSyncEnabled ?? false
+    const roomScEnabled = features.roomServiceChargeEnabled === true
+    const roomScRooms = features.roomServiceChargeRooms ?? []
     const money = useCurrency()
     const supabaseRef = useRef(createClient())
     const manualEntryEnabled = useFeatureEnabled('manualEntryEnabled')
@@ -525,11 +527,14 @@ export default function CashierRoomManager({
     }, [selectedRoom, activeBooking, stayGroup])
 
     const roomServiceChargeAmount = useMemo(() => {
-        if (!applyRoomServiceCharge) return 0
-        const roomFoodItems = linkedDiningOrders.filter(o => o.is_room_order && o.status !== 'cancelled' && (o.station === 'kitchen' || o.menu_items?.station === 'kitchen'))
-        const foodSubtotal = roomFoodItems.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
-        return Math.round(foodSubtotal * 0.10 * 100) / 100
-    }, [applyRoomServiceCharge, linkedDiningOrders])
+        if (!selectedRoom) return 0
+        // SC only applies when the feature is enabled for this room
+        const applicable = roomScEnabled && roomScRooms.includes(selectedRoom.id)
+        if (!applicable) return 0
+        // Calculate on all room service order items (after discount if any)
+        const qrTotal = qrOrdersDetails?.total || 0
+        return Math.round(qrTotal * 0.10 * 100) / 100
+    }, [selectedRoom, roomScEnabled, roomScRooms, qrOrdersDetails])
 
     // Grand total
     const grandTotal = useMemo(() => {

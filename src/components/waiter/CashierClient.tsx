@@ -486,9 +486,13 @@ export default function CashierClient({
     const [showSettlementConfirm, setShowSettlementConfirm] = useState(false)
     const [pendingInvoice, setPendingInvoice] = useState<{ type: 'room' | 'table' | 'takeout' | 'delivery'; item: any; data: any } | null>(null)
     const [isDirectCheckingOut, setIsDirectCheckingOut] = useState(false)
-    const qrCodes = useQrCodes()
-
     const [mounted, setMounted] = useState(false)
+    useEffect(() => {
+        setMounted(true)
+    }, [])
+
+    const roomScEnabled = features?.roomServiceChargeEnabled === true
+    const roomScRooms = features?.roomServiceChargeRooms ?? []
 
 
     // Sync rooms state when prop changes
@@ -915,7 +919,14 @@ export default function CashierClient({
         const effectiveFoodOrders = Math.max(0, totalFoodOrders - foodDiscountVal)
         const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
         const extraHourChargeVal = extraHourCharge.trim() !== '' ? parseFloat(extraHourCharge) || 0 : 0
-        return effectiveStayCost + effectiveFoodOrders + manualChargesTotal + extraHourChargeVal
+
+        const roomScApplicable = roomScEnabled && room?.id && roomScRooms.includes(room.id)
+        const effectiveRoomOrders = Math.max(0, qrOrdersTotal - foodDiscountVal)
+        const roomServiceChargeAmount = roomScApplicable
+            ? Math.round(effectiveRoomOrders * 0.10 * 100) / 100
+            : 0
+
+        return effectiveStayCost + effectiveFoodOrders + manualChargesTotal + extraHourChargeVal + roomServiceChargeAmount
     }
 
     const renderPaymentInputsAndCalculator = (balanceDue: number) => {
@@ -1171,6 +1182,13 @@ export default function CashierClient({
                 : 0
             const overpaid = billingPaymentMethod === 'both' && (resolvedCash + resolvedQr) > balanceDue + 0.01
 
+            const roomScApplicable = roomScEnabled && room?.id && roomScRooms.includes(room.id)
+            const foodDiscountVal = foodDiscount.trim() !== '' ? parseFloat(foodDiscount) || 0 : 0
+            const effectiveRoomOrders = Math.max(0, qrOrdersTotal - foodDiscountVal)
+            const serviceCharge = roomScApplicable
+                ? Math.round(effectiveRoomOrders * 0.10 * 100) / 100
+                : 0
+
             return {
                 type: 'room',
                 id: room.id,
@@ -1194,6 +1212,7 @@ export default function CashierClient({
                 linkedOrdersTotal,
                 manualCharges: billingRoomCharges,
                 manualChargesTotal,
+                serviceCharge: serviceCharge || undefined,
                 total,
                 advancePaid,
                 advanceMethod: booking.advance_payment_method || 'none',
@@ -2726,6 +2745,24 @@ export default function CashierClient({
                                                             <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
                                                         </div>
                                                     ))}
+                                                    {(() => {
+                                             const roomScApplicable = roomScEnabled && selectedBillingRoom?.id && roomScRooms.includes(selectedBillingRoom.id)
+                                             const roomOrdersTotal = filteredRoomOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
+                                             const foodDiscountVal = foodDiscount.trim() !== '' ? parseFloat(foodDiscount) || 0 : 0
+                                             const effectiveRoomOrders = Math.max(0, roomOrdersTotal - foodDiscountVal)
+                                             const serviceCharge = roomScApplicable ? Math.round(effectiveRoomOrders * 0.10 * 100) / 100 : 0
+
+                                             if (serviceCharge <= 0) return null
+                                             return (
+                                                 <div className="flex justify-between items-center p-4 text-xs bg-indigo-50/40 border-t border-hairline">
+                                                     <div>
+                                                         <p className="font-extrabold text-indigo-700">10% Room Service Charge</p>
+                                                         <p className="text-[10px] text-indigo-500">Service charge on room food orders</p>
+                                                     </div>
+                                                     <span className="font-extrabold text-indigo-700 tabular-nums">+{money(serviceCharge)}</span>
+                                                 </div>
+                                             )
+                                         })()}
                                                 </div>
                                             </div>
                                         )}

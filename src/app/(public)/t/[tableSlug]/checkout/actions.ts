@@ -388,11 +388,8 @@ export async function placeOrder(
                 const foodRatio = calculatedSubtotal > 0 ? (foodSubtotal / calculatedSubtotal) : 0
                 const discountedFoodSubtotal = Math.max(0, foodSubtotal - (discountAmount * foodRatio))
                 finalServiceCharge = Math.round(discountedFoodSubtotal * 0.10 * 100) / 100
-            } else {
-                finalServiceCharge = scEnabled 
-                    ? Math.round((calculatedSubtotal - discountAmount) * (scRate / 100) * 100) / 100 
-                    : 0
             }
+            // Standard dine-in tables always get 0 service charge
 
             const finalTax = Math.round((calculatedSubtotal - discountAmount + finalServiceCharge) * (taxRate / 100) * 100) / 100
             const finalOrderTotal = Math.max(0, calculatedSubtotal - discountAmount + finalServiceCharge + finalTax)
@@ -728,9 +725,9 @@ async function placeOrderFallback(
     const scEnabled = featuresV2?.serviceChargeEnabled === true
     const scRate = Number(featuresV2?.serviceChargeRate ?? 10)
 
-    const serviceCharge = scEnabled 
-        ? Math.round((subtotal - discount) * (scRate / 100) * 100) / 100 
-        : 0
+    // Standard dine-in table QR orders: no service charge.
+    // SC applies only to in-room food orders (hotel room QR, checked above).
+    const serviceCharge = 0
 
     const tax = Math.round((subtotal - discount + serviceCharge) * (taxRate / 100) * 100) / 100
     const total = Math.max(0, subtotal - discount + serviceCharge + tax)

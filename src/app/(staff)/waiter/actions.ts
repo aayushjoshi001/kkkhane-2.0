@@ -534,8 +534,6 @@ export async function placeStaffOrder(
                         status: 'pending'
                     })
             }
-            // Recalculate totals
-            await recalculateAndUpdateOrderTotals(adminSupabase, result.order_id, session.restaurant_id)
         }
 
         // If this session is for a hotel room, bind the order to the active booking
@@ -555,6 +553,14 @@ export async function placeStaffOrder(
             .from('orders')
             .update(updateFields)
             .eq('id', result.order_id)
+
+        // Always recalculate totals after all items and the booking_id are set.
+        // This stamps service_charge_amount on every order — both general dine-in
+        // SC (serviceChargeEnabled) and room SC (roomServiceChargeEnabled) — so
+        // the receipt and CashierClient always show the correct breakdown.
+        // Called here (after booking_id is written) so recalculate reads the
+        // correct booking context to decide which SC rule applies.
+        await recalculateAndUpdateOrderTotals(adminSupabase, result.order_id, session.restaurant_id)
 
         // Automatically close the table session if linked to a room bill (either on session or table-linked)
         const bookingIdToLink = session.booking_id || roomContext?.bookingId
@@ -935,10 +941,9 @@ export async function recalculateAndUpdateOrderTotals(
             }
         }
     } else {
-        // Standard order: service charge from settings
-        serviceCharge = scEnabled 
-            ? Math.round((subtotal - discountAmount) * (scRate / 100) * 100) / 100 
-            : 0
+        // Standard dine-in / takeout order (no booking_id): no service charge.
+        // SC applies only to in-room food orders (booking_id is set above).
+        serviceCharge = 0
     }
 
     const tax = Math.round((subtotal - discountAmount + serviceCharge) * (taxRate / 100) * 100) / 100
