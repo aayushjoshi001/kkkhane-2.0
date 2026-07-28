@@ -491,9 +491,7 @@ export async function computeFolioForStays(
 
             let serviceCharge = 0
             if (roomScEnabled && roomId && roomScRooms.includes(roomId)) {
-                const base = isDirectRoomOrder
-                    ? subtotal
-                    : items.filter((it) => it.station === 'kitchen').reduce((s, it) => s + lineTotal(it), 0)
+                const base = items.filter((it) => it.station === 'kitchen').reduce((s, it) => s + lineTotal(it), 0)
                 serviceCharge = round2(base * 0.10)
             }
 

@@ -41,7 +41,12 @@ export default function CalendarToggle({ className }: { className?: string }) {
                                 : 'text-ink-subtle hover:text-ink',
                         )}
                     >
-                        {calendarLabel(option)}
+                        {/* The year makes the choice concrete, but "2083 BS / 2026 AD"
+                            is ~120px — too wide for the cashier header on a phone,
+                            which is where this control used to be dropped entirely.
+                            Narrow screens get the era alone so it always fits. */}
+                        <span className="hidden sm:inline">{calendarLabel(option)}</span>
+                        <span className="sm:hidden">{option.toUpperCase()}</span>
                     </button>
                 )
             })}

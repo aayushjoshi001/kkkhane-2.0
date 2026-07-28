@@ -11,6 +11,8 @@ import { useCurrency, useFeatureEnabled, useDateFormatter, useFeatures } from '@
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent, PenLine, Printer, Search } from 'lucide-react'
+import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent, PenLine, Printer, History, Utensils, QrCode } from 'lucide-react'
+import AdvancePaymentHistoryModal from '@/components/admin/AdvancePaymentHistoryModal'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import Button from '@/components/ui/Button'
 import { usePrinter } from '@/lib/print/usePrinter'
@@ -57,6 +59,9 @@ type BookingRoomRef = { id: string; rooms?: { id: string; room_number: string } 
 export type UnpaidOrder = {
     id: string
     status?: string
+    subtotal_amount?: number
+    service_charge_amount?: number
+    tax_amount?: number
     total_amount: number
     placed_at: string
     delivered_at: string | null
@@ -76,6 +81,9 @@ export type UnpaidOrder = {
 export type ActiveOrder = {
     id: string
     status: string
+    subtotal_amount?: number
+    service_charge_amount?: number
+    tax_amount?: number
     total_amount: number
     placed_at: string
     session_id: string | null
@@ -383,6 +391,7 @@ export default function CashierClient({
     const [bookings, setBookings] = useState<any[]>(initialBookings)
     const [billingSubTab, setBillingSubTab] = useState<'all' | 'rooms' | 'tables' | 'takeout' | 'delivery'>('rooms')
     const [selectedBillingRoom, setSelectedBillingRoom] = useState<any | null>(null)
+    const [advanceHistoryModalOpen, setAdvanceHistoryModalOpen] = useState(false)
     const [selectedBillingTable, setSelectedBillingTable] = useState<any | null>(null)
     const [selectedBillingOrder, setSelectedBillingOrder] = useState<UnpaidOrder | null>(null)
     const [activeInvoice, setActiveInvoice] = useState<any | null>(null)
@@ -1207,15 +1216,13 @@ export default function CashierClient({
             const table = item
             const sessionOrders = getTableSessionItems(table)
             const itemsSubtotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
-            // The authoritative, tax-inclusive total — /api/tables/checkout
-            // bills off the same orders.total_amount field, so the bargain
-            // rate must be calculated against this, not itemsSubtotal (which
-            // is pre-tax and would understate what's actually charged).
-            const subtotal = getTableSessionOrdersTotal(table)
+            const sessionOrdersList = [...active, ...unpaid].filter(o => o.session_id === table?.activeSession?.id && o.status !== 'cancelled')
+            const serviceCharge = sessionOrdersList.reduce((sum, o) => sum + (Number((o as any).service_charge_amount) || 0), 0)
+            const taxAmount = sessionOrdersList.reduce((sum, o) => sum + (Number((o as any).tax_amount) || 0), 0)
 
             // Food Discount: discount amount entered directly
             const discountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
-            const total = Math.max(0, subtotal - discountAmount)
+            const total = Math.max(0, itemsSubtotal + serviceCharge - discountAmount + taxAmount)
 
             const resolvedCash = billingPaymentMethod === 'cash' ? total
                 : billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0)
@@ -1239,6 +1246,9 @@ export default function CashierClient({
                 nights: 0,
                 basePrice: 0,
                 stayCost: 0,
+                subtotal: itemsSubtotal,
+                serviceCharge,
+                taxAmount,
                 qrOrders: sessionOrders,
                 qrOrdersTotal: itemsSubtotal,
                 manualCharges: [],
@@ -1696,7 +1706,7 @@ export default function CashierClient({
                 .single()
             // Previously silent — if this fetch fails (RLS, network, ...) the new
             // order just never shows up anywhere in Billing/Orders, with no sign why.
-            if (error) console.error('[Cashier orders realtime] INSERT fetch failed:', error)
+            if (error) console.error('[Cashier orders realtime] INSERT fetch failed:', error.message || error)
             if (data) {
                 // Guard against a duplicate/replayed INSERT event (reconnects,
                 // redelivery) adding the same order twice — React then throws
@@ -2674,11 +2684,43 @@ export default function CashierClient({
                                             </div>
                                         )}
 
-                                        {billingLinkedOrders.length > 0 && (
-                                            <div className="p-4 space-y-2">
-                                                <p className="font-extrabold text-xs text-indigo-650 font-semibold">Service Orders (QR + Dining)</p>
-                                                <div className="space-y-1.5 pl-3 border-l-2 border-indigo-100">
-                                                    {billingLinkedOrders.map((item) => (
+                                        {/* Separate Section: Restaurant Dining (Dine-In Table Orders) */}
+                                        {filteredLinkedOrders.length > 0 && (
+                                            <div className="p-4 space-y-2 border-t border-hairline bg-emerald-50/20">
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <p className="font-extrabold text-emerald-700 flex items-center gap-1.5 font-bold">
+                                                        <Utensils size={14} className="text-emerald-600" />
+                                                        Restaurant Dining (Dine-In Table Orders)
+                                                    </p>
+                                                    <span className="font-extrabold text-emerald-700 tabular-nums">
+                                                        {money(filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0))}
+                                                    </span>
+                                                </div>
+                                                <div className="space-y-1.5 pl-3 border-l-2 border-emerald-300">
+                                                    {filteredLinkedOrders.map((item) => (
+                                                        <div key={item.id} className="flex justify-between text-[10px] text-ink-muted">
+                                                            <span>{getItemDisplayName(item)} ({item.quantity}×)</span>
+                                                            <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Separate Section: In-Room QR & Room Service Orders */}
+                                        {filteredRoomOrders.length > 0 && (
+                                            <div className="p-4 space-y-2 border-t border-hairline bg-indigo-50/20">
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <p className="font-extrabold text-indigo-700 flex items-center gap-1.5 font-bold">
+                                                        <QrCode size={14} className="text-indigo-600" />
+                                                        In-Room QR & Room Service Orders
+                                                    </p>
+                                                    <span className="font-extrabold text-indigo-700 tabular-nums">
+                                                        {money(filteredRoomOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0))}
+                                                    </span>
+                                                </div>
+                                                <div className="space-y-1.5 pl-3 border-l-2 border-indigo-300">
+                                                    {filteredRoomOrders.map((item) => (
                                                         <div key={item.id} className="flex justify-between text-[10px] text-ink-muted">
                                                             <span>{getItemDisplayName(item)} ({item.quantity}×)</span>
                                                             <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
@@ -2874,13 +2916,18 @@ export default function CashierClient({
                                                     <span className="text-sm font-black text-ink-muted tabular-nums">{money(grandTotal)}</span>
                                                 </div>
                                                 {advancePaid > 0 && (
-                                                    <div className="flex items-center justify-between">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAdvanceHistoryModalOpen(true)}
+                                                        className="flex items-center justify-between w-full hover:underline cursor-pointer group transition-all"
+                                                    >
                                                         <span className="text-[10px] font-bold text-emerald-600 uppercase flex items-center gap-1">
                                                             <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                                                             Advance Paid ({advanceMethodLabel(billingStayBooking?.advance_payment_method)})
+                                                            <History className="w-3 h-3 inline ml-1 opacity-70 group-hover:opacity-100" />
                                                         </span>
                                                         <span className="text-sm font-black text-emerald-600 tabular-nums">− {money(advancePaid)}</span>
-                                                    </div>
+                                                    </button>
                                                 )}
                                                 <div className="flex items-center justify-between pt-1 border-t border-dashed border-hairline">
                                                     <div>
@@ -2984,24 +3031,56 @@ export default function CashierClient({
                                 // above which is pre-tax and would understate it.
                                 const itemsSubtotal = getTableSessionItems(selectedBillingTable).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
                                 const tableSubtotal = getTableSessionOrdersTotal(selectedBillingTable)
-                                const taxOrServiceAdjustment = tableSubtotal - itemsSubtotal
                                 const tableDiscountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
                                 const tableDiscountInvalid = tableDiscountAmount < 0 || tableDiscountAmount > tableSubtotal
+                                const finalCalculatedTotal = Math.max(0, tableSubtotal - tableDiscountAmount)
+
+                                const sessionOrders = [...active, ...unpaid].filter(o => o.session_id === selectedBillingTable?.activeSession?.id && o.status !== 'cancelled')
+                                const sessionSc = sessionOrders.reduce((sum, o) => sum + (Number(o.service_charge_amount) || 0), 0)
+                                const sessionTax = sessionOrders.reduce((sum, o) => sum + (Number(o.tax_amount) || 0), 0)
+                                const residualAdjustment = tableSubtotal - (itemsSubtotal + sessionSc + sessionTax)
 
                                 return (
                                     <div className="space-y-6">
-                                        {Math.abs(taxOrServiceAdjustment) > 0.01 && (
-                                            <div className="flex justify-between items-center px-1 text-xs">
-                                                <span className="text-ink-subtle font-semibold">Tax / Service charge</span>
-                                                <span className="font-bold text-ink-muted tabular-nums">{money(taxOrServiceAdjustment)}</span>
+                                        <div className="space-y-2 px-1 text-xs">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-ink-subtle font-semibold">Subtotal</span>
+                                                <span className="font-bold text-ink tabular-nums">{money(itemsSubtotal)}</span>
                                             </div>
-                                        )}
-                                        {tableDiscountAmount > 0 && (
-                                            <div className="flex justify-between items-center px-1 text-xs text-rose-600">
-                                                <span className="font-semibold">Food Discount</span>
-                                                <span className="font-extrabold tabular-nums">− {money(tableDiscountAmount)}</span>
+
+                                            {tableDiscountAmount > 0 && (
+                                                <div className="flex justify-between items-center text-rose-600">
+                                                    <span className="font-semibold">Discount</span>
+                                                    <span className="font-extrabold tabular-nums">− {money(tableDiscountAmount)}</span>
+                                                </div>
+                                            )}
+
+                                            {sessionSc > 0 && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-ink-subtle font-semibold">Service Charge</span>
+                                                    <span className="font-bold text-ink tabular-nums">{money(sessionSc)}</span>
+                                                </div>
+                                            )}
+
+                                            {sessionTax > 0 && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-ink-subtle font-semibold">Tax (VAT)</span>
+                                                    <span className="font-bold text-ink tabular-nums">{money(sessionTax)}</span>
+                                                </div>
+                                            )}
+
+                                            {Math.abs(residualAdjustment) > 0.01 && sessionSc === 0 && sessionTax === 0 && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-ink-subtle font-semibold">Tax / Service charge</span>
+                                                    <span className="font-bold text-ink tabular-nums">{money(residualAdjustment)}</span>
+                                                </div>
+                                            )}
+
+                                            <div className="flex justify-between items-center pt-2 border-t border-dashed border-hairline font-extrabold text-sm">
+                                                <span className="text-ink">Grand Total</span>
+                                                <span className="text-brand-600 tabular-nums text-base">{money(finalCalculatedTotal)}</span>
                                             </div>
-                                        )}
+                                        </div>
 
                                         {/* Food Discount */}
                                         <div className="border-2 border-amber-200 rounded-2xl p-4 space-y-3 bg-amber-50/60 shadow-sm">
@@ -3687,6 +3766,14 @@ export default function CashierClient({
                     onDone={dequeueTicketFallback}
                 />
             )}
+
+            <AdvancePaymentHistoryModal
+                isOpen={advanceHistoryModalOpen}
+                onClose={() => setAdvanceHistoryModalOpen(false)}
+                bookingId={billingStayBooking?.id || null}
+                guestName={billingStayBooking?.guest_name}
+                roomNumber={selectedBillingRoom?.room_number}
+            />
 
         </div>
     )

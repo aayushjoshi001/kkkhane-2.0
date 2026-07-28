@@ -62,9 +62,12 @@ function buildChannel(restaurantId: string, entry: RestaurantEntry): RealtimeCha
 
     channel.subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            // Log actual connection failures/timeouts.
-            // CLOSED is normal teardown when a component unmounts or unsubscribes.
-            console.error(`[restaurantChannel] restaurant-rt-${restaurantId} ${status}`, err)
+            const isHeartbeat = err?.message?.includes('heartbeat')
+            if (isHeartbeat) {
+                console.warn(`[restaurantChannel] restaurant-rt-${restaurantId} ${status}: heartbeat timeout, auto-reconnecting...`)
+            } else {
+                console.error(`[restaurantChannel] restaurant-rt-${restaurantId} ${status}`, err)
+            }
         }
         if (status === 'SUBSCRIBED') {
             // Channel connected or reconnected — fire all catch-up callbacks so

@@ -346,13 +346,12 @@ export async function linkSessionToBooking(sessionId: string, bookingId: string,
     const adminSupabase = await createAdminClient()
     const now = new Date().toISOString()
 
-    // 1. Update session: set booking_id AND close session so table is freed
+    // 1. Update session: set booking_id and keep status active so orders can be placed
     const { data: session, error } = await adminSupabase
         .from('sessions')
         .update({
             booking_id: bookingId,
-            status: 'closed',
-            closed_at: now,
+            status: 'active',
         })
         .eq('id', sessionId)
         .select('table_id')
@@ -451,7 +450,6 @@ export async function placeStaffOrder(
     let query = adminSupabase
         .from('sessions')
         .select('id, restaurant_id, status, table_id, booking_id')
-        .eq('status', 'active')
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)
     if (isUuid) {
@@ -465,6 +463,15 @@ export async function placeStaffOrder(
     if (sessionError || !session) {
         console.error('[placeStaffOrder] Session lookup failed:', sessionError, sessionId)
         return { error: 'Table session is invalid or closed.' }
+    }
+
+    // Ensure session status is active so place_order RPC succeeds
+    if (session.status !== 'active') {
+        await adminSupabase
+            .from('sessions')
+            .update({ status: 'active', closed_at: null })
+            .eq('id', session.id)
+        session.status = 'active'
     }
 
     // Split items into regular and outside items
@@ -635,6 +642,7 @@ export async function placeRoomOrderDirect(
 
     const orderId = orderRow.id
     let subtotal = 0
+    let foodSubtotal = 0
 
     // 3. Insert order items with needs_confirmation: true
     for (const item of items) {
@@ -642,6 +650,7 @@ export async function placeRoomOrderDirect(
         let menuItemId = item.menuItemId
         let specialRequest = item.specialRequest || null
         let variationId = null
+        let itemStation = 'kitchen'
 
         if (item.isOutsideFood) {
             const outsideFoodId = await getOrCreateOutsideFoodItem(adminSupabase, restaurantId)
@@ -651,13 +660,14 @@ export async function placeRoomOrderDirect(
         } else {
             const { data: menuItem } = await adminSupabase
                 .from('menu_items')
-                .select('id, price, is_available')
+                .select('id, price, is_available, station')
                 .eq('id', item.menuItemId)
                 .single()
 
             if (!menuItem?.id || menuItem.is_available === false) continue
             menuItemId = menuItem.id
             unitPrice = Number(menuItem.price ?? 0)
+            itemStation = menuItem.station || 'kitchen'
 
             if (item.variationId) {
                 const { data: variation } = await adminSupabase
@@ -717,6 +727,9 @@ export async function placeRoomOrderDirect(
         }
 
         subtotal += itemTotal
+        if (itemStation === 'kitchen') {
+            foodSubtotal += itemTotal
+        }
     }
 
     // 4. Calculate Taxes and Service Charge
@@ -733,8 +746,8 @@ export async function placeRoomOrderDirect(
     const roomScRooms = Array.isArray(featuresV2?.roomServiceChargeRooms) ? featuresV2.roomServiceChargeRooms : []
     const isRoomScApplicable = roomScEnabled && booking.room_id && roomScRooms.includes(booking.room_id)
 
-    // Direct room orders have a 10% service charge on all items, if enabled for this room
-    const serviceCharge = isRoomScApplicable ? (Math.round(subtotal * 0.10 * 100) / 100) : 0
+    // Direct room orders have a 10% service charge on food items only, if enabled for this room
+    const serviceCharge = isRoomScApplicable ? (Math.round(foodSubtotal * 0.10 * 100) / 100) : 0
 
     const tax = Math.round((subtotal + serviceCharge) * (taxRate / 100) * 100) / 100
     const total = Math.max(0, subtotal + serviceCharge + tax)
@@ -890,10 +903,11 @@ export async function recalculateAndUpdateOrderTotals(
         const isRoomScApplicable = roomScEnabled && orderRoomId && roomScRooms.includes(orderRoomId)
 
         if (!orderData.session_id) {
-            // Direct room order: 10% service charge on all items (if enabled for room)
+            // Direct room order: 10% service charge on food items only (if enabled for room)
             if (isRoomScApplicable) {
-                const netSubtotal = Math.max(0, subtotal - discountAmount)
-                serviceCharge = Math.round(netSubtotal * 0.10 * 100) / 100
+                const foodRatio = subtotal > 0 ? (foodSubtotal / subtotal) : 0
+                const discountedFoodSubtotal = Math.max(0, foodSubtotal - (discountAmount * foodRatio))
+                serviceCharge = Math.round(discountedFoodSubtotal * 0.10 * 100) / 100
             } else {
                 serviceCharge = 0
             }
@@ -915,10 +929,9 @@ export async function recalculateAndUpdateOrderTotals(
                     serviceCharge = 0
                 }
             } else {
-                // Dine-in order linked to room: standard service charge from settings
-                serviceCharge = scEnabled 
-                    ? Math.round((subtotal - discountAmount) * (scRate / 100) * 100) / 100 
-                    : 0
+                // Dine-in order merely linked/billed to a room stay: not a room
+                // order, so no service charge — matches folio.ts's live recompute.
+                serviceCharge = 0
             }
         }
     } else {

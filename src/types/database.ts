@@ -1034,6 +1034,20 @@ export interface BookingRoomStay {
     rooms?: Room | null
 }
 
+export interface BookingPayment {
+    id: string
+    restaurant_id: string
+    booking_id: string
+    amount: number
+    payment_method: string
+    cash_amount?: number
+    qr_amount?: number
+    note: string | null
+    created_at: string
+    created_by?: string | null
+}
+
+
 // ─── Day Book ───────────────────────────────────────────────
 export type DayBookSessionStatus = 'open' | 'closed'
 export type DayBookEntryType = 'cash_in' | 'cash_out' | 'bank_in' | 'bank_out'
