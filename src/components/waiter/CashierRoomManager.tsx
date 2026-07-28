@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { createClient } from '@/lib/supabase/client'
-import { Users, X, Check, Bed, ClipboardList, Loader2, CreditCard, RefreshCw, Calendar, FileText, Plus, Landmark, Utensils, ArrowLeftRight } from 'lucide-react'
+import { Users, X, Check, Bed, ClipboardList, Loader2, CreditCard, RefreshCw, Calendar, FileText, Plus, Landmark, Utensils, ArrowLeftRight, History } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCurrency, useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
@@ -21,6 +21,7 @@ import { getRoomStatusConfig } from '@/lib/roomStatus'
 import Select from '@/components/ui/Select'
 import { NepaliDateInput, NepaliDateTimeInput } from '@/components/ui/NepaliDateInput'
 import { useDates } from '@/lib/contexts/CalendarContext'
+import AdvancePaymentHistoryModal from '@/components/admin/AdvancePaymentHistoryModal'
 
 export interface RoomWithTypes {
     id: string
@@ -125,6 +126,7 @@ export default function CashierRoomManager({
         setGuestPicked(false)
         setAdvanceType('none')
         setAdvanceAmount('')
+        setAdvanceNote('')
         setAdvanceSplitCash('')
         setAdvanceSplitQr('')
     }
@@ -176,6 +178,7 @@ export default function CashierRoomManager({
 
     const [advanceType, setAdvanceType] = useState<'none' | 'full' | 'partial'>('none')
     const [advanceAmount, setAdvanceAmount] = useState<string>('')
+    const [advanceNote, setAdvanceNote] = useState<string>('')
     const [advancePayMethod, setAdvancePayMethod] = useState<'cash' | 'qr_digital' | 'split'>('cash')
     const [advanceSplitCash, setAdvanceSplitCash] = useState<string>('')
     const [advanceSplitQr, setAdvanceSplitQr] = useState<string>('')
@@ -184,11 +187,15 @@ export default function CashierRoomManager({
 
     const [addPaymentOpen, setAddPaymentOpen] = useState(false)
     const [addPaymentAmount, setAddPaymentAmount] = useState('')
+    const [addPaymentNote, setAddPaymentNote] = useState('')
     const [addPaymentMethod, setAddPaymentMethod] = useState<'cash' | 'qr_digital' | 'split'>('cash')
     const [addPaymentSplitCash, setAddPaymentSplitCash] = useState('')
     const [addPaymentSplitQr, setAddPaymentSplitQr] = useState('')
     const [addPaymentQrId, setAddPaymentQrId] = useState('')
     const [submittingPayment, setSubmittingPayment] = useState(false)
+
+    const [advanceHistoryOpen, setAdvanceHistoryOpen] = useState(false)
+
 
     const handleAddMidStayPayment = async () => {
         if (!activeBooking) return
@@ -218,7 +225,8 @@ export default function CashierRoomManager({
                     paymentMethod: addPaymentMethod,
                     cashAmount: addPaymentSplitCash,
                     qrAmount: addPaymentSplitQr,
-                    qrCodeId: addPaymentQrId || (qrCodes.length === 1 ? qrCodes[0].id : null)
+                    qrCodeId: addPaymentQrId || (qrCodes.length === 1 ? qrCodes[0].id : null),
+                    note: addPaymentNote
                 })
             })
 
@@ -678,6 +686,7 @@ export default function CashierRoomManager({
                     advance_qr_code_id: (irdSyncEnabled && resolvedAdvance > 0 && (advancePayMethod === 'qr_digital' || isSplit))
                         ? (advanceQrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined))
                         : undefined,
+                    advance_note: advanceNote,
                 }),
             })
             const data = await res.json()
@@ -1080,6 +1089,19 @@ export default function CashierRoomManager({
                                                                     Balance due at checkout: Rs. {Math.max(0, fullCost - (parseFloat(advanceAmount) || 0)).toLocaleString()}
                                                                 </p>
                                                             )}
+                                                        </div>
+                                                    )}
+
+                                                    {advanceType !== 'none' && (
+                                                        <div>
+                                                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Payment Note / Remarks</label>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="e.g. Advance, Dine in, Deposit..."
+                                                                value={advanceNote}
+                                                                onChange={e => setAdvanceNote(e.target.value)}
+                                                                className="w-full px-2.5 py-1.5 border border-hairline rounded-xl text-xs font-medium bg-surface focus:outline-none focus:border-brand-500"
+                                                            />
                                                         </div>
                                                     )}
 
@@ -1654,13 +1676,18 @@ export default function CashierRoomManager({
                                                     <span>Total Bill Amount:</span>
                                                     <span className="tabular-nums">{money(grandTotal)}</span>
                                                 </div>
-                                                <div className="flex justify-between text-emerald-600 font-bold">
-                                                    <span className="flex items-center gap-1">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                                        Advance Paid ({advanceMethodLabel(activeBooking?.advance_payment_method)}):
-                                                    </span>
-                                                    <span className="tabular-nums">- {money(advancePaid)}</span>
-                                                </div>
+                                                <button
+                                                     type="button"
+                                                     onClick={() => setAdvanceHistoryOpen(true)}
+                                                     className="flex justify-between text-emerald-600 font-bold hover:underline cursor-pointer text-left w-full transition-all group"
+                                                 >
+                                                     <span className="flex items-center gap-1">
+                                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                         Advance Paid ({advanceMethodLabel(activeBooking?.advance_payment_method)}):
+                                                         <History className="w-3.5 h-3.5 inline ml-1 opacity-70 group-hover:opacity-100" />
+                                                     </span>
+                                                     <span className="tabular-nums">- {money(advancePaid)}</span>
+                                                 </button>
                                             </div>
                                         )}
                                         <div className="flex justify-between items-center border-b border-dashed border-hairline pb-3 mb-1">
@@ -1744,11 +1771,23 @@ export default function CashierRoomManager({
                         </div>
 
                         <div className="p-6 space-y-4">
-                            {/* Current paid summary */}
-                            <div className="bg-emerald-50 border border-emerald-100 p-3.5 rounded-2xl flex justify-between items-center text-xs">
-                                <span className="font-bold text-emerald-800">Current Paid / Advance:</span>
-                                <span className="font-black text-emerald-700 tabular-nums">{money(Number(activeBooking.paid_amount || 0))}</span>
-                            </div>
+                            {/* Current paid & due summary */}
+                            {(() => {
+                                const currentAdvance = stayGroup ? stayGroup.advancePaid : (Number(activeBooking.paid_amount) || 0)
+                                const currentDue = Math.max(0, grandTotal - currentAdvance)
+                                return (
+                                    <div className="grid grid-cols-2 gap-2.5">
+                                        <div className="bg-emerald-50/80 border border-emerald-100 p-3 rounded-2xl flex flex-col justify-between text-xs">
+                                            <span className="font-bold text-emerald-800 text-[10px] uppercase tracking-wide">Advance Paid</span>
+                                            <span className="font-black text-emerald-700 text-base tabular-nums mt-0.5">{money(currentAdvance)}</span>
+                                        </div>
+                                        <div className="bg-amber-50/80 border border-amber-100 p-3 rounded-2xl flex flex-col justify-between text-xs">
+                                            <span className="font-bold text-amber-800 text-[10px] uppercase tracking-wide">Current Due Amount</span>
+                                            <span className="font-black text-amber-700 text-base tabular-nums mt-0.5">{money(currentDue)}</span>
+                                        </div>
+                                    </div>
+                                )
+                            })()}
 
                             {/* Payment Method Selector */}
                             <div className="space-y-1.5">
@@ -1880,6 +1919,18 @@ export default function CashierRoomManager({
                                     </select>
                                 </div>
                             )}
+
+                            {/* Payment Note / Remarks */}
+                            <div className="space-y-1">
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase">Payment Note / Remarks</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Dine in, Advance, Deposit..."
+                                    value={addPaymentNote}
+                                    onChange={e => setAddPaymentNote(e.target.value)}
+                                    className="w-full px-3 py-2 border border-hairline focus:border-brand-500 rounded-xl text-xs bg-white text-ink font-medium focus:outline-none"
+                                />
+                            </div>
                         </div>
 
                         <div className="p-4 border-t border-hairline bg-surface-muted/20 flex gap-2">
@@ -1930,6 +1981,14 @@ export default function CashierRoomManager({
                     />
                 )
             })()}
+
+            <AdvancePaymentHistoryModal
+                isOpen={advanceHistoryOpen}
+                onClose={() => setAdvanceHistoryOpen(false)}
+                bookingId={activeBooking?.id || null}
+                guestName={activeBooking?.guest_name}
+                roomNumber={selectedRoom?.room_number}
+            />
         </div>
     )
 }

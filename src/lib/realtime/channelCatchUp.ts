@@ -30,7 +30,12 @@ export function catchUpOnResubscribe(
 
     return (status, err) => {
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            console.error(`[realtime] ${label} ${status}`, err)
+            const isHeartbeat = err?.message?.includes('heartbeat')
+            if (isHeartbeat) {
+                console.warn(`[realtime] ${label} ${status}: heartbeat timeout, auto-reconnecting...`)
+            } else {
+                console.error(`[realtime] ${label} ${status}`, err)
+            }
             return
         }
         if (status !== 'SUBSCRIBED') return

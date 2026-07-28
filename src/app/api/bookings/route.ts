@@ -75,7 +75,7 @@ export async function POST(req: Request) {
             check_in, check_out,
             advance_amount, advance_payment_method,
             advance_cash_amount, advance_qr_amount,
-            advance_qr_code_id
+            advance_qr_code_id, advance_note
         } = body
 
         if (!guest_name || !guest_phone || !check_in || !check_out) {
@@ -307,6 +307,9 @@ export async function POST(req: Request) {
             .join(', ')
         const primaryBookingId = bookings[0].id
 
+        const noteText = advance_note && String(advance_note).trim() ? String(advance_note).trim() : 'Advance'
+        const customDesc = `Room Advance (${noteText}): ${guestName} (Room ${roomLabel})`
+
         if (isSplitAdvance) {
             if (splitCashAmount > 0) {
                 await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
@@ -315,7 +318,8 @@ export async function POST(req: Request) {
                     guestName,
                     amount: splitCashAmount,
                     paymentMethod: 'cash',
-                    isAdvance: true
+                    isAdvance: true,
+                    description: customDesc
                 })
             }
             if (splitQrAmount > 0) {
@@ -326,7 +330,8 @@ export async function POST(req: Request) {
                     amount: splitQrAmount,
                     paymentMethod: 'qr_digital',
                     isAdvance: true,
-                    qrCodeId: advance_qr_code_id || null
+                    qrCodeId: advance_qr_code_id || null,
+                    description: customDesc
                 })
             }
         } else if (paidAmount > 0) {
@@ -339,9 +344,24 @@ export async function POST(req: Request) {
                 amount: paidAmount,
                 paymentMethod: paymentMethodMapped,
                 isAdvance: true,
-                qrCodeId: paymentMethodMapped === 'qr_digital' ? (advance_qr_code_id || null) : null
+                qrCodeId: paymentMethodMapped === 'qr_digital' ? (advance_qr_code_id || null) : null,
+                description: customDesc
             })
         }
+
+        if (paidAmount > 0) {
+            await supabase.from('booking_payments').insert({
+                restaurant_id: currentUser.restaurantId,
+                booking_id: primaryBookingId,
+                amount: paidAmount,
+                payment_method: advMethod,
+                cash_amount: isSplitAdvance ? splitCashAmount : (advMethod === 'cash' ? paidAmount : 0),
+                qr_amount: isSplitAdvance ? splitQrAmount : (advMethod === 'qr_digital' ? paidAmount : 0),
+                note: noteText,
+                created_by: currentUser.id
+            })
+        }
+
 
         // `data` stays the single primary booking so existing callers that read
         // `data.id` keep working; group callers read `data.bookings`.
