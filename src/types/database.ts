@@ -1010,6 +1010,10 @@ export interface Booking {
     discount_applied_by: string | null
     discount_applied_at: string | null
     extra_hour_charge?: number
+    /** Service charge the cashier set at checkout, replacing what the folio
+     *  rules produce. Null means no override — recompute from the rules; 0
+     *  means the charge was deliberately waived. */
+    service_charge_override?: number | null
     rooms?: Room | null
 }
 
