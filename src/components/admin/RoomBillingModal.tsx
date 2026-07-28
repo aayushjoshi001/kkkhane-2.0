@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useSyncExternalStore, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Loader2, CheckCircle2, Percent, Clock, Printer, History, Utensils, QrCode, Bed } from 'lucide-react'
+import { X, Loader2, CheckCircle2, Percent, Clock, Printer, History, Utensils, QrCode, Bed, RotateCcw } from 'lucide-react'
 import AdvancePaymentHistoryModal from './AdvancePaymentHistoryModal'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
@@ -13,7 +13,8 @@ import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import { usePrinter } from '@/lib/print/usePrinter'
 import { usePrinterSettingsStore } from '@/lib/stores/printerSettings'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
-import { useFeatureEnabled, useFeatures, useDateFormatter } from '@/lib/contexts/FeatureContext'
+import { useFeatureEnabled, useDateFormatter, useFeatures } from '@/lib/contexts/FeatureContext'
+import { autoRoomServiceCharge, resolveRoomServiceCharge, roomServiceChargeApplies, ROOM_SERVICE_CHARGE_RATE } from '@/lib/roomServiceCharge'
 import Select from '@/components/ui/Select'
 import { useDates } from '@/lib/contexts/CalendarContext'
 
@@ -117,6 +118,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const [discountReason, setDiscountReason] = useState('')
     const [extraHourCharge, setExtraHourCharge] = useState('')
     const [applyRoomServiceCharge, setApplyRoomServiceCharge] = useState(true)
+    const [roomServiceChargeInput, setRoomServiceChargeInput] = useState('')
     const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qr_digital' | 'split' | 'credit'>('cash')
     const [historyModalOpen, setHistoryModalOpen] = useState(false)
     const [splitCashAmount, setSplitCashAmount] = useState('')
@@ -141,9 +143,6 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
     const features = useFeatures()
-    const roomScEnabled = features.roomServiceChargeEnabled === true
-    const roomScRooms = features.roomServiceChargeRooms ?? []
-    const roomScApplicable = roomScEnabled && roomScRooms.includes(room.id)
     const { formatDateTime, calendar } = useDates()
     const { print: printInvoice } = usePrinter('invoice')
     // True once the checkout API confirms the room is settled — printing
@@ -268,15 +267,21 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // What the guest owes for orders: every service order against the stay,
     // room service and linked dine-in tables alike, less the order discount.
     const effectiveOrdersTotal = Math.max(0, qrOrdersTotal - orderDiscountVal)
-    // The service charge is levied on room service alone, so it needs its own
-    // narrower base — dine-in tables are excluded from SC but still billed above.
-    const effectiveRoomOrdersTotal = Math.max(0, qrRoomServiceTotal - orderDiscountVal)
 
-    // Service Charge: 10% on room service order items only (excludes linked dining tables).
-    // SC is only applied when the feature is enabled AND this room is in roomServiceChargeRooms.
-    const roomServiceChargeAmount = roomScApplicable
-        ? Math.round(effectiveRoomOrdersTotal * 0.10 * 100) / 100
-        : 0
+    // Service charge on food items for direct room orders & room QR orders only
+    // (linked dining tables excluded). Gated on the same settings the server
+    // folio checks, so this can't quote a charge the settlement won't make.
+    const autoServiceCharge = useMemo(
+        () => autoRoomServiceCharge(allServiceOrderItems, features, room?.id),
+        [allServiceOrderItems, features, room?.id],
+    )
+    // A room the settings exempt still gets the field — the override is billed
+    // as a difference from the auto figure, which for these rooms is 0.
+    const serviceChargeIsAutomatic = roomServiceChargeApplies(features, room?.id)
+    const serviceCharge = resolveRoomServiceCharge(autoServiceCharge, roomServiceChargeInput)
+    const roomServiceChargeAmount = applyRoomServiceCharge ? serviceCharge.charged : 0
+    // A waive via the toggle is an override to zero as far as the API cares.
+    const serviceChargeOverrideValue = !applyRoomServiceCharge ? 0 : serviceCharge.isOverridden ? serviceCharge.charged : undefined
 
     const grandTotal = effectiveStayCost + effectiveOrdersTotal + manualChargesTotal + extraHourChargeVal + roomServiceChargeAmount
     // Advances were taken per room, so a reservation's advance is their sum.
@@ -430,6 +435,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                     customer_name: resolvedCredit > 0 ? creditCustomerName.trim() : undefined,
                     customer_phone: resolvedCredit > 0 ? creditCustomerPhone.trim() : undefined,
                     extra_hour_charge: extraHourChargeVal,
+                    service_charge_override: serviceChargeOverrideValue,
                 })
             })
             const data = await res.json()
@@ -650,31 +656,69 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         </div>
                                     )}
 
-                                    {/* Room Service Charge (10% Food Only) Toggle */}
+                                    {/* Room Service Charge — auto figure where the room carries
+                                        one, an empty field to add one by hand where it doesn't */}
                                     <div className="p-4 border-t border-hairline bg-surface-muted/20 space-y-2">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div>
-                                                <p className="text-xs font-extrabold text-ink">Room Service Charge (10% Food Only)</p>
-                                                <p className="text-[10px] text-ink-subtle">Applies to room QR & direct room food orders (excludes linked dining tables)</p>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="min-w-0">
+                                                    <p className="text-xs font-extrabold text-ink flex items-center gap-1.5">
+                                                        Room Service Charge
+                                                        {serviceCharge.isOverridden && applyRoomServiceCharge && (
+                                                            <span className="text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5">
+                                                                {serviceChargeIsAutomatic ? 'EDITED' : 'MANUAL'}
+                                                            </span>
+                                                        )}
+                                                    </p>
+                                                    <p className="text-[10px] text-ink-subtle">
+                                                        {serviceChargeIsAutomatic
+                                                            ? `${ROOM_SERVICE_CHARGE_RATE * 100}% on room QR & direct room food orders · auto ${money(autoServiceCharge)}`
+                                                            : 'Not charged automatically for this room — type an amount to add one'}
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setApplyRoomServiceCharge(!applyRoomServiceCharge)}
+                                                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
+                                                            applyRoomServiceCharge
+                                                                ? 'bg-brand-500 text-white shadow-sm'
+                                                                : 'bg-surface-muted text-ink-subtle border border-hairline hover:bg-surface-muted/80'
+                                                        }`}
+                                                    >
+                                                        {applyRoomServiceCharge ? 'ON' : 'OFF'}
+                                                    </button>
+                                                    {serviceCharge.isOverridden && applyRoomServiceCharge && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setRoomServiceChargeInput('')}
+                                                            title={serviceChargeIsAutomatic ? `Reset to the auto-calculated ${money(autoServiceCharge)}` : 'Clear the manual charge'}
+                                                            className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
+                                                        >
+                                                            <RotateCcw size={12} />
+                                                        </button>
+                                                    )}
+                                                    <div className="relative w-28">
+                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            disabled={!applyRoomServiceCharge}
+                                                            value={serviceCharge.isOverridden ? roomServiceChargeInput : (autoServiceCharge ? String(autoServiceCharge) : '')}
+                                                            placeholder={autoServiceCharge ? String(autoServiceCharge) : '0.00'}
+                                                            onChange={e => setRoomServiceChargeInput(e.target.value)}
+                                                            aria-label="Room service charge"
+                                                            className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-lg text-xs font-bold text-right tabular-nums bg-surface focus:outline-none focus:border-brand-500 disabled:opacity-50 disabled:bg-surface-muted"
+                                                        />
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setApplyRoomServiceCharge(!applyRoomServiceCharge)}
-                                                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all shrink-0 ${
-                                                    applyRoomServiceCharge
-                                                        ? 'bg-brand-500 text-white shadow-sm'
-                                                        : 'bg-surface-muted text-ink-subtle border border-hairline hover:bg-surface-muted/80'
-                                                }`}
-                                            >
-                                                {applyRoomServiceCharge ? 'ON (+10%)' : 'OFF'}
-                                            </button>
-                                        </div>
-                                        {applyRoomServiceCharge && roomServiceChargeAmount > 0 && (
-                                            <div className="flex justify-between items-center text-xs pt-1 font-extrabold text-brand-700">
-                                                <span>10% Room Food Service Charge</span>
-                                                <span className="tabular-nums">+{money(roomServiceChargeAmount)}</span>
-                                            </div>
-                                        )}
+                                            {applyRoomServiceCharge && roomServiceChargeAmount > 0 && (
+                                                <div className="flex justify-between items-center text-xs pt-1 font-extrabold text-brand-700">
+                                                    <span>Room Food Service Charge</span>
+                                                    <span className="tabular-nums">+{money(roomServiceChargeAmount)}</span>
+                                                </div>
+                                            )}
                                     </div>
                                 </div>
                             </div>
