@@ -78,7 +78,7 @@ export default async function RoomsPage() {
                 .select(`
                     id, status, total_amount, placed_at, session_id, order_type, customer_name, customer_phone, delivery_address, payment_status,
                     sessions ( id, tables ( label ) ),
-                    order_items ( id, quantity, status, unit_price, menu_items ( name ) )
+                    order_items ( id, quantity, status, unit_price, station, menu_items ( name, station ) )
                 `)
                 .in('restaurant_id', targetRestaurantIds)
                 // Every unpaid, non-cancelled order still owed on this room's bill -

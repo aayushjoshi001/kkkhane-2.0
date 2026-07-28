@@ -13,7 +13,7 @@ import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import { usePrinter } from '@/lib/print/usePrinter'
 import { usePrinterSettingsStore } from '@/lib/stores/printerSettings'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
-import { useFeatureEnabled, useDateFormatter } from '@/lib/contexts/FeatureContext'
+import { useFeatureEnabled, useFeatures, useDateFormatter } from '@/lib/contexts/FeatureContext'
 import Select from '@/components/ui/Select'
 import { useDates } from '@/lib/contexts/CalendarContext'
 
@@ -30,7 +30,8 @@ export interface BillingOrderItem {
     id: string
     quantity: number
     unit_price: number
-    menu_items?: { name: string } | null
+    station?: string | null
+    menu_items?: { name: string; station?: string | null } | null
 }
 
 /** Active order shape the admin room pages pass in. */
@@ -139,6 +140,10 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const printBillEnabled = useFeatureEnabled('printBillEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
+    const features = useFeatures()
+    const roomScEnabled = features.roomServiceChargeEnabled === true
+    const roomScRooms = features.roomServiceChargeRooms ?? []
+    const roomScApplicable = roomScEnabled && roomScRooms.includes(room.id)
     const { formatDateTime, calendar } = useDates()
     const { print: printInvoice } = usePrinter('invoice')
     // True once the checkout API confirms the room is settled — printing
@@ -260,15 +265,13 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
 
     const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost || orderDiscountVal < 0 || orderDiscountVal > qrOrdersTotal
     const effectiveStayCost = Math.max(0, stayCost - roomDiscountVal)
-    const effectiveOrdersTotal = Math.max(0, qrOrdersTotal - orderDiscountVal)
+    const effectiveRoomOrdersTotal = Math.max(0, qrRoomServiceTotal - orderDiscountVal)
 
-    // Service Charge (10% on food items for direct room orders & room QR orders only; excludes linked dining tables)
-    const roomFoodSubtotal = useMemo(() => {
-        const roomFoodItems = allServiceOrderItems.filter((it: any) => it.is_room_order && it.status !== 'cancelled' && (it.station === 'kitchen' || it.menu_items?.station === 'kitchen'))
-        return roomFoodItems.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
-    }, [allServiceOrderItems])
-
-    const roomServiceChargeAmount = applyRoomServiceCharge ? Math.round(roomFoodSubtotal * 0.10 * 100) / 100 : 0
+    // Service Charge: 10% on room service order items only (excludes linked dining tables).
+    // SC is only applied when the feature is enabled AND this room is in roomServiceChargeRooms.
+    const roomServiceChargeAmount = roomScApplicable
+        ? Math.round(effectiveRoomOrdersTotal * 0.10 * 100) / 100
+        : 0
 
     const grandTotal = effectiveStayCost + effectiveOrdersTotal + manualChargesTotal + extraHourChargeVal + roomServiceChargeAmount
     // Advances were taken per room, so a reservation's advance is their sum.
@@ -347,6 +350,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             : undefined,
         qrOrders: mergeLineItems(allServiceOrderItems),
         qrOrdersTotal,
+        serviceCharge: roomServiceChargeAmount || undefined,
         manualCharges: charges.map(c => ({ id: c.id, description: c.description, amount: Number(c.amount) })),
         manualChargesTotal,
         total: grandTotal,
