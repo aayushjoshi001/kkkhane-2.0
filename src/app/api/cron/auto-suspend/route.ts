@@ -63,3 +63,8 @@ export async function POST(request: NextRequest) {
         restaurants: expired.map(r => ({ id: r.id, name: r.name, expired: r.subscription_expires_at })),
     })
 }
+
+// Vercel Cron invokes its schedules with GET. The handler stays POST so a
+// manual run reads as the write it is, with GET aliased onto it — without this
+// every scheduled run answers 405 and the job silently never happens.
+export const GET = POST

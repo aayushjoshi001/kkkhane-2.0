@@ -55,3 +55,8 @@ export async function POST(request: NextRequest) {
         failures,
     })
 }
+
+// Vercel Cron invokes its schedules with GET. The handler stays POST so a
+// manual run reads as the write it is, with GET aliased onto it — without this
+// every scheduled run answers 405 and the job silently never happens.
+export const GET = POST

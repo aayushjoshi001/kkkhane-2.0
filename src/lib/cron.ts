@@ -8,7 +8,14 @@ type SupabaseAdminClient = Awaited<ReturnType<typeof createAdminClient>>
 export function verifyCronRequest(request: NextRequest): boolean {
     const authHeader = request.headers.get('authorization')
     const cronSecret = process.env.CRON_SECRET
-    return !!cronSecret && authHeader === `Bearer ${cronSecret}`
+    // An unset secret rejects every caller, which is the safe direction but an
+    // indistinguishable one: a misconfigured deploy and an intruder both just
+    // see 401, so the jobs stop running and nothing says why. Name that case.
+    if (!cronSecret) {
+        console.error('[cron] CRON_SECRET is not set — every scheduled job will 401 until it is')
+        return false
+    }
+    return authHeader === `Bearer ${cronSecret}`
 }
 
 // Restaurants eligible for automated cron work: active and not suspended.
