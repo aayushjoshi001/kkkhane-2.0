@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef } from 'react'
 import {
-    Plus, X, Search, Loader2, Trash2, Edit2, FileText, Phone, Users, Download, Printer, HandCoins, TrendingUp, TrendingDown, ShieldAlert, Eye, Receipt, CreditCard, CheckCircle2, ChevronDown, ChevronUp, Info
+    Plus, X, Search, Loader2, Trash2, Edit2, FileText, Phone, Users, Download, Printer, HandCoins, TrendingUp, TrendingDown, ShieldAlert, Eye, Receipt, CreditCard, CheckCircle2, ChevronDown, ChevronUp, Info, Percent
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import {
@@ -49,6 +49,7 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
     const [txnAmount, setTxnAmount] = useState('')
     const [txnDesc, setTxnDesc] = useState('')
     const [submittingTxn, setSubmittingTxn] = useState(false)
+    const [activeLinkedChargeId, setActiveLinkedChargeId] = useState<string | null>(null)
 
     // Detailed Bill / Order Breakdown Modal state
     const [selectedTxnDetails, setSelectedTxnDetails] = useState<ReceivableTransaction | null>(null)
@@ -236,6 +237,7 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                 type: txnType,
                 amount,
                 description: txnDesc.trim(),
+                linked_charge_id: activeLinkedChargeId || undefined,
                 breakdown: showBreakdownFields ? {
                     subtotal: bdSubtotal ? parseFloat(bdSubtotal) : undefined,
                     discount: bdDiscount ? parseFloat(bdDiscount) : undefined,
@@ -253,6 +255,7 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                 setTxnType('charge')
                 setTxnAmount('')
                 setTxnDesc('')
+                setActiveLinkedChargeId(null)
                 setShowBreakdownFields(false)
                 setBdSubtotal('')
                 setBdDiscount('')
@@ -349,6 +352,35 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
         return mapped
     }, [ledgerAccount, transactions])
 
+    const chargePaymentsMap = useMemo(() => {
+        const map = new Map<string, number>()
+        if (!customerLedgerEntries || customerLedgerEntries.length === 0) return map
+
+        const payments = customerLedgerEntries.filter(x => x.type === 'payment')
+        const charges = customerLedgerEntries.filter(x => x.type === 'charge')
+
+        for (const p of payments) {
+            let pMeta: any = null
+            try {
+                if (p.description?.startsWith('{')) pMeta = JSON.parse(p.description)
+            } catch {}
+
+            const linkedId = pMeta?.linked_charge_id
+            if (linkedId) {
+                map.set(linkedId, (map.get(linkedId) || 0) + Number(p.amount || 0))
+            } else {
+                const pDescClean = getCleanDescription(p.description).toLowerCase().replace('payment for ', '').trim()
+                if (pDescClean) {
+                    const matchCharge = charges.find(c => getCleanDescription(c.description).toLowerCase().trim() === pDescClean)
+                    if (matchCharge) {
+                        map.set(matchCharge.id, (map.get(matchCharge.id) || 0) + Number(p.amount || 0))
+                    }
+                }
+            }
+        }
+        return map
+    }, [customerLedgerEntries])
+
     const totalCharged = useMemo(() => customerLedgerEntries.reduce((sum, t) => sum + (t.type === 'charge' ? t.amount : 0), 0), [customerLedgerEntries])
     const totalCollected = useMemo(() => customerLedgerEntries.reduce((sum, t) => sum + (t.type === 'payment' ? t.amount : 0), 0), [customerLedgerEntries])
     const outstandingBalance = useMemo(() => customerLedgerEntries[customerLedgerEntries.length - 1]?.runningBalance ?? 0, [customerLedgerEntries])
@@ -362,14 +394,23 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
         { key: 'paid', label: 'Paid', align: 'right' as const },
         { key: 'running_balance', label: 'Running Balance', align: 'right' as const },
     ]
-    const reportRows = customerLedgerEntries.map(t => ({
-        date: formatDate(t.created_at),
-        type: t.type === 'charge' ? 'Charge' : 'Payment Collected',
-        description: t.description,
-        due: t.type === 'charge' ? formatCurrency(t.amount) : '',
-        paid: t.type === 'payment' ? formatCurrency(t.amount) : '',
-        running_balance: formatCurrency(t.runningBalance),
-    }))
+    const reportRows = customerLedgerEntries.map(t => {
+        const cleanDesc = getCleanDescription(t.description)
+        let descText = cleanDesc
+        if (t.type === 'charge') {
+            const paidForBill = chargePaymentsMap.get(t.id) || 0
+            const leftForBill = Math.max(0, t.amount - paidForBill)
+            descText = `${cleanDesc} [Left: ${formatCurrency(leftForBill)}]`
+        }
+        return {
+            date: formatDate(t.created_at),
+            type: t.type === 'charge' ? 'Charge' : 'Payment Collected',
+            description: descText,
+            due: t.type === 'charge' ? formatCurrency(t.amount) : '',
+            paid: t.type === 'payment' ? formatCurrency(t.amount) : '',
+            running_balance: formatCurrency(t.runningBalance),
+        }
+    })
     const existingObTxn = useMemo(() => {
         return customerLedgerEntries.find(t => t.description.toLowerCase().startsWith('opening balance'))
     }, [customerLedgerEntries])
@@ -562,13 +603,13 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
 
             {/* ── CUSTOMER LEDGER STATEMENT MODAL ── */}
             {ledgerAccount && (
-                <div className="fixed inset-0 z-40 bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-2xl border border-hairline shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
-                        <div className="px-6 py-4 border-b border-hairline bg-surface-muted/50 flex flex-wrap items-center justify-between gap-3">
+                <div className="fixed inset-0 z-40 bg-ink/50 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+                    <div className="bg-surface rounded-2xl border border-hairline shadow-2xl max-w-[96vw] 2xl:max-w-7xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+                        <div className="px-6 py-4.5 border-b border-hairline bg-surface-muted/50 flex flex-wrap items-center justify-between gap-3">
                             <div className="min-w-0 pr-2">
-                                <span className="text-[9px] font-black uppercase text-brand-600 tracking-wider block">Customer Account Statement</span>
-                                <h2 className="text-lg sm:text-xl font-extrabold text-ink mt-0.5 truncate">{ledgerAccount.customer_name}</h2>
-                                <p className="text-xs text-ink-subtle mt-0.5 truncate">
+                                <span className="text-[10px] font-black uppercase text-brand-600 tracking-wider block">Customer Account Statement</span>
+                                <h2 className="text-xl sm:text-2xl font-extrabold text-ink mt-0.5 truncate">{ledgerAccount.customer_name}</h2>
+                                <p className="text-xs sm:text-sm text-ink-subtle mt-0.5 truncate font-semibold">
                                     {[ledgerAccount.customer_phone && `Phone: ${ledgerAccount.customer_phone}`, `Credit Limit: ${formatCurrency(ledgerAccount.credit_limit)}`].filter(Boolean).join(' | ')}
                                 </p>
                             </div>
@@ -577,25 +618,25 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                                     <div className="flex items-center gap-1.5 shrink-0">
                                         <button
                                             onClick={handleExportCsv}
-                                            className="flex items-center gap-1 px-2.5 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[11px] border border-hairline transition-all whitespace-nowrap"
+                                            className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-xs border border-hairline transition-all whitespace-nowrap"
                                         >
                                             <Download size={13} /> CSV
                                         </button>
                                         <button
                                             onClick={handleExportExcel}
-                                            className="flex items-center gap-1 px-2.5 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[11px] border border-hairline transition-all whitespace-nowrap"
+                                            className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-xs border border-hairline transition-all whitespace-nowrap"
                                         >
                                             <Download size={13} /> Excel
                                         </button>
                                         <button
                                             onClick={handleExportPdf}
-                                            className="flex items-center gap-1 px-2.5 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[11px] border border-hairline transition-all whitespace-nowrap"
+                                            className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-xs border border-hairline transition-all whitespace-nowrap"
                                         >
                                             <Download size={13} /> PDF
                                         </button>
                                         <button
                                             onClick={() => printRef.current?.print()}
-                                            className="flex items-center gap-1 px-2.5 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[11px] border border-hairline transition-all whitespace-nowrap"
+                                            className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-xs border border-hairline transition-all whitespace-nowrap"
                                         >
                                             <Printer size={13} /> Print
                                         </button>
@@ -604,7 +645,7 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                                 {existingObTxn ? (
                                     <button
                                         onClick={() => handleOpenEditCustomerOb(existingObTxn.amount)}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold border border-amber-200 rounded-xl text-[11px] transition-all whitespace-nowrap"
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold border border-amber-200 rounded-xl text-xs transition-all whitespace-nowrap"
                                         title="Edit Opening Balance (requires reason)"
                                     >
                                         <Edit2 size={13} /> Edit Opening Balance ({formatCurrency(existingObTxn.amount)})
@@ -612,16 +653,16 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                                 ) : (
                                     <button
                                         onClick={handleOpenAddCustomerOb}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold border border-emerald-200 rounded-xl text-[11px] transition-all whitespace-nowrap"
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold border border-emerald-200 rounded-xl text-xs transition-all whitespace-nowrap"
                                     >
                                         <Plus size={13} /> Add Opening Balance
                                     </button>
                                 )}
                                 <button
                                     onClick={() => setTxnModalOpen(true)}
-                                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-brand-500 hover:bg-brand-600 text-white font-extrabold rounded-xl text-[11px] shadow-sm transition-colors whitespace-nowrap"
+                                    className="flex items-center gap-1.5 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white font-extrabold rounded-xl text-xs shadow-sm transition-colors whitespace-nowrap"
                                 >
-                                    <Plus size={13} /> Record Transaction
+                                    <Plus size={14} /> Record Transaction
                                 </button>
                                 <button
                                     onClick={() => setLedgerAccount(null)}
@@ -634,16 +675,16 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
 
                         <div className="grid grid-cols-3 border-b border-hairline divide-x divide-hairline bg-surface">
                             <div className="p-4 text-center">
-                                <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Total Charged</p>
-                                <p className="text-lg font-black text-ink mt-1">{formatCurrency(totalCharged)}</p>
+                                <p className="text-xs font-bold text-ink-subtle uppercase tracking-wider">Total Charged</p>
+                                <p className="text-xl font-black text-ink mt-1">{formatCurrency(totalCharged)}</p>
                             </div>
                             <div className="p-4 text-center">
-                                <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Total Collected</p>
-                                <p className="text-lg font-black text-emerald-600 mt-1">{formatCurrency(totalCollected)}</p>
+                                <p className="text-xs font-bold text-ink-subtle uppercase tracking-wider">Total Collected</p>
+                                <p className="text-xl font-black text-emerald-600 mt-1">{formatCurrency(totalCollected)}</p>
                             </div>
                             <div className="p-4 text-center">
-                                <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Outstanding Balance</p>
-                                <p className="text-lg font-black text-rose-600 mt-1">{formatCurrency(outstandingBalance)}</p>
+                                <p className="text-xs font-bold text-ink-subtle uppercase tracking-wider">Outstanding Balance</p>
+                                <p className="text-xl font-black text-rose-600 mt-1">{formatCurrency(outstandingBalance)}</p>
                             </div>
                         </div>
 
@@ -658,16 +699,16 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                                 </div>
                             ) : (
                                 <div className="bg-surface border border-hairline rounded-xl overflow-hidden shadow-sm">
-                                    <table className="w-full text-left text-xs border-collapse">
+                                    <table className="w-full text-left text-xs sm:text-sm border-collapse">
                                         <thead>
                                             <tr className="bg-surface-muted border-b border-hairline text-ink-subtle">
-                                                <th className="px-4 py-3 font-bold">Date</th>
-                                                <th className="px-4 py-3 font-bold text-center w-32">Type</th>
-                                                <th className="px-4 py-3 font-bold">Description</th>
-                                                <th className="px-4 py-3 font-bold text-right w-28 text-rose-500">Due</th>
-                                                <th className="px-4 py-3 font-bold text-right w-28 text-emerald-600">Paid</th>
-                                                <th className="px-4 py-3 font-bold text-right w-32 bg-surface-muted/50">Running Balance</th>
-                                                <th className="px-4 py-3 font-bold text-center w-14"></th>
+                                                <th className="px-5 py-3.5 font-extrabold">Date</th>
+                                                <th className="px-5 py-3.5 font-extrabold text-center w-36">Type</th>
+                                                <th className="px-5 py-3.5 font-extrabold">Description</th>
+                                                <th className="px-5 py-3.5 font-extrabold text-right w-32 text-rose-500">Due</th>
+                                                <th className="px-5 py-3.5 font-extrabold text-right w-32 text-emerald-600">Paid</th>
+                                                <th className="px-5 py-3.5 font-extrabold text-right w-36 bg-surface-muted/50">Running Balance</th>
+                                                <th className="px-5 py-3.5 font-extrabold text-center w-14"></th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-hairline">
@@ -680,15 +721,29 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-3 font-bold text-ink max-w-xs sm:max-w-sm md:max-w-md break-words whitespace-normal">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => openTxnDetailsModal(t)}
-                                                            className="text-left font-bold text-brand-600 hover:text-brand-700 hover:underline inline-flex items-start gap-1.5 leading-snug break-words max-w-full focus:outline-none transition-colors"
-                                                            title="Click to view full Order / Bill History details (Discounts, Service Charges, Tax, Cash/QR split)"
-                                                        >
-                                                            <Eye size={13} className="text-brand-500 shrink-0 mt-0.5" />
-                                                            <span className="break-words">{getCleanDescription(t.description)}</span>
-                                                        </button>
+                                                        <div className="space-y-1">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => openTxnDetailsModal(t)}
+                                                                className="text-left font-bold text-brand-600 hover:text-brand-700 hover:underline inline-flex items-start gap-1.5 leading-snug break-words max-w-full focus:outline-none transition-colors"
+                                                                title="Click to view full Order / Bill History details (Discounts, Service Charges, Tax, Cash/QR split)"
+                                                            >
+                                                                <Eye size={13} className="text-brand-500 shrink-0 mt-0.5" />
+                                                                <span className="break-words">{getCleanDescription(t.description)}</span>
+                                                            </button>
+
+                                                            {t.type === 'charge' && (() => {
+                                                                const paidForBill = chargePaymentsMap.get(t.id) || 0
+                                                                const leftForBill = Math.max(0, t.amount - paidForBill)
+                                                                return (
+                                                                    <div className="pt-0.5">
+                                                                        <span className="inline-flex items-center gap-1 text-[11px] font-black text-rose-900 bg-rose-100/90 px-2 py-0.5 rounded-md border border-rose-300 shadow-2xs">
+                                                                            Left: {formatCurrency(leftForBill)}
+                                                                        </span>
+                                                                    </div>
+                                                                )
+                                                            })()}
+                                                        </div>
                                                     </td>
                                                     <td className="px-4 py-3 text-right font-black text-rose-600">
                                                         {t.type === 'charge' ? formatCurrency(t.amount) : <span className="text-ink-subtle">—</span>}
@@ -986,13 +1041,24 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                                     ? txnDetailData.finalItems
                                     : (txnDetailData?.orderItems || [])
 
-                                const subtotal = order?.subtotal_amount ?? meta.subtotal ?? selectedTxnDetails.amount
-                                const discount = order?.discount_amount ?? meta.discount ?? 0
-                                const serviceCharge = order?.service_charge_amount ?? meta.service_charge ?? 0
-                                const tax = order?.tax_amount ?? meta.tax ?? 0
-                                const grandTotal = order?.total_amount ?? meta.grand_total ?? selectedTxnDetails.amount
+                                const subtotal = Number(order?.subtotal_amount ?? meta.subtotal ?? selectedTxnDetails.amount)
+                                const discount = Number(order?.discount_amount ?? meta.discount ?? 0)
+                                const roomDiscount = Number(meta.room_discount ?? (meta.food_discount ? Math.max(0, discount - meta.food_discount) : discount))
+                                const foodDiscount = Number(meta.food_discount ?? 0)
+                                const advancePaid = Number(meta.advance_paid ?? 0)
+                                const advanceNotes = meta.advance_notes || booking?.advance_note || ''
+                                const serviceCharge = Number(order?.service_charge_amount ?? meta.service_charge ?? 0)
+                                const tax = Number(order?.tax_amount ?? meta.tax ?? 0)
+                                const grandTotal = Number(order?.total_amount ?? meta.grand_total ?? Math.max(0, subtotal - discount))
                                 const paidAmount = meta.paid_amount ?? (selectedTxnDetails.type === 'payment' ? selectedTxnDetails.amount : 0)
                                 const payMethod = order?.payment_method || meta.payment_method || (selectedTxnDetails.type === 'payment' ? 'cash' : 'credit')
+
+                                const stayCost = Number(meta.stay_cost ?? 0)
+                                const foodCost = Number(meta.food_cost ?? 0)
+                                const billPaymentsCollected = Number(meta.payments_collected_for_bill ?? 0)
+                                const billPaymentHistory = (meta.bill_payment_history as Array<any>) || []
+                                const netBilled = Number(selectedTxnDetails.amount)
+                                const remainingBillDue = Number(meta.remaining_bill_due ?? Math.max(0, netBilled - billPaymentsCollected))
 
                                 return (
                                     <div className="space-y-5">
@@ -1001,89 +1067,158 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                                             <div className="p-3 bg-surface-muted/50 border border-hairline rounded-xl min-w-0 overflow-hidden flex flex-col justify-between">
                                                 <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Transaction Type</span>
                                                 <div className="mt-1">
-                                                    <span className={`inline-flex text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
-                                                        selectedTxnDetails.type === 'charge' ? 'bg-orange-50 text-orange-700 border border-orange-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                    }`}>
-                                                        {selectedTxnDetails.type === 'charge' ? 'Charge (Bill)' : 'Payment Collection'}
+                                                    <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-black uppercase ${selectedTxnDetails.type === 'charge' ? 'bg-orange-50 text-orange-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                                                        {selectedTxnDetails.type === 'charge' ? 'Charge' : 'Payment'}
                                                     </span>
                                                 </div>
                                             </div>
-
                                             <div className="p-3 bg-surface-muted/50 border border-hairline rounded-xl min-w-0 overflow-hidden flex flex-col justify-between">
-                                                <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Posted Date</span>
-                                                <div className="mt-1 min-w-0 overflow-hidden">
-                                                    <DateCell value={selectedTxnDetails.created_at} className="text-xs font-bold leading-tight block text-ink overflow-hidden" />
-                                                </div>
+                                                <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Date & Time</span>
+                                                <p className="text-xs font-bold text-ink mt-1 truncate">{new Date(selectedTxnDetails.created_at).toLocaleString()}</p>
                                             </div>
-
                                             <div className="p-3 bg-surface-muted/50 border border-hairline rounded-xl min-w-0 overflow-hidden flex flex-col justify-between">
-                                                <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Payment Mode</span>
-                                                <span className="text-xs font-extrabold text-ink uppercase block mt-1 truncate">
-                                                    {payMethod === 'qr' ? 'QR Code (Digital)' : payMethod === 'cash' ? 'Cash Payment' : payMethod === 'card' ? 'Card Payment' : payMethod}
-                                                </span>
+                                                <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Transaction Amount</span>
+                                                <p className="text-sm font-black text-rose-600 mt-1 truncate">{formatCurrency(selectedTxnDetails.amount)}</p>
                                             </div>
-
                                             <div className="p-3 bg-surface-muted/50 border border-hairline rounded-xl min-w-0 overflow-hidden flex flex-col justify-between">
-                                                <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Ledger Amount</span>
-                                                <span className="text-xs font-black text-brand-600 block mt-1 truncate">
-                                                    {formatCurrency(selectedTxnDetails.amount)}
-                                                </span>
+                                                <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Payment Status</span>
+                                                <p className="text-xs font-bold text-ink mt-1 truncate">
+                                                    {remainingBillDue === 0 ? (
+                                                        <span className="text-emerald-600 font-extrabold flex items-center gap-1"><CheckCircle2 size={12} /> Fully Settled</span>
+                                                    ) : billPaymentsCollected > 0 ? (
+                                                        <span className="text-amber-600 font-extrabold">Partially Paid</span>
+                                                    ) : (
+                                                        <span className="text-rose-600 font-extrabold">Unpaid Credit</span>
+                                                    )}
+                                                </p>
                                             </div>
                                         </div>
 
-                                        {/* Order & Service Itemization (Room, Food, Services) */}
-                                        {items.length > 0 && (
+                                        {/* Description Header */}
+                                        <div className="p-4 bg-surface-muted/30 border border-hairline rounded-xl">
+                                            <span className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider block mb-1">Description</span>
+                                            <p className="text-sm font-extrabold text-ink leading-relaxed break-words">
+                                                {getCleanDescription(selectedTxnDetails.description)}
+                                            </p>
+                                        </div>
+
+                                        {/* Itemized Order & Stay Bill Breakdown Table */}
+                                        <div>
+                                            <h4 className="text-xs font-extrabold text-ink uppercase tracking-wider mb-2 flex items-center justify-between">
+                                                <span>Itemized Bill Items</span>
+                                                <span className="text-[10px] font-bold text-ink-subtle">{items.length} Line Item(s)</span>
+                                            </h4>
                                             <div className="border border-hairline rounded-xl overflow-hidden">
-                                                <div className="px-4 py-2.5 bg-surface-muted border-b border-hairline flex items-center justify-between">
-                                                    <span className="text-xs font-extrabold text-ink flex items-center gap-1.5">
-                                                        <FileText size={14} className="text-brand-500" /> Itemized Bill Breakdown (Room, Food & Services)
-                                                    </span>
-                                                    <span className="text-[10px] font-bold text-ink-subtle">
-                                                        {booking ? `Booking #${booking.id.slice(0, 8)}` : order ? `Order #${order.id.slice(0, 8)}` : `${items.length} Item(s)`}
-                                                    </span>
-                                                </div>
-                                                <table className="w-full text-left text-xs">
+                                                <table className="w-full text-left text-xs border-collapse">
                                                     <thead>
-                                                        <tr className="bg-surface-muted/30 border-b border-hairline text-ink-subtle font-bold">
-                                                            <th className="px-4 py-2">Item Description</th>
-                                                            <th className="px-4 py-2 text-center w-16">Qty</th>
-                                                            <th className="px-4 py-2 text-right w-24">Rate</th>
-                                                            <th className="px-4 py-2 text-right w-28">Total</th>
+                                                        <tr className="bg-surface-muted border-b border-hairline text-ink-subtle">
+                                                            <th className="px-4 py-2.5 font-bold">Item / Service Description</th>
+                                                            <th className="px-4 py-2.5 font-bold text-center w-20">Qty</th>
+                                                            <th className="px-4 py-2.5 font-bold text-right w-28">Rate</th>
+                                                            <th className="px-4 py-2.5 font-bold text-right w-28">Amount</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-hairline">
-                                                        {items.map((it: any, index: number) => (
-                                                            <tr key={it.id || index} className="hover:bg-surface-muted/30">
-                                                                <td className="px-4 py-2.5 font-semibold text-ink">
-                                                                    {it.name || it.menu_items?.name || it.item_name || 'Bill Item'}
-                                                                </td>
-                                                                <td className="px-4 py-2.5 text-center font-bold text-ink">{it.quantity}</td>
-                                                                <td className="px-4 py-2.5 text-right font-medium text-ink-subtle">{formatCurrency(it.unit_price)}</td>
-                                                                <td className="px-4 py-2.5 text-right font-extrabold text-ink">{formatCurrency(it.quantity * it.unit_price)}</td>
-                                                            </tr>
-                                                        ))}
+                                                        {items.map((it: any, idx: number) => {
+                                                            const qty = Number(it.quantity || 1)
+                                                            const price = Number(it.unit_price || it.rate || 0)
+                                                            const lineTotal = qty * price
+                                                            return (
+                                                                <tr key={idx} className="hover:bg-surface-muted/30">
+                                                                    <td className="px-4 py-2.5 font-bold text-ink">{it.name || it.item_name || 'Bill Item'}</td>
+                                                                    <td className="px-4 py-2.5 text-center font-bold text-ink-subtle">{qty}</td>
+                                                                    <td className="px-4 py-2.5 text-right font-medium text-ink-subtle">{formatCurrency(price)}</td>
+                                                                    <td className="px-4 py-2.5 text-right font-extrabold text-ink">{formatCurrency(lineTotal)}</td>
+                                                                </tr>
+                                                            )
+                                                        })}
                                                     </tbody>
                                                 </table>
                                             </div>
-                                        )}
+                                        </div>
 
-                                        {/* Financial Bill Summary Card (Fair Audit) */}
-                                        <div className="bg-surface border border-hairline rounded-xl p-4 space-y-3 shadow-sm">
-                                            <div className="border-b border-hairline pb-2 flex items-center justify-between">
-                                                <span className="text-xs font-black uppercase text-ink tracking-wider">Bill Calculation Breakdown</span>
-                                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Fair Transaction Verified</span>
-                                            </div>
-
+                                        {/* Bill Calculation Breakdown */}
+                                        <div className="bg-surface-muted/30 border border-hairline rounded-xl p-4 space-y-3">
+                                            <h4 className="text-xs font-extrabold text-ink uppercase tracking-wider border-b border-hairline pb-2">
+                                                Bill Calculation Breakdown
+                                            </h4>
                                             <div className="space-y-2 text-xs">
-                                                <div className="flex items-center justify-between text-ink-subtle font-semibold">
-                                                    <span>Subtotal Amount</span>
+                                                {stayCost > 0 && (
+                                                    <div className="flex items-center justify-between text-ink-subtle font-medium">
+                                                        <span>Room Lodging Charge</span>
+                                                        <span className="font-bold text-ink">{formatCurrency(stayCost)}</span>
+                                                    </div>
+                                                )}
+
+                                                {foodCost > 0 && (
+                                                    <div className="flex items-center justify-between text-ink-subtle font-medium">
+                                                        <span>Food & Beverage Orders</span>
+                                                        <span className="font-bold text-ink">{formatCurrency(foodCost)}</span>
+                                                    </div>
+                                                )}
+
+                                                <div className="flex items-center justify-between text-ink-subtle font-semibold border-t border-hairline/60 pt-1.5">
+                                                    <span>Subtotal Amount (Whole Bill)</span>
                                                     <span className="font-bold text-ink">{formatCurrency(subtotal)}</span>
                                                 </div>
 
-                                                {discount > 0 && (
-                                                    <div className="flex items-center justify-between text-emerald-700 font-bold bg-emerald-50/60 px-2 py-1 rounded border border-emerald-100">
-                                                        <span>Discount Given (-)</span>
-                                                        <span>- {formatCurrency(discount)}</span>
+                                                {/* Itemized Room Stay Discount */}
+                                                {roomDiscount > 0 && (
+                                                    <div className="flex flex-col gap-0.5 text-amber-800 font-bold bg-amber-50/80 p-2.5 rounded-xl border border-amber-200">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider">
+                                                                <Percent size={13} className="text-amber-600" />
+                                                                Room Stay Discount (-)
+                                                            </span>
+                                                            <span className="text-xs font-black text-rose-600">- {formatCurrency(roomDiscount)}</span>
+                                                        </div>
+                                                        {(booking?.discount_reason || meta.discount_reason) && (
+                                                            <p className="text-[10px] text-amber-700/80 font-semibold italic mt-0.5">
+                                                                Reason: {booking?.discount_reason || meta.discount_reason}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Itemized Food & Beverage Discount */}
+                                                {foodDiscount > 0 && (
+                                                    <div className="flex flex-col gap-0.5 text-orange-800 font-bold bg-orange-50/80 p-2.5 rounded-xl border border-orange-200">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider">
+                                                                <Percent size={13} className="text-orange-600" />
+                                                                Food & Beverage Discount (-)
+                                                            </span>
+                                                            <span className="text-xs font-black text-rose-600">- {formatCurrency(foodDiscount)}</span>
+                                                        </div>
+                                                        {(booking?.discount_reason || meta.discount_reason) && (
+                                                            <p className="text-[10px] text-orange-700/80 font-semibold italic mt-0.5">
+                                                                Reason: {booking?.discount_reason || meta.discount_reason}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {roomDiscount === 0 && foodDiscount === 0 && discount === 0 && (
+                                                    <div className="flex items-center justify-between text-ink-subtle text-[11px] font-semibold bg-surface-muted/30 px-2.5 py-1.5 rounded-lg border border-hairline">
+                                                        <span>Discount Status:</span>
+                                                        <span className="font-bold text-ink-muted">No Discount Applied (Rs. 0.00)</span>
+                                                    </div>
+                                                )}
+
+                                                {advancePaid > 0 && (
+                                                    <div className="flex flex-col gap-0.5 text-emerald-800 font-bold bg-emerald-50/80 p-2.5 rounded-xl border border-emerald-200">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider">
+                                                                <HandCoins size={13} className="text-emerald-600" />
+                                                                Advance Paid (-)
+                                                            </span>
+                                                            <span className="text-xs font-black text-emerald-700">- {formatCurrency(advancePaid)}</span>
+                                                        </div>
+                                                        {advanceNotes && (
+                                                            <p className="text-[10px] text-emerald-700/80 font-semibold italic mt-0.5">
+                                                                Note: {advanceNotes}
+                                                            </p>
+                                                        )}
                                                     </div>
                                                 )}
 
@@ -1106,15 +1241,69 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                                                     <span className="text-base font-black text-brand-600">{formatCurrency(grandTotal)}</span>
                                                 </div>
 
-                                                <div className="flex items-center justify-between text-xs font-extrabold text-emerald-600 pt-1">
-                                                    <span>Paid Amount ({payMethod === 'qr' ? 'QR Code' : payMethod === 'cash' ? 'Cash' : payMethod})</span>
-                                                    <span>{formatCurrency(paidAmount)}</span>
+                                                <div className="flex items-center justify-between text-xs font-extrabold text-rose-600 border-t border-dashed border-hairline pt-2">
+                                                    <span>Original Net Credit Billed</span>
+                                                    <span className="text-sm font-black">{formatCurrency(netBilled)}</span>
                                                 </div>
 
-                                                <div className="flex items-center justify-between text-xs font-extrabold text-rose-600 border-t border-dashed border-hairline pt-2">
-                                                    <span>Net Posted to Customer Ledger</span>
-                                                    <span className="text-sm font-black">{formatCurrency(selectedTxnDetails.amount)}</span>
-                                                </div>
+                                                {/* Render Previous Payments Collected against this Specific Bill */}
+                                                {billPaymentsCollected > 0 && (
+                                                    <div className="space-y-1.5 pt-2 border-t border-hairline">
+                                                        <div className="flex items-center justify-between text-xs font-extrabold text-emerald-800 bg-emerald-50/80 p-2.5 rounded-xl border border-emerald-200">
+                                                            <span className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider">
+                                                                <CheckCircle2 size={13} className="text-emerald-600" />
+                                                                Payments Received for this Bill (-)
+                                                            </span>
+                                                            <span className="text-xs font-black text-emerald-700">- {formatCurrency(billPaymentsCollected)}</span>
+                                                        </div>
+
+                                                        {billPaymentHistory.map((p, idx) => (
+                                                            <div key={p.id || idx} className="flex items-center justify-between text-[11px] text-emerald-700/90 font-bold px-3 py-1 bg-emerald-50/40 rounded-lg border border-emerald-100">
+                                                                <span>Payment #{idx + 1} ({new Date(p.created_at).toLocaleDateString()}) - {p.payment_method?.toUpperCase() || 'CASH'}</span>
+                                                                <span className="font-black text-emerald-800">- {formatCurrency(p.amount)}</span>
+                                                            </div>
+                                                        ))}
+
+                                                        <div className="flex items-center justify-between text-xs font-extrabold text-rose-700 bg-rose-50/50 p-2.5 rounded-xl border border-rose-200 mt-1">
+                                                            <span>Remaining Outstanding Due for this Bill</span>
+                                                            <span className="text-sm font-black text-rose-700">{formatCurrency(remainingBillDue)}</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {selectedTxnDetails.type === 'charge' && (
+                                                    <div className="pt-3 border-t border-hairline mt-2">
+                                                        {remainingBillDue > 0 ? (
+                                                            <div className="flex items-center justify-between gap-3 bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
+                                                                <div>
+                                                                    <p className="text-[10px] font-black text-emerald-800 uppercase tracking-wider">Unpaid Balance Remaining</p>
+                                                                    <p className="text-xs text-emerald-700 font-bold">Remaining Due: <span className="font-extrabold text-emerald-900">{formatCurrency(remainingBillDue)}</span></p>
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const cleanDesc = getCleanDescription(selectedTxnDetails.description)
+                                                                        setActiveLinkedChargeId(selectedTxnDetails.id)
+                                                                        setSelectedTxnDetails(null)
+                                                                        setTxnType('payment')
+                                                                        setTxnAmount(String(remainingBillDue))
+                                                                        setTxnDesc(`Payment for ${cleanDesc}`)
+                                                                        setTxnModalOpen(true)
+                                                                    }}
+                                                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-md hover:shadow-lg transition-all shrink-0 cursor-pointer"
+                                                                >
+                                                                    <HandCoins size={14} />
+                                                                    Pay Now (Settle Rs. {formatCurrency(remainingBillDue)})
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center justify-center gap-2 bg-emerald-100/70 p-3 rounded-xl border border-emerald-300 text-emerald-900 font-black text-xs">
+                                                                <CheckCircle2 size={16} className="text-emerald-700" />
+                                                                This Credit Bill is Fully Paid & Settled ({formatCurrency(netBilled)})
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>

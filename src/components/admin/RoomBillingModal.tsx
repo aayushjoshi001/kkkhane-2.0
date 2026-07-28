@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useSyncExternalStore, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Loader2, CheckCircle2, Percent, Clock, Printer } from 'lucide-react'
+import { X, Loader2, CheckCircle2, Percent, Clock, Printer, History, Utensils, QrCode, Bed } from 'lucide-react'
+import AdvancePaymentHistoryModal from './AdvancePaymentHistoryModal'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
@@ -116,6 +117,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const [extraHourCharge, setExtraHourCharge] = useState('')
     const [applyRoomServiceCharge, setApplyRoomServiceCharge] = useState(true)
     const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qr_digital' | 'split' | 'credit'>('cash')
+    const [historyModalOpen, setHistoryModalOpen] = useState(false)
     const [splitCashAmount, setSplitCashAmount] = useState('')
     const [splitQrAmount, setSplitQrAmount] = useState('')
     const [qrCodeId, setQrCodeId] = useState('')
@@ -220,6 +222,23 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const allServiceOrderItems = Array.from(
         new Map([...qrOrderItems, ...linkedDiningOrders].map(it => [it.id, it])).values()
     ).filter((it: any) => it.status !== 'cancelled')
+
+    const dineInOrderItems = useMemo(() => {
+        return allServiceOrderItems.filter((it: any) => !it.is_room_order)
+    }, [allServiceOrderItems])
+
+    const qrRoomServiceOrderItems = useMemo(() => {
+        return allServiceOrderItems.filter((it: any) => it.is_room_order)
+    }, [allServiceOrderItems])
+
+    const dineInTotal = useMemo(() => {
+        return dineInOrderItems.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+    }, [dineInOrderItems])
+
+    const qrRoomServiceTotal = useMemo(() => {
+        return qrRoomServiceOrderItems.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+    }, [qrRoomServiceOrderItems])
+
     // For a group the room cost is every room's cost, since the guest pays once.
     const stayCost = groupBill
         ? groupBill.stayCost
@@ -566,12 +585,40 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         </div>
                                     )}
 
-                                    {allServiceOrderItems.length > 0 && (
-                                        <div className="p-4 space-y-2">
-                                            <p className="font-extrabold text-xs text-indigo-600">Service Orders (QR + Dining)</p>
-                                            <div className="space-y-1.5 pl-3 border-l-2 border-indigo-100">
-                                                {allServiceOrderItems.map((item, idx) => (
-                                                    <div key={`service-item-${item.id || 'item'}-${idx}`} className="flex justify-between text-[10px] text-ink-subtle">
+                                    {/* Separate Section: Restaurant Dining (Dine-In / Table Orders) */}
+                                    {dineInOrderItems.length > 0 && (
+                                        <div className="p-4 space-y-2 border-t border-hairline bg-emerald-50/20">
+                                            <div className="flex justify-between items-center text-xs">
+                                                <p className="font-extrabold text-emerald-700 flex items-center gap-1.5">
+                                                    <Utensils size={14} className="text-emerald-600" />
+                                                    Restaurant Dining (Dine-In Table Orders)
+                                                </p>
+                                                <span className="font-extrabold text-emerald-700 tabular-nums">{money(dineInTotal)}</span>
+                                            </div>
+                                            <div className="space-y-1.5 pl-3 border-l-2 border-emerald-300">
+                                                {dineInOrderItems.map((item, idx) => (
+                                                    <div key={`dinein-item-${item.id || idx}`} className="flex justify-between text-[10px] text-ink-subtle">
+                                                        <span>{getItemDisplayName(item)} ({item.quantity}×)</span>
+                                                        <span className="tabular-nums font-semibold">{money(item.unit_price * item.quantity)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Separate Section: In-Room QR & Room Service Orders */}
+                                    {qrRoomServiceOrderItems.length > 0 && (
+                                        <div className="p-4 space-y-2 border-t border-hairline bg-indigo-50/20">
+                                            <div className="flex justify-between items-center text-xs">
+                                                <p className="font-extrabold text-indigo-700 flex items-center gap-1.5">
+                                                    <QrCode size={14} className="text-indigo-600" />
+                                                    In-Room QR & Room Service Orders
+                                                </p>
+                                                <span className="font-extrabold text-indigo-700 tabular-nums">{money(qrRoomServiceTotal)}</span>
+                                            </div>
+                                            <div className="space-y-1.5 pl-3 border-l-2 border-indigo-300">
+                                                {qrRoomServiceOrderItems.map((item, idx) => (
+                                                    <div key={`qr-item-${item.id || idx}`} className="flex justify-between text-[10px] text-ink-subtle">
                                                         <span>{getItemDisplayName(item)} ({item.quantity}×)</span>
                                                         <span className="tabular-nums font-semibold">{money(item.unit_price * item.quantity)}</span>
                                                     </div>
@@ -883,13 +930,18 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                 <span className="text-sm font-black text-ink-subtle tabular-nums">{money(grandTotal)}</span>
                             </div>
                             {advancePaid > 0 && (
-                                <div className="flex items-center justify-between">
+                                <button
+                                    type="button"
+                                    onClick={() => setHistoryModalOpen(true)}
+                                    className="flex items-center justify-between w-full hover:underline cursor-pointer group transition-all"
+                                >
                                     <span className="text-[10px] font-bold text-emerald-600 uppercase flex items-center gap-1">
                                         <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                                         Advance Paid ({advanceMethodLabel(booking.advance_payment_method)})
+                                        <History className="w-3 h-3 inline ml-1 opacity-70 group-hover:opacity-100" />
                                     </span>
                                     <span className="text-sm font-black text-emerald-600 tabular-nums">− {money(advancePaid)}</span>
-                                </div>
+                                </button>
                             )}
                             <div className="flex items-center justify-between pt-1 border-t border-dashed border-hairline">
                                 <div>
@@ -1136,6 +1188,14 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                         <InvoiceReceipt invoice={invoiceData} money={money} formatDate={formatDate} restaurantName={restaurantName} restaurantAddress={restaurantAddress} restaurantPhone={restaurantPhone} />
                     </div>
                 )}
+
+                <AdvancePaymentHistoryModal
+                    isOpen={historyModalOpen}
+                    onClose={() => setHistoryModalOpen(false)}
+                    bookingId={booking?.id || null}
+                    guestName={booking?.guest_name}
+                    roomNumber={room?.room_number}
+                />
         </Modal>
     )
 }

@@ -346,13 +346,12 @@ export async function linkSessionToBooking(sessionId: string, bookingId: string,
     const adminSupabase = await createAdminClient()
     const now = new Date().toISOString()
 
-    // 1. Update session: set booking_id AND close session so table is freed
+    // 1. Update session: set booking_id and keep status active so orders can be placed
     const { data: session, error } = await adminSupabase
         .from('sessions')
         .update({
             booking_id: bookingId,
-            status: 'closed',
-            closed_at: now,
+            status: 'active',
         })
         .eq('id', sessionId)
         .select('table_id')
@@ -451,7 +450,6 @@ export async function placeStaffOrder(
     let query = adminSupabase
         .from('sessions')
         .select('id, restaurant_id, status, table_id, booking_id')
-        .eq('status', 'active')
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)
     if (isUuid) {
@@ -465,6 +463,15 @@ export async function placeStaffOrder(
     if (sessionError || !session) {
         console.error('[placeStaffOrder] Session lookup failed:', sessionError, sessionId)
         return { error: 'Table session is invalid or closed.' }
+    }
+
+    // Ensure session status is active so place_order RPC succeeds
+    if (session.status !== 'active') {
+        await adminSupabase
+            .from('sessions')
+            .update({ status: 'active', closed_at: null })
+            .eq('id', session.id)
+        session.status = 'active'
     }
 
     // Split items into regular and outside items
