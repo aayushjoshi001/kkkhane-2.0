@@ -74,7 +74,7 @@ export async function POST(req: Request) {
         const {
             session_id, cash_paid, qr_paid, credit_amount, qr_code_id,
             discount_amount, discount_reason, customer_name, customer_phone,
-            redeemed_points,
+            redeemed_points, service_charge_override,
         } = body
 
         if (!session_id) {
@@ -94,6 +94,15 @@ export async function POST(req: Request) {
         const discountReason = typeof discount_reason === 'string' ? discount_reason.trim() : ''
         if (discountAmount > 0 && !discountReason) {
             return NextResponse.json({ error: 'A reason is required to apply a discount' }, { status: 400 })
+        }
+
+        // The cashier can type over the service charge the orders locked in at
+        // placement time. Absent/null means "leave it on auto" — 0 is a real
+        // instruction to waive it, so it has to survive the check below.
+        const hasServiceChargeOverride = service_charge_override !== undefined && service_charge_override !== null && service_charge_override !== ''
+        const serviceChargeOverride = hasServiceChargeOverride ? round2(Number(service_charge_override)) : null
+        if (serviceChargeOverride !== null && (!Number.isFinite(serviceChargeOverride) || serviceChargeOverride < 0)) {
+            return NextResponse.json({ error: 'service_charge_override must be a non-negative number' }, { status: 400 })
         }
 
         // Cash + QR + credit can be combined in any mix (e.g. Rs.300 cash +
@@ -152,7 +161,7 @@ export async function POST(req: Request) {
         // re-derived from raw line items here.
         const { data: orders, error: ordersError } = await supabase
             .from('orders')
-            .select('id, total_amount')
+            .select('id, total_amount, service_charge_amount')
             .eq('session_id', session_id)
             .eq('restaurant_id', currentUser.restaurantId)
             .neq('status', 'cancelled')
@@ -161,10 +170,21 @@ export async function POST(req: Request) {
         if (ordersError) throw ordersError
         const subtotal = round2((orders || []).reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0))
 
-        if (discountAmount > subtotal) {
+        // Each order's total_amount already contains its own service charge, so
+        // an override is billed as the difference from that auto figure — adding
+        // the whole overridden amount would charge the guest for it twice.
+        const autoServiceCharge = round2((orders || []).reduce((sum, o) => sum + (Number(o.service_charge_amount) || 0), 0))
+        const serviceChargeCharged = serviceChargeOverride ?? autoServiceCharge
+        const serviceChargeDelta = round2(serviceChargeCharged - autoServiceCharge)
+        const billableSubtotal = round2(subtotal + serviceChargeDelta)
+
+        if (billableSubtotal < 0) {
+            return NextResponse.json({ error: 'Service charge override makes the bill negative' }, { status: 400 })
+        }
+        if (discountAmount > billableSubtotal) {
             return NextResponse.json({ error: 'Discount cannot exceed the session total' }, { status: 400 })
         }
-        const authoritativeTotal = round2(subtotal - discountAmount)
+        const authoritativeTotal = round2(billableSubtotal - discountAmount)
 
         // A table settles in full, unlike a multi-day hotel stay — cash + QR +
         // credit must reconcile exactly to what's owed, catching a stale/
@@ -318,6 +338,9 @@ export async function POST(req: Request) {
             entityId: session_id,
             newValue: {
                 subtotal,
+                service_charge_auto: autoServiceCharge,
+                service_charge_charged: serviceChargeCharged,
+                service_charge_overridden: serviceChargeOverride !== null,
                 discount_amount: discountAmount,
                 discount_reason: discountAmount > 0 ? discountReason : null,
                 total: authoritativeTotal,

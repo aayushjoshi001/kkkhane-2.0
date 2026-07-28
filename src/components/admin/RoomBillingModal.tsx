@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useSyncExternalStore, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Loader2, CheckCircle2, Percent, Clock, Printer, History, Utensils, QrCode, Bed } from 'lucide-react'
+import { X, Loader2, CheckCircle2, Percent, Clock, Printer, History, Utensils, QrCode, Bed, RotateCcw } from 'lucide-react'
 import AdvancePaymentHistoryModal from './AdvancePaymentHistoryModal'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
@@ -13,7 +13,8 @@ import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import { usePrinter } from '@/lib/print/usePrinter'
 import { usePrinterSettingsStore } from '@/lib/stores/printerSettings'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
-import { useFeatureEnabled, useDateFormatter } from '@/lib/contexts/FeatureContext'
+import { useFeatureEnabled, useDateFormatter, useFeatures } from '@/lib/contexts/FeatureContext'
+import { autoRoomServiceCharge, resolveRoomServiceCharge, ROOM_SERVICE_CHARGE_RATE } from '@/lib/roomServiceCharge'
 import Select from '@/components/ui/Select'
 import { useDates } from '@/lib/contexts/CalendarContext'
 
@@ -116,6 +117,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const [discountReason, setDiscountReason] = useState('')
     const [extraHourCharge, setExtraHourCharge] = useState('')
     const [applyRoomServiceCharge, setApplyRoomServiceCharge] = useState(true)
+    const [roomServiceChargeInput, setRoomServiceChargeInput] = useState('')
+    const features = useFeatures()
     const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qr_digital' | 'split' | 'credit'>('cash')
     const [historyModalOpen, setHistoryModalOpen] = useState(false)
     const [splitCashAmount, setSplitCashAmount] = useState('')
@@ -262,13 +265,17 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const effectiveStayCost = Math.max(0, stayCost - roomDiscountVal)
     const effectiveOrdersTotal = Math.max(0, qrOrdersTotal - orderDiscountVal)
 
-    // Service Charge (10% on food items for direct room orders & room QR orders only; excludes linked dining tables)
-    const roomFoodSubtotal = useMemo(() => {
-        const roomFoodItems = allServiceOrderItems.filter((it: any) => it.is_room_order && it.status !== 'cancelled' && (it.station === 'kitchen' || it.menu_items?.station === 'kitchen'))
-        return roomFoodItems.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
-    }, [allServiceOrderItems])
-
-    const roomServiceChargeAmount = applyRoomServiceCharge ? Math.round(roomFoodSubtotal * 0.10 * 100) / 100 : 0
+    // Service charge on food items for direct room orders & room QR orders only
+    // (linked dining tables excluded). Gated on the same settings the server
+    // folio checks, so this can't quote a charge the settlement won't make.
+    const autoServiceCharge = useMemo(
+        () => autoRoomServiceCharge(allServiceOrderItems, features, room?.id),
+        [allServiceOrderItems, features, room?.id],
+    )
+    const serviceCharge = resolveRoomServiceCharge(autoServiceCharge, roomServiceChargeInput)
+    const roomServiceChargeAmount = applyRoomServiceCharge ? serviceCharge.charged : 0
+    // A waive via the toggle is an override to zero as far as the API cares.
+    const serviceChargeOverrideValue = !applyRoomServiceCharge ? 0 : serviceCharge.isOverridden ? serviceCharge.charged : undefined
 
     const grandTotal = effectiveStayCost + effectiveOrdersTotal + manualChargesTotal + extraHourChargeVal + roomServiceChargeAmount
     // Advances were taken per room, so a reservation's advance is their sum.
@@ -421,6 +428,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                     customer_name: resolvedCredit > 0 ? creditCustomerName.trim() : undefined,
                     customer_phone: resolvedCredit > 0 ? creditCustomerPhone.trim() : undefined,
                     extra_hour_charge: extraHourChargeVal,
+                    service_charge_override: serviceChargeOverrideValue,
                 })
             })
             const data = await res.json()
@@ -641,32 +649,67 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         </div>
                                     )}
 
-                                    {/* Room Service Charge (10% Food Only) Toggle */}
-                                    <div className="p-4 border-t border-hairline bg-surface-muted/20 space-y-2">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div>
-                                                <p className="text-xs font-extrabold text-ink">Room Service Charge (10% Food Only)</p>
-                                                <p className="text-[10px] text-ink-subtle">Applies to room QR & direct room food orders (excludes linked dining tables)</p>
+                                    {/* Room Service Charge — auto figure, editable */}
+                                    {(autoServiceCharge > 0 || serviceCharge.isOverridden) && (
+                                        <div className="p-4 border-t border-hairline bg-surface-muted/20 space-y-2">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="min-w-0">
+                                                    <p className="text-xs font-extrabold text-ink flex items-center gap-1.5">
+                                                        Room Service Charge
+                                                        {serviceCharge.isOverridden && applyRoomServiceCharge && (
+                                                            <span className="text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5">EDITED</span>
+                                                        )}
+                                                    </p>
+                                                    <p className="text-[10px] text-ink-subtle">
+                                                        {ROOM_SERVICE_CHARGE_RATE * 100}% on room QR &amp; direct room food orders · auto {money(autoServiceCharge)}
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setApplyRoomServiceCharge(!applyRoomServiceCharge)}
+                                                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
+                                                            applyRoomServiceCharge
+                                                                ? 'bg-brand-500 text-white shadow-sm'
+                                                                : 'bg-surface-muted text-ink-subtle border border-hairline hover:bg-surface-muted/80'
+                                                        }`}
+                                                    >
+                                                        {applyRoomServiceCharge ? 'ON' : 'OFF'}
+                                                    </button>
+                                                    {serviceCharge.isOverridden && applyRoomServiceCharge && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setRoomServiceChargeInput('')}
+                                                            title={`Reset to the auto-calculated ${money(autoServiceCharge)}`}
+                                                            className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
+                                                        >
+                                                            <RotateCcw size={12} />
+                                                        </button>
+                                                    )}
+                                                    <div className="relative w-28">
+                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            disabled={!applyRoomServiceCharge}
+                                                            value={serviceCharge.isOverridden ? roomServiceChargeInput : (autoServiceCharge ? String(autoServiceCharge) : '')}
+                                                            placeholder={autoServiceCharge ? String(autoServiceCharge) : '0.00'}
+                                                            onChange={e => setRoomServiceChargeInput(e.target.value)}
+                                                            aria-label="Room service charge"
+                                                            className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-lg text-xs font-bold text-right tabular-nums bg-surface focus:outline-none focus:border-brand-500 disabled:opacity-50 disabled:bg-surface-muted"
+                                                        />
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setApplyRoomServiceCharge(!applyRoomServiceCharge)}
-                                                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all shrink-0 ${
-                                                    applyRoomServiceCharge
-                                                        ? 'bg-brand-500 text-white shadow-sm'
-                                                        : 'bg-surface-muted text-ink-subtle border border-hairline hover:bg-surface-muted/80'
-                                                }`}
-                                            >
-                                                {applyRoomServiceCharge ? 'ON (+10%)' : 'OFF'}
-                                            </button>
+                                            {applyRoomServiceCharge && roomServiceChargeAmount > 0 && (
+                                                <div className="flex justify-between items-center text-xs pt-1 font-extrabold text-brand-700">
+                                                    <span>Room Food Service Charge</span>
+                                                    <span className="tabular-nums">+{money(roomServiceChargeAmount)}</span>
+                                                </div>
+                                            )}
                                         </div>
-                                        {applyRoomServiceCharge && roomServiceChargeAmount > 0 && (
-                                            <div className="flex justify-between items-center text-xs pt-1 font-extrabold text-brand-700">
-                                                <span>10% Room Food Service Charge</span>
-                                                <span className="tabular-nums">+{money(roomServiceChargeAmount)}</span>
-                                            </div>
-                                        )}
-                                    </div>
+                                    )}
                                 </div>
                             </div>
 

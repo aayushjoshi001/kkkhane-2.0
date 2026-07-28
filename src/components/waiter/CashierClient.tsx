@@ -10,7 +10,7 @@ import { updateTakeoutStatusAction } from '@/app/(admin)/admin/takeout/actions'
 import { useCurrency, useFeatureEnabled, useDateFormatter, useFeatures } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
-import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent, PenLine, Printer, Search, History, Utensils, QrCode } from 'lucide-react'
+import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent, PenLine, Printer, Search, History, Utensils, QrCode, RotateCcw } from 'lucide-react'
 import AdvancePaymentHistoryModal from '@/components/admin/AdvancePaymentHistoryModal'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import Button from '@/components/ui/Button'
@@ -26,6 +26,7 @@ import ManualEntryClient from '@/app/(admin)/admin/manual-entry/ManualEntryClien
 import AdSpace from '@/components/shared/AdSpace'
 import BusinessSessionControl from '@/components/shared/BusinessSessionControl'
 import { getNstDateString } from '@/lib/timezone'
+import { autoRoomServiceCharge, resolveRoomServiceCharge, ROOM_SERVICE_CHARGE_RATE } from '@/lib/roomServiceCharge'
 import CashierOrdersPanel from './CashierOrdersPanel'
 import type { BankAccount, ExpenseCategory, Supplier, Session } from '@/types/database'
 import QuickOrderModal from './QuickOrderModal'
@@ -43,6 +44,10 @@ const KOT_PRINT_RETRY_MS = 2500
 // normal case, so this only has to cover a channel that is wedged rather than
 // disconnected — a state no reconnect callback ever fires for.
 const OUTSTANDING_POLL_MS = 60_000
+
+// Money is compared against a server-side total to the paisa, so every figure
+// the cashier's edits feed into is rounded the same way the API rounds it.
+const round2 = (n: number) => Math.round(n * 100) / 100
 
 type OrderItem = {
     id?: string
@@ -454,6 +459,15 @@ export default function CashierClient({
     // Table Food Discount: entered directly (like foodDiscount in room service)
     const [tableDiscount, setTableDiscount] = useState<string>('')
     const [tableDiscountReason, setTableDiscountReason] = useState<string>('')
+    // Service charge the cashier typed over the auto-calculated one. Empty
+    // string means "leave it on auto" — an explicit '0' is a real override
+    // that waives the charge, so the two can't be collapsed into a number.
+    const [tableServiceCharge, setTableServiceCharge] = useState<string>('')
+    // Room service charge the cashier typed over the auto figure — same
+    // empty-means-auto convention as tableServiceCharge above. Stamped with the
+    // room it belongs to so switching rooms starts from auto again, and so the
+    // drawer's "Go to Billing" can seed it without an effect racing the reset.
+    const [roomServiceChargeEdit, setRoomServiceChargeEdit] = useState<{ roomId: string; value: string } | null>(null)
     const [roomDiscount, setRoomDiscount] = useState<string>('')
     const [foodDiscount, setFoodDiscount] = useState<string>('')
     const [discountReason, setDiscountReason] = useState<string>('')
@@ -726,6 +740,7 @@ export default function CashierClient({
         setBillingQrCodeId('')
         setTableDiscount('')
         setTableDiscountReason('')
+        setTableServiceCharge('')
         setCreditCustomerName('')
         setCreditCustomerPhone('')
         setCashReceivedAmount('')
@@ -901,6 +916,31 @@ export default function CashierClient({
             .reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0)
     }
 
+    const getTableSessionOrders = (table: any) => {
+        if (!table?.activeSession) return []
+        return [...active, ...unpaid].filter(o => o.session_id === table.activeSession.id && o.status !== 'cancelled')
+    }
+
+    // The service charge as it stands on the bill: what the orders locked in at
+    // placement time, and what the cashier has decided it should be. `delta` is
+    // the only part that changes the money owed — the auto figure is already
+    // baked into each order's total_amount, so charging the override means
+    // adding the difference on top, never the whole overridden amount.
+    const resolveTableServiceCharge = (table: any) => {
+        const auto = round2(getTableSessionOrders(table).reduce((sum, o) => sum + (Number(o.service_charge_amount) || 0), 0))
+        const isOverridden = tableServiceCharge.trim() !== ''
+        const charged = isOverridden ? round2(Math.max(0, parseFloat(tableServiceCharge) || 0)) : auto
+        return { auto, charged, isOverridden, delta: round2(charged - auto) }
+    }
+
+    // Mirrors the folio's room service charge rule (src/lib/folio.ts) so the
+    // figure the cashier reads is the one /api/bookings/checkout will bill.
+    const resolveRoomSc = (room: any) => {
+        const auto = autoRoomServiceCharge(billingLinkedOrders, features, room?.id)
+        const typed = roomServiceChargeEdit?.roomId === room?.id ? roomServiceChargeEdit?.value ?? '' : ''
+        return resolveRoomServiceCharge(auto, typed)
+    }
+
     const calculateGrandTotal = (room: any, booking: any) => {
         const stayCost = calculateStayCost(room, booking)
         const qrOrdersTotal = filteredRoomOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
@@ -914,7 +954,10 @@ export default function CashierClient({
         const effectiveFoodOrders = Math.max(0, totalFoodOrders - foodDiscountVal)
         const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
         const extraHourChargeVal = extraHourCharge.trim() !== '' ? parseFloat(extraHourCharge) || 0 : 0
-        return effectiveStayCost + effectiveFoodOrders + manualChargesTotal + extraHourChargeVal
+        // Added whole rather than as a delta: unlike the folio's ordersTotal,
+        // the food totals above are raw line items with no service charge in
+        // them, so there is nothing here to double up on.
+        return round2(effectiveStayCost + effectiveFoodOrders + manualChargesTotal + extraHourChargeVal + resolveRoomSc(room).charged)
     }
 
     const renderPaymentInputsAndCalculator = (balanceDue: number) => {
@@ -1145,6 +1188,7 @@ export default function CashierClient({
             const linkedOrders = mergeFn(filteredLinkedOrders)
             const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
             const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
+            const roomSc = resolveRoomSc(room)
             const total = calculateGrandTotal(room, booking)
 
             // Advance already paid at booking
@@ -1210,18 +1254,25 @@ export default function CashierClient({
                 discountAmount: (parseFloat(roomDiscount) || 0) + (parseFloat(foodDiscount) || 0),
                 discountReason: discountReason,
                 extraHourCharge: extraHourChargeVal,
+                serviceCharge: roomSc.charged,
+                serviceChargeOverride: roomSc.isOverridden ? roomSc.charged : undefined,
             }
         } else if (type === 'table') {
             const table = item
             const sessionOrders = getTableSessionItems(table)
             const itemsSubtotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
-            const sessionOrdersList = [...active, ...unpaid].filter(o => o.session_id === table?.activeSession?.id && o.status !== 'cancelled')
-            const serviceCharge = sessionOrdersList.reduce((sum, o) => sum + (Number((o as any).service_charge_amount) || 0), 0)
+            const sessionOrdersList = getTableSessionOrders(table)
+            const sc = resolveTableServiceCharge(table)
+            const serviceCharge = sc.charged
             const taxAmount = sessionOrdersList.reduce((sum, o) => sum + (Number((o as any).tax_amount) || 0), 0)
 
             // Food Discount: discount amount entered directly
             const discountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
-            const total = Math.max(0, itemsSubtotal + serviceCharge - discountAmount + taxAmount)
+            // Billed off the orders' own total_amount plus whatever the cashier
+            // moved the service charge by — the exact arithmetic
+            // /api/tables/checkout re-does server-side, so the split payment
+            // amounts sent up always reconcile against it.
+            const total = Math.max(0, round2(getTableSessionOrdersTotal(table) + sc.delta - discountAmount))
 
             const resolvedCash = billingPaymentMethod === 'cash' ? total
                 : billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0)
@@ -1247,6 +1298,7 @@ export default function CashierClient({
                 stayCost: 0,
                 subtotal: itemsSubtotal,
                 serviceCharge,
+                serviceChargeOverride: sc.isOverridden ? sc.charged : undefined,
                 taxAmount,
                 qrOrders: sessionOrders,
                 qrOrdersTotal: itemsSubtotal,
@@ -1416,6 +1468,7 @@ export default function CashierClient({
                     discount_amount: (parseFloat(roomDiscount) || 0) + (parseFloat(foodDiscount) || 0),
                     discount_reason: discountReason || undefined,
                     extra_hour_charge: extraHourChargeVal,
+                    service_charge_override: resolveRoomSc(room).isOverridden ? resolveRoomSc(room).charged : undefined,
                 })
             })
             const data = await res.json()
@@ -1513,6 +1566,7 @@ export default function CashierClient({
                         discount_amount: invoice.discountAmount || 0,
                         discount_reason: invoice.discountReason,
                         extra_hour_charge: invoice.extraHourCharge || 0,
+                        service_charge_override: invoice.serviceChargeOverride,
                     })
                 })
                 const data = await res.json()
@@ -1548,6 +1602,7 @@ export default function CashierClient({
                         qr_code_id: invoice.qrCodeId,
                         discount_amount: invoice.discountAmount || 0,
                         discount_reason: invoice.discountReason,
+                        service_charge_override: invoice.serviceChargeOverride,
                         customer_name: invoice.customerName,
                         customer_phone: invoice.customerPhone,
                     })
@@ -2071,10 +2126,18 @@ export default function CashierClient({
                             tables={tablesState}
                             activeOrders={active}
                             unpaidOrders={unpaid}
-                            onGoToBilling={(room) => {
+                            onGoToBilling={(room, serviceChargeOverride) => {
                                 setActiveTab('billing')
                                 setBillingSubTab('rooms')
                                 setSelectedBillingRoom(room)
+                                // Carry the drawer's edit over rather than
+                                // silently reverting to auto on the panel that
+                                // actually settles.
+                                setRoomServiceChargeEdit(
+                                    serviceChargeOverride === undefined
+                                        ? null
+                                        : { roomId: room.id, value: String(serviceChargeOverride) }
+                                )
                             }}
                             onOrderPlaced={async (orderId) => {
                                 const supabase = supabaseRef.current
@@ -2729,6 +2792,56 @@ export default function CashierClient({
                                             </div>
                                         )}
 
+                                        {/* Room Service Charge — the folio's own rule, shown
+                                            so the cashier can see and adjust what the
+                                            settlement is about to bill. */}
+                                        {(() => {
+                                            const roomSc = resolveRoomSc(selectedBillingRoom)
+                                            if (roomSc.auto <= 0 && !roomSc.isOverridden) return null
+                                            return (
+                                                <div className="p-4 space-y-2 border-t border-hairline bg-sky-50/20">
+                                                    <div className="flex justify-between items-center gap-3">
+                                                        <div className="min-w-0">
+                                                            <p className="text-xs font-extrabold text-sky-700 flex items-center gap-1.5">
+                                                                Room Service Charge
+                                                                {roomSc.isOverridden && (
+                                                                    <span className="text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5">EDITED</span>
+                                                                )}
+                                                            </p>
+                                                            <p className="text-[10px] text-sky-600/70 font-semibold">
+                                                                {ROOM_SERVICE_CHARGE_RATE * 100}% on room food · auto {money(roomSc.auto)}
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 shrink-0">
+                                                            {roomSc.isOverridden && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setRoomServiceChargeEdit(null)}
+                                                                    title={`Reset to the auto-calculated ${money(roomSc.auto)}`}
+                                                                    className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
+                                                                >
+                                                                    <RotateCcw size={12} />
+                                                                </button>
+                                                            )}
+                                                            <div className="relative w-28">
+                                                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                                <input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    step="0.01"
+                                                                    value={roomSc.isOverridden ? (roomServiceChargeEdit?.value ?? '') : (roomSc.auto ? String(roomSc.auto) : '')}
+                                                                    placeholder={roomSc.auto ? String(roomSc.auto) : '0.00'}
+                                                                    onChange={e => setRoomServiceChargeEdit({ roomId: selectedBillingRoom.id, value: e.target.value })}
+                                                                    aria-label="Room service charge"
+                                                                    className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-lg text-xs font-bold text-right tabular-nums bg-surface focus:outline-none focus:border-brand-500"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )
+                                        })()}
+
                                         {billingRoomCharges.length > 0 && (
                                             <div className="p-4 space-y-2">
                                                 <p className="font-extrabold text-xs text-amber-650 font-semibold">Additional stay charges</p>
@@ -3030,14 +3143,18 @@ export default function CashierClient({
                                 // above which is pre-tax and would understate it.
                                 const itemsSubtotal = getTableSessionItems(selectedBillingTable).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
                                 const tableSubtotal = getTableSessionOrdersTotal(selectedBillingTable)
+                                const sc = resolveTableServiceCharge(selectedBillingTable)
+                                // What's owed before the discount: the orders' own
+                                // totals, shifted by however far the cashier moved
+                                // the service charge off its auto figure.
+                                const billableSubtotal = round2(tableSubtotal + sc.delta)
                                 const tableDiscountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
-                                const tableDiscountInvalid = tableDiscountAmount < 0 || tableDiscountAmount > tableSubtotal
-                                const finalCalculatedTotal = Math.max(0, tableSubtotal - tableDiscountAmount)
+                                const tableDiscountInvalid = tableDiscountAmount < 0 || tableDiscountAmount > billableSubtotal
+                                const finalCalculatedTotal = Math.max(0, round2(billableSubtotal - tableDiscountAmount))
 
-                                const sessionOrders = [...active, ...unpaid].filter(o => o.session_id === selectedBillingTable?.activeSession?.id && o.status !== 'cancelled')
-                                const sessionSc = sessionOrders.reduce((sum, o) => sum + (Number(o.service_charge_amount) || 0), 0)
+                                const sessionOrders = getTableSessionOrders(selectedBillingTable)
                                 const sessionTax = sessionOrders.reduce((sum, o) => sum + (Number(o.tax_amount) || 0), 0)
-                                const residualAdjustment = tableSubtotal - (itemsSubtotal + sessionSc + sessionTax)
+                                const residualAdjustment = tableSubtotal - (itemsSubtotal + sc.auto + sessionTax)
 
                                 return (
                                     <div className="space-y-6">
@@ -3054,11 +3171,46 @@ export default function CashierClient({
                                                 </div>
                                             )}
 
-                                            {sessionSc > 0 && (
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-ink-subtle font-semibold">Service Charge</span>
-                                                    <span className="font-bold text-ink tabular-nums">{money(sessionSc)}</span>
+                                            {sessionOrders.length > 0 && (
+                                                <div className="flex justify-between items-center gap-3">
+                                                    <span className="text-ink-subtle font-semibold shrink-0">
+                                                        Service Charge
+                                                        {sc.isOverridden && (
+                                                            <span className="ml-1.5 text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5 align-middle">EDITED</span>
+                                                        )}
+                                                    </span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        {sc.isOverridden && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setTableServiceCharge('')}
+                                                                title={`Reset to the auto-calculated ${money(sc.auto)}`}
+                                                                className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
+                                                            >
+                                                                <RotateCcw size={12} />
+                                                            </button>
+                                                        )}
+                                                        <div className="relative w-28">
+                                                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                step="0.01"
+                                                                value={sc.isOverridden ? tableServiceCharge : (sc.auto ? String(sc.auto) : '')}
+                                                                placeholder={sc.auto ? String(sc.auto) : '0.00'}
+                                                                onChange={e => setTableServiceCharge(e.target.value)}
+                                                                aria-label="Service charge"
+                                                                className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-lg text-xs font-bold text-right tabular-nums bg-surface focus:outline-none focus:border-brand-500"
+                                                            />
+                                                        </div>
+                                                    </div>
                                                 </div>
+                                            )}
+
+                                            {sc.isOverridden && Math.abs(sc.delta) > 0.001 && (
+                                                <p className="text-[9px] text-ink-subtle font-semibold text-right -mt-1">
+                                                    Auto: {money(sc.auto)} · {sc.delta > 0 ? '+' : '−'}{money(Math.abs(sc.delta))} on the bill
+                                                </p>
                                             )}
 
                                             {sessionTax > 0 && (
@@ -3068,7 +3220,7 @@ export default function CashierClient({
                                                 </div>
                                             )}
 
-                                            {Math.abs(residualAdjustment) > 0.01 && sessionSc === 0 && sessionTax === 0 && (
+                                            {Math.abs(residualAdjustment) > 0.01 && sc.auto === 0 && sessionTax === 0 && (
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-ink-subtle font-semibold">Tax / Service charge</span>
                                                     <span className="font-bold text-ink tabular-nums">{money(residualAdjustment)}</span>
@@ -3090,7 +3242,7 @@ export default function CashierClient({
                                                     </div>
                                                     <div>
                                                         <p className="text-xs font-black text-amber-800 uppercase tracking-wider">Food Discount</p>
-                                                        <p className="text-[10px] text-amber-700/70 font-semibold">Standard total: {money(tableSubtotal)}</p>
+                                                        <p className="text-[10px] text-amber-700/70 font-semibold">Standard total: {money(billableSubtotal)}</p>
                                                     </div>
                                                 </div>
                                                 <div className="relative w-32">
@@ -3098,7 +3250,7 @@ export default function CashierClient({
                                                     <input
                                                         type="number"
                                                         min="0"
-                                                        max={tableSubtotal}
+                                                        max={billableSubtotal}
                                                         placeholder="0.00"
                                                         value={tableDiscount}
                                                         onChange={e => setTableDiscount(e.target.value)}
@@ -3178,7 +3330,7 @@ export default function CashierClient({
                                                 </button>
                                             </div>
 
-                                            {renderPaymentInputsAndCalculator(tableSubtotal - tableDiscountAmount)}
+                                            {renderPaymentInputsAndCalculator(finalCalculatedTotal)}
                                         </div>
                                         )}
                                     </div>
@@ -3188,10 +3340,10 @@ export default function CashierClient({
 
                         {/* Fixed Footer */}
                         {(() => {
-                            const tableSubtotal = getTableSessionOrdersTotal(selectedBillingTable)
+                            const billableSubtotal = round2(getTableSessionOrdersTotal(selectedBillingTable) + resolveTableServiceCharge(selectedBillingTable).delta)
                             const tableDiscountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
-                            const tableDiscountInvalid = tableDiscountAmount < 0 || tableDiscountAmount > tableSubtotal
-                            const tableTotal = Math.max(0, tableSubtotal - tableDiscountAmount)
+                            const tableDiscountInvalid = tableDiscountAmount < 0 || tableDiscountAmount > billableSubtotal
+                            const tableTotal = Math.max(0, round2(billableSubtotal - tableDiscountAmount))
 
                             return (
                                 <div className="border-t border-hairline px-6 py-4 flex-shrink-0 bg-surface flex items-center justify-between">

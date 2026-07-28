@@ -46,6 +46,13 @@ export interface FolioBreakdown {
     discountAmount: number
     chargesTotal: number
     ordersTotal: number
+    /** Room service charge the rules produce on their own, before any staff
+     *  edit. Already contained in `ordersTotal` — it is broken out so a bill
+     *  can show the line and so an override can be billed as a difference. */
+    serviceCharge: number
+    /** What the service charge was actually billed at. Equals `serviceCharge`
+     *  unless a cashier typed over it. */
+    serviceChargeCharged: number
     vat: number
     total: number
     orders: FolioOrderLine[]
@@ -210,9 +217,12 @@ export async function computeFolioForStays(
         // standard one) — see bookings.discount_amount. One discount covers the
         // whole bill, however many rooms are on it.
         discountAmount?: number
+        // A cashier's replacement for the service charge the rules worked out.
+        // Undefined/null leaves it on auto; 0 is a real instruction to waive it.
+        serviceChargeOverride?: number | null
     }
 ): Promise<FolioBreakdown> {
-    const { restaurantId, stays, sessionId, discountAmount: rawDiscount } = opts
+    const { restaurantId, stays, sessionId, discountAmount: rawDiscount, serviceChargeOverride } = opts
     const bookingIds = stays.map(s => s.bookingId)
     const roomIds = [...new Set(stays.map(s => s.roomId))]
 
@@ -451,6 +461,10 @@ export async function computeFolioForStays(
     const roomScRooms = Array.isArray(features?.roomServiceChargeRooms) ? features!.roomServiceChargeRooms! : []
 
     const orderTotals = new Map<string, FolioOrderLine>()
+    // Kept per order id rather than as a running sum: the same order can be
+    // reached through more than one of the queries below, and re-adding its
+    // service charge on the second pass would inflate the line.
+    const orderServiceCharges = new Map<string, number>()
     const addOrders = (
         rows: Array<{
             id: string
@@ -496,6 +510,7 @@ export async function computeFolioForStays(
             }
 
             orderTotals.set(o.id, { id: o.id, total: round2(subtotal + serviceCharge), placedAt: o.placed_at })
+            orderServiceCharges.set(o.id, serviceCharge)
         }
     }
 
@@ -519,6 +534,16 @@ export async function computeFolioForStays(
     const orders = Array.from(orderTotals.values())
     const ordersTotal = orders.reduce((s, o) => s + o.total, 0)
 
+    // The service charge is already inside ordersTotal, so an override bills as
+    // the difference from what the rules produced — adding the whole overridden
+    // figure would charge the guest for it twice.
+    const autoServiceCharge = round2(Array.from(orderServiceCharges.values()).reduce((s, v) => s + v, 0))
+    const hasScOverride = serviceChargeOverride !== undefined && serviceChargeOverride !== null
+    const serviceChargeCharged = hasScOverride
+        ? round2(Math.max(0, Number(serviceChargeOverride) || 0))
+        : autoServiceCharge
+    const serviceChargeDelta = round2(serviceChargeCharged - autoServiceCharge)
+
     // VAT (Nepal) applies to the room + manual charges only; room-service items are
     // already priced with their own tax at order time, so taxing them again here
     // would double-charge. Off unless the tenant has vatEnabled set.
@@ -526,13 +551,15 @@ export async function computeFolioForStays(
     const taxRate = Number(features?.defaultTaxRate) || 0
     const vat = vatEnabled ? round2((netStayCost + chargesTotal) * (taxRate / 100)) : 0
 
-    const total = round2(netStayCost + chargesTotal + ordersTotal + vat)
+    const total = Math.max(0, round2(netStayCost + chargesTotal + ordersTotal + serviceChargeDelta + vat))
     return {
         nights,
         stayCost: round2(stayCost),
         discountAmount: round2(discountAmount),
         chargesTotal: round2(chargesTotal),
         ordersTotal: round2(ordersTotal),
+        serviceCharge: autoServiceCharge,
+        serviceChargeCharged,
         vat,
         total,
         orders,

@@ -165,7 +165,7 @@ export async function POST(req: Request) {
         const {
             booking_id, room_id, total_amount, cash_paid, qr_paid, qr_code_id, session_id,
             discount_amount, discount_reason, credit_amount, customer_name, customer_phone,
-            redeemed_points, extra_hour_charge,
+            redeemed_points, extra_hour_charge, service_charge_override,
         } = body
 
         if (!booking_id || !room_id) {
@@ -177,6 +177,16 @@ export async function POST(req: Request) {
         const clientTotal = Number(total_amount)
         if (total_amount != null && (!Number.isFinite(clientTotal) || clientTotal < 0)) {
             return NextResponse.json({ error: 'total_amount must be a number >= 0' }, { status: 400 })
+        }
+
+        // Unlike total_amount, this one IS charged: the cashier can replace the
+        // service charge the folio rules work out. Absent/null keeps it on auto,
+        // 0 waives it — so the empty-string case has to be excluded explicitly
+        // rather than leaning on Number('') being 0.
+        const hasServiceChargeOverride = service_charge_override !== undefined && service_charge_override !== null && service_charge_override !== ''
+        const serviceChargeOverride = hasServiceChargeOverride ? round2(Number(service_charge_override)) : null
+        if (serviceChargeOverride !== null && (!Number.isFinite(serviceChargeOverride) || serviceChargeOverride < 0)) {
+            return NextResponse.json({ error: 'service_charge_override must be a non-negative number' }, { status: 400 })
         }
 
         // A stay can be settled cash + QR + credit in any combination — the
@@ -289,6 +299,7 @@ export async function POST(req: Request) {
             })),
             sessionId: session_id || null,
             discountAmount,
+            serviceChargeOverride,
         })
         const extraHourCharge = Number(extra_hour_charge) || 0
         if (extraHourCharge < 0) {
@@ -500,6 +511,7 @@ export async function POST(req: Request) {
             newValue: {
                 total_amount: authoritativeTotal,
                 folio,
+                service_charge_overridden: serviceChargeOverride !== null,
                 group_id: booking.group_id || null,
                 // Every booking closed by this settlement — one for a normal
                 // stay, all of them for a multi-room reservation.

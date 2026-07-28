@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { createClient } from '@/lib/supabase/client'
-import { Users, X, Check, Bed, ClipboardList, Loader2, CreditCard, RefreshCw, Calendar, FileText, Plus, Landmark, Utensils, ArrowLeftRight, History } from 'lucide-react'
+import { Users, X, Check, Bed, ClipboardList, Loader2, CreditCard, RefreshCw, Calendar, FileText, Plus, Landmark, Utensils, ArrowLeftRight, History, RotateCcw } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCurrency, useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
@@ -18,6 +18,7 @@ import { useQrCodes } from '@/lib/hooks/useQrCodes'
 import { useGuestLookup, type GuestSuggestion } from '@/lib/hooks/useGuestLookup'
 import GuestSuggestionList from './GuestSuggestionList'
 import { getRoomStatusConfig } from '@/lib/roomStatus'
+import { autoRoomServiceCharge, resolveRoomServiceCharge, ROOM_SERVICE_CHARGE_RATE } from '@/lib/roomServiceCharge'
 import Select from '@/components/ui/Select'
 import { NepaliDateInput, NepaliDateTimeInput } from '@/components/ui/NepaliDateInput'
 import { useDates } from '@/lib/contexts/CalendarContext'
@@ -62,7 +63,9 @@ export default function CashierRoomManager({
     tables: TableWithSession[]
     activeOrders: any[]
     unpaidOrders: any[]
-    onGoToBilling?: (room: any) => void
+    // The service charge the cashier settled on here rides along, so the
+    // billing panel opens on the same figure instead of resetting to auto.
+    onGoToBilling?: (room: any, serviceChargeOverride?: number) => void
     onOrderPlaced?: (orderId: string) => void
 }) {
     const [selectedRoom, setSelectedRoom] = useState<RoomWithTypes | null>(null)
@@ -70,7 +73,11 @@ export default function CashierRoomManager({
     const [loadingBooking, setLoadingBooking] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
     const [mounted, setMounted] = useState(false)
-    const [applyRoomServiceCharge, setApplyRoomServiceCharge] = useState(true)
+    // Both service-charge edits are stamped with the room they were made on, so
+    // opening the next folio starts from auto again without an effect having to
+    // chase selectedRoom and clear them.
+    const [serviceChargeEdit, setServiceChargeEdit] = useState<{ roomId: string; value: string } | null>(null)
+    const [serviceChargeOffRoomId, setServiceChargeOffRoomId] = useState<string | null>(null)
     const features = useFeatures()
     const irdSyncEnabled = features?.irdSyncEnabled ?? false
     const money = useCurrency()
@@ -524,21 +531,35 @@ export default function CashierRoomManager({
         return { nights, cost }
     }, [selectedRoom, activeBooking, stayGroup])
 
-    const roomServiceChargeAmount = useMemo(() => {
-        if (!applyRoomServiceCharge) return 0
-        const roomFoodItems = linkedDiningOrders.filter(o => o.is_room_order && o.status !== 'cancelled' && (o.station === 'kitchen' || o.menu_items?.station === 'kitchen'))
-        const foodSubtotal = roomFoodItems.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
-        return Math.round(foodSubtotal * 0.10 * 100) / 100
-    }, [applyRoomServiceCharge, linkedDiningOrders])
+    // What the charge works out to before the cashier touches it. Gated on the
+    // same two settings the server folio checks, so this preview can't promise
+    // a charge the settlement won't make (or hide one it will).
+    const autoServiceCharge = useMemo(
+        () => autoRoomServiceCharge(linkedDiningOrders, features, selectedRoom?.id),
+        [linkedDiningOrders, features, selectedRoom?.id],
+    )
 
-    // Grand total
-    const grandTotal = useMemo(() => {
+    // Empty means "leave it on auto"; an explicit '0' waives the charge, which
+    // is why the override is held as a string rather than a number.
+    const roomServiceChargeInput = serviceChargeEdit?.roomId === selectedRoom?.id ? serviceChargeEdit?.value ?? '' : ''
+    const applyRoomServiceCharge = serviceChargeOffRoomId !== selectedRoom?.id
+    const serviceCharge = resolveRoomServiceCharge(autoServiceCharge, roomServiceChargeInput)
+    const serviceChargeOverridden = serviceCharge.isOverridden
+    const roomServiceChargeAmount = applyRoomServiceCharge ? serviceCharge.charged : 0
+    // What the settlement should bill, carried to the billing panel below. A
+    // waive via the toggle is an override to zero as far as the API cares.
+    const serviceChargeOverrideValue = !applyRoomServiceCharge ? 0 : serviceChargeOverridden ? serviceCharge.charged : undefined
+
+    // Grand total. Plain arithmetic rather than a useMemo — the service charge
+    // it now depends on is itself derived each render, so a manual memo here
+    // could not be preserved anyway.
+    const grandTotal = (() => {
         const roomStayCost = stayPriceDetails.cost
         const qrOrdersTotal = qrOrdersDetails?.total || 0
         const manualChargesTotal = manualCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
         const linkedDiningTotal = filteredLinkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
         return roomStayCost + qrOrdersTotal + manualChargesTotal + linkedDiningTotal + roomServiceChargeAmount
-    }, [stayPriceDetails, qrOrdersDetails, manualCharges, filteredLinkedDiningOrders, roomServiceChargeAmount])
+    })()
 
     // Change room status helper
     const handleStatusChange = async (roomId: string, newStatus: 'available' | 'dirty' | 'maintenance') => {
@@ -1534,6 +1555,64 @@ export default function CashierRoomManager({
                                             </div>
                                         )}
 
+                                        {/* Room Service Charge — auto 10% of the room's own
+                                            food orders, typed over when the cashier needs
+                                            a different figure. */}
+                                        {(autoServiceCharge > 0 || serviceChargeOverridden) && (
+                                            <div className="p-4 space-y-2">
+                                                <div className="flex justify-between items-center gap-3">
+                                                    <div className="min-w-0">
+                                                        <p className="text-xs font-extrabold text-sky-600">Room Service Charge</p>
+                                                        <p className="text-[10px] text-ink-subtle font-semibold">
+                                                            {ROOM_SERVICE_CHARGE_RATE * 100}% on room food · auto {money(autoServiceCharge)}
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 shrink-0">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setServiceChargeOffRoomId(applyRoomServiceCharge ? selectedRoom.id : null)}
+                                                            className={`px-2 py-1 rounded-lg text-[9px] font-black border transition ${
+                                                                applyRoomServiceCharge
+                                                                    ? 'bg-sky-50 text-sky-700 border-sky-200'
+                                                                    : 'bg-surface-muted text-ink-subtle border-hairline'
+                                                            }`}
+                                                        >
+                                                            {applyRoomServiceCharge ? 'ON' : 'OFF'}
+                                                        </button>
+                                                        {serviceChargeOverridden && applyRoomServiceCharge && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setServiceChargeEdit(null)}
+                                                                title={`Reset to the auto-calculated ${money(autoServiceCharge)}`}
+                                                                className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
+                                                            >
+                                                                <RotateCcw size={12} />
+                                                            </button>
+                                                        )}
+                                                        <div className="relative w-28">
+                                                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                step="0.01"
+                                                                disabled={!applyRoomServiceCharge}
+                                                                value={serviceChargeOverridden ? roomServiceChargeInput : (autoServiceCharge ? String(autoServiceCharge) : '')}
+                                                                placeholder={autoServiceCharge ? String(autoServiceCharge) : '0.00'}
+                                                                onChange={e => setServiceChargeEdit({ roomId: selectedRoom.id, value: e.target.value })}
+                                                                aria-label="Room service charge"
+                                                                className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-lg text-xs font-bold text-right tabular-nums bg-surface focus:outline-none focus:border-brand-500 disabled:opacity-50 disabled:bg-surface-muted"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                {serviceChargeOverridden && applyRoomServiceCharge && (
+                                                    <p className="text-[9px] text-amber-700 font-bold text-right">
+                                                        Edited — auto was {money(autoServiceCharge)}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
+
                                         {/* Manual Charges Row */}
                                         {manualCharges.length > 0 && (
                                             <div className="p-4 space-y-3">
@@ -1731,7 +1810,7 @@ export default function CashierRoomManager({
                                                   variant="danger"
                                                   icon={CreditCard}
                                                   onClick={() => {
-                                                      if (onGoToBilling) onGoToBilling(selectedRoom)
+                                                      if (onGoToBilling) onGoToBilling(selectedRoom, serviceChargeOverrideValue)
                                                       setSelectedRoom(null)
                                                   }}
                                                   className="px-6 font-bold"
