@@ -45,7 +45,15 @@ export interface FolioBreakdown {
     stayCost: number
     discountAmount: number
     chargesTotal: number
+    /** Sum of the per-order totals in `orders`, service charge included at the
+     *  rate the rules produced. Stays in step with those lines, so it is the
+     *  figure to itemize a bill from — not the one to settle money against. */
     ordersTotal: number
+    /** `ordersTotal` shifted by any service-charge override: what the food side
+     *  of this bill is actually being charged. Every money path keys off this —
+     *  the partner restaurant's share of the payment and the B2B payable both
+     *  move with a waived or raised charge rather than ignoring it. */
+    ordersTotalCharged: number
     /** Room service charge the rules produce on their own, before any staff
      *  edit. Already contained in `ordersTotal` — it is broken out so a bill
      *  can show the line and so an override can be billed as a difference. */
@@ -558,6 +566,7 @@ export async function computeFolioForStays(
         discountAmount: round2(discountAmount),
         chargesTotal: round2(chargesTotal),
         ordersTotal: round2(ordersTotal),
+        ordersTotalCharged: Math.max(0, round2(ordersTotal + serviceChargeDelta)),
         serviceCharge: autoServiceCharge,
         serviceChargeCharged,
         vat,

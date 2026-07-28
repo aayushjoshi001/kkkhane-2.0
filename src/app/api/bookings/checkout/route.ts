@@ -400,8 +400,11 @@ export async function POST(req: Request) {
         let restQr = 0
         let restCredit = 0
 
-        if (partnerRestaurantId && folio.ordersTotal > 0 && settledNow > 0) {
-            const restaurantAlloc = Math.min(folio.ordersTotal, settledNow)
+        // Charged, not auto: a waived service charge shrinks the partner
+        // restaurant's share of what was collected, and a raised one grows it,
+        // rather than the hotel silently absorbing the difference.
+        if (partnerRestaurantId && folio.ordersTotalCharged > 0 && settledNow > 0) {
+            const restaurantAlloc = Math.min(folio.ordersTotalCharged, settledNow)
             const restaurantRatio = restaurantAlloc / settledNow
 
             restCash = round2(cashPaid * restaurantRatio)
@@ -447,7 +450,10 @@ export async function POST(req: Request) {
             p_partner_restaurant_id: partnerRestaurantId || null,
             p_payment_status: paymentStatus,
             p_authoritative_total: authoritativeTotal,
-            p_orders_total: folio.ordersTotal,
+            // Drives the B2B payable to the partner restaurant and the
+            // commission taken off it, so it tracks the charged figure for the
+            // same reason the direct-mode split above does.
+            p_orders_total: folio.ordersTotalCharged,
             p_ledger_split_mode: restaurant?.ledger_split_mode || 'direct',
             p_commission_rate: Number(restaurant?.billing_commission_rate) || 0.00,
             p_extra_hour_charge: extraHourCharge,

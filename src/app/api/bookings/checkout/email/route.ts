@@ -234,7 +234,7 @@ export async function POST(req: Request) {
                     </div>
                     <div class="total-row">
                         <span>Food Orders:</span>
-                        <span>${fmt(folio.ordersTotal)}</span>
+                        <span>${fmt(folio.ordersTotalCharged)}</span>
                     </div>
                     ${folio.vat > 0 ? `
                     <div class="total-row">
