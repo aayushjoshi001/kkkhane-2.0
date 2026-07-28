@@ -26,7 +26,7 @@ import ManualEntryClient from '@/app/(admin)/admin/manual-entry/ManualEntryClien
 import AdSpace from '@/components/shared/AdSpace'
 import BusinessSessionControl from '@/components/shared/BusinessSessionControl'
 import { getNstDateString } from '@/lib/timezone'
-import { autoRoomServiceCharge, resolveRoomServiceCharge, ROOM_SERVICE_CHARGE_RATE } from '@/lib/roomServiceCharge'
+import { autoRoomServiceCharge, resolveRoomServiceCharge, roomServiceChargeApplies, ROOM_SERVICE_CHARGE_RATE } from '@/lib/roomServiceCharge'
 import CashierOrdersPanel from './CashierOrdersPanel'
 import type { BankAccount, ExpenseCategory, Supplier, Session } from '@/types/database'
 import QuickOrderModal from './QuickOrderModal'
@@ -2797,7 +2797,10 @@ export default function CashierClient({
                                             settlement is about to bill. */}
                                         {(() => {
                                             const roomSc = resolveRoomSc(selectedBillingRoom)
-                                            if (roomSc.auto <= 0 && !roomSc.isOverridden) return null
+                                            // Shown even for a room that carries no automatic
+                                            // charge: the cashier can still add one, and the
+                                            // settlement bills it as a difference from 0.
+                                            const scIsAutomatic = roomServiceChargeApplies(features, selectedBillingRoom?.id)
                                             return (
                                                 <div className="p-4 space-y-2 border-t border-hairline bg-sky-50/20">
                                                     <div className="flex justify-between items-center gap-3">
@@ -2805,11 +2808,15 @@ export default function CashierClient({
                                                             <p className="text-xs font-extrabold text-sky-700 flex items-center gap-1.5">
                                                                 Room Service Charge
                                                                 {roomSc.isOverridden && (
-                                                                    <span className="text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5">EDITED</span>
+                                                                    <span className="text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5">
+                                                                        {scIsAutomatic ? 'EDITED' : 'MANUAL'}
+                                                                    </span>
                                                                 )}
                                                             </p>
                                                             <p className="text-[10px] text-sky-600/70 font-semibold">
-                                                                {ROOM_SERVICE_CHARGE_RATE * 100}% on room food · auto {money(roomSc.auto)}
+                                                                {scIsAutomatic
+                                                                    ? `${ROOM_SERVICE_CHARGE_RATE * 100}% on room food · auto ${money(roomSc.auto)}`
+                                                                    : 'Not charged automatically for this room — type an amount to add one'}
                                                             </p>
                                                         </div>
                                                         <div className="flex items-center gap-1.5 shrink-0">
@@ -2817,7 +2824,7 @@ export default function CashierClient({
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => setRoomServiceChargeEdit(null)}
-                                                                    title={`Reset to the auto-calculated ${money(roomSc.auto)}`}
+                                                                    title={scIsAutomatic ? `Reset to the auto-calculated ${money(roomSc.auto)}` : 'Clear the manual charge'}
                                                                     className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
                                                                 >
                                                                     <RotateCcw size={12} />

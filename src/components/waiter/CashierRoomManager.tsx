@@ -18,7 +18,7 @@ import { useQrCodes } from '@/lib/hooks/useQrCodes'
 import { useGuestLookup, type GuestSuggestion } from '@/lib/hooks/useGuestLookup'
 import GuestSuggestionList from './GuestSuggestionList'
 import { getRoomStatusConfig } from '@/lib/roomStatus'
-import { autoRoomServiceCharge, resolveRoomServiceCharge, ROOM_SERVICE_CHARGE_RATE } from '@/lib/roomServiceCharge'
+import { autoRoomServiceCharge, resolveRoomServiceCharge, roomServiceChargeApplies, ROOM_SERVICE_CHARGE_RATE } from '@/lib/roomServiceCharge'
 import Select from '@/components/ui/Select'
 import { NepaliDateInput, NepaliDateTimeInput } from '@/components/ui/NepaliDateInput'
 import { useDates } from '@/lib/contexts/CalendarContext'
@@ -538,6 +538,10 @@ export default function CashierRoomManager({
         () => autoRoomServiceCharge(linkedDiningOrders, features, selectedRoom?.id),
         [linkedDiningOrders, features, selectedRoom?.id],
     )
+    // Whether the room is charged one automatically. A room that isn't can
+    // still have one added by hand — the settlement bills any override as a
+    // difference from the auto figure, and for these rooms that figure is 0.
+    const serviceChargeIsAutomatic = roomServiceChargeApplies(features, selectedRoom?.id)
 
     // Empty means "leave it on auto"; an explicit '0' waives the charge, which
     // is why the override is held as a string rather than a number.
@@ -1555,16 +1559,25 @@ export default function CashierRoomManager({
                                             </div>
                                         )}
 
-                                        {/* Room Service Charge — auto 10% of the room's own
-                                            food orders, typed over when the cashier needs
-                                            a different figure. */}
-                                        {(autoServiceCharge > 0 || serviceChargeOverridden) && (
+                                        {/* Room Service Charge — the auto figure for rooms
+                                            that carry one, and an empty field to add one by
+                                            hand for rooms that don't. */}
+                                        {activeBooking && (
                                             <div className="p-4 space-y-2">
                                                 <div className="flex justify-between items-center gap-3">
                                                     <div className="min-w-0">
-                                                        <p className="text-xs font-extrabold text-sky-600">Room Service Charge</p>
+                                                        <p className="text-xs font-extrabold text-sky-600 flex items-center gap-1.5">
+                                                            Room Service Charge
+                                                            {serviceChargeOverridden && applyRoomServiceCharge && (
+                                                                <span className="text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5">
+                                                                    {serviceChargeIsAutomatic ? 'EDITED' : 'MANUAL'}
+                                                                </span>
+                                                            )}
+                                                        </p>
                                                         <p className="text-[10px] text-ink-subtle font-semibold">
-                                                            {ROOM_SERVICE_CHARGE_RATE * 100}% on room food · auto {money(autoServiceCharge)}
+                                                            {serviceChargeIsAutomatic
+                                                                ? `${ROOM_SERVICE_CHARGE_RATE * 100}% on room food · auto ${money(autoServiceCharge)}`
+                                                                : 'Not charged automatically for this room — type an amount to add one'}
                                                         </p>
                                                     </div>
                                                     <div className="flex items-center gap-1.5 shrink-0">
@@ -1583,7 +1596,7 @@ export default function CashierRoomManager({
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setServiceChargeEdit(null)}
-                                                                title={`Reset to the auto-calculated ${money(autoServiceCharge)}`}
+                                                                title={serviceChargeIsAutomatic ? `Reset to the auto-calculated ${money(autoServiceCharge)}` : 'Clear the manual charge'}
                                                                 className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
                                                             >
                                                                 <RotateCcw size={12} />
@@ -1605,7 +1618,7 @@ export default function CashierRoomManager({
                                                         </div>
                                                     </div>
                                                 </div>
-                                                {serviceChargeOverridden && applyRoomServiceCharge && (
+                                                {serviceChargeOverridden && applyRoomServiceCharge && serviceChargeIsAutomatic && (
                                                     <p className="text-[9px] text-amber-700 font-bold text-right">
                                                         Edited — auto was {money(autoServiceCharge)}
                                                     </p>

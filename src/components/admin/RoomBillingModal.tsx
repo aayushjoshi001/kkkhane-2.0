@@ -14,7 +14,7 @@ import { usePrinter } from '@/lib/print/usePrinter'
 import { usePrinterSettingsStore } from '@/lib/stores/printerSettings'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 import { useFeatureEnabled, useDateFormatter, useFeatures } from '@/lib/contexts/FeatureContext'
-import { autoRoomServiceCharge, resolveRoomServiceCharge, ROOM_SERVICE_CHARGE_RATE } from '@/lib/roomServiceCharge'
+import { autoRoomServiceCharge, resolveRoomServiceCharge, roomServiceChargeApplies, ROOM_SERVICE_CHARGE_RATE } from '@/lib/roomServiceCharge'
 import Select from '@/components/ui/Select'
 import { useDates } from '@/lib/contexts/CalendarContext'
 
@@ -272,6 +272,9 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         () => autoRoomServiceCharge(allServiceOrderItems, features, room?.id),
         [allServiceOrderItems, features, room?.id],
     )
+    // A room the settings exempt still gets the field — the override is billed
+    // as a difference from the auto figure, which for these rooms is 0.
+    const serviceChargeIsAutomatic = roomServiceChargeApplies(features, room?.id)
     const serviceCharge = resolveRoomServiceCharge(autoServiceCharge, roomServiceChargeInput)
     const roomServiceChargeAmount = applyRoomServiceCharge ? serviceCharge.charged : 0
     // A waive via the toggle is an override to zero as far as the API cares.
@@ -649,19 +652,23 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         </div>
                                     )}
 
-                                    {/* Room Service Charge — auto figure, editable */}
-                                    {(autoServiceCharge > 0 || serviceCharge.isOverridden) && (
-                                        <div className="p-4 border-t border-hairline bg-surface-muted/20 space-y-2">
+                                    {/* Room Service Charge — auto figure where the room carries
+                                        one, an empty field to add one by hand where it doesn't */}
+                                    <div className="p-4 border-t border-hairline bg-surface-muted/20 space-y-2">
                                             <div className="flex items-center justify-between gap-2">
                                                 <div className="min-w-0">
                                                     <p className="text-xs font-extrabold text-ink flex items-center gap-1.5">
                                                         Room Service Charge
                                                         {serviceCharge.isOverridden && applyRoomServiceCharge && (
-                                                            <span className="text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5">EDITED</span>
+                                                            <span className="text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5">
+                                                                {serviceChargeIsAutomatic ? 'EDITED' : 'MANUAL'}
+                                                            </span>
                                                         )}
                                                     </p>
                                                     <p className="text-[10px] text-ink-subtle">
-                                                        {ROOM_SERVICE_CHARGE_RATE * 100}% on room QR &amp; direct room food orders · auto {money(autoServiceCharge)}
+                                                        {serviceChargeIsAutomatic
+                                                            ? `${ROOM_SERVICE_CHARGE_RATE * 100}% on room QR & direct room food orders · auto ${money(autoServiceCharge)}`
+                                                            : 'Not charged automatically for this room — type an amount to add one'}
                                                     </p>
                                                 </div>
                                                 <div className="flex items-center gap-1.5 shrink-0">
@@ -680,7 +687,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                                         <button
                                                             type="button"
                                                             onClick={() => setRoomServiceChargeInput('')}
-                                                            title={`Reset to the auto-calculated ${money(autoServiceCharge)}`}
+                                                            title={serviceChargeIsAutomatic ? `Reset to the auto-calculated ${money(autoServiceCharge)}` : 'Clear the manual charge'}
                                                             className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
                                                         >
                                                             <RotateCcw size={12} />
@@ -708,8 +715,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                                     <span className="tabular-nums">+{money(roomServiceChargeAmount)}</span>
                                                 </div>
                                             )}
-                                        </div>
-                                    )}
+                                    </div>
                                 </div>
                             </div>
 
