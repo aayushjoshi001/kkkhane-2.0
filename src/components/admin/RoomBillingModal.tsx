@@ -31,7 +31,8 @@ export interface BillingOrderItem {
     id: string
     quantity: number
     unit_price: number
-    menu_items?: { name: string } | null
+    station?: string | null
+    menu_items?: { name: string; station?: string | null } | null
 }
 
 /** Active order shape the admin room pages pass in. */
@@ -118,7 +119,6 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const [extraHourCharge, setExtraHourCharge] = useState('')
     const [applyRoomServiceCharge, setApplyRoomServiceCharge] = useState(true)
     const [roomServiceChargeInput, setRoomServiceChargeInput] = useState('')
-    const features = useFeatures()
     const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qr_digital' | 'split' | 'credit'>('cash')
     const [historyModalOpen, setHistoryModalOpen] = useState(false)
     const [splitCashAmount, setSplitCashAmount] = useState('')
@@ -142,6 +142,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const printBillEnabled = useFeatureEnabled('printBillEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
+    const features = useFeatures()
     const { formatDateTime, calendar } = useDates()
     const { print: printInvoice } = usePrinter('invoice')
     // True once the checkout API confirms the room is settled — printing
@@ -263,6 +264,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
 
     const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost || orderDiscountVal < 0 || orderDiscountVal > qrOrdersTotal
     const effectiveStayCost = Math.max(0, stayCost - roomDiscountVal)
+    // What the guest owes for orders: every service order against the stay,
+    // room service and linked dine-in tables alike, less the order discount.
     const effectiveOrdersTotal = Math.max(0, qrOrdersTotal - orderDiscountVal)
 
     // Service charge on food items for direct room orders & room QR orders only
@@ -357,6 +360,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             : undefined,
         qrOrders: mergeLineItems(allServiceOrderItems),
         qrOrdersTotal,
+        serviceCharge: roomServiceChargeAmount || undefined,
         manualCharges: charges.map(c => ({ id: c.id, description: c.description, amount: Number(c.amount) })),
         manualChargesTotal,
         total: grandTotal,

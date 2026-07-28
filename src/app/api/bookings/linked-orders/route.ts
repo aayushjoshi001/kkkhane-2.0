@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
             .from('orders')
             .select(`
                 id, session_id, status, payment_status, placed_at, order_type,
-                order_items(id, status, quantity, unit_price, special_request, menu_items(name), menu_item_variations:menu_item_variation_id(id, name)),
+                order_items(id, status, quantity, unit_price, station, special_request, menu_items(name, station), menu_item_variations:menu_item_variation_id(id, name)),
                 sessions(id, table_id, tables:table_id(room_id))
             `)
             .in('restaurant_id', targetRestaurantIds)
@@ -109,7 +109,7 @@ export async function GET(req: NextRequest) {
             return tbl?.room_id ?? null
         }
 
-        type LinkedOrderItem = { id: string; status?: string; quantity: number; unit_price: number; special_request?: string | null; menu_items: unknown; menu_item_variations?: unknown }
+        type LinkedOrderItem = { id: string; status?: string; quantity: number; unit_price: number; station?: string | null; special_request?: string | null; menu_items: unknown; menu_item_variations?: unknown }
         type LinkedOrder = { id: string; session_id: string | null; status: string; payment_status: string; placed_at: string; order_type?: string; sessions: any; order_items?: LinkedOrderItem[] }
         const items = ((orders || []) as LinkedOrder[]).flatMap((o) => {
             const roomId = getRoomId(o.sessions)
@@ -124,6 +124,7 @@ export async function GET(req: NextRequest) {
                     order_type: o.order_type || 'dine_in',
                     quantity: item.quantity,
                     unit_price: item.unit_price,
+                    station: (item as any).station ?? null,
                     special_request: item.special_request,
                     menu_items: item.menu_items,
                     menu_item_variations: item.menu_item_variations,

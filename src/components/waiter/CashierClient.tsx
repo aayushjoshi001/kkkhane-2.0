@@ -115,6 +115,7 @@ interface Props {
     restaurantAddress?: string
     restaurantPhone?: string
     userId: string
+    /** Printed on the receipt so bills from two cashiers on one till are told apart. */
     initialUnpaid: UnpaidOrder[]
     initialActive: ActiveOrder[]
     tables: TableWithSession[]
@@ -182,7 +183,7 @@ export default function CashierClient({
     restaurantAddress = '',
     restaurantPhone = '',
     userId,
-    initialUnpaid, 
+    initialUnpaid,
     initialActive,
     tables,
     rooms = [],
@@ -502,6 +503,9 @@ export default function CashierClient({
     const qrCodes = useQrCodes()
 
     const [mounted, setMounted] = useState(false)
+    useEffect(() => {
+        setMounted(true)
+    }, [])
 
 
     // Sync rooms state when prop changes
