@@ -24,6 +24,7 @@ type AdminClient = Awaited<ReturnType<typeof createAdminClient>>
 async function settleOrdersMatching(
     supabase: AdminClient,
     restaurantId: string,
+    userId: string,
     match: { session_id: string } | { booking_id: string },
 ) {
     // Fetch partner restaurant if linked
@@ -71,9 +72,12 @@ async function settleOrdersMatching(
         .update({ status: 'delivered' })
         .in('id', orderIds)
 
+    // cashier_id rides with paid_at, and so inherits its guard: an order the
+    // guest settled mid-stay keeps the cashier who took that money rather than
+    // being reattributed to whoever ran the checkout.
     await supabase
         .from('orders')
-        .update({ payment_status: 'paid', paid_at: now })
+        .update({ payment_status: 'paid', paid_at: now, cashier_id: userId })
         .in('id', orderIds)
         .neq('payment_status', 'paid')
 }
@@ -84,6 +88,7 @@ async function settleOrdersMatching(
 async function settleAndCloseSession(
     supabase: AdminClient,
     restaurantId: string,
+    userId: string,
     sessionId: string,
 ) {
     const { data: session } = await supabase
@@ -95,7 +100,7 @@ async function settleAndCloseSession(
 
     if (!session) return
 
-    await settleOrdersMatching(supabase, restaurantId, { session_id: sessionId })
+    await settleOrdersMatching(supabase, restaurantId, userId, { session_id: sessionId })
     await supabase
         .from('sessions')
         .update({ status: 'closed', closed_at: new Date().toISOString() })
@@ -321,7 +326,7 @@ export async function POST(req: Request) {
         if (!isInvoiceEnabled) {
             // 1. Settle the session orders (if session_id is provided)
             if (session_id) {
-                await settleAndCloseSession(supabase, booking.restaurant_id, session_id)
+                await settleAndCloseSession(supabase, booking.restaurant_id, currentUser.id, session_id)
             }
 
             // 2. Mark the booking(s) as checked out — every room of a group
@@ -335,6 +340,12 @@ export async function POST(req: Request) {
                     // clock on every later recompute and a settled bill would
                     // keep growing.
                     checked_out_at: new Date().toISOString(),
+                    cashier_id: currentUser.id,
+                    // Remembered for the same reason checked_out_at is: without
+                    // it a later recompute of this folio would rebuild the
+                    // service charge from the rules and quote a figure the
+                    // guest was never charged.
+                    service_charge_override: serviceChargeOverride,
                 })
                 .in('id', memberIds)
             if (bookingErr) throw bookingErr
@@ -487,6 +498,20 @@ export async function POST(req: Request) {
         const resObj = rpcRes as unknown as { success: boolean; error?: string }
         if (!resObj.success) {
             return NextResponse.json({ error: resObj.error || 'Transaction rolled back' }, { status: 400 })
+        }
+
+        // Written after the settling transaction rather than inside it: the RPC
+        // has already charged this figure by way of authoritativeTotal, and
+        // storing it is only so a later recompute of the folio reproduces the
+        // same number. A failure here leaves the bill correctly settled and the
+        // stored charge stale, which is why it is not allowed to fail the
+        // checkout — the audit log records the override either way.
+        if (serviceChargeOverride !== null) {
+            const { error: scErr } = await supabase
+                .from('bookings')
+                .update({ service_charge_override: serviceChargeOverride })
+                .in('id', memberIds)
+            if (scErr) console.error('Failed to store service charge override:', scErr)
         }
 
         // Trigger IRD CBMS Synchronization

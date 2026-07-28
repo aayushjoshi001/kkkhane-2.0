@@ -116,6 +116,7 @@ interface Props {
     restaurantPhone?: string
     userId: string
     /** Printed on the receipt so bills from two cashiers on one till are told apart. */
+    userName?: string
     initialUnpaid: UnpaidOrder[]
     initialActive: ActiveOrder[]
     tables: TableWithSession[]
@@ -183,6 +184,7 @@ export default function CashierClient({
     restaurantAddress = '',
     restaurantPhone = '',
     userId,
+    userName = '',
     initialUnpaid,
     initialActive,
     tables,
@@ -1387,8 +1389,13 @@ export default function CashierClient({
     // (whether the whole bill or a leftover from 'both') because it needs a
     // customer name + phone to post against.
     const compileInvoice = (type: 'room' | 'table' | 'takeout' | 'delivery', item: any) => {
-        const data = buildInvoiceData(type, item)
-        if (!data) return
+        const built = buildInvoiceData(type, item)
+        if (!built) return
+        // Stamped here, at the one funnel every invoice type passes through,
+        // rather than in each of buildInvoiceData's three branches — the
+        // settlement popup's finalData spreads this object, so it carries
+        // through to both the preview and the thermal ticket.
+        const data = { ...built, cashierName: userName }
 
         if (data.paymentMethod === 'both' || data.paymentMethod === 'credit') {
             // Seed the popup's name/phone from whatever identity is already

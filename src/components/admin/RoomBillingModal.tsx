@@ -65,6 +65,8 @@ interface RoomBillingModalProps {
     restaurantName: string
     restaurantAddress?: string
     restaurantPhone?: string
+    /** Printed on the receipt, mirroring the Cashier POS — see ActiveInvoice.cashierName. */
+    userName?: string
     onClose: () => void
     /** Called after the server confirms the checkout so the caller can update its local state. */
     onSettled: (result: SettlementResult) => void
@@ -104,7 +106,7 @@ const calculateStayCost = (room: Room, booking: Booking) => {
  * charges fetch and the call to /api/bookings/checkout; callers only react
  * to onSettled/onClose. Shared by the admin Bookings and Rooms pages.
  */
-export default function RoomBillingModal({ room, booking, tables, activeOrders, restaurantName, restaurantAddress = '', restaurantPhone = '', onClose, onSettled }: RoomBillingModalProps) {
+export default function RoomBillingModal({ room, booking, tables, activeOrders, restaurantName, restaurantAddress = '', restaurantPhone = '', userName = '', onClose, onSettled }: RoomBillingModalProps) {
     // true after hydration (portals can't render during SSR)
     const mounted = useSyncExternalStore(() => () => {}, () => true, () => false)
     const formatDate = useDateFormatter()
@@ -352,6 +354,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         roomType: groupBill ? undefined : room.room_types?.name,
         guestName: booking.guest_name,
         guestPhone: booking.guest_phone,
+        cashierName: userName,
         nights: calculateNights(booking.check_in, booking.check_out),
         basePrice: room.room_types?.base_price || 0,
         stayCost: stayCost,

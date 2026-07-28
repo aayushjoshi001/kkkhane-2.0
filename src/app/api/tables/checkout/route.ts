@@ -41,9 +41,13 @@ async function settleOrders(
         .neq('status', 'cancelled')
         .eq('needs_confirmation', false)
 
+    // cashier_id names who settled the bill, alongside the waiter_id/chef_id the
+    // order already carries. Scoped to the same `neq('payment_status', 'paid')`
+    // guard as paid_at for the same reason: an order settled earlier in the stay
+    // keeps the cashier who actually took the money, not whoever closed the table.
     await supabase
         .from('orders')
-        .update({ status: 'delivered', delivered_at: now, payment_status: 'paid', paid_at: now })
+        .update({ status: 'delivered', delivered_at: now, payment_status: 'paid', paid_at: now, cashier_id: userId })
         .in('id', orderIds)
         .neq('payment_status', 'paid')
 

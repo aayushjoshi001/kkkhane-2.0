@@ -226,11 +226,14 @@ export async function computeFolioForStays(
         // whole bill, however many rooms are on it.
         discountAmount?: number
         // A cashier's replacement for the service charge the rules worked out.
-        // Undefined/null leaves it on auto; 0 is a real instruction to waive it.
+        // 0 is a real instruction to waive it, so it has to survive as a value.
+        // Omit it entirely — as every caller but the checkout route does — and
+        // any override already stored on the stay is replayed instead, so a
+        // settled bill recomputes to the figure the guest was actually charged.
         serviceChargeOverride?: number | null
     }
 ): Promise<FolioBreakdown> {
-    const { restaurantId, stays, sessionId, discountAmount: rawDiscount, serviceChargeOverride } = opts
+    const { restaurantId, stays, sessionId, discountAmount: rawDiscount } = opts
     const bookingIds = stays.map(s => s.bookingId)
     const roomIds = [...new Set(stays.map(s => s.roomId))]
 
@@ -409,6 +412,24 @@ export async function computeFolioForStays(
     // up front, this is just the calculation's own floor.
     const discountAmount = Math.min(Math.max(Number(rawDiscount) || 0, 0), stayCost)
     const netStayCost = stayCost - discountAmount
+
+    // An override the caller passes wins — that is the checkout route settling
+    // the bill, and it is the request that decides the figure. Anything else
+    // replays what settlement stored, so recomputing a closed stay (the emailed
+    // invoice, the guest's own bill page) reproduces the charge that was taken
+    // rather than the one the rules would produce today. One bill carries one
+    // override, so a group reads the first of its rooms that has one.
+    let serviceChargeOverride = opts.serviceChargeOverride
+    if (serviceChargeOverride === undefined) {
+        const { data: storedRows } = await supabase
+            .from('bookings')
+            .select('service_charge_override')
+            .in('id', bookingIds)
+            .not('service_charge_override', 'is', null)
+            .limit(1)
+        const stored = storedRows?.[0]?.service_charge_override
+        serviceChargeOverride = stored === undefined || stored === null ? undefined : Number(stored)
+    }
 
     // Manual charges added during the stay (minibar, laundry, …), across every
     // room on the bill.

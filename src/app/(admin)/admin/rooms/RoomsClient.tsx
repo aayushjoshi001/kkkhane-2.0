@@ -29,6 +29,8 @@ interface RoomsClientProps {
     restaurantId: string
     restaurantSlug: string
     restaurantName?: string
+    /** Passed straight to RoomBillingModal so the printed bill names its cashier. */
+    userName?: string
     tables?: BillingTable[]
     activeOrders?: BillingOrder[]
 }
@@ -38,6 +40,7 @@ export default function RoomsClient({
     roomTypes,
     restaurantSlug,
     restaurantName = 'KKKhane',
+    userName = '',
     tables = [],
     activeOrders = []
 }: RoomsClientProps) {
@@ -1422,6 +1425,7 @@ export default function RoomsClient({
                     tables={tables}
                     activeOrders={activeOrders}
                     restaurantName={restaurantName || 'KKKhane'}
+                    userName={userName}
                     onClose={() => setBillingStay(null)}
                     onSettled={result => {
                         setRooms(prev => prev.map(r => r.id === result.roomId ? { ...r, status: 'dirty' } : r))
