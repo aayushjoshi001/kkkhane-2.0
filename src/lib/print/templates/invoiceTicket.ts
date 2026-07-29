@@ -1,10 +1,14 @@
 // Builds the ESC/POS byte stream for a settled table/room invoice — the
-// thermal-print equivalent of the receipt markup in CashierClient.tsx's
-// invoice modal. Kept in sync with that JSX; if the on-screen receipt layout
-// changes, mirror the change here too.
+// thermal-print equivalent of the receipt markup in InvoiceReceipt.tsx.
+//
+// The money block at the foot is no longer duplicated between the two: both
+// render whatever summariseInvoice() returns, so paper and screen cannot
+// disagree about what the guest owes. Only the item table above it is written
+// twice, and that carries no arithmetic.
 
 import { EscPosBuilder, LINE_WIDTH, wrapTextToByteWidth } from '../escpos'
 import { advanceMethodLabel, formatInvoiceAddress } from '@/lib/utils'
+import { summariseInvoice } from '@/lib/invoiceSummary'
 import type { AdvancePaymentMethod } from '@/types/database'
 import { appendBrandFooter } from './brandFooter'
 import { DEFAULT_CALENDAR, formatDateTime, type Calendar } from '@/lib/calendar'
@@ -188,36 +192,37 @@ export function buildInvoiceTicket(
     }
 
     b.divider()
-    const rawSubtotal = invoice.subtotal != null ? invoice.subtotal : ((invoice.stayCost || 0) + (invoice.qrOrdersTotal || 0) + (invoice.linkedOrdersTotal || 0) + (invoice.manualChargesTotal || 0) + (invoice.extraHourCharge || 0))
-    const scAmount = invoice.serviceCharge || invoice.service_charge_amount || 0
-    const taxAmount = invoice.taxAmount || invoice.tax_amount || 0
-    const discount = invoice.discountAmount || 0
 
-    b.columns([{ text: 'SUBTOTAL', width: LINE_WIDTH - 14 }, { text: money(rawSubtotal), width: 14, align: 'right' }])
-    if (scAmount > 0) {
-        b.columns([{ text: 'SERVICE CHARGE', width: LINE_WIDTH - 14 }, { text: `+${money(scAmount)}`, width: 14, align: 'right' }])
+    // Subtotal → extra hour → service charge → discount → tax → TOTAL, then the
+    // advance comes off, and the figure the guest actually hands over closes the
+    // bill. See summariseInvoice for why the tendered cash is not subtracted
+    // here: it is reported below as the method of payment instead.
+    const summary = summariseInvoice(invoice)
+
+    for (const line of summary.lines) {
+        b.columns([
+            { text: line.label, width: LINE_WIDTH - 14 },
+            { text: `${line.sign}${money(line.amount)}`, width: 14, align: 'right' },
+        ])
     }
-    if (discount > 0) {
-        b.columns([{ text: 'DISCOUNT', width: LINE_WIDTH - 14 }, { text: `-${money(discount)}`, width: 14, align: 'right' }])
-    }
-    if (taxAmount > 0) {
-        b.columns([{ text: 'TAX (VAT)', width: LINE_WIDTH - 14 }, { text: `+${money(taxAmount)}`, width: 14, align: 'right' }])
-    }
+
     b.bold(true)
-    b.columns([{ text: 'GRAND TOTAL', width: LINE_WIDTH - 14 }, { text: money(invoice.total), width: 14, align: 'right' }])
+    b.columns([{ text: 'TOTAL', width: LINE_WIDTH - 14 }, { text: money(summary.total), width: 14, align: 'right' }])
     b.bold(false)
 
-    if (invoice.advancePaid && invoice.advancePaid > 0) {
-        const label = `Advance (${advanceMethodLabel(invoice.advanceMethod)})`
-        b.columns([{ text: label, width: LINE_WIDTH - 14 }, { text: `-${money(invoice.advancePaid)}`, width: 14, align: 'right' }])
+    if (summary.advancePaid > 0) {
+        const label = `LESS ADVANCE (${advanceMethodLabel(invoice.advanceMethod)})`
+        b.columns([
+            { text: label, width: LINE_WIDTH - 14 },
+            { text: `-${money(summary.advancePaid)}`, width: 14, align: 'right' },
+        ])
     }
 
+    // The closing figure, and the last money on the bill — nothing but how it
+    // was paid follows it.
     b.divider()
     b.size({ doubleHeight: true }).bold(true)
-    const totalReceived = (invoice.cashPaid ?? 0) + (invoice.qrPaid ?? 0) + (invoice.advancePaid ?? 0)
-    const effectiveDue = Math.max(0, invoice.total - totalReceived)
-    const dueLabel = (invoice.advancePaid && invoice.advancePaid > 0) || totalReceived > 0 || (invoice.creditPaid && invoice.creditPaid > 0) ? 'BALANCE DUE' : 'TOTAL DUE'
-    b.line(`${dueLabel}: ${money(effectiveDue)}`)
+    b.line(`${summary.finalLabel}: ${money(summary.finalAmount)}`)
     b.size({}).bold(false)
 
     if (invoice.paymentMethod) {
@@ -230,12 +235,13 @@ export function buildInvoiceTicket(
         if (invoice.paymentMethod === 'both') {
             b.line(`  Cash: ${money(invoice.cashPaid ?? 0)}`)
             b.line(`  QR/Digital: ${money(invoice.qrPaid ?? 0)}`)
-            if (invoice.creditPaid) {
-                b.line(`  On credit: ${money(invoice.creditPaid)}`)
-            }
         }
-        if (invoice.paymentMethod === 'credit' && invoice.creditPaid) {
-            b.line(`  On credit: ${money(invoice.creditPaid)}`)
+        // Credit is the guest leaving owing money, so it is spelled out on
+        // every method that can carry it, not just a split.
+        if (invoice.creditPaid && invoice.creditPaid > 0.01) {
+            b.bold(true)
+            b.line(`  ON CREDIT: ${money(invoice.creditPaid)}`)
+            b.bold(false)
         }
     }
 
