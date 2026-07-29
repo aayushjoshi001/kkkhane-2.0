@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useSyncExternalStore, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Loader2, CheckCircle2, Percent, Clock, Printer, History, Utensils, QrCode, Bed, RotateCcw } from 'lucide-react'
+import { X, Loader2, CheckCircle2, Percent, Clock, Printer, History, Utensils, QrCode, Bed, RotateCcw, Link2, Unlink, Plus } from 'lucide-react'
 import AdvancePaymentHistoryModal from './AdvancePaymentHistoryModal'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
@@ -90,6 +90,19 @@ interface GroupBill {
     advancePaid: number
 }
 
+/** An open stay that could be pulled onto this bill (see /api/bookings/combine-bill). */
+interface CombineCandidate {
+    bookingId: string
+    roomNumber: string
+    guestName: string
+    guestPhone: string
+    checkIn: string
+    checkOut: string
+    advancePaid: number
+    /** Rooms it would bring, itself included — >1 when it is already on a bill. */
+    bringsRooms: number
+}
+
 // Mirrors the server folio, including the late-checkout rule — if this preview
 // left the overstay out, the cashier would quote a total the server then
 // charged more than.
@@ -154,6 +167,17 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const [showSettlementPrintPrompt, setShowSettlementPrintPrompt] = useState(false)
     const [settlementCopies, setSettlementCopies] = useState(1)
 
+    // Bumped whenever the rooms on this bill change. Every figure in this modal
+    // is drawn from three fetches that each resolve the whole folio — charges,
+    // linked orders and the group bill — so combining or separating a room has
+    // to re-run all three, not just the one that obviously moved.
+    const [billVersion, setBillVersion] = useState(0)
+    const [combinePickerOpen, setCombinePickerOpen] = useState(false)
+    const [candidates, setCandidates] = useState<CombineCandidate[]>([])
+    const [loadingCandidates, setLoadingCandidates] = useState(false)
+    const [pickedCandidateIds, setPickedCandidateIds] = useState<string[]>([])
+    const [isCombining, setIsCombining] = useState(false)
+
     useEffect(() => {
         if (!booking) return
         setGuestEmailInput(booking.guest_email || '')
@@ -169,7 +193,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             .catch(err => console.error('Error loading charges:', err))
             .finally(() => { if (!cancelled) setChargesLoadedFor(booking.id) })
         return () => { cancelled = true }
-    }, [booking])
+    }, [booking, billVersion])
 
     // Rooms are joined to QR ordering by key: tables.room_id points at the room
     // this table is the in-room QR for (migration 20260709140000).
@@ -196,7 +220,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             })
             .catch(err => console.error('Error loading linked dining orders:', err))
         return () => { cancelled = true }
-    }, [booking])
+    }, [booking, billVersion])
 
     // A multi-room reservation settles as one bill, so this modal has to show
     // every room on it — not just the one the cashier happened to click. The
@@ -220,7 +244,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             })
             .catch(err => console.error('Error loading group bill:', err))
         return () => { cancelled = true }
-    }, [booking])
+    }, [booking, billVersion])
 
     // The room's own QR session carries booking_id, so its orders arrive in BOTH
     // qrOrderItems (by session) and linkedDiningOrders (by booking) — dedupe by
@@ -380,6 +404,78 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         discountReason: discountReason,
         extraHourCharge: extraHourChargeVal,
     } : null
+
+    // ── Combining separately-made bookings onto this one bill ──
+    //
+    // Two guests who arrived on different days and want to pay together were
+    // previously three clicks away from three separate bills. Membership of a
+    // reservation group is the only thing that changes here; the folio, the
+    // receipt and the checkout RPC all already read it.
+
+    const openCombinePicker = async () => {
+        if (!booking) return
+        setCombinePickerOpen(true)
+        setPickedCandidateIds([])
+        setLoadingCandidates(true)
+        try {
+            const res = await fetch(`/api/bookings/combine-bill?bookingId=${booking.id}`)
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Could not load the other rooms')
+            setCandidates(data.candidates || [])
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not load the other rooms')
+            setCombinePickerOpen(false)
+        } finally {
+            setLoadingCandidates(false)
+        }
+    }
+
+    const handleCombine = async () => {
+        if (!booking || pickedCandidateIds.length === 0) return
+        setIsCombining(true)
+        try {
+            const res = await fetch('/api/bookings/combine-bill', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bookingId: booking.id, addBookingIds: pickedCandidateIds }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Could not combine the bills')
+
+            toast.success(
+                data.absorbedCount > 0
+                    ? `${data.roomCount} rooms now on one bill (${data.absorbedCount} came from a bill they were already sharing)`
+                    : `${data.roomCount} rooms now on one bill`
+            )
+            setCombinePickerOpen(false)
+            setPickedCandidateIds([])
+            setBillVersion(v => v + 1)
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not combine the bills')
+        } finally {
+            setIsCombining(false)
+        }
+    }
+
+    const handleSeparate = async (targetBookingId: string, roomNumber: string) => {
+        setIsCombining(true)
+        try {
+            const res = await fetch(`/api/bookings/combine-bill?bookingId=${targetBookingId}`, { method: 'DELETE' })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Could not separate that room')
+
+            toast.success(
+                data.dissolved
+                    ? `Room ${roomNumber} taken off — the rooms are on separate bills again`
+                    : `Room ${roomNumber} taken off this bill`
+            )
+            setBillVersion(v => v + 1)
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not separate that room')
+        } finally {
+            setIsCombining(false)
+        }
+    }
 
     const handlePrintBill = async () => {
         if (!invoiceData) return
@@ -545,6 +641,137 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                     )}
                                 </div>
                             </div>
+
+                            {/* ── Rooms on this bill ──
+                                Rooms booked at different times still settle together when
+                                the guests ask to pay once. Only membership changes here —
+                                every figure below is recomputed from it. Hidden once the
+                                bill is settled, when the money is already in the books and
+                                moving a room between folios would misattribute it. */}
+                            {!invoiceSettled && booking && (
+                                <div className="space-y-3">
+                                    <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider flex items-center gap-2">
+                                        <Link2 size={13} className="text-brand-500" />
+                                        Rooms on this bill
+                                        <span className="ml-auto normal-case font-semibold text-ink-subtle">
+                                            {groupBill ? `${groupBill.rooms.length} rooms combined` : 'Room ' + room.room_number + ' only'}
+                                        </span>
+                                    </h4>
+
+                                    <div className="border border-hairline rounded-2xl bg-surface divide-y divide-hairline overflow-hidden">
+                                        {groupBill && groupBill.rooms.map(r => (
+                                            <div key={r.bookingId} className="flex items-center justify-between gap-3 px-4 py-2.5 text-xs">
+                                                <span className="font-bold text-ink">
+                                                    Room {r.roomNumber}
+                                                    <span className="ml-2 font-semibold text-ink-subtle">
+                                                        {r.nights} night{r.nights === 1 ? '' : 's'} · {money(r.stayCost)}
+                                                    </span>
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSeparate(r.bookingId, r.roomNumber)}
+                                                    disabled={isCombining || isSaving}
+                                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-ink-subtle hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-40"
+                                                >
+                                                    <Unlink size={11} /> Separate
+                                                </button>
+                                            </div>
+                                        ))}
+
+                                        {!combinePickerOpen ? (
+                                            <button
+                                                type="button"
+                                                onClick={openCombinePicker}
+                                                disabled={isCombining || isSaving}
+                                                className="w-full flex items-center justify-center gap-2 px-4 py-3 text-[11px] font-extrabold text-brand-600 hover:bg-brand-50 transition-colors disabled:opacity-40"
+                                            >
+                                                <Plus size={13} /> Add another room to this bill
+                                            </button>
+                                        ) : (
+                                            <div className="p-4 space-y-3 bg-surface-muted/30">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-[10px] font-black uppercase tracking-wider text-ink-subtle">
+                                                        Pick the rooms paying together
+                                                    </p>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCombinePickerOpen(false)}
+                                                        className="text-ink-subtle hover:text-ink p-0.5 rounded"
+                                                        aria-label="Close room picker"
+                                                    >
+                                                        <X size={13} />
+                                                    </button>
+                                                </div>
+
+                                                {loadingCandidates ? (
+                                                    <div className="flex items-center justify-center gap-2 py-4 text-[11px] text-ink-subtle">
+                                                        <Loader2 size={13} className="animate-spin text-brand-500" /> Loading rooms…
+                                                    </div>
+                                                ) : candidates.length === 0 ? (
+                                                    <p className="py-3 text-center text-[11px] text-ink-subtle font-semibold">
+                                                        No other rooms are checked in right now.
+                                                    </p>
+                                                ) : (
+                                                    <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                                                        {candidates.map(c => {
+                                                            const picked = pickedCandidateIds.includes(c.bookingId)
+                                                            return (
+                                                                <button
+                                                                    key={c.bookingId}
+                                                                    type="button"
+                                                                    aria-pressed={picked}
+                                                                    onClick={() => setPickedCandidateIds(prev =>
+                                                                        picked
+                                                                            ? prev.filter(id => id !== c.bookingId)
+                                                                            : [...prev, c.bookingId]
+                                                                    )}
+                                                                    className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-xl border-2 text-left transition-all ${
+                                                                        picked
+                                                                            ? 'border-brand-500 bg-brand-50'
+                                                                            : 'border-hairline bg-surface hover:border-brand-300'
+                                                                    }`}
+                                                                >
+                                                                    <span className="min-w-0">
+                                                                        <span className={`block text-xs font-extrabold ${picked ? 'text-brand-700' : 'text-ink'}`}>
+                                                                            Room {c.roomNumber}
+                                                                            {/* A room already sharing a bill brings the rest of
+                                                                                it — said before the click, not after. */}
+                                                                            {c.bringsRooms > 1 && (
+                                                                                <span className="ml-2 text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                                                                                    +{c.bringsRooms - 1} more room{c.bringsRooms - 1 === 1 ? '' : 's'}
+                                                                                </span>
+                                                                            )}
+                                                                        </span>
+                                                                        <span className="block text-[10px] font-semibold text-ink-subtle truncate">
+                                                                            {c.guestName}
+                                                                            {c.guestPhone && ` · ${c.guestPhone}`}
+                                                                            {' · in '}{formatDate(c.checkIn)}
+                                                                        </span>
+                                                                    </span>
+                                                                    {picked && <CheckCircle2 size={15} className="text-brand-500 shrink-0" />}
+                                                                </button>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                )}
+
+                                                {candidates.length > 0 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleCombine}
+                                                        disabled={pickedCandidateIds.length === 0 || isCombining}
+                                                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-extrabold rounded-xl text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                                    >
+                                                        {isCombining ? <Loader2 size={13} className="animate-spin" /> : <Link2 size={13} />}
+                                                        Combine onto one bill
+                                                        {pickedCandidateIds.length > 0 && ` (${pickedCandidateIds.length})`}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="space-y-4">
                                 <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Stay billing breakdown</h4>
