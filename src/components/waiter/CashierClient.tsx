@@ -3102,7 +3102,10 @@ export default function CashierClient({
                                         // release it, unless something was charged since. The
                                         // half-rupee cushion mirrors the server's — the folio and
                                         // the stored paid amount both round to paisa.
+                                        // Stamped by every settlement, so "paid but still here" is
+                                        // that stamp against a stay not yet checked out.
                                         const billAlreadySettled = !!billingStayBooking?.bill_settled_at
+                                            && billingStayBooking?.status !== 'checked_out'
                                         const balanceOutstanding = balanceDue > 0.5
                                         return (
                                             <>

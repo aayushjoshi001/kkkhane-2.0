@@ -353,6 +353,28 @@ export async function DELETE(req: Request) {
 
         const groupId = booking.group_id as string
 
+        // A room whose guest has already gone home (see
+        // /api/bookings/checkout-room) is owed for but cannot be talked to. If
+        // separating this room would leave that one alone on the bill, the bill
+        // becomes unreachable — every screen that settles one gets to it through
+        // a room that is still checked in — and its money quietly strands.
+        const { data: groupRows } = await supabase
+            .from('bookings')
+            .select('id, status')
+            .eq('group_id', groupId)
+            .eq('restaurant_id', currentUser.restaurantId)
+            .neq('status', 'cancelled')
+
+        const departed = (groupRows || []).filter(b => b.status === 'checked_out')
+        const openAfter = (groupRows || []).filter(
+            b => b.id !== bookingId && OPEN_STATUSES.includes((b.status as string) || ''),
+        )
+        if (departed.length > 0 && openAfter.length === 0) {
+            return NextResponse.json({
+                error: `${departed.length} room${departed.length === 1 ? ' has' : 's have'} already checked out against this bill and still owe on it. Settle the bill before separating the last room still in house.`,
+            }, { status: 409 })
+        }
+
         const { error: detachError } = await supabase
             .from('bookings')
             .update({ group_id: null })

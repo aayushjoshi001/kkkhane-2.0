@@ -27,6 +27,10 @@ export type GroupBill = {
         nights: number
         stayCost: number
         paidAmount: number
+        /** Guest has left, but their share is still on this bill and settles
+         *  with the rest of it. Their nights are frozen at `departedAt`. */
+        departed: boolean
+        departedAt: string | null
     }>
     /** Every room's stay cost added up — what the guest owes for rooms. */
     stayCost: number

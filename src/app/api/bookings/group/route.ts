@@ -101,6 +101,12 @@ export async function GET(req: Request) {
                     nights: line?.nights ?? 0,
                     stayCost: line?.stayCost ?? 0,
                     paidAmount: Number(m.paid_amount) || 0,
+                    // This room's guest has already left, but their share is
+                    // still on this bill and settles with everyone else — see
+                    // /api/bookings/checkout-room. Its nights are frozen at
+                    // checked_out_at, so the figures above stop growing.
+                    departed: m.status === 'checked_out',
+                    departedAt: (m.checked_out_at as string | null) ?? null,
                 }
             }),
             stayCost: folio.stayCost,

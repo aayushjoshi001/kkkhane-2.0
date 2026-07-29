@@ -809,7 +809,7 @@ export default function RoomsClient({
                                         {/* Paid up but still in the room — the desk needs to
                                             know before they open the bill, since what's left
                                             to do is release the room, not charge for it. */}
-                                        {activeBooking.bill_settled_at && (
+                                        {activeBooking.bill_settled_at && activeBooking.status !== 'checked_out' && (
                                             <div className="flex items-center justify-between rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-1.5">
                                                 <span className="text-emerald-800 font-bold uppercase tracking-wide text-[10px]">Bill settled</span>
                                                 <span className="font-extrabold text-emerald-700 text-[11px]">

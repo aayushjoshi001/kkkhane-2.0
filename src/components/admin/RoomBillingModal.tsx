@@ -89,6 +89,9 @@ interface GroupBill {
         nights: number
         stayCost: number
         paidAmount: number
+        /** Guest already left; their share stays on this bill. */
+        departed?: boolean
+        departedAt?: string | null
     }>
     stayCost: number
     advancePaid: number
@@ -331,7 +334,9 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // the ordinary settle buttons come back. The half-rupee cushion mirrors the
     // server's: the folio and the stored paid amount both round to paisa and can
     // differ in the last place, which is not an unpaid bill.
-    const billAlreadySettled = !!booking?.bill_settled_at
+    // `bill_settled_at` marks every settlement, so "paid but still here" is that
+    // stamp against a stay that has not been checked out yet.
+    const billAlreadySettled = !!booking?.bill_settled_at && booking.status !== 'checked_out'
     const balanceOutstanding = balanceDue > 0.5
 
     const checkOutTime = booking ? new Date(booking.check_out) : null
@@ -470,6 +475,45 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             setBillVersion(v => v + 1)
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'Could not combine the bills')
+        } finally {
+            setIsCombining(false)
+        }
+    }
+
+    /**
+     * Send one room of this shared bill home early. Moves no money — the room's
+     * share stays on the bill and settles with everyone else — so it goes
+     * nowhere near the settlement path.
+     */
+    const handleCheckoutRoom = async (targetBookingId: string, roomNumber: string) => {
+        setIsCombining(true)
+        try {
+            const res = await fetch('/api/bookings/checkout-room', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ booking_id: targetBookingId }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Could not check that room out')
+
+            toast.success(`Room ${roomNumber} checked out — its share stays on this bill`)
+
+            // The room the cashier is standing in just left; there is nothing
+            // more to do here, and the parent needs to drop it off the board.
+            if (booking && targetBookingId === booking.id) {
+                onSettled({
+                    bookingId: booking.id,
+                    roomId: room.id,
+                    total: grandTotal,
+                    paidAmount: advancePaid,
+                    paymentStatus: 'partial',
+                    closed: true,
+                })
+                return
+            }
+            setBillVersion(v => v + 1)
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not check that room out')
         } finally {
             setIsCombining(false)
         }
@@ -747,24 +791,53 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                     </h4>
 
                                     <div className="border border-hairline rounded-2xl bg-surface divide-y divide-hairline overflow-hidden">
-                                        {groupBill && groupBill.rooms.map(r => (
-                                            <div key={r.bookingId} className="flex items-center justify-between gap-3 px-4 py-2.5 text-xs">
-                                                <span className="font-bold text-ink">
-                                                    Room {r.roomNumber}
-                                                    <span className="ml-2 font-semibold text-ink-subtle">
-                                                        {r.nights} night{r.nights === 1 ? '' : 's'} · {money(r.stayCost)}
+                                        {groupBill && groupBill.rooms.map(r => {
+                                            // A departed room keeps its share of this bill; its
+                                            // nights are frozen and it can no longer be moved
+                                            // between bills, so it shows as a fact rather than
+                                            // an action.
+                                            const openRooms = groupBill.rooms.filter(x => !x.departed).length
+                                            return (
+                                                <div key={r.bookingId} className={`flex items-center justify-between gap-3 px-4 py-2.5 text-xs ${r.departed ? 'bg-surface-muted/40' : ''}`}>
+                                                    <span className={`font-bold ${r.departed ? 'text-ink-subtle' : 'text-ink'}`}>
+                                                        Room {r.roomNumber}
+                                                        <span className="ml-2 font-semibold text-ink-subtle">
+                                                            {r.nights} night{r.nights === 1 ? '' : 's'} · {money(r.stayCost)}
+                                                        </span>
+                                                        {r.departed && (
+                                                            <span className="ml-2 text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">
+                                                                Departed{r.departedAt ? ` ${formatDate(r.departedAt)}` : ''}
+                                                            </span>
+                                                        )}
                                                     </span>
-                                                </span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleSeparate(r.bookingId, r.roomNumber)}
-                                                    disabled={isCombining || isSaving}
-                                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-ink-subtle hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-40"
-                                                >
-                                                    <Unlink size={11} /> Separate
-                                                </button>
-                                            </div>
-                                        ))}
+                                                    {!r.departed && (
+                                                        <span className="flex items-center gap-1 shrink-0">
+                                                            {/* Sends this guest home while the bill stays
+                                                                whole. Blocked on the last room still in
+                                                                house — that one settles the bill instead. */}
+                                                            {openRooms > 1 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleCheckoutRoom(r.bookingId, r.roomNumber)}
+                                                                    disabled={isCombining || isSaving || isClosingStay}
+                                                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-ink-subtle hover:text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-40"
+                                                                >
+                                                                    <DoorOpen size={11} /> Check out
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleSeparate(r.bookingId, r.roomNumber)}
+                                                                disabled={isCombining || isSaving || isClosingStay}
+                                                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-ink-subtle hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-40"
+                                                            >
+                                                                <Unlink size={11} /> Separate
+                                                            </button>
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )
+                                        })}
 
                                         {!combinePickerOpen ? (
                                             <button

@@ -330,7 +330,13 @@ export async function POST(req: Request) {
         const isInvoiceEnabled = !!features?.generateInvoiceEnabled
 
         const memberIds = members.map(m => m.id)
-        const memberRoomIds = members.map(m => m.room_id)
+        // Only the rooms this reservation is still in. A room that departed
+        // early (see /api/bookings/checkout-room) was handed to housekeeping
+        // then and may well have a different guest in it by now — sending it to
+        // 'dirty' again would evict a stranger from the board.
+        const memberRoomIds = members
+            .filter(m => m.status !== 'checked_out')
+            .map(m => m.room_id)
 
         if (!isInvoiceEnabled) {
             // 1. Settle the session orders (if session_id is provided). On an
