@@ -5,6 +5,7 @@
 
 import type { ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
 import { advanceMethodLabel, formatInvoiceAddress } from '@/lib/utils'
+import { summariseInvoice } from '@/lib/invoiceSummary'
 
 export default function InvoiceReceipt({
     invoice,
@@ -33,9 +34,9 @@ export default function InvoiceReceipt({
     const num = (amount: number) =>
         Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-    // Money Received = Cash + QR Digital + Advance (excluding Credit, which is customer debt/due)
-    const totalReceived = (invoice.cashPaid ?? 0) + (invoice.qrPaid ?? 0) + (invoice.advancePaid ?? 0)
-    const totalDue = Math.max(0, invoice.total - totalReceived)
+    // The same computation the thermal ticket prints, so the paper the guest
+    // takes away and the screen the cashier reads cannot disagree.
+    const summary = summariseInvoice(invoice)
 
     return (
         <div className={`bg-white text-black print-container font-mono text-[11px] ${className}`}>
@@ -198,66 +199,33 @@ export default function InvoiceReceipt({
 
             <div className="border-t border-dashed border-black my-1.5" />
 
-            {/* Invoice Total + Advance + Balance */}
-            {(() => {
-                const rawSubtotal = invoice.subtotal != null ? invoice.subtotal : ((invoice.stayCost || 0) + (invoice.qrOrdersTotal || 0) + (invoice.linkedOrdersTotal || 0) + (invoice.manualChargesTotal || 0) + (invoice.extraHourCharge || 0))
-                const scAmount = invoice.serviceCharge || invoice.service_charge_amount || 0
-                const taxAmount = invoice.taxAmount || invoice.tax_amount || 0
-                const discount = invoice.discountAmount || 0
-
-                return (
-                    <div className="space-y-0.5 text-[10px]">
-                        <div className="flex justify-between" style={{ color: '#000' }}>
-                            <span>Subtotal</span>
-                            <span className="tabular-nums">{money(rawSubtotal)}</span>
-                        </div>
-                        {scAmount > 0 && (
-                            <div className="flex justify-between" style={{ color: '#000' }}>
-                                <span>Service Charge</span>
-                                <span className="tabular-nums">+ {money(scAmount)}</span>
-                            </div>
-                        )}
-                        {discount > 0 && (
-                            <div className="flex justify-between text-rose-600" style={{ color: '#000' }}>
-                                <span>Discount</span>
-                                <span className="tabular-nums">- {money(discount)}</span>
-                            </div>
-                        )}
-                        {taxAmount > 0 && (
-                            <div className="flex justify-between" style={{ color: '#000' }}>
-                                <span>Tax (VAT)</span>
-                                <span className="tabular-nums">+ {money(taxAmount)}</span>
-                            </div>
-                        )}
-                        <div className="flex justify-between font-black text-[13px] border-t border-dashed border-black pt-1 mt-0.5">
-                            <span className="uppercase">GRAND TOTAL</span>
-                            <span className="tabular-nums">{money(invoice.total)}</span>
-                        </div>
-                        {!!invoice.advancePaid && invoice.advancePaid > 0 && (
-                            <div className="flex justify-between" style={{ color: '#000' }}>
-                                <span>Advance Paid ({advanceMethodLabel(invoice.advanceMethod)})</span>
-                                <span className="tabular-nums">- {money(invoice.advancePaid)}</span>
-                            </div>
-                        )}
-                        {!!invoice.cashPaid && invoice.cashPaid > 0 && (
-                            <div className="flex justify-between" style={{ color: '#000' }}>
-                                <span>Cash Paid</span>
-                                <span className="tabular-nums">- {money(invoice.cashPaid)}</span>
-                            </div>
-                        )}
-                        {!!invoice.qrPaid && invoice.qrPaid > 0 && (
-                            <div className="flex justify-between" style={{ color: '#000' }}>
-                                <span>QR / Digital Paid</span>
-                                <span className="tabular-nums">- {money(invoice.qrPaid)}</span>
-                            </div>
-                        )}
+            {/* Subtotal → total → less advance. The cash and QR being tendered
+                are NOT deducted here: they are how the closing figure below is
+                being settled, and subtracting them netted every bill to zero. */}
+            <div className="space-y-0.5 text-[10px]">
+                {summary.lines.map(line => (
+                    <div key={line.label} className="flex justify-between" style={{ color: '#000' }}>
+                        <span className="capitalize">{line.label.toLowerCase()}</span>
+                        <span className="tabular-nums">{line.sign ? `${line.sign} ` : ''}{money(line.amount)}</span>
                     </div>
-                )
-            })()}
+                ))}
+                <div className="flex justify-between font-bold border-t border-dashed border-black pt-1 mt-0.5">
+                    <span className="uppercase">Total</span>
+                    <span className="tabular-nums">{money(summary.total)}</span>
+                </div>
+                {summary.advancePaid > 0 && (
+                    <div className="flex justify-between" style={{ color: '#000' }}>
+                        <span>Less advance ({advanceMethodLabel(invoice.advanceMethod)})</span>
+                        <span className="tabular-nums">- {money(summary.advancePaid)}</span>
+                    </div>
+                )}
+            </div>
 
+            {/* The closing figure — last money on the bill, nothing but the
+                method of payment after it. */}
             <div className="flex justify-between items-center text-xs font-black border-t-2 border-black pt-1 mt-1">
-                <span className="uppercase">{(invoice.advancePaid && invoice.advancePaid > 0) || totalReceived > 0 || (invoice.creditPaid && invoice.creditPaid > 0) ? 'BALANCE DUE' : 'TOTAL DUE'}</span>
-                <span className="text-sm font-black text-black tabular-nums">{money(totalDue)}</span>
+                <span className="uppercase">{summary.finalLabel}</span>
+                <span className="text-sm font-black text-black tabular-nums">{money(summary.finalAmount)}</span>
             </div>
 
             {/* Payment Method on receipt */}
@@ -283,16 +251,12 @@ export default function InvoiceReceipt({
                                 <span>· QR / Digital</span>
                                 <span className="tabular-nums">{money(invoice.qrPaid ?? 0)}</span>
                             </div>
-                            {!!invoice.creditPaid && (
-                                <div className="flex justify-between" style={{ color: '#000' }}>
-                                    <span>· On credit</span>
-                                    <span className="tabular-nums">{money(invoice.creditPaid)}</span>
-                                </div>
-                            )}
                         </>
                     )}
-                    {invoice.paymentMethod === 'credit' && !!invoice.creditPaid && (
-                        <div className="flex justify-between" style={{ color: '#000' }}>
+                    {/* Credit is the guest leaving owing money, so it is spelled
+                        out on every method that can carry it, not just a split. */}
+                    {!!invoice.creditPaid && invoice.creditPaid > 0.01 && (
+                        <div className="flex justify-between font-bold" style={{ color: '#000' }}>
                             <span>· On credit</span>
                             <span className="tabular-nums">{money(invoice.creditPaid)}</span>
                         </div>
