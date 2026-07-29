@@ -6,7 +6,7 @@ import { X, Loader2, CheckCircle2, Percent, Clock, Printer } from 'lucide-react'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
-import { calculateNights, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
+import { calculateNights, getBookingCustomPrice, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
 import { buildInvoiceTicket, type ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import { usePrinter } from '@/lib/print/usePrinter'
@@ -71,7 +71,8 @@ const money = (amount: number) =>
     'Rs. ' + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const calculateStayCost = (room: Room, booking: Booking) => {
-    const price = room.room_types?.base_price || 0
+    const customPrice = getBookingCustomPrice(booking)
+    const price = customPrice > 0 ? customPrice : (room.room_types?.base_price || 0)
     const nights = calculateNights(booking.check_in, booking.check_out)
     return price * nights
 }
@@ -106,6 +107,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const [creditCustomerNameInput, setCreditCustomerNameInput] = useState('')
     const [creditCustomerPhoneInput, setCreditCustomerPhoneInput] = useState('')
     const [guestEmailInput, setGuestEmailInput] = useState('')
+    const [cashGivenAmount, setCashGivenAmount] = useState('')
+    const [cashTakenAmount, setCashTakenAmount] = useState('')
     // 'split' and 'credit' always go through this confirmation popup —
     // 'split' because a typo in the amounts would otherwise silently
     // mischarge the guest, 'credit' because it needs a name/phone to post
@@ -130,6 +133,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         if (!booking) return
         setGuestEmailInput(booking.guest_email || '')
         setPaymentMethod('cash')
+        setCashGivenAmount('')
+        setCashTakenAmount('')
         let cancelled = false
         fetch(`/api/rooms/charges?bookingId=${booking.id}`)
             .then(r => r.json())
@@ -207,20 +212,34 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         ? Math.ceil((currentTime.getTime() - checkOutTime.getTime()) / (1000 * 60 * 60))
         : 0
 
-    const resolvedCash = paymentMethod === 'cash' ? balanceDue
-        : paymentMethod === 'split' ? (parseFloat(splitCashAmount) || 0)
-        : 0
+    const cashGivenVal = (paymentMethod === 'cash' || paymentMethod === 'split') && cashGivenAmount.trim() !== '' ? parseFloat(cashGivenAmount) : null
+    const cashTakenVal = (paymentMethod === 'cash' || paymentMethod === 'split') && cashTakenAmount.trim() !== '' ? parseFloat(cashTakenAmount) : null
+
+    let resolvedCash = 0
+    if (paymentMethod === 'cash') {
+        if (cashTakenVal !== null && !isNaN(cashTakenVal)) {
+            resolvedCash = Math.min(balanceDue, Math.max(0, cashTakenVal))
+        } else if (cashGivenVal !== null && !isNaN(cashGivenVal) && cashGivenVal < balanceDue) {
+            resolvedCash = Math.max(0, cashGivenVal)
+        } else {
+            resolvedCash = balanceDue
+        }
+    } else if (paymentMethod === 'split') {
+        resolvedCash = parseFloat(splitCashAmount) || 0
+    }
+
     const resolvedQr = paymentMethod === 'qr_digital' ? balanceDue
         : paymentMethod === 'split' ? (parseFloat(splitQrAmount) || 0)
         : 0
-    // 'split' no longer requires cash+qr to exactly equal the balance due —
-    // whatever's left over (if any) becomes credit, confirmed via the
-    // settlement popup below (guards against a typo, not just a deliberate
-    // part-credit sale).
+
     const resolvedCredit = paymentMethod === 'credit' ? balanceDue
         : paymentMethod === 'split' ? Math.max(0, balanceDue - resolvedCash - resolvedQr)
+        : paymentMethod === 'cash' ? Math.max(0, balanceDue - resolvedCash)
         : 0
+
     const overpaid = paymentMethod === 'split' && (resolvedCash + resolvedQr) > balanceDue + 0.01
+    const resolvedCashGiven = cashGivenVal !== null && !isNaN(cashGivenVal) ? cashGivenVal : (paymentMethod === 'cash' ? resolvedCash : undefined)
+    const resolvedChangeReturned = resolvedCashGiven && resolvedCashGiven > resolvedCash ? resolvedCashGiven - resolvedCash : undefined
     const creditFieldsInvalid = resolvedCredit > 0.01 && (!creditCustomerName.trim() || !creditCustomerPhone.trim())
 
     // Merge duplicate line items (same dish ordered at different times in the same
@@ -253,7 +272,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         guestName: booking.guest_name,
         guestPhone: booking.guest_phone,
         nights: calculateNights(booking.check_in, booking.check_out),
-        basePrice: room.room_types?.base_price || 0,
+        basePrice: getBookingCustomPrice(booking) || room.room_types?.base_price || 0,
         stayCost: stayCost,
         qrOrders: mergeLineItems(allServiceOrderItems),
         qrOrdersTotal,
@@ -265,6 +284,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         balanceDue,
         paymentMethod: paymentMethod === 'split' ? 'both' : paymentMethod,
         cashPaid: resolvedCash,
+        cashGiven: resolvedCashGiven,
+        changeReturned: resolvedChangeReturned,
         qrPaid: resolvedQr,
         creditPaid: resolvedCredit,
         discountAmount: totalDiscountAmount,
@@ -298,7 +319,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             toast.error('A reason is required to apply a discount')
             return
         }
-        if (paymentMethod === 'split' || paymentMethod === 'credit') {
+        if (paymentMethod === 'split' || paymentMethod === 'credit' || resolvedCredit > 0.01) {
             setShowSettlementConfirm(true)
             return
         }
@@ -436,8 +457,13 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                 <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-hairline bg-surface">
                                     <div className="flex justify-between items-center p-4 text-xs">
                                         <div>
-                                            <p className="font-extrabold text-ink">Room Stay Cost</p>
-                                            <p className="text-[10px] text-ink-subtle">{money(room.room_types?.base_price || 0)} / Night</p>
+                                            <p className="font-extrabold text-ink flex items-center gap-1.5">
+                                                <span>Room Stay Cost</span>
+                                                {getBookingCustomPrice(booking) > 0 && (
+                                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">Custom Rate</span>
+                                                )}
+                                            </p>
+                                            <p className="text-[10px] text-ink-subtle">{money(getBookingCustomPrice(booking) || room.room_types?.base_price || 0)} / Night</p>
                                         </div>
                                         <span className="font-extrabold text-ink-subtle tabular-nums">{money(stayCost)}</span>
                                     </div>
@@ -655,12 +681,95 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                                 paymentMethod === 'credit'
                                                     ? 'border-brand-500 bg-orange-50/50 text-brand-500'
                                                     : 'border-hairline bg-surface text-ink-subtle hover:border-brand-500/50 hover:text-brand-500'
-                                            }`}
-                                        >
+                                            }`}>
                                             <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 9V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M22 17v-1a2 2 0 0 0-2-2h-1"/><rect width="8" height="8" x="14" y="14" rx="2"/></svg>
                                             Credit
                                         </button>
                                     </div>
+
+                                    {paymentMethod === 'cash' && (() => {
+                                        const actualPayment = cashTakenAmount.trim() !== '' ? (parseFloat(cashTakenAmount) || 0) : balanceDue
+                                        const cashGiven = cashGivenAmount.trim() !== '' ? (parseFloat(cashGivenAmount) || 0) : actualPayment
+                                        const changeToReturn = cashGiven > actualPayment ? cashGiven - actualPayment : 0
+                                        const remainingBalance = cashGiven < actualPayment ? actualPayment - cashGiven : 0
+
+                                        return (
+                                            <div className="mt-3 space-y-3 p-3 bg-surface-muted/50 border border-hairline rounded-2xl">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash Given by Guest</label>
+                                                        <div className="relative">
+                                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                placeholder={balanceDue.toFixed(2)}
+                                                                value={cashGivenAmount}
+                                                                onChange={e => setCashGivenAmount(e.target.value)}
+                                                                className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Actual Payment to Take</label>
+                                                        <div className="relative">
+                                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                placeholder={balanceDue.toFixed(2)}
+                                                                value={cashTakenAmount}
+                                                                onChange={e => setCashTakenAmount(e.target.value)}
+                                                                className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCashGivenAmount(balanceDue.toFixed(2))}
+                                                        className="px-2 py-1 bg-surface hover:bg-surface-muted border border-hairline rounded-lg text-[10px] font-bold text-ink-subtle transition-all"
+                                                    >
+                                                        Exact ({money(balanceDue)})
+                                                    </button>
+                                                    {[500, 1000, 2000].map(val => (
+                                                        <button
+                                                            key={val}
+                                                            type="button"
+                                                            onClick={() => setCashGivenAmount(String(val))}
+                                                            className="px-2 py-1 bg-surface hover:bg-surface-muted border border-hairline rounded-lg text-[10px] font-bold text-ink-subtle transition-all"
+                                                        >
+                                                            Rs. {val}
+                                                        </button>
+                                                    ))}
+                                                </div>
+
+                                                <div className="text-center space-y-1 pt-1 border-t border-hairline/60">
+                                                    {changeToReturn > 0.01 && (
+                                                        <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200">
+                                                            <p className="text-[10px] font-extrabold text-emerald-700 uppercase tracking-wider">Change to Return to Guest</p>
+                                                            <p className="text-base font-black text-emerald-600 animate-scale-in tabular-nums">
+                                                                {money(changeToReturn)}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    {remainingBalance > 0.01 && (
+                                                        <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-center animate-scale-in">
+                                                            <p className="text-[10px] font-extrabold text-amber-800 uppercase tracking-wider">Remaining Balance will go to Customer Credit</p>
+                                                            <p className="text-sm font-black text-amber-700 tabular-nums">
+                                                                On Credit: {money(remainingBalance)}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    {Math.abs(changeToReturn) <= 0.01 && Math.abs(remainingBalance) <= 0.01 && (
+                                                        <p className="text-[10px] font-bold text-emerald-600">✓ Exact Amount Settled</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )
+                                    })()}
 
                                     {paymentMethod === 'credit' && (
                                         <p className="mt-3 text-[10px] text-ink-subtle font-semibold text-center">

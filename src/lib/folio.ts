@@ -8,7 +8,7 @@
 
 import { SupabaseClient } from '@supabase/supabase-js'
 import { getRestaurantFeatures } from '@/lib/features'
-import { calculateNights, NEPAL_TZ } from '@/lib/utils'
+import { calculateNights, getBookingCustomPrice, NEPAL_TZ } from '@/lib/utils'
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
@@ -144,7 +144,7 @@ export async function computeFolioTotal(
     }
 
     // Fetch dynamic pricing rules, total rooms, and checked-in bookings count
-    const [roomRes, bookingsCountRes, roomsCountRes, rulesRes, segmentsRes] = await Promise.all([
+    const [roomRes, bookingsCountRes, roomsCountRes, rulesRes, segmentsRes, bookingRowRes] = await Promise.all([
         supabase
             .from('rooms')
             .select('room_types:type_id(base_price)')
@@ -172,10 +172,16 @@ export async function computeFolioTotal(
             .from('booking_room_stays')
             .select('room_id, from_ts, rooms:room_id(room_types:type_id(base_price))')
             .eq('booking_id', bookingId)
-            .order('from_ts', { ascending: true })
+            .order('from_ts', { ascending: true }),
+        supabase
+            .from('bookings')
+            .select('notes')
+            .eq('id', bookingId)
+            .maybeSingle()
     ])
 
-    const basePrice = Number((roomRes.data?.room_types as { base_price?: number } | null)?.base_price) || 0
+    const customRate = getBookingCustomPrice(bookingRowRes?.data)
+    const basePrice = customRate > 0 ? customRate : (Number((roomRes.data?.room_types as { base_price?: number } | null)?.base_price) || 0)
     const nights = calculateNights(checkIn, checkOut)
 
     const segments: RoomRateSegment[] = (segmentsRes.data || []).map((seg) => ({

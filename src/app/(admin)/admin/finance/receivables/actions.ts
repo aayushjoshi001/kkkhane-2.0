@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
+import { postFinancialTransaction } from '@/lib/ledger'
 
 async function requireFinanceManager() {
     return requireRole('super_admin', 'manager')
@@ -62,6 +63,7 @@ export async function createReceivableTransactionAction(input: {
     type: 'charge' | 'payment'
     amount: number
     description: string
+    payment_method?: 'cash' | 'bank_qr'
 }) {
     let user
     try { user = await requireFinanceManager() } catch { return { error: 'You are not authorized to manage receivable transactions.' } }
@@ -83,6 +85,27 @@ export async function createReceivableTransactionAction(input: {
         .select('*, customer_credit_accounts(*)')
         .single()
     if (error) return { error: error.message }
+
+    // When customer pays money later from ledger:
+    // It is NOT added to income again, but IS added to Cash In or Bank In in the Day Book.
+    if (input.type === 'payment') {
+        const customerName = data.customer_credit_accounts?.customer_name || 'Customer'
+        const method = input.payment_method === 'bank_qr' ? 'bank_qr' : 'cash'
+        const dayBookType = method === 'bank_qr' ? 'bank_in' : 'cash_in'
+
+        await postFinancialTransaction(
+            supabase,
+            { id: user.id, restaurantId: user.restaurantId },
+            {
+                type: dayBookType,
+                amount: input.amount,
+                description: `Customer credit settlement: ${customerName} (${input.description.trim()})`,
+                category: 'order_payment',
+                requireOpenSession: false,
+            }
+        )
+    }
+
     revalidatePath(PATH)
     return { data }
 }

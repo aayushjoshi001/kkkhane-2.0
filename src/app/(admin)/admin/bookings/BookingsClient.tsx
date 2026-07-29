@@ -52,7 +52,13 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
         ? Math.max(1, Math.round((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 3600 * 24)))
         : 1
 
-    const rawNightlyRate = Number((booking as any).room_rate || (booking as any).rooms?.room_types?.base_price || 0)
+    const rawNightlyRate = (() => {
+        // Custom rate is stored as [CUSTOM_RATE:X] in booking.notes
+        const notes = (booking as any).notes || ''
+        const match = typeof notes === 'string' ? notes.match(/\[CUSTOM_RATE:(\d+(?:\.\d+)?)\]/) : null
+        const custom = match ? parseFloat(match[1]) : 0
+        return custom > 0 ? custom : Number((booking as any).rooms?.room_types?.base_price || 0)
+    })()
     const roomBill = rawNightlyRate > 0 ? rawNightlyRate * nights : Number(booking.total_amount || 0)
     
     // Food & Beverage Bill sum from all linked orders (QR, Waiter, Cashier)

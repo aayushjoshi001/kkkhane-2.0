@@ -99,25 +99,35 @@ export async function POST(req: Request) {
         const advMethod = paidAmount > 0 ? (isSplitAdvance ? 'split' : (advance_payment_method || 'cash')) : 'none'
 
         // 4. Insert booking
-        const notes = kyc ? `KYC: ${kyc.trim()}` : null
+        const customPriceNum = Number(body.custom_room_price)
+        const customRoomPrice = !isNaN(customPriceNum) && customPriceNum > 0 ? customPriceNum : undefined
+
+        let notesStr = kyc ? `KYC: ${kyc.trim()}` : ''
+        if (customRoomPrice) {
+            notesStr = `${notesStr ? notesStr + ' | ' : ''}[CUSTOM_RATE:${customRoomPrice}]`
+        }
+        const notes = notesStr || null
+
+        const insertPayload: any = {
+            restaurant_id: currentUser.restaurantId,
+            room_id,
+            guest_name: guest_name.trim(),
+            guest_phone: guest_phone.trim(),
+            check_in: checkInISO,
+            check_out: checkOutISO,
+            adults: adultTotal,
+            adult_male: splitProvided ? maleCount : 0,
+            adult_female: splitProvided ? femaleCount : 0,
+            children: childCount,
+            status: 'checked_in',
+            notes,
+            paid_amount: paidAmount,
+            advance_payment_method: advMethod,
+        }
+
         const { data: booking, error: bookingError } = await supabase
             .from('bookings')
-            .insert({
-                restaurant_id: currentUser.restaurantId,
-                room_id,
-                guest_name: guest_name.trim(),
-                guest_phone: guest_phone.trim(),
-                check_in: checkInISO,
-                check_out: checkOutISO,
-                adults: adultTotal,
-                adult_male: splitProvided ? maleCount : 0,
-                adult_female: splitProvided ? femaleCount : 0,
-                children: childCount,
-                status: 'checked_in',
-                notes,
-                paid_amount: paidAmount,
-                advance_payment_method: advMethod,
-            })
+            .insert(insertPayload)
             .select()
             .single()
 

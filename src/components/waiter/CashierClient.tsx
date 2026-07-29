@@ -30,7 +30,7 @@ import type { BankAccount, ExpenseCategory, Supplier, Session } from '@/types/da
 import QuickOrderModal from './QuickOrderModal'
 
 
-import { calculateNights, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
+import { calculateNights, getBookingCustomPrice, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 
 // Auto-print retry/fallback tuning, matching the kitchen screen's.
@@ -57,6 +57,9 @@ export type UnpaidOrder = {
     id: string
     status?: string
     total_amount: number
+    subtotal_amount?: number | null
+    service_charge_amount?: number | null
+    tax_amount?: number | null
     placed_at: string
     delivered_at: string | null
     payment_status: string
@@ -391,6 +394,7 @@ export default function CashierClient({
     }, [billingLinkedOrders])
     const [billingPaymentMethod, setBillingPaymentMethod] = useState<'none' | 'cash' | 'qr_digital' | 'both' | 'credit'>('none')
     const [cashReceivedAmount, setCashReceivedAmount] = useState<string>('')
+    const [cashTakenAmount, setCashTakenAmount] = useState<string>('')
     const [qrReceivedAmount, setQrReceivedAmount] = useState<string>('')
     const [splitCashAmount, setSplitCashAmount] = useState<string>('')
     const [splitQrAmount, setSplitQrAmount] = useState<string>('')
@@ -688,7 +692,8 @@ export default function CashierClient({
 
     const calculateStayCost = (room: any, booking: any) => {
         if (!room || !booking) return 0
-        const price = room.room_types?.base_price || 0
+        const customPrice = getBookingCustomPrice(booking)
+        const price = customPrice > 0 ? customPrice : (room.room_types?.base_price || 0)
         const nights = calculateNights(booking.check_in, booking.check_out)
         return price * nights
     }
@@ -851,43 +856,85 @@ export default function CashierClient({
         }
 
         if (billingPaymentMethod === 'cash') {
-            const cashVal = parseFloat(cashReceivedAmount) || 0
-            const changeToReturn = cashVal > balanceDue ? cashVal - balanceDue : 0
-            const remainingBalance = cashVal < balanceDue ? balanceDue - cashVal : 0
+            const actualPayment = cashTakenAmount.trim() !== '' ? (parseFloat(cashTakenAmount) || 0) : balanceDue
+            const cashGiven = cashReceivedAmount.trim() !== '' ? (parseFloat(cashReceivedAmount) || 0) : actualPayment
+            const changeToReturn = cashGiven > actualPayment ? cashGiven - actualPayment : 0
+            const remainingBalance = cashGiven < actualPayment ? actualPayment - cashGiven : 0
 
             return (
                 <div className="mt-3 space-y-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl">
-                    <div>
-                        <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Amount Received (Cash)</label>
-                        <div className="relative">
-                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
-                            <input
-                                type="number"
-                                min="0"
-                                placeholder={balanceDue.toFixed(2)}
-                                value={cashReceivedAmount}
-                                onChange={e => setCashReceivedAmount(e.target.value)}
-                                className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
-                            />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash Given by Customer</label>
+                            <div className="relative">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    placeholder={balanceDue.toFixed(2)}
+                                    value={cashReceivedAmount}
+                                    onChange={e => setCashReceivedAmount(e.target.value)}
+                                    className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Actual Payment to Take</label>
+                            <div className="relative">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    placeholder={balanceDue.toFixed(2)}
+                                    value={cashTakenAmount}
+                                    onChange={e => setCashTakenAmount(e.target.value)}
+                                    className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                />
+                            </div>
                         </div>
                     </div>
-                    {cashReceivedAmount.trim() !== '' && (
-                        <div className="text-center space-y-1">
-                            {changeToReturn > 0.01 && (
-                                <p className="text-xs font-black text-emerald-600 animate-scale-in">
-                                    Return / Change: {money(changeToReturn)}
+
+                    <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        <button
+                            type="button"
+                            onClick={() => setCashReceivedAmount(balanceDue.toFixed(2))}
+                            className="px-2 py-1 bg-surface hover:bg-surface-muted border border-hairline rounded-lg text-[10px] font-bold text-ink-subtle transition-all"
+                        >
+                            Exact ({money(balanceDue)})
+                        </button>
+                        {[500, 1000, 2000].map(val => (
+                            <button
+                                key={val}
+                                type="button"
+                                onClick={() => setCashReceivedAmount(String(val))}
+                                className="px-2 py-1 bg-surface hover:bg-surface-muted border border-hairline rounded-lg text-[10px] font-bold text-ink-subtle transition-all"
+                            >
+                                Rs. {val}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="text-center space-y-1 pt-1 border-t border-hairline/60">
+                        {changeToReturn > 0.01 && (
+                            <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200">
+                                <p className="text-[10px] font-extrabold text-emerald-700 uppercase tracking-wider">Change to Return to Customer</p>
+                                <p className="text-base font-black text-emerald-600 animate-scale-in tabular-nums">
+                                    {money(changeToReturn)}
                                 </p>
-                            )}
-                            {remainingBalance > 0.01 && (
-                                <p className="text-xs font-black text-brand-600 animate-scale-in">
-                                    Balance Due: {money(remainingBalance)}
+                            </div>
+                        )}
+                        {remainingBalance > 0.01 && (
+                            <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-center animate-scale-in">
+                                <p className="text-[10px] font-extrabold text-amber-800 uppercase tracking-wider">Remaining Balance will go to Customer Credit</p>
+                                <p className="text-sm font-black text-amber-700 tabular-nums">
+                                    On Credit: {money(remainingBalance)}
                                 </p>
-                            )}
-                            {Math.abs(changeToReturn) <= 0.01 && Math.abs(remainingBalance) <= 0.01 && (
-                                <p className="text-[10px] font-bold text-emerald-600">✓ Exact Amount Received</p>
-                            )}
-                        </div>
-                    )}
+                            </div>
+                        )}
+                        {Math.abs(changeToReturn) <= 0.01 && Math.abs(remainingBalance) <= 0.01 && (
+                            <p className="text-[10px] font-bold text-emerald-600">✓ Exact Amount Settled</p>
+                        )}
+                    </div>
                 </div>
             )
         }
@@ -1026,7 +1073,8 @@ export default function CashierClient({
             const booking = billingStayBooking ?? bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
             if (!booking) return null
 
-            const price = room.room_types?.base_price || 0
+            const customPrice = getBookingCustomPrice(booking)
+            const price = customPrice > 0 ? customPrice : (room.room_types?.base_price || 0)
             const nights = calculateNights(booking.check_in, booking.check_out)
             const stayCost = price * nights
 
@@ -1058,24 +1106,34 @@ export default function CashierClient({
             const advancePaid = Number(booking.paid_amount) || 0
             const balanceDue = Math.max(0, total - advancePaid)
 
-            // Resolve split amounts (apply to balance due, not gross total).
-            // Each branch is explicit (rather than falling through to an
-            // "else") so a stale splitCashAmount left over from a previous
-            // 'both' selection can't leak into a 'credit' settlement.
-            const resolvedCash = billingPaymentMethod === 'cash' ? balanceDue
-                : billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0)
-                : 0
+            const cashGivenVal = (billingPaymentMethod === 'cash' || billingPaymentMethod === 'both') && cashReceivedAmount.trim() !== '' ? parseFloat(cashReceivedAmount) : null
+            const cashTakenVal = (billingPaymentMethod === 'cash' || billingPaymentMethod === 'both') && cashTakenAmount.trim() !== '' ? parseFloat(cashTakenAmount) : null
+
+            let resolvedCash = 0
+            if (billingPaymentMethod === 'cash') {
+                if (cashTakenVal !== null && !isNaN(cashTakenVal)) {
+                    resolvedCash = Math.min(balanceDue, Math.max(0, cashTakenVal))
+                } else if (cashGivenVal !== null && !isNaN(cashGivenVal) && cashGivenVal < balanceDue) {
+                    resolvedCash = Math.max(0, cashGivenVal)
+                } else {
+                    resolvedCash = balanceDue
+                }
+            } else if (billingPaymentMethod === 'both') {
+                resolvedCash = parseFloat(splitCashAmount) || 0
+            }
+
             const resolvedQr = billingPaymentMethod === 'qr_digital' ? balanceDue
                 : billingPaymentMethod === 'both' ? (parseFloat(splitQrAmount) || 0)
                 : 0
-            // 'both' no longer requires cash+qr to exactly equal the balance —
-            // whatever's left over (if any) becomes credit, confirmed via the
-            // settlement popup below (guards against a cashier's typo, not
-            // just a deliberate part-credit sale).
+
             const resolvedCredit = billingPaymentMethod === 'credit' ? balanceDue
                 : billingPaymentMethod === 'both' ? Math.max(0, balanceDue - resolvedCash - resolvedQr)
+                : billingPaymentMethod === 'cash' ? Math.max(0, balanceDue - resolvedCash)
                 : 0
+
             const overpaid = billingPaymentMethod === 'both' && (resolvedCash + resolvedQr) > balanceDue + 0.01
+            const resolvedCashGiven = cashGivenVal !== null && !isNaN(cashGivenVal) ? cashGivenVal : (billingPaymentMethod === 'cash' ? resolvedCash : undefined)
+            const resolvedChangeReturned = resolvedCashGiven && resolvedCashGiven > resolvedCash ? resolvedCashGiven - resolvedCash : undefined
 
             return {
                 type: 'room',
@@ -1103,6 +1161,8 @@ export default function CashierClient({
                 roomId: room.id,
                 paymentMethod: billingPaymentMethod,
                 cashPaid: resolvedCash,
+                cashGiven: resolvedCashGiven,
+                changeReturned: resolvedChangeReturned,
                 qrPaid: resolvedQr,
                 creditPaid: resolvedCredit,
                 overpaid,
@@ -1117,26 +1177,37 @@ export default function CashierClient({
             const table = item
             const sessionOrders = getTableSessionItems(table)
             const itemsSubtotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
-            // The authoritative, tax-inclusive total — /api/tables/checkout
-            // bills off the same orders.total_amount field, so the bargain
-            // rate must be calculated against this, not itemsSubtotal (which
-            // is pre-tax and would understate what's actually charged).
             const subtotal = getTableSessionOrdersTotal(table)
 
-            // Food Discount: discount amount entered directly
             const discountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
             const total = Math.max(0, subtotal - discountAmount)
 
-            const resolvedCash = billingPaymentMethod === 'cash' ? total
-                : billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0)
-                : 0
+            const cashGivenVal = (billingPaymentMethod === 'cash' || billingPaymentMethod === 'both') && cashReceivedAmount.trim() !== '' ? parseFloat(cashReceivedAmount) : null
+            const cashTakenVal = (billingPaymentMethod === 'cash' || billingPaymentMethod === 'both') && cashTakenAmount.trim() !== '' ? parseFloat(cashTakenAmount) : null
+
+            let resolvedCash = 0
+            if (billingPaymentMethod === 'cash') {
+                if (cashTakenVal !== null && !isNaN(cashTakenVal)) {
+                    resolvedCash = Math.min(total, Math.max(0, cashTakenVal))
+                } else if (cashGivenVal !== null && !isNaN(cashGivenVal) && cashGivenVal < total) {
+                    resolvedCash = Math.max(0, cashGivenVal)
+                } else {
+                    resolvedCash = total
+                }
+            } else if (billingPaymentMethod === 'both') {
+                resolvedCash = parseFloat(splitCashAmount) || 0
+            }
+
             const resolvedQr = billingPaymentMethod === 'qr_digital' ? total
                 : billingPaymentMethod === 'both' ? (parseFloat(splitQrAmount) || 0)
                 : 0
             const resolvedCredit = billingPaymentMethod === 'credit' ? total
                 : billingPaymentMethod === 'both' ? Math.max(0, total - resolvedCash - resolvedQr)
+                : billingPaymentMethod === 'cash' ? Math.max(0, total - resolvedCash)
                 : 0
             const overpaid = billingPaymentMethod === 'both' && (resolvedCash + resolvedQr) > total + 0.01
+            const resolvedCashGiven = cashGivenVal !== null && !isNaN(cashGivenVal) ? cashGivenVal : (billingPaymentMethod === 'cash' ? resolvedCash : undefined)
+            const resolvedChangeReturned = resolvedCashGiven && resolvedCashGiven > resolvedCash ? resolvedCashGiven - resolvedCash : undefined
 
             return {
                 type: 'table',
@@ -1159,6 +1230,8 @@ export default function CashierClient({
                 sessionId: table.activeSession.id,
                 paymentMethod: billingPaymentMethod,
                 cashPaid: resolvedCash,
+                cashGiven: resolvedCashGiven,
+                changeReturned: resolvedChangeReturned,
                 qrPaid: resolvedQr,
                 creditPaid: resolvedCredit,
                 overpaid,
@@ -1167,10 +1240,6 @@ export default function CashierClient({
                 customerPhone: undefined,
             }
         } else {
-            // Takeaway ('takeout') or delivery — a single standalone order,
-            // no session to draw items/total from. order.total_amount is the
-            // same already-tax/promo/loyalty-adjusted authoritative figure
-            // the new /api/orders/checkout route bills off.
             const order: UnpaidOrder = item
             const lineItems = (order.order_items || []).map(oi => ({
                 name: getItemDisplayName(oi),
@@ -1185,16 +1254,32 @@ export default function CashierClient({
             const discountAmount = bargainRateEntered ? Math.max(0, subtotal - bargainRateValue) : 0
             const total = subtotal - discountAmount
 
-            const resolvedCash = billingPaymentMethod === 'cash' ? total
-                : billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0)
-                : 0
+            const cashGivenVal = (billingPaymentMethod === 'cash' || billingPaymentMethod === 'both') && cashReceivedAmount.trim() !== '' ? parseFloat(cashReceivedAmount) : null
+            const cashTakenVal = (billingPaymentMethod === 'cash' || billingPaymentMethod === 'both') && cashTakenAmount.trim() !== '' ? parseFloat(cashTakenAmount) : null
+
+            let resolvedCash = 0
+            if (billingPaymentMethod === 'cash') {
+                if (cashTakenVal !== null && !isNaN(cashTakenVal)) {
+                    resolvedCash = Math.min(total, Math.max(0, cashTakenVal))
+                } else if (cashGivenVal !== null && !isNaN(cashGivenVal) && cashGivenVal < total) {
+                    resolvedCash = Math.max(0, cashGivenVal)
+                } else {
+                    resolvedCash = total
+                }
+            } else if (billingPaymentMethod === 'both') {
+                resolvedCash = parseFloat(splitCashAmount) || 0
+            }
+
             const resolvedQr = billingPaymentMethod === 'qr_digital' ? total
                 : billingPaymentMethod === 'both' ? (parseFloat(splitQrAmount) || 0)
                 : 0
             const resolvedCredit = billingPaymentMethod === 'credit' ? total
                 : billingPaymentMethod === 'both' ? Math.max(0, total - resolvedCash - resolvedQr)
+                : billingPaymentMethod === 'cash' ? Math.max(0, total - resolvedCash)
                 : 0
             const overpaid = billingPaymentMethod === 'both' && (resolvedCash + resolvedQr) > total + 0.01
+            const resolvedCashGiven = cashGivenVal !== null && !isNaN(cashGivenVal) ? cashGivenVal : (billingPaymentMethod === 'cash' ? resolvedCash : undefined)
+            const resolvedChangeReturned = resolvedCashGiven && resolvedCashGiven > resolvedCash ? resolvedCashGiven - resolvedCash : undefined
 
             return {
                 type,
@@ -1210,11 +1295,16 @@ export default function CashierClient({
                 qrOrdersTotal: itemsSubtotal,
                 manualCharges: [],
                 manualChargesTotal: 0,
+                subtotal: itemsSubtotal,
+                serviceCharge: Number(order.service_charge_amount || 0),
+                taxAmount: Number(order.tax_amount || 0),
                 total,
                 discountAmount,
                 discountReason: discountAmount > 0 ? tableBargainReason.trim() : '',
                 paymentMethod: billingPaymentMethod,
                 cashPaid: resolvedCash,
+                cashGiven: resolvedCashGiven,
+                changeReturned: resolvedChangeReturned,
                 qrPaid: resolvedQr,
                 creditPaid: resolvedCredit,
                 overpaid,
@@ -1235,7 +1325,7 @@ export default function CashierClient({
         const data = buildInvoiceData(type, item)
         if (!data) return
 
-        if (data.paymentMethod === 'both' || data.paymentMethod === 'credit') {
+        if (data.paymentMethod === 'both' || data.paymentMethod === 'credit' || (data.creditPaid && data.creditPaid > 0.01)) {
             // Seed the popup's name/phone from whatever identity is already
             // known (a room's own booking guest — blank for a table, where
             // there's no such default) rather than always starting blank.

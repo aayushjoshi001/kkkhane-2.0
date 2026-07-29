@@ -40,12 +40,17 @@ export interface ActiveInvoice {
     linkedOrdersTotal?: number
     manualCharges: InvoiceManualCharge[]
     manualChargesTotal: number
+    subtotal?: number
+    serviceCharge?: number
+    taxAmount?: number
     total: number
     advancePaid?: number
     advanceMethod?: AdvancePaymentMethod | null
     balanceDue?: number
     paymentMethod?: 'cash' | 'qr_digital' | 'both' | 'credit' | 'none'
     cashPaid?: number
+    cashGiven?: number
+    changeReturned?: number
     qrPaid?: number
     creditPaid?: number
     discountAmount?: number
@@ -143,15 +148,32 @@ export function buildInvoiceTicket(
     }
 
     b.divider()
+    const itemsSubtotal = (invoice.type === 'room' ? (invoice.stayCost || 0) : 0) +
+        (invoice.manualChargesTotal || 0) +
+        (invoice.qrOrdersTotal || 0) +
+        (invoice.linkedOrdersTotal || 0)
+    const subtotalVal = invoice.subtotal ?? itemsSubtotal
+
+    b.bold(true)
+    b.columns([{ text: 'SUB TOTAL', width: LINE_WIDTH - 14 }, { text: money(subtotalVal), width: 14, align: 'right' }])
+    b.bold(false)
+
     if (invoice.extraHourCharge && invoice.extraHourCharge > 0) {
-        b.columns([{ text: 'EXTRA HOUR CHARGE', width: LINE_WIDTH - 14 }, { text: money(invoice.extraHourCharge), width: 14, align: 'right' }])
+        b.columns([{ text: 'EXTRA HOUR CHARGE', width: LINE_WIDTH - 14 }, { text: `+${money(invoice.extraHourCharge)}`, width: 14, align: 'right' }])
+    }
+    if (invoice.serviceCharge && invoice.serviceCharge > 0) {
+        b.columns([{ text: 'SERVICE CHARGE', width: LINE_WIDTH - 14 }, { text: `+${money(invoice.serviceCharge)}`, width: 14, align: 'right' }])
+    }
+    if (invoice.taxAmount && invoice.taxAmount > 0) {
+        b.columns([{ text: 'TAX / VAT', width: LINE_WIDTH - 14 }, { text: `+${money(invoice.taxAmount)}`, width: 14, align: 'right' }])
     }
     if (invoice.discountAmount && invoice.discountAmount > 0) {
-        b.columns([{ text: 'TOTAL DISCOUNT', width: LINE_WIDTH - 14 }, { text: `-${money(invoice.discountAmount)}`, width: 14, align: 'right' }])
+        b.columns([{ text: 'DISCOUNT', width: LINE_WIDTH - 14 }, { text: `-${money(invoice.discountAmount)}`, width: 14, align: 'right' }])
     }
-    b.bold(true)
-    b.columns([{ text: 'GRAND TOTAL', width: LINE_WIDTH - 14 }, { text: money(invoice.total), width: 14, align: 'right' }])
-    b.bold(false)
+    b.divider()
+    b.size({ doubleWidth: true, doubleHeight: true }).bold(true)
+    b.line(`GRAND TOTAL: ${money(invoice.total)}`)
+    b.size({}).bold(false)
 
     if (invoice.advancePaid && invoice.advancePaid > 0) {
         const label = `Advance (${advanceMethodLabel(invoice.advanceMethod)})`
@@ -173,15 +195,38 @@ export function buildInvoiceTicket(
             : invoice.paymentMethod === 'none' ? 'NOT YET'
             : 'SPLIT'
         b.line(`Payment: ${label}`)
+        if (invoice.paymentMethod === 'cash') {
+            if (invoice.cashGiven && invoice.cashGiven > 0) {
+                b.line(`  Cash Given: ${money(invoice.cashGiven)}`)
+            }
+            if (invoice.changeReturned && invoice.changeReturned > 0.01) {
+                b.line(`  Change Return: ${money(invoice.changeReturned)}`)
+            }
+            if (invoice.creditPaid && invoice.creditPaid > 0.01) {
+                b.bold(true)
+                b.line(`  Remaining Credit: ${money(invoice.creditPaid)}`)
+                b.bold(false)
+            }
+        }
         if (invoice.paymentMethod === 'both') {
             b.line(`  Cash: ${money(invoice.cashPaid ?? 0)}`)
+            if (invoice.cashGiven && invoice.cashGiven > 0) {
+                b.line(`  Cash Given: ${money(invoice.cashGiven)}`)
+            }
+            if (invoice.changeReturned && invoice.changeReturned > 0.01) {
+                b.line(`  Change Return: ${money(invoice.changeReturned)}`)
+            }
             b.line(`  QR/Digital: ${money(invoice.qrPaid ?? 0)}`)
-            if (invoice.creditPaid) {
-                b.line(`  On credit: ${money(invoice.creditPaid)}`)
+            if (invoice.creditPaid && invoice.creditPaid > 0.01) {
+                b.bold(true)
+                b.line(`  Remaining Credit: ${money(invoice.creditPaid)}`)
+                b.bold(false)
             }
         }
         if (invoice.paymentMethod === 'credit' && invoice.creditPaid) {
-            b.line(`  On credit: ${money(invoice.creditPaid)}`)
+            b.bold(true)
+            b.line(`  Remaining Credit: ${money(invoice.creditPaid)}`)
+            b.bold(false)
         }
     }
 

@@ -9,7 +9,7 @@ import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCurrency, useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { type TableWithSession } from './CashierTableManager'
-import { calculateNights, advanceMethodLabel, getItemDisplayName, defaultStayWindowInputs } from '@/lib/utils'
+import { calculateNights, getBookingCustomPrice, advanceMethodLabel, getItemDisplayName, defaultStayWindowInputs } from '@/lib/utils'
 import { describeGuestMix, totalGuests } from '@/lib/guests'
 import QuickOrderModal from './QuickOrderModal'
 import { openSession } from '@/app/(staff)/waiter/actions'
@@ -110,7 +110,7 @@ export default function CashierRoomManager({
         setMoveOpen(false)
         setMoveTargetId('')
         setMoveReason('')
-        setBookingForm({ guest_name: '', guest_phone: '', kyc: '', check_in: '', check_out: '', adult_male: '1', adult_female: '1', children: '0' })
+        setBookingForm({ guest_name: '', guest_phone: '', kyc: '', check_in: '', check_out: '', custom_room_price: '', adult_male: '1', adult_female: '1', children: '0' })
         setAdvanceType('none')
         setAdvanceAmount('')
         setAdvanceSplitCash('')
@@ -124,6 +124,7 @@ export default function CashierRoomManager({
         kyc: '',
         check_in: '',
         check_out: '',
+        custom_room_price: '',
         adult_male: '1',
         adult_female: '1',
         children: '0',
@@ -296,6 +297,7 @@ export default function CashierRoomManager({
             kyc: '',
             check_in: checkIn,
             check_out: checkOut,
+            custom_room_price: selectedRoom?.room_types?.base_price ? String(selectedRoom.room_types.base_price) : '',
             adult_male: '1',
             adult_female: '0',
             children: '0',
@@ -412,13 +414,14 @@ export default function CashierRoomManager({
 
     // Stay night and price calculations
     const stayPriceDetails = useMemo(() => {
-        if (!selectedRoom || !activeBooking) return { nights: 0, cost: 0 }
+        if (!selectedRoom || !activeBooking) return { nights: 0, cost: 0, price: 0, isCustom: false }
         
-        const price = selectedRoom.room_types?.base_price || 0
+        const customPrice = getBookingCustomPrice(activeBooking)
+        const price = customPrice > 0 ? customPrice : (selectedRoom.room_types?.base_price || 0)
         const nights = calculateNights(activeBooking.check_in, activeBooking.check_out)
         const cost = price * nights
 
-        return { nights, cost }
+        return { nights, cost, price, isCustom: customPrice > 0 }
     }, [selectedRoom, activeBooking])
 
     // Grand total
@@ -505,7 +508,8 @@ export default function CashierRoomManager({
         if (guestTotals.adults < 1) { toast.error('Enter at least one adult guest'); return }
 
         // Calculate advance amount to send
-        const basePrice = selectedRoom.room_types?.base_price || 0
+        const customPrice = bookingForm.custom_room_price.trim() !== '' ? (parseFloat(bookingForm.custom_room_price) || 0) : 0
+        const basePrice = customPrice > 0 ? customPrice : (selectedRoom.room_types?.base_price || 0)
         const inDate = new Date(bookingForm.check_in)
         const outDate = new Date(bookingForm.check_out)
         const diffMs = outDate.getTime() - inDate.getTime()
@@ -541,6 +545,7 @@ export default function CashierRoomManager({
                     kyc: bookingForm.kyc,
                     check_in: bookingForm.check_in,
                     check_out: bookingForm.check_out,
+                    custom_room_price: customPrice > 0 ? customPrice : undefined,
                     adult_male: bookingForm.adult_male,
                     adult_female: bookingForm.adult_female,
                     children: bookingForm.children,
@@ -771,9 +776,31 @@ export default function CashierRoomManager({
                                             </div>
                                         </div>
 
+                                        <div className="col-span-2 border border-hairline rounded-2xl p-3 space-y-1.5 bg-surface">
+                                            <label className="block text-[10px] font-black text-ink-subtle uppercase tracking-wider flex items-center justify-between">
+                                                <span>Custom Room Price (Rs. / Night)</span>
+                                                <span className="text-[9px] text-amber-700 font-semibold normal-case">Session rate override</span>
+                                            </label>
+                                            <div className="relative">
+                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    placeholder={selectedRoom.room_types?.base_price?.toString() || '0'}
+                                                    value={bookingForm.custom_room_price}
+                                                    onChange={e => setBookingForm(b => ({ ...b, custom_room_price: e.target.value }))}
+                                                    className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-xl text-xs font-extrabold bg-surface focus:outline-none focus:border-brand-500"
+                                                />
+                                            </div>
+                                            <p className="text-[9px] text-ink-subtle">
+                                                Applies to this booking session only ({selectedRoom.room_types?.name || 'Room'} standard price Rs. {selectedRoom.room_types?.base_price || 0}/night remains unchanged).
+                                            </p>
+                                        </div>
+
                                         {/* Advance Payment Section */}
                                         {(() => {
-                                            const basePrice = selectedRoom.room_types?.base_price || 0
+                                            const customPrice = bookingForm.custom_room_price.trim() !== '' ? (parseFloat(bookingForm.custom_room_price) || 0) : 0
+                                            const basePrice = customPrice > 0 ? customPrice : (selectedRoom.room_types?.base_price || 0)
                                             const inDate = new Date(bookingForm.check_in)
                                             const outDate = new Date(bookingForm.check_out)
                                             const diffMs = outDate.getTime() - inDate.getTime()
@@ -1180,8 +1207,13 @@ export default function CashierRoomManager({
                                         {/* Room Stay Row */}
                                         <div className="flex justify-between items-center p-4 text-xs">
                                             <div>
-                                                <p className="font-extrabold text-ink">Room Stay Charge</p>
-                                                <p className="text-[10px] text-ink-subtle">{money(selectedRoom.room_types?.base_price || 0)} / Night</p>
+                                                <p className="font-extrabold text-ink flex items-center gap-1.5">
+                                                    <span>Room Stay Charge</span>
+                                                    {stayPriceDetails.isCustom && (
+                                                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">Custom Rate</span>
+                                                    )}
+                                                </p>
+                                                <p className="text-[10px] text-ink-subtle">{money(stayPriceDetails.price)} / Night</p>
                                             </div>
                                             <span className="font-extrabold text-ink-muted tabular-nums">{money(stayPriceDetails.cost)}</span>
                                         </div>

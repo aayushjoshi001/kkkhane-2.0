@@ -51,13 +51,9 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'A reason is required to apply a discount' }, { status: 400 })
         }
 
-        const rawCash = round2(Number(cash_paid) || 0)
-        const rawQr = round2(Number(qr_paid) || 0)
-        const rawCredit = round2(Number(credit_amount) || 0)
-
-        const cashPaid = isIrd ? rawCash : (rawCash + rawQr + rawCredit)
-        const qrPaid = isIrd ? rawQr : 0
-        const creditAmount = isIrd ? rawCredit : 0
+        const cashPaid = round2(Number(cash_paid) || 0)
+        const qrPaid = round2(Number(qr_paid) || 0)
+        const creditAmount = round2(Number(credit_amount) || 0)
 
         if (cashPaid < 0 || qrPaid < 0 || creditAmount < 0) {
             return NextResponse.json({ error: 'Payment amounts cannot be negative' }, { status: 400 })
@@ -195,7 +191,8 @@ export async function POST(req: Request) {
                     await postCreditCharge(supabase, currentUser.restaurantId, currentUser.id, {
                         customerCreditAccountId: account.id,
                         amount: creditAmount,
-                        description: `${orderLabel} on credit`,
+                        description: `${orderLabel} on credit (${customerName || order.customer_name || 'Customer'})`,
+                        incomeCategoryName: 'Restaurant Sales',
                     })
                 }
             }

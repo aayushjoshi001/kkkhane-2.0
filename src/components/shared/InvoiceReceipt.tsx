@@ -179,43 +179,75 @@ export default function InvoiceReceipt({
 
             <div className="border-t border-dashed border-black my-1.5" />
 
-            {/* Invoice Total + Advance + Balance */}
-            <div className="space-y-0.5 text-[10px]">
-                {!!invoice.extraHourCharge && invoice.extraHourCharge > 0 && (
-                    <div className="flex justify-between" style={{ color: '#000' }}>
-                        <span>Extra Hour Charge</span>
-                        <span className="tabular-nums">{money(invoice.extraHourCharge)}</span>
+            {/* Invoice Financial Breakdown (Subtotal -> Service Charge -> Tax/VAT -> Discount -> Grand Total in Big Bold) */}
+            {(() => {
+                const itemsSubtotal = (invoice.type === 'room' ? (invoice.stayCost || 0) : 0) +
+                    (invoice.manualChargesTotal || 0) +
+                    (invoice.qrOrdersTotal || 0) +
+                    (invoice.linkedOrdersTotal || 0)
+                const subtotalVal = invoice.subtotal ?? itemsSubtotal
+
+                return (
+                    <div className="space-y-1 text-[11px] pt-1">
+                        <div className="flex justify-between font-bold" style={{ color: '#000' }}>
+                            <span>SUB TOTAL</span>
+                            <span className="tabular-nums">{money(subtotalVal)}</span>
+                        </div>
+
+                        {!!invoice.extraHourCharge && invoice.extraHourCharge > 0 && (
+                            <div className="flex justify-between text-[10px]" style={{ color: '#000' }}>
+                                <span>Extra Hour Charge</span>
+                                <span className="tabular-nums">+ {money(invoice.extraHourCharge)}</span>
+                            </div>
+                        )}
+
+                        {!!invoice.serviceCharge && invoice.serviceCharge > 0 && (
+                            <div className="flex justify-between text-[10px]" style={{ color: '#000' }}>
+                                <span>Service Charge</span>
+                                <span className="tabular-nums">+ {money(invoice.serviceCharge)}</span>
+                            </div>
+                        )}
+
+                        {!!invoice.taxAmount && invoice.taxAmount > 0 && (
+                            <div className="flex justify-between text-[10px]" style={{ color: '#000' }}>
+                                <span>Tax / VAT</span>
+                                <span className="tabular-nums">+ {money(invoice.taxAmount)}</span>
+                            </div>
+                        )}
+
+                        {!!invoice.discountAmount && invoice.discountAmount > 0 && (
+                            <div className="flex justify-between text-[10px] font-bold text-rose-600" style={{ color: '#000' }}>
+                                <span>Discount</span>
+                                <span className="tabular-nums">- {money(invoice.discountAmount)}</span>
+                            </div>
+                        )}
+
+                        <div className="flex justify-between items-center font-black border-t-2 border-b-2 border-black py-1.5 my-1.5 text-black">
+                            <span className="uppercase text-sm tracking-wider font-black">GRAND TOTAL</span>
+                            <span className="text-base font-black tabular-nums">{money(invoice.total)}</span>
+                        </div>
+
+                        {!!invoice.advancePaid && invoice.advancePaid > 0 && (
+                            <div className="flex justify-between text-[10px]" style={{ color: '#000' }}>
+                                <span>Advance Paid ({advanceMethodLabel(invoice.advanceMethod)})</span>
+                                <span className="tabular-nums">- {money(invoice.advancePaid)}</span>
+                            </div>
+                        )}
+                        {!!invoice.cashPaid && invoice.cashPaid > 0 && (
+                            <div className="flex justify-between text-[10px]" style={{ color: '#000' }}>
+                                <span>Cash Paid</span>
+                                <span className="tabular-nums">- {money(invoice.cashPaid)}</span>
+                            </div>
+                        )}
+                        {!!invoice.qrPaid && invoice.qrPaid > 0 && (
+                            <div className="flex justify-between text-[10px]" style={{ color: '#000' }}>
+                                <span>QR / Digital Paid</span>
+                                <span className="tabular-nums">- {money(invoice.qrPaid)}</span>
+                            </div>
+                        )}
                     </div>
-                )}
-                {!!invoice.discountAmount && invoice.discountAmount > 0 && (
-                    <div className="flex justify-between" style={{ color: '#000' }}>
-                        <span>Total Discount</span>
-                        <span className="tabular-nums">- {money(invoice.discountAmount)}</span>
-                    </div>
-                )}
-                <div className="flex justify-between font-black text-[13px] border-t border-dashed border-black pt-1 mt-0.5">
-                    <span className="uppercase">GRAND TOTAL</span>
-                    <span className="tabular-nums">{money(invoice.total)}</span>
-                </div>
-                {!!invoice.advancePaid && invoice.advancePaid > 0 && (
-                    <div className="flex justify-between" style={{ color: '#000' }}>
-                        <span>Advance Paid ({advanceMethodLabel(invoice.advanceMethod)})</span>
-                        <span className="tabular-nums">- {money(invoice.advancePaid)}</span>
-                    </div>
-                )}
-                {!!invoice.cashPaid && invoice.cashPaid > 0 && (
-                    <div className="flex justify-between" style={{ color: '#000' }}>
-                        <span>Cash Paid</span>
-                        <span className="tabular-nums">- {money(invoice.cashPaid)}</span>
-                    </div>
-                )}
-                {!!invoice.qrPaid && invoice.qrPaid > 0 && (
-                    <div className="flex justify-between" style={{ color: '#000' }}>
-                        <span>QR / Digital Paid</span>
-                        <span className="tabular-nums">- {money(invoice.qrPaid)}</span>
-                    </div>
-                )}
-            </div>
+                )
+            })()}
 
             <div className="flex justify-between items-center text-xs font-black border-t-2 border-black pt-1 mt-1">
                 <span className="uppercase">{(invoice.advancePaid && invoice.advancePaid > 0) || totalReceived > 0 || (invoice.creditPaid && invoice.creditPaid > 0) ? 'BALANCE DUE' : 'TOTAL DUE'}</span>
@@ -235,27 +267,61 @@ export default function InvoiceReceipt({
                                 : 'SPLIT'}
                         </span>
                     </div>
+                    {invoice.paymentMethod === 'cash' && (
+                        <>
+                            {!!invoice.cashGiven && invoice.cashGiven > 0 && (
+                                <div className="flex justify-between" style={{ color: '#000' }}>
+                                    <span>· Cash Given</span>
+                                    <span className="tabular-nums">{money(invoice.cashGiven)}</span>
+                                </div>
+                            )}
+                            {!!invoice.changeReturned && invoice.changeReturned > 0.01 && (
+                                <div className="flex justify-between font-bold" style={{ color: '#000' }}>
+                                    <span>· Change Return</span>
+                                    <span className="tabular-nums">{money(invoice.changeReturned)}</span>
+                                </div>
+                            )}
+                            {!!invoice.creditPaid && invoice.creditPaid > 0.01 && (
+                                <div className="flex justify-between font-bold text-amber-900" style={{ color: '#000' }}>
+                                    <span>· Remaining Credit</span>
+                                    <span className="tabular-nums">{money(invoice.creditPaid)}</span>
+                                </div>
+                            )}
+                        </>
+                    )}
                     {invoice.paymentMethod === 'both' && (
                         <>
                             <div className="flex justify-between" style={{ color: '#000' }}>
                                 <span>· Cash</span>
                                 <span className="tabular-nums">{money(invoice.cashPaid ?? 0)}</span>
                             </div>
+                            {!!invoice.cashGiven && invoice.cashGiven > 0 && (
+                                <div className="flex justify-between" style={{ color: '#000' }}>
+                                    <span>· Cash Given</span>
+                                    <span className="tabular-nums">{money(invoice.cashGiven)}</span>
+                                </div>
+                            )}
+                            {!!invoice.changeReturned && invoice.changeReturned > 0.01 && (
+                                <div className="flex justify-between font-bold" style={{ color: '#000' }}>
+                                    <span>· Change Return</span>
+                                    <span className="tabular-nums">{money(invoice.changeReturned)}</span>
+                                </div>
+                            )}
                             <div className="flex justify-between" style={{ color: '#000' }}>
                                 <span>· QR / Digital</span>
                                 <span className="tabular-nums">{money(invoice.qrPaid ?? 0)}</span>
                             </div>
-                            {!!invoice.creditPaid && (
-                                <div className="flex justify-between" style={{ color: '#000' }}>
-                                    <span>· On credit</span>
+                            {!!invoice.creditPaid && invoice.creditPaid > 0.01 && (
+                                <div className="flex justify-between font-bold text-amber-900" style={{ color: '#000' }}>
+                                    <span>· Remaining Credit</span>
                                     <span className="tabular-nums">{money(invoice.creditPaid)}</span>
                                 </div>
                             )}
                         </>
                     )}
                     {invoice.paymentMethod === 'credit' && !!invoice.creditPaid && (
-                        <div className="flex justify-between" style={{ color: '#000' }}>
-                            <span>· On credit</span>
+                        <div className="flex justify-between font-bold text-amber-900" style={{ color: '#000' }}>
+                            <span>· Remaining Credit</span>
                             <span className="tabular-nums">{money(invoice.creditPaid)}</span>
                         </div>
                     )}

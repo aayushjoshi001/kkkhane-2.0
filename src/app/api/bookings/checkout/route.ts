@@ -265,9 +265,8 @@ export async function POST(req: Request) {
         const guestName = booking.guest_name || 'Guest'
 
         // 3. Resolve cash, qr, and credit splits
-        const isIrd = features?.irdSyncEnabled === true
-        const cashPaid = isIrd ? (Number(cash_paid) || 0) : Math.max(0, settledNow - creditAmount)
-        const qrPaid = isIrd ? (Number(qr_paid) || 0) : 0
+        const cashPaid = Number(cash_paid) || 0
+        const qrPaid = Number(qr_paid) || 0
 
         let hotelCash = cashPaid
         let hotelQr = qrPaid
@@ -301,6 +300,36 @@ export async function POST(req: Request) {
                 return NextResponse.json({ error: `Credit account error: ${account.error}` }, { status: 400 })
             }
             creditAccountId = account.id
+
+            // Record room revenue for credit stay on checkout date (Accrual accounting)
+            let categoryId: string | undefined
+            const { data: existingCategory } = await supabase
+                .from('income_categories')
+                .select('id')
+                .eq('restaurant_id', booking.restaurant_id)
+                .eq('name', 'Room Revenue')
+                .maybeSingle()
+
+            categoryId = existingCategory?.id
+            if (!categoryId) {
+                const { data: newCategory } = await supabase
+                    .from('income_categories')
+                    .insert({ restaurant_id: booking.restaurant_id, name: 'Room Revenue' })
+                    .select('id')
+                    .single()
+                categoryId = newCategory?.id
+            }
+
+            if (categoryId) {
+                await supabase.from('income_entries').insert({
+                    restaurant_id: booking.restaurant_id,
+                    category_id: categoryId,
+                    amount: creditAmount,
+                    description: `Room ${roomNumber} stay on credit (${guestName || 'Guest'})`,
+                    status: 'posted',
+                    created_by: currentUser.id
+                })
+            }
         }
 
         // 5. Invoke transaction-locked database RPC to settle checkout atomically

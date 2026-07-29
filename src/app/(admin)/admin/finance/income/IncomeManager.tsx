@@ -146,6 +146,24 @@ function EntriesTab({
                 columns={[
                     { key: 'created_at', header: 'Date', render: (e) => formatDate(e.created_at), sortValue: (e) => e.created_at },
                     { key: 'category', header: 'Category', render: (e) => e.income_categories?.name || '—' },
+                    {
+                        key: 'payment_method',
+                        header: 'Payment Method',
+                        render: (e) => {
+                            const isCredit = !e.bank_account_id && /on credit|credit/i.test(e.description || '')
+                            const label = e.bank_account_id ? 'Bank' : (isCredit ? 'Credit' : 'Cash')
+                            const style = e.bank_account_id
+                                ? 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                                : isCredit
+                                ? 'bg-orange-50 text-orange-700 border-orange-100'
+                                : 'bg-amber-50 text-amber-700 border-amber-100'
+                            return (
+                                <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-black uppercase border ${style}`}>
+                                    {label}
+                                </span>
+                            )
+                        }
+                    },
                     { key: 'description', header: 'Description', render: (e) => e.description },
                     { key: 'amount', header: 'Amount', align: 'right', render: (e) => formatCurrency(e.amount), sortValue: (e) => e.amount },
                     { key: 'status', header: 'Status', render: (e) => <StatusBadge status={e.status} /> },

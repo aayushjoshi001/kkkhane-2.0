@@ -16,6 +16,22 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Extract temporary custom room price per night if set for a booking session.
+ * The custom rate is stored as [CUSTOM_RATE:X] in booking.notes at booking time.
+ */
+export function getBookingCustomPrice(booking: any): number {
+    if (!booking) return 0
+    // Read from notes tag — e.g. "KYC: XYZ | [CUSTOM_RATE:2500]"
+    if (booking.notes && typeof booking.notes === 'string') {
+        const match = booking.notes.match(/\[CUSTOM_RATE:(\d+(?:\.\d+)?)\]/)
+        if (match && match[1]) {
+            return parseFloat(match[1]) || 0
+        }
+    }
+    return 0
+}
+
+/**
  * Format currency amount for display.
  *
  * The currency is configured per-restaurant in settings (features_v2.currency

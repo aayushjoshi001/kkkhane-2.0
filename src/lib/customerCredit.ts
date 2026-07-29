@@ -92,7 +92,7 @@ export async function postCreditCharge(
     supabase: SupabaseClient,
     restaurantId: string,
     userId: string | null,
-    input: { customerCreditAccountId: string; amount: number; description: string }
+    input: { customerCreditAccountId: string; amount: number; description: string; incomeCategoryName?: string }
 ): Promise<{ success: boolean; error?: string }> {
     if (input.amount <= 0) return { success: true }
 
@@ -109,6 +109,42 @@ export async function postCreditCharge(
         console.error('Failed to post credit charge:', error)
         return { success: false, error: error.message }
     }
+
+    // Recognize credit sale/charge as income on the checkout date (Accrual accounting)
+    try {
+        const categoryName = input.incomeCategoryName || 'Restaurant Sales'
+        let categoryId: string | undefined
+        const { data: existingCategory } = await supabase
+            .from('income_categories')
+            .select('id')
+            .eq('restaurant_id', restaurantId)
+            .eq('name', categoryName)
+            .maybeSingle()
+
+        categoryId = existingCategory?.id
+        if (!categoryId) {
+            const { data: newCategory } = await supabase
+                .from('income_categories')
+                .insert({ restaurant_id: restaurantId, name: categoryName })
+                .select('id')
+                .single()
+            categoryId = newCategory?.id
+        }
+
+        if (categoryId) {
+            await supabase.from('income_entries').insert({
+                restaurant_id: restaurantId,
+                category_id: categoryId,
+                amount: input.amount,
+                description: input.description,
+                status: 'posted',
+                created_by: userId,
+            })
+        }
+    } catch (incErr) {
+        console.error('Failed to record income entry for credit charge:', incErr)
+    }
+
     return { success: true }
 }
 
