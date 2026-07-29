@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Filter, Bed, Wrench, ChevronRight, Download, Loader2, X, Users, Calendar, Phone, Pencil, Trash2, Tags, ArrowLeft, Check } from 'lucide-react'
+import { Plus, Filter, Bed, Wrench, ChevronRight, Download, Loader2, X, Users, Calendar, Phone, Pencil, Trash2, Tags, ArrowLeft, Check, Car } from 'lucide-react'
 import { ROOM_STATUS_CONFIG, getRoomStatusConfig } from '@/lib/roomStatus'
 import type { Room, RoomType, RoomStatus, Booking } from '@/types/database'
 import EmptyState from '@/components/ui/EmptyState'
@@ -92,7 +92,10 @@ export default function RoomsClient({
         advance_payment_method: 'cash',
         advance_cash_amount: '',
         advance_qr_amount: '',
-        advance_qr_code_id: ''
+        advance_qr_code_id: '',
+        parking_required: false,
+        parking_vehicle_no: '',
+        parking_fee: ''
     })
     // Extra rooms the same guest is taking. Any entry here makes this one
     // reservation: the rooms bill onto a single folio and check out together.
@@ -337,7 +340,10 @@ export default function RoomsClient({
             advance_payment_method: 'cash',
             advance_cash_amount: '',
             advance_qr_amount: '',
-            advance_qr_code_id: ''
+            advance_qr_code_id: '',
+            parking_required: false,
+            parking_vehicle_no: '',
+            parking_fee: ''
         })
         setExtraRoomIds([])
         setIsBookModalOpen(true)
@@ -402,7 +408,12 @@ export default function RoomsClient({
                     advance_qr_amount: (irdSyncEnabled && isSplit) ? splitQr : undefined,
                     advance_qr_code_id: (irdSyncEnabled && (bookingForm.advance_payment_method === 'qr_digital' || isSplit))
                         ? (bookingForm.advance_qr_code_id || (qrCodes.length === 1 ? qrCodes[0].id : undefined))
-                        : undefined
+                        : undefined,
+                    parking_required: bookingForm.parking_required,
+                    // The plate is worth keeping even if no space was reserved,
+                    // but a fee only makes sense against a space actually given.
+                    parking_vehicle_no: bookingForm.parking_vehicle_no.trim() || undefined,
+                    parking_fee: bookingForm.parking_required ? (parseFloat(bookingForm.parking_fee) || 0) : 0
                 })
             })
             const data = await res.json()
@@ -783,6 +794,18 @@ export default function RoomsClient({
                                                 <span className="font-extrabold text-ink">{activeBooking.notes.replace('KYC:', '').trim()}</span>
                                             </div>
                                         )}
+                                        {/* Only worth a line when there is a car — a stay with
+                                            neither a space nor a plate has nothing to say here. */}
+                                        {(activeBooking.parking_required || activeBooking.parking_vehicle_no) && (
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-ink-subtle font-bold uppercase tracking-wide">Parking:</span>
+                                                <span className="font-extrabold text-ink flex items-center gap-1">
+                                                    <Car size={11} className="text-ink-subtle" />
+                                                    {activeBooking.parking_required ? 'Reserved' : 'Not reserved'}
+                                                    {activeBooking.parking_vehicle_no && ` · ${activeBooking.parking_vehicle_no}`}
+                                                </span>
+                                            </div>
+                                        )}
                                         <div className="border-t border-blue-100/60 pt-2 space-y-1.5">
                                             <div className="flex items-center justify-between text-[11px]">
                                                 <span className="text-ink-subtle font-bold">CHECK IN:</span>
@@ -1015,6 +1038,73 @@ export default function RoomsClient({
                                 <p className="text-[10px] text-ink-subtle font-semibold mt-1.5">
                                     Applied to each room on this reservation.
                                 </p>
+                            </div>
+
+                            {/* Parking. Asked once for the whole reservation — one
+                                guest arrives in one vehicle however many rooms they
+                                take — and any fee posts to the folio as a single
+                                'parking' charge on the first room. */}
+                            <div className="rounded-[var(--r-md)] border border-hairline bg-surface-muted/30 p-4 space-y-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <label className="block text-small font-bold text-ink">Parking required?</label>
+                                        <p className="text-[10px] text-ink-subtle font-semibold mt-0.5">
+                                            Reserves a space for this stay.
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-2 shrink-0">
+                                        {([['No', false], ['Yes', true]] as const).map(([label, value]) => (
+                                            <button
+                                                key={label}
+                                                type="button"
+                                                aria-pressed={bookingForm.parking_required === value}
+                                                onClick={() => setBookingForm(b => ({ ...b, parking_required: value }))}
+                                                className={`px-4 py-2 rounded-[var(--r-md)] border-2 text-xs font-bold transition-all ${
+                                                    bookingForm.parking_required === value
+                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                        : 'border-hairline bg-surface text-ink-subtle hover:border-brand-300'
+                                                }`}
+                                            >
+                                                {label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">
+                                            Vehicle No. (Optional)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            maxLength={32}
+                                            value={bookingForm.parking_vehicle_no}
+                                            onChange={e => setBookingForm(b => ({ ...b, parking_vehicle_no: e.target.value }))}
+                                            placeholder="e.g. BA 2 CHA 1234"
+                                            className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">
+                                            Parking Fee (Rs.)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            placeholder="0.00"
+                                            disabled={!bookingForm.parking_required}
+                                            value={bookingForm.parking_fee}
+                                            onChange={e => setBookingForm(b => ({ ...b, parking_fee: e.target.value }))}
+                                            className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all tabular-nums disabled:opacity-60"
+                                        />
+                                    </div>
+                                </div>
+                                {bookingForm.parking_required && (parseFloat(bookingForm.parking_fee) || 0) > 0 && (
+                                    <p className="text-[10px] text-ink-subtle font-semibold">
+                                        Added to the guest&apos;s bill as a parking charge. Leave blank for free parking.
+                                    </p>
+                                )}
                             </div>
 
                             {/* Extra rooms for the same guest. Picking any makes this one

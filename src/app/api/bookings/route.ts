@@ -75,7 +75,8 @@ export async function POST(req: Request) {
             check_in, check_out,
             advance_amount, advance_payment_method,
             advance_cash_amount, advance_qr_amount,
-            advance_qr_code_id, advance_note
+            advance_qr_code_id, advance_note,
+            parking_required, parking_vehicle_no, parking_fee
         } = body
 
         if (!guest_name || !guest_phone || !check_in || !check_out) {
@@ -183,6 +184,19 @@ export async function POST(req: Request) {
             advanceShares[0] = round2(advanceShares[0] + (paidAmount - allocated))
         }
 
+        // Parking is asked once for the reservation, not per room — one guest
+        // arrives in one car however many rooms they take. The flag and plate go
+        // on every room so any of them answers "does this stay have a vehicle?",
+        // but the fee is posted as a single charge further down.
+        const parkingRequired = parking_required === true || parking_required === 'true'
+        const parkingVehicleNo = typeof parking_vehicle_no === 'string' && parking_vehicle_no.trim()
+            ? parking_vehicle_no.trim().slice(0, 32)
+            : null
+        const parkingFee = Math.max(0, Number(parking_fee) || 0)
+        if (!Number.isFinite(parkingFee)) {
+            return NextResponse.json({ error: 'parking_fee must be a number' }, { status: 400 })
+        }
+
         const notes = kyc ? `KYC: ${kyc.trim()}` : null
         const guestName = String(guest_name).trim()
         const guestPhone = String(guest_phone).trim()
@@ -247,6 +261,8 @@ export async function POST(req: Request) {
                     notes,
                     paid_amount: advanceShares[i],
                     advance_payment_method: advMethod,
+                    parking_required: parkingRequired,
+                    parking_vehicle_no: parkingVehicleNo,
                 })
                 .select()
                 .single()
@@ -306,6 +322,26 @@ export async function POST(req: Request) {
             .map(r => roomsById.get(r.roomId)?.room_number ?? 'Unknown')
             .join(', ')
         const primaryBookingId = bookings[0].id
+
+        // A parking fee bills as an ordinary folio charge, on the first room of
+        // the reservation only — the guest parked one vehicle and owes for it
+        // once, so posting it per room would multiply the fee by the room count.
+        // Not fatal if it fails: the rooms are booked and the guest is in house,
+        // and a missing incidental is added at the desk in seconds, whereas
+        // unwinding a completed booking over it is not recoverable.
+        if (parkingFee > 0) {
+            const { error: parkingChargeError } = await supabase.from('room_charges').insert({
+                restaurant_id: currentUser.restaurantId,
+                booking_id: primaryBookingId,
+                description: parkingVehicleNo ? `Parking (${parkingVehicleNo})` : 'Parking',
+                amount: parkingFee,
+                charge_type: 'parking',
+                charged_by: currentUser.id,
+            })
+            if (parkingChargeError) {
+                console.error('Failed to post parking charge for booking', primaryBookingId, parkingChargeError)
+            }
+        }
 
         const noteText = advance_note && String(advance_note).trim() ? String(advance_note).trim() : 'Advance'
         const customDesc = `Room Advance (${noteText}): ${guestName} (Room ${roomLabel})`

@@ -1018,6 +1018,12 @@ export interface Booking {
     service_charge_override?: number | null
     /** Staff member who settled this stay at checkout; null while in house. */
     cashier_id?: string | null
+    /** Guest asked for a parking space. Any fee is a `room_charges` row of type
+     *  'parking', never an amount stored here. */
+    parking_required?: boolean
+    /** Vehicle registration taken at the desk. Can be set even when
+     *  `parking_required` is false — a guest with a car but no reserved space. */
+    parking_vehicle_no?: string | null
     rooms?: Room | null
 }
 
