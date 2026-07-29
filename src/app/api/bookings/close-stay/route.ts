@@ -130,7 +130,12 @@ export async function POST(req: Request) {
         }
 
         const memberIds = members.map(m => m.id)
-        const memberRoomIds = members.map(m => m.room_id)
+        // Only rooms this reservation still occupies — one that departed early
+        // (see /api/bookings/checkout-room) went to housekeeping then and may
+        // already hold a different guest.
+        const memberRoomIds = members
+            .filter(m => m.status !== 'checked_out')
+            .map(m => m.room_id)
 
         // `checked_out_at` is stamped by the bookings_stamp_checked_out_at
         // trigger the moment status flips, so it is not set here.

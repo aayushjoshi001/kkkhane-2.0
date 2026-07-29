@@ -1018,9 +1018,11 @@ export interface Booking {
     service_charge_override?: number | null
     /** Staff member who settled this stay at checkout; null while in house. */
     cashier_id?: string | null
-    /** When the guest settled ahead of departure and kept the room. Null means
-     *  no early settlement — unsettled, or settled at checkout in one step.
-     *  Anything charged after this reopens a balance on the same folio. */
+    /** When this stay's bill was closed out. Stamped by every settlement, and
+     *  kept at the first one if a stay settles more than once. Null means never
+     *  settled — including a room that departed early and is still riding on a
+     *  shared bill. "Paid but still in the room" is this set while `status` is
+     *  not yet `checked_out`. */
     bill_settled_at?: string | null
     /** Guest asked for a parking space. Any fee is a `room_charges` row of type
      *  'parking', never an amount stored here. */

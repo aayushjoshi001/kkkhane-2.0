@@ -1551,7 +1551,7 @@ export default function CashierRoomManager({
                                         <p className="text-[10px] text-brand-500 font-extrabold">{describeGuestMix(activeBooking)}</p>
                                         {/* Paid up but still in the room — what's left to do is
                                             release it, not charge for it. */}
-                                        {activeBooking.bill_settled_at && (
+                                        {activeBooking.bill_settled_at && activeBooking.status !== 'checked_out' && (
                                             <p className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md inline-block">
                                                 Bill settled {formatDateTime(activeBooking.bill_settled_at)}
                                             </p>
