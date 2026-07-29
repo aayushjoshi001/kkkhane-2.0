@@ -438,7 +438,9 @@ export async function getStaffMenu(restaurantId: string) {
 export async function placeStaffOrder(
     sessionId: string,
     items: any[],
-    customerNote?: string
+    customerNote?: string,
+    /** Sold across the counter — skip the station queue and the ticket. */
+    noKot = false,
 ) {
     const adminSupabase = await createAdminClient()
 
@@ -498,15 +500,29 @@ export async function placeStaffOrder(
     })
 
     try {
-        // Place the order
-        const { data, error } = await adminSupabase.rpc('place_order', {
-            p_session_id: session.id,
-            p_items: payload,
-            p_customer_note: customerNote || null,
-            p_promo_code: null,
-            p_loyalty_member_id: null,
-            p_client_request_id: null,
-        })
+        // Place the order.
+        //
+        // A counter sale goes through place_counter_order, which wraps the same
+        // RPC and marks the lines served-and-printed inside the SAME
+        // transaction. That matters: realtime publishes at commit, so a station
+        // board sees the order the instant place_order returns and starts its
+        // print timer — stamping the lines in a second round-trip here would
+        // lose that race often enough to print tickets for cigarettes.
+        const { data, error } = noKot
+            ? await adminSupabase.rpc('place_counter_order', {
+                p_session_id: session.id,
+                p_items: payload,
+                p_customer_note: customerNote || null,
+                p_client_request_id: null,
+            })
+            : await adminSupabase.rpc('place_order', {
+                p_session_id: session.id,
+                p_items: payload,
+                p_customer_note: customerNote || null,
+                p_promo_code: null,
+                p_loyalty_member_id: null,
+                p_client_request_id: null,
+            })
 
         if (error) {
             console.error('[placeStaffOrder] RPC Error:', error)
@@ -547,6 +563,13 @@ export async function placeStaffOrder(
         }
         if (roomContext?.bookingId) {
             updateFields.booking_id = roomContext.bookingId
+        }
+        if (noKot) {
+            // place_counter_order already closed this out; repeated here only so
+            // this blanket update cannot walk the order back to 'confirmed' and
+            // drop it onto a station board after the fact.
+            updateFields.status = 'delivered'
+            updateFields.no_kot = true
         }
 
         await adminSupabase
@@ -601,7 +624,9 @@ export async function placeStaffOrder(
 export async function placeRoomOrderDirect(
     bookingId: string,
     items: any[],
-    customerNote?: string
+    customerNote?: string,
+    /** Sold across the counter — skip the station queue and the ticket. */
+    noKot = false,
 ) {
     const supabase = await createServerClient()
     const adminSupabase = await createAdminClient()
@@ -697,7 +722,14 @@ export async function placeRoomOrderDirect(
                 quantity: item.quantity,
                 unit_price: unitPrice,
                 special_request: specialRequest,
-                status: 'pending',
+                // A counter sale is born finished and unprintable. Stamping
+                // kot_printed_at on the insert itself is what makes it
+                // impossible to print rather than merely unlikely:
+                // claim_order_items_for_printing only ever claims lines where
+                // it is NULL, so no station can take these however the board
+                // races to them.
+                status: noKot ? 'served' : 'pending',
+                kot_printed_at: noKot ? new Date().toISOString() : null,
                 needs_confirmation: true
             })
             .select('id')
@@ -813,6 +845,17 @@ export async function placeRoomOrderDirect(
         adminSupabase.rpc('apply_pricing_rules_to_order', { p_order_id: orderId }),
         adminSupabase.rpc('deduct_ingredients_for_order',  { p_order_id: orderId }),
     ])
+
+    // Handed over at the counter: finished on placement. The lines were already
+    // written served and stamped unprintable at insert, so no ticket was ever
+    // possible; this closes the order itself, and has to run after the totals
+    // writes above because every one of them sets status back to 'confirmed'.
+    if (noKot) {
+        await adminSupabase
+            .from('orders')
+            .update({ status: 'delivered', no_kot: true })
+            .eq('id', orderId)
+    }
 
     revalidatePath('/cashier')
     return { success: true, orderId }

@@ -287,6 +287,10 @@ export interface Order {
     // Mode 2 (waiter confirmation): true while a placed order is waiting for a
     // waiter to confirm the customer is seated; the kitchen hides these until then.
     needs_confirmation?: boolean
+    /** Sold straight over the counter — cigarettes, a bottle off the shelf — so
+     *  no station ticket printed and no station ever queued it. Its lines are
+     *  written already served. Billing and stock are unaffected. */
+    no_kot?: boolean
     cancellation_reason?: string | null
     placed_at: string
     confirmed_at: string | null
