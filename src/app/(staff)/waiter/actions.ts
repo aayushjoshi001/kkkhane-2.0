@@ -543,7 +543,13 @@ export async function placeStaffOrder(
 
         const updateFields: any = {
             status: 'confirmed',
-            needs_confirmation: false
+            needs_confirmation: false,
+            // Who took the order. The column has existed since the baseline and
+            // was never written, so "which waiter sold what" had no data behind
+            // it; recorded here it is a fact rather than the guess the history
+            // backfill had to settle for (see waiter_id_inferred).
+            waiter_id: currentUser.id,
+            waiter_id_inferred: false,
         }
         if (roomContext?.bookingId) {
             updateFields.booking_id = roomContext.bookingId
@@ -635,6 +641,9 @@ export async function placeRoomOrderDirect(
             payment_status: 'unpaid',
             order_type: 'takeout',
             placed_at: new Date().toISOString(),
+            // A room order is placed by whoever is at the desk; recorded so it
+            // counts towards their day like any other order they took.
+            waiter_id: currentUser?.id ?? null,
             subtotal_amount: 0,
             total_amount: 0
         })
