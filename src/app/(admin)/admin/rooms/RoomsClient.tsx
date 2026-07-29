@@ -806,6 +806,17 @@ export default function RoomsClient({
                                                 </span>
                                             </div>
                                         )}
+                                        {/* Paid up but still in the room — the desk needs to
+                                            know before they open the bill, since what's left
+                                            to do is release the room, not charge for it. */}
+                                        {activeBooking.bill_settled_at && (
+                                            <div className="flex items-center justify-between rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-1.5">
+                                                <span className="text-emerald-800 font-bold uppercase tracking-wide text-[10px]">Bill settled</span>
+                                                <span className="font-extrabold text-emerald-700 text-[11px]">
+                                                    {formatDateTime(activeBooking.bill_settled_at)}
+                                                </span>
+                                            </div>
+                                        )}
                                         <div className="border-t border-blue-100/60 pt-2 space-y-1.5">
                                             <div className="flex items-center justify-between text-[11px]">
                                                 <span className="text-ink-subtle font-bold">CHECK IN:</span>
@@ -1518,9 +1529,14 @@ export default function RoomsClient({
                     userName={userName}
                     onClose={() => setBillingStay(null)}
                     onSettled={result => {
-                        setRooms(prev => prev.map(r => r.id === result.roomId ? { ...r, status: 'dirty' } : r))
+                        // A guest who settled but kept the room is still in it —
+                        // sending it to housekeeping here would show the room as
+                        // free while someone is asleep in it.
+                        if (result.closed) {
+                            setRooms(prev => prev.map(r => r.id === result.roomId ? { ...r, status: 'dirty' } : r))
+                            setSelectedRoom(null)
+                        }
                         setBillingStay(null)
-                        setSelectedRoom(null)
                         // tables/activeOrders are server-fetched props, not local state — the
                         // checkout just closed a session and marked its orders paid in the DB,
                         // so refresh to pick that up. Otherwise the next guest booked into this

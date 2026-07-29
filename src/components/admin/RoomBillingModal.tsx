@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useSyncExternalStore, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Loader2, CheckCircle2, Percent, Clock, Printer, History, Utensils, QrCode, Bed, RotateCcw, Link2, Unlink, Plus } from 'lucide-react'
+import { X, Loader2, CheckCircle2, Percent, Clock, Printer, History, Utensils, QrCode, Bed, RotateCcw, Link2, Unlink, Plus, DoorOpen, BedDouble } from 'lucide-react'
 import AdvancePaymentHistoryModal from './AdvancePaymentHistoryModal'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
@@ -55,6 +55,10 @@ export interface SettlementResult {
     total: number
     paidAmount: number
     paymentStatus: 'paid' | 'partial'
+    /** False when the guest paid but kept the room — the stay is still open and
+     *  the room is still occupied, so callers must not mark it for
+     *  housekeeping. */
+    closed: boolean
 }
 
 interface RoomBillingModalProps {
@@ -177,6 +181,11 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const [loadingCandidates, setLoadingCandidates] = useState(false)
     const [pickedCandidateIds, setPickedCandidateIds] = useState<string[]>([])
     const [isCombining, setIsCombining] = useState(false)
+    // Which of the two settle buttons is being confirmed. The split/credit
+    // confirmation and the print prompt both sit between the click and the
+    // request, so the intent has to survive them.
+    const [pendingCloseStay, setPendingCloseStay] = useState(true)
+    const [isClosingStay, setIsClosingStay] = useState(false)
 
     useEffect(() => {
         if (!booking) return
@@ -315,6 +324,15 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const netBalance = grandTotal - advancePaid
     const balanceDue = Math.max(0, netBalance)
     const returnAmount = netBalance < 0 ? Math.abs(netBalance) : 0
+
+    // This guest paid earlier and kept the room. What is left to do is release
+    // it — unless something has been charged since (another night, a last round
+    // of room service), in which case there is a real balance to take first and
+    // the ordinary settle buttons come back. The half-rupee cushion mirrors the
+    // server's: the folio and the stored paid amount both round to paisa and can
+    // differ in the last place, which is not an unpaid bill.
+    const billAlreadySettled = !!booking?.bill_settled_at
+    const balanceOutstanding = balanceDue > 0.5
 
     const checkOutTime = booking ? new Date(booking.check_out) : null
     const currentTime = new Date()
@@ -477,6 +495,45 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         }
     }
 
+    /**
+     * Release a room whose bill was settled earlier. Posts nothing — the money
+     * went through when the guest paid — so it deliberately does not go through
+     * the checkout path at all. The server refuses if anything has been charged
+     * since, and says how much.
+     */
+    const handleCloseStay = async () => {
+        if (!booking) return
+        setIsClosingStay(true)
+        try {
+            const res = await fetch('/api/bookings/close-stay', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ booking_id: booking.id }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Could not check the guest out')
+
+            toast.success(
+                data.roomsClosed > 1
+                    ? `${data.roomsClosed} rooms checked out and sent to housekeeping`
+                    : 'Guest checked out — room sent to housekeeping'
+            )
+            setInvoiceSettled(true)
+            onSettled({
+                bookingId: booking.id,
+                roomId: room.id,
+                total: Number(data.total) || 0,
+                paidAmount: Number(data.paid) || 0,
+                paymentStatus: 'paid',
+                closed: true,
+            })
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not check the guest out')
+        } finally {
+            setIsClosingStay(false)
+        }
+    }
+
     const handlePrintBill = async () => {
         if (!invoiceData) return
         const result = await printInvoice(buildInvoiceTicket(invoiceData, money, restaurantName, restaurantAddress, restaurantPhone, calendar))
@@ -494,7 +551,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // 'credit' open the confirmation popup instead (see showSettlementConfirm
     // above); its own Confirm button calls handleSettle directly once the
     // breakdown (and, if needed, customer details) are confirmed.
-    const handleSettleClick = () => {
+    const handleSettleClick = (closeStay: boolean) => {
         if (discountInvalid) {
             toast.error('Discount amounts must be between 0 and the respective stay/order subtotals')
             return
@@ -503,6 +560,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             toast.error('A reason is required to apply a discount')
             return
         }
+        setPendingCloseStay(closeStay)
         if (paymentMethod === 'split' || paymentMethod === 'credit') {
             setShowSettlementConfirm(true)
             return
@@ -514,6 +572,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         if (!booking) return
         if (overpaid || creditFieldsInvalid) return
 
+        const closeStay = pendingCloseStay
         setShowSettlementConfirm(false)
         setIsSaving(true)
         try {
@@ -537,12 +596,17 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                     customer_phone: resolvedCredit > 0 ? creditCustomerPhone.trim() : undefined,
                     extra_hour_charge: extraHourChargeVal,
                     service_charge_override: serviceChargeOverrideValue,
+                    close_stay: closeStay,
                 })
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || 'Failed to checkout booking')
 
-            toast.success('Room billing settled and guest checked out successfully!')
+            toast.success(
+                closeStay
+                    ? 'Room billing settled and guest checked out successfully!'
+                    : 'Bill settled — the guest keeps the room until you check them out.'
+            )
             setIsSaving(false)
             setInvoiceSettled(true)
 
@@ -581,7 +645,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                 roomId: room.id,
                 total: grandTotal,
                 paidAmount,
-                paymentStatus: paidAmount >= grandTotal ? 'paid' : 'partial'
+                paymentStatus: paidAmount >= grandTotal ? 'paid' : 'partial',
+                closed: closeStay,
             })
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'Failed to checkout')
@@ -641,6 +706,29 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                     )}
                                 </div>
                             </div>
+
+                            {/* This stay has already paid. Says so before the cashier
+                                reads the numbers below, and names the balance if
+                                anything has been charged since. */}
+                            {billAlreadySettled && !invoiceSettled && (
+                                <div className={`rounded-2xl border p-4 flex items-start gap-3 ${
+                                    balanceOutstanding
+                                        ? 'border-amber-200 bg-amber-50'
+                                        : 'border-emerald-200 bg-emerald-50'
+                                }`}>
+                                    <CheckCircle2 size={16} className={balanceOutstanding ? 'text-amber-600 mt-0.5 shrink-0' : 'text-emerald-600 mt-0.5 shrink-0'} />
+                                    <div className="text-xs">
+                                        <p className={`font-extrabold ${balanceOutstanding ? 'text-amber-800' : 'text-emerald-800'}`}>
+                                            Bill settled {booking.bill_settled_at ? `on ${formatDateTime(booking.bill_settled_at)}` : 'earlier'} — guest kept the room
+                                        </p>
+                                        <p className={`mt-0.5 font-semibold ${balanceOutstanding ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                            {balanceOutstanding
+                                                ? `${money(balanceDue)} has been charged since. Take it, then the room can be released.`
+                                                : 'Nothing further owed. Release the room when the guest leaves.'}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* ── Rooms on this bill ──
                                 Rooms booked at different times still settle together when
@@ -1259,14 +1347,45 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                                     Print Bill
                                                 </button>
                                             )}
-                                            <button
-                                                onClick={handleSettleClick}
-                                                disabled={isSaving || discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
-                                                className="px-6 py-2 bg-brand-500 hover:bg-brand-600 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-brand-500/10 disabled:opacity-50 flex items-center gap-1.5"
-                                            >
-                                                {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
-                                                {!irdSyncEnabled ? 'Close Guest' : 'Settle & Checkout'}
-                                            </button>
+
+                                            {/* A guest who has already paid needs releasing, not
+                                                charging — no money moves here, so it goes through
+                                                close-stay rather than the settlement path. Any
+                                                balance that accrued since is charged by the button
+                                                to its right instead. */}
+                                            {billAlreadySettled && !balanceOutstanding && (
+                                                <button
+                                                    onClick={handleCloseStay}
+                                                    disabled={isClosingStay || isSaving}
+                                                    className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-emerald-600/10 disabled:opacity-50 flex items-center gap-1.5"
+                                                >
+                                                    {isClosingStay ? <Loader2 size={12} className="animate-spin" /> : <DoorOpen size={13} />}
+                                                    Check Out &amp; Release Room
+                                                </button>
+                                            )}
+
+                                            {(!billAlreadySettled || balanceOutstanding) && (
+                                                <>
+                                                    {/* Takes the money and stops there: the stay stays
+                                                        open and the room stays the guest's. */}
+                                                    <button
+                                                        onClick={() => handleSettleClick(false)}
+                                                        disabled={isSaving || isClosingStay || discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
+                                                        className="px-4 py-2 border-2 border-brand-500 text-brand-600 hover:bg-brand-50 font-bold rounded-xl text-xs transition-all disabled:opacity-50 flex items-center gap-1.5"
+                                                    >
+                                                        {isSaving ? <Loader2 size={12} className="animate-spin" /> : <BedDouble size={13} />}
+                                                        Settle Bill, Keep Room
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleSettleClick(true)}
+                                                        disabled={isSaving || isClosingStay || discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
+                                                        className="px-6 py-2 bg-brand-500 hover:bg-brand-600 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-brand-500/10 disabled:opacity-50 flex items-center gap-1.5"
+                                                    >
+                                                        {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
+                                                        {!irdSyncEnabled ? 'Close Guest' : 'Settle & Checkout'}
+                                                    </button>
+                                                </>
+                                            )}
                                         </>
                                     )}
                                 </div>
