@@ -15,6 +15,19 @@ const money = (amount: number) =>
 const todayInNepal = () =>
     new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kathmandu' })
 
+/** "Tue 29 Jul", with today and yesterday named — a manager scanning a fortnight
+ *  needs to find the recent days without counting back from a date. */
+const formatDayLabel = (day: string) => {
+    const today = todayInNepal()
+    if (day === today) return 'Today'
+    const yesterday = new Date(`${today}T00:00:00+05:45`)
+    yesterday.setDate(yesterday.getDate() - 1)
+    if (day === yesterday.toLocaleDateString('en-CA', { timeZone: 'Asia/Kathmandu' })) return 'Yesterday'
+    return new Date(`${day}T00:00:00+05:45`).toLocaleDateString('en-GB', {
+        timeZone: 'Asia/Kathmandu', weekday: 'short', day: 'numeric', month: 'short',
+    })
+}
+
 const shiftDay = (day: string, delta: number) => {
     const d = new Date(`${day}T00:00:00+05:45`)
     d.setDate(d.getDate() + delta)
@@ -37,7 +50,9 @@ const PRESETS = [
  * this data.
  */
 export default function StaffActivityPanel() {
-    const [from, setFrom] = useState(todayInNepal)
+    // Opens on the last week rather than today alone: the point of the panel is
+    // the day-by-day breakdown, and a single day has nothing to break down.
+    const [from, setFrom] = useState(() => shiftDay(todayInNepal(), -6))
     const [to, setTo] = useState(todayInNepal)
     const [rows, setRows] = useState<StaffActivity[]>([])
     const [loading, setLoading] = useState(true)
@@ -226,6 +241,53 @@ export default function StaffActivityPanel() {
                                                 value={r.cancellations > 0 ? String(r.cancellations) : '—'}
                                                 tone={r.cancellations > 0 ? 'warn' : undefined}
                                             />
+                                        </div>
+                                    )}
+
+                                    {/* Day by day. The totals above answer "how
+                                        was the week"; this answers "what happened
+                                        on Tuesday", which is the question asked
+                                        when something looks wrong. */}
+                                    {isOpen && r.days.length > 0 && (
+                                        <div className="border-t border-hairline bg-surface px-4 py-3">
+                                            <p className="text-[10px] font-black text-ink-subtle uppercase tracking-wider mb-2">
+                                                Day by day ({r.days.length} active day{r.days.length === 1 ? '' : 's'})
+                                            </p>
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-[11px] min-w-[520px]">
+                                                    <thead>
+                                                        <tr className="text-[9px] font-black text-ink-subtle uppercase tracking-wider">
+                                                            <th className="text-left py-1.5 pr-3">Day</th>
+                                                            <th className="text-right py-1.5 px-2">Orders</th>
+                                                            <th className="text-right py-1.5 px-2">Order value</th>
+                                                            <th className="text-right py-1.5 px-2">Bills</th>
+                                                            <th className="text-right py-1.5 px-2">Collected</th>
+                                                            <th className="text-right py-1.5 px-2">Dishes</th>
+                                                            <th className="text-right py-1.5 pl-2">Discounts</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-hairline">
+                                                        {r.days.map(d => (
+                                                            <tr key={d.day} className="hover:bg-surface-muted/40">
+                                                                <td className="py-1.5 pr-3 font-bold text-ink whitespace-nowrap">{formatDayLabel(d.day)}</td>
+                                                                <td className="py-1.5 px-2 text-right tabular-nums text-ink-subtle">{d.ordersTaken || '—'}</td>
+                                                                <td className="py-1.5 px-2 text-right tabular-nums text-ink-subtle">{d.ordersValue ? money(d.ordersValue) : '—'}</td>
+                                                                <td className="py-1.5 px-2 text-right tabular-nums text-ink-subtle">{d.billsSettled || '—'}</td>
+                                                                <td className="py-1.5 px-2 text-right tabular-nums font-bold text-ink">{d.amountCollected ? money(d.amountCollected) : '—'}</td>
+                                                                <td className="py-1.5 px-2 text-right tabular-nums text-ink-subtle">{d.itemsPrepared || '—'}</td>
+                                                                <td className={`py-1.5 pl-2 text-right tabular-nums ${d.discountTotal > 0 ? 'text-amber-700 font-bold' : 'text-ink-subtle'}`}>
+                                                                    {d.discountTotal ? money(d.discountTotal) : '—'}
+                                                                    {d.cancellations > 0 && (
+                                                                        <span className="ml-1.5 text-[9px] font-black text-rose-600">
+                                                                            {d.cancellations} void
+                                                                        </span>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
