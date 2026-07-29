@@ -171,11 +171,20 @@ export async function POST(req: Request) {
             booking_id, room_id, total_amount, cash_paid, qr_paid, qr_code_id, session_id,
             discount_amount, discount_reason, credit_amount, customer_name, customer_phone,
             redeemed_points, extra_hour_charge, service_charge_override,
+            close_stay,
         } = body
 
         if (!booking_id || !room_id) {
             return NextResponse.json({ error: 'Missing booking_id or room_id' }, { status: 400 })
         }
+
+        // Guests settle before they leave — the card is here now, the group is
+        // splitting up, they're going before the desk is staffed — and the room
+        // is still theirs until morning. False takes every peso exactly as a
+        // checkout does and then stops: the stay stays open, the room stays
+        // occupied, the QR session stays orderable. Absent means true, so every
+        // caller that predates this behaves exactly as it did.
+        const closeStay = close_stay !== false
 
         // The client-declared total is kept only for reconciliation in the audit
         // trail — it is never what we charge (see computeFolioTotal).
@@ -239,7 +248,7 @@ export async function POST(req: Request) {
         // with the advance already collected and to recompute its folio.
         const { data: booking, error: fetchError } = await supabase
             .from('bookings')
-            .select('id, paid_amount, status, check_in, check_out, checked_out_at, room_id, group_id, guest_name, guest_phone, guest_email, restaurant_id')
+            .select('id, paid_amount, status, check_in, check_out, checked_out_at, bill_settled_at, room_id, group_id, guest_name, guest_phone, guest_email, restaurant_id')
             .eq('id', booking_id)
             .in('restaurant_id', targetRestaurantIds)
             .maybeSingle()
@@ -324,40 +333,65 @@ export async function POST(req: Request) {
         const memberRoomIds = members.map(m => m.room_id)
 
         if (!isInvoiceEnabled) {
-            // 1. Settle the session orders (if session_id is provided)
+            // 1. Settle the session orders (if session_id is provided). On an
+            // early settlement the orders are marked paid but the session is
+            // left open — the guest still has the room, and closing their QR
+            // session would take away ordering for the rest of the stay.
             if (session_id) {
-                await settleAndCloseSession(supabase, booking.restaurant_id, currentUser.id, session_id)
+                if (closeStay) {
+                    await settleAndCloseSession(supabase, booking.restaurant_id, currentUser.id, session_id)
+                } else {
+                    await settleOrdersMatching(supabase, booking.restaurant_id, currentUser.id, { session_id })
+                }
             }
 
             // 2. Mark the booking(s) as checked out — every room of a group
-            // reservation, since they settled on one bill.
+            // reservation, since they settled on one bill. An early settlement
+            // records the money and the cashier but leaves the stay open.
+            const now = new Date().toISOString()
             const { error: bookingErr } = await supabase
                 .from('bookings')
                 .update({
-                    status: 'checked_out',
                     payment_status: 'paid',
-                    // Freezes the overstay: without it the folio would read the
-                    // clock on every later recompute and a settled bill would
-                    // keep growing.
-                    checked_out_at: new Date().toISOString(),
                     cashier_id: currentUser.id,
-                    // Remembered for the same reason checked_out_at is: without
-                    // it a later recompute of this folio would rebuild the
-                    // service charge from the rules and quote a figure the
-                    // guest was never charged.
+                    // Remembered so a later recompute of this folio doesn't
+                    // rebuild the service charge from the rules and quote a
+                    // figure the guest was never charged.
                     service_charge_override: serviceChargeOverride,
+                    ...(closeStay
+                        ? {
+                            status: 'checked_out',
+                            // Freezes the overstay: without it the folio would
+                            // read the clock on every later recompute and a
+                            // settled bill would keep growing.
+                            checked_out_at: now,
+                        }
+                        : {
+                            // Deliberately not frozen — the guest is still in
+                            // the room, so further nights and orders are real
+                            // charges and belong on this same folio.
+                            bill_settled_at: booking.bill_settled_at ?? now,
+                        }),
                 })
                 .in('id', memberIds)
             if (bookingErr) throw bookingErr
 
-            // 3. Mark the room(s) as dirty (vacant)
-            const { error: roomErr } = await supabase
-                .from('rooms')
-                .update({ status: 'dirty' })
-                .in('id', memberRoomIds)
-            if (roomErr) throw roomErr
+            // 3. Mark the room(s) as dirty (vacant) — only once the guest has
+            // actually vacated.
+            if (closeStay) {
+                const { error: roomErr } = await supabase
+                    .from('rooms')
+                    .update({ status: 'dirty' })
+                    .in('id', memberRoomIds)
+                if (roomErr) throw roomErr
+            }
 
-            return NextResponse.json({ success: true, total: authoritativeTotal, breakdown: folio })
+            return NextResponse.json({
+                success: true,
+                total: authoritativeTotal,
+                breakdown: folio,
+                closed: closeStay,
+            })
         }
 
         const clientMismatch = Number.isFinite(clientTotal)
@@ -468,6 +502,9 @@ export async function POST(req: Request) {
             p_ledger_split_mode: restaurant?.ledger_split_mode || 'direct',
             p_commission_rate: Number(restaurant?.billing_commission_rate) || 0.00,
             p_extra_hour_charge: extraHourCharge,
+            // The money posts identically either way; this decides only whether
+            // the stay, its session and its room are closed behind it.
+            p_close_stay: closeStay,
         }
 
         const { data: rpcRes, error: rpcErr } = isGroup
@@ -536,12 +573,15 @@ export async function POST(req: Request) {
         void logAudit({
             restaurantId: booking.restaurant_id,
             userId: currentUser.id,
-            action: 'booking_checked_out',
+            action: closeStay ? 'booking_checked_out' : 'booking_bill_settled',
             entityType: 'booking',
             entityId: booking_id,
             newValue: {
                 total_amount: authoritativeTotal,
                 folio,
+                // False means the guest paid and kept the room — the stay is
+                // still open and will be closed by /api/bookings/close-stay.
+                closed_stay: closeStay,
                 service_charge_overridden: serviceChargeOverride !== null,
                 group_id: booking.group_id || null,
                 // Every booking closed by this settlement — one for a normal
@@ -573,7 +613,7 @@ export async function POST(req: Request) {
             redeemDescription: `Redeemed on Room ${roomNumber} stay`,
         })
 
-        return NextResponse.json({ success: true, total: authoritativeTotal, breakdown: folio })
+        return NextResponse.json({ success: true, total: authoritativeTotal, breakdown: folio, closed: closeStay })
     } catch (e) {
         const message = e instanceof Error ? e.message : 'Server error'
         return NextResponse.json({ error: message }, { status: 500 })

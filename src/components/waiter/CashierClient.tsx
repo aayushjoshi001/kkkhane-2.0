@@ -1441,7 +1441,15 @@ export default function CashierClient({
         setPendingInvoice(null)
     }
 
-    const handleCloseGuestDirectly = async (room: any) => {
+    /**
+     * Settle a room bill from the till.
+     *
+     * `closeStay` false takes the money and leaves the guest in the room — the
+     * card is here now, they're leaving before the desk opens, the group is
+     * splitting up. The room is released later with handleReleaseRoom, which
+     * moves no money at all.
+     */
+    const handleCloseGuestDirectly = async (room: any, closeStay = true) => {
         if (!room || isDirectCheckingOut) return
         setIsDirectCheckingOut(true)
         try {
@@ -1480,24 +1488,72 @@ export default function CashierClient({
                     discount_reason: discountReason || undefined,
                     extra_hour_charge: extraHourChargeVal,
                     service_charge_override: resolveRoomSc(room).isOverridden ? resolveRoomSc(room).charged : undefined,
+                    close_stay: closeStay,
                 })
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || 'Failed to checkout booking')
 
-            setBookings(prev => prev.map(b =>
-                b.id === booking.id ? { ...b, status: 'checked_out' } : b
-            ))
-            setRoomsState(prev => prev.map(r =>
-                r.id === room.id ? { ...r, status: 'dirty' } : r
-            ))
+            // The guest who kept their room is still in it — flipping the room
+            // to dirty here would show it free with someone asleep in it.
+            if (closeStay) {
+                setBookings(prev => prev.map(b =>
+                    b.id === booking.id ? { ...b, status: 'checked_out' } : b
+                ))
+                setRoomsState(prev => prev.map(r =>
+                    r.id === room.id ? { ...r, status: 'dirty' } : r
+                ))
+            }
 
-            toast.success('Room guest checked out successfully!')
+            toast.success(
+                closeStay
+                    ? 'Room guest checked out successfully!'
+                    : 'Bill settled — the guest keeps the room until you check them out.'
+            )
             setSelectedBillingRoom(null)
             router.refresh()
         } catch (err) {
             console.error('Error during direct checkout:', err)
             toast.error(err instanceof Error ? err.message : 'Checkout failed')
+        } finally {
+            setIsDirectCheckingOut(false)
+        }
+    }
+
+    /**
+     * Release a room whose bill was already settled. Posts nothing — the money
+     * went through when the guest paid — so it goes nowhere near the settlement
+     * path. The server refuses if anything was charged since, and says how much.
+     */
+    const handleReleaseRoom = async (room: { id: string }) => {
+        if (!room || isDirectCheckingOut) return
+        const booking = billingStayBooking ?? bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
+        if (!booking) return
+
+        setIsDirectCheckingOut(true)
+        try {
+            const res = await fetch('/api/bookings/close-stay', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ booking_id: booking.id }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Could not check the guest out')
+
+            const closedIds = new Set<string>(data.bookingIds || [booking.id])
+            const closedRoomIds = new Set<string>(data.roomIds || [room.id])
+            setBookings(prev => prev.map(b => closedIds.has(b.id) ? { ...b, status: 'checked_out' } : b))
+            setRoomsState(prev => prev.map(r => closedRoomIds.has(r.id) ? { ...r, status: 'dirty' } : r))
+
+            toast.success(
+                data.roomsClosed > 1
+                    ? `${data.roomsClosed} rooms checked out and sent to housekeeping`
+                    : 'Guest checked out — room sent to housekeeping'
+            )
+            setSelectedBillingRoom(null)
+            router.refresh()
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not check the guest out')
         } finally {
             setIsDirectCheckingOut(false)
         }
@@ -3042,8 +3098,25 @@ export default function CashierClient({
                                         const netBalance = grandTotal - advancePaid
                                         const balanceDue = Math.max(0, netBalance)
                                         const returnAmount = netBalance < 0 ? Math.abs(netBalance) : 0
+                                        // Settled earlier and kept the room: what is left is to
+                                        // release it, unless something was charged since. The
+                                        // half-rupee cushion mirrors the server's — the folio and
+                                        // the stored paid amount both round to paisa.
+                                        const billAlreadySettled = !!billingStayBooking?.bill_settled_at
+                                        const balanceOutstanding = balanceDue > 0.5
                                         return (
                                             <>
+                                                {billAlreadySettled && (
+                                                    <div className={`rounded-xl border px-3 py-2 text-[10px] font-bold ${
+                                                        balanceOutstanding
+                                                            ? 'border-amber-200 bg-amber-50 text-amber-800'
+                                                            : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                                    }`}>
+                                                        {balanceOutstanding
+                                                            ? `Bill settled earlier · ${money(balanceDue)} charged since`
+                                                            : 'Bill settled earlier · nothing further owed'}
+                                                    </div>
+                                                )}
                                                 <div className="flex items-center justify-between">
                                                     <span className="text-[10px] font-bold text-ink-subtle uppercase">Total bill amount</span>
                                                     <span className="text-sm font-black text-ink-muted tabular-nums">{money(grandTotal)}</span>
@@ -3082,16 +3155,41 @@ export default function CashierClient({
                                                             >
                                                                 Generate Estimate
                                                             </Button>
-                                                        ) : !irdSyncEnabled ? (
+                                                        ) : billAlreadySettled && !balanceOutstanding ? (
+                                                            /* Already paid — this only releases the room.
+                                                               No money moves, so it does not go through
+                                                               the settlement path at all. */
                                                             <Button
                                                                 variant="primary"
                                                                 loading={isDirectCheckingOut}
-                                                                disabled={discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
-                                                                onClick={() => handleCloseGuestDirectly(selectedBillingRoom)}
+                                                                onClick={() => handleReleaseRoom(selectedBillingRoom)}
                                                                 className="px-6 text-xs animate-scale-in"
                                                             >
-                                                                Close Guest
+                                                                Check Out &amp; Release Room
                                                             </Button>
+                                                        ) : !irdSyncEnabled ? (
+                                                            <>
+                                                                {/* Takes the money and stops there: the stay
+                                                                    stays open, the room stays the guest's. */}
+                                                                <Button
+                                                                    variant="secondary"
+                                                                    loading={isDirectCheckingOut}
+                                                                    disabled={discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
+                                                                    onClick={() => handleCloseGuestDirectly(selectedBillingRoom, false)}
+                                                                    className="px-4 text-xs animate-scale-in"
+                                                                >
+                                                                    Settle, Keep Room
+                                                                </Button>
+                                                                <Button
+                                                                    variant="primary"
+                                                                    loading={isDirectCheckingOut}
+                                                                    disabled={discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
+                                                                    onClick={() => handleCloseGuestDirectly(selectedBillingRoom)}
+                                                                    className="px-6 text-xs animate-scale-in"
+                                                                >
+                                                                    Close Guest
+                                                                </Button>
+                                                            </>
                                                         ) : (
                                                             <Button
                                                                 variant="primary"

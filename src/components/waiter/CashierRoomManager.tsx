@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { createClient } from '@/lib/supabase/client'
-import { Users, X, Check, Bed, ClipboardList, Loader2, CreditCard, RefreshCw, Calendar, FileText, Plus, Landmark, Utensils, ArrowLeftRight, History, RotateCcw } from 'lucide-react'
+import { Users, X, Check, Bed, ClipboardList, Loader2, CreditCard, RefreshCw, Calendar, FileText, Plus, Landmark, Utensils, ArrowLeftRight, History, RotateCcw, Car } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCurrency, useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
@@ -127,7 +127,7 @@ export default function CashierRoomManager({
         setMoveOpen(false)
         setMoveTargetId('')
         setMoveReason('')
-        setBookingForm({ guest_name: '', guest_phone: '', kyc: '', check_in: '', check_out: '', adult_male: '1', adult_female: '1', children: '0' })
+        setBookingForm({ guest_name: '', guest_phone: '', kyc: '', check_in: '', check_out: '', adult_male: '1', adult_female: '1', children: '0', parking_required: false, parking_vehicle_no: '', parking_fee: '' })
         setExtraRooms({})
         setLookupField(null)
         setGuestPicked(false)
@@ -148,6 +148,9 @@ export default function CashierRoomManager({
         adult_male: '1',
         adult_female: '1',
         children: '0',
+        parking_required: false,
+        parking_vehicle_no: '',
+        parking_fee: '',
     })
     // Which field is driving the returning-guest lookup. The desk may know the
     // number or the name, so both search — but only the one being typed in,
@@ -398,6 +401,9 @@ export default function CashierRoomManager({
             adult_male: '1',
             adult_female: '0',
             children: '0',
+            parking_required: false,
+            parking_vehicle_no: '',
+            parking_fee: '',
         })
         setAdvanceType('none')
         setAdvanceAmount('')
@@ -711,6 +717,11 @@ export default function CashierRoomManager({
                         ? (advanceQrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined))
                         : undefined,
                     advance_note: advanceNote,
+                    parking_required: bookingForm.parking_required,
+                    // The plate is worth keeping even if no space was reserved,
+                    // but a fee only makes sense against a space actually given.
+                    parking_vehicle_no: bookingForm.parking_vehicle_no.trim() || undefined,
+                    parking_fee: bookingForm.parking_required ? (parseFloat(bookingForm.parking_fee) || 0) : 0,
                 }),
             })
             const data = await res.json()
@@ -978,6 +989,57 @@ export default function CashierRoomManager({
                                                         />
                                                     </div>
                                                 ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Parking. One question for the whole reservation — the guest
+                                            arrives in one vehicle however many rooms they take — and any
+                                            fee posts to the folio as a single 'parking' charge. */}
+                                        <div className="col-span-2 border border-hairline rounded-2xl p-3 space-y-2.5 bg-surface-muted/30">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <p className="text-[10px] font-black text-ink-subtle uppercase tracking-wider">Parking required?</p>
+                                                <div className="flex gap-1.5 shrink-0">
+                                                    {([['No', false], ['Yes', true]] as const).map(([label, value]) => (
+                                                        <button
+                                                            key={label}
+                                                            type="button"
+                                                            aria-pressed={bookingForm.parking_required === value}
+                                                            onClick={() => setBookingForm(b => ({ ...b, parking_required: value }))}
+                                                            className={`px-3.5 py-1.5 rounded-xl border text-[11px] font-bold transition-colors ${
+                                                                bookingForm.parking_required === value
+                                                                    ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                                    : 'border-hairline bg-surface text-ink-subtle hover:border-brand-300'
+                                                            }`}
+                                                        >
+                                                            {label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-0.5">Vehicle No.</label>
+                                                    <input
+                                                        type="text"
+                                                        maxLength={32}
+                                                        value={bookingForm.parking_vehicle_no}
+                                                        onChange={e => setBookingForm(b => ({ ...b, parking_vehicle_no: e.target.value }))}
+                                                        placeholder="BA 2 CHA 1234"
+                                                        className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-0.5">Fee (Rs.)</label>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        placeholder="0.00"
+                                                        disabled={!bookingForm.parking_required}
+                                                        value={bookingForm.parking_fee}
+                                                        onChange={e => setBookingForm(b => ({ ...b, parking_fee: e.target.value }))}
+                                                        className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold tabular-nums disabled:opacity-60"
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
 
@@ -1472,12 +1534,28 @@ export default function CashierRoomManager({
                                                 {activeBooking.notes}
                                             </p>
                                         )}
+                                        {/* Only worth a line when there is a car — a stay with
+                                            neither a space nor a plate has nothing to say here. */}
+                                        {(activeBooking.parking_required || activeBooking.parking_vehicle_no) && (
+                                            <p className="text-[10px] font-bold text-ink-muted flex items-center gap-1">
+                                                <Car size={11} className="text-ink-subtle" />
+                                                {activeBooking.parking_required ? 'Parking reserved' : 'No parking space'}
+                                                {activeBooking.parking_vehicle_no && ` · ${activeBooking.parking_vehicle_no}`}
+                                            </p>
+                                        )}
                                     </div>
                                     <div className="space-y-2 text-right border-l border-hairline pl-4">
                                         <p className="text-[10px] font-bold text-ink-subtle uppercase text-right">Stay Schedule</p>
                                         <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">In:</span> {formatDateTime(activeBooking.check_in)}</p>
                                         <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">Out:</span> {formatDateTime(activeBooking.check_out)}</p>
                                         <p className="text-[10px] text-brand-500 font-extrabold">{describeGuestMix(activeBooking)}</p>
+                                        {/* Paid up but still in the room — what's left to do is
+                                            release it, not charge for it. */}
+                                        {activeBooking.bill_settled_at && (
+                                            <p className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md inline-block">
+                                                Bill settled {formatDateTime(activeBooking.bill_settled_at)}
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
 
