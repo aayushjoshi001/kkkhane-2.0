@@ -38,6 +38,23 @@ interface StayBillingData {
     balanceDue: number
 }
 
+interface StayBillingData {
+    isHotelRoom: boolean
+    hasActiveBooking?: boolean
+    roomNumber: string
+    guestName: string | null
+    checkIn: string
+    checkOut: string
+    nights: number
+    roomBasePrice: number
+    stayCost: number
+    foodOrders: Array<{ id: string; total: number; placedAt: string }>
+    additionalCharges: Array<{ id: string; description: string; amount: number; chargeType: string }>
+    advancePaid: number
+    grandTotal: number
+    balanceDue: number
+}
+
 export default function CheckoutPageClient({ isHotelRoom = true }: { isHotelRoom?: boolean }) {
     const params = useParams<{ tableSlug: string }>()
     const money = useCurrency()
