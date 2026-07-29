@@ -9,9 +9,12 @@ import EmptyState from '@/components/ui/EmptyState'
 import { StatusBadge } from '@/components/ui/Badge'
 import { FormModal } from '@/components/finance'
 import { formatCurrency } from '@/lib/utils'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 import { FINANCIAL_EVENT_TYPES, FINANCIAL_EVENT_STATUSES, type FinancialEvent, type FinancialEventStatus, type FinancialEventType } from '@/types/database'
 import type { SearchFinancialEventsFilters } from '@/lib/finance-events/repository'
 import { searchEventsAction, retryEventAction } from './actions'
+import Select from '@/components/ui/Select'
+import DateCell from '@/components/ui/DateCell'
 
 const PAGE_SIZE = 20
 
@@ -27,6 +30,7 @@ const EMPTY_FILTERS: FiltersState = { status: '', eventType: '', dateFrom: '', d
 
 export default function EventsManager({ initialRows, initialTotal }: { initialRows: FinancialEvent[]; initialTotal: number }) {
     const [rows, setRows] = useState(initialRows)
+    const formatDate = useDateFormatter()
     const [total, setTotal] = useState(initialTotal)
     const [page, setPage] = useState(1)
     const [filters, setFilters] = useState<FiltersState>(EMPTY_FILTERS)
@@ -87,22 +91,22 @@ export default function EventsManager({ initialRows, initialTotal }: { initialRo
                         className="w-full pl-9 pr-3 py-2.5 border border-hairline-strong rounded-xl text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
                     />
                 </div>
-                <select
+                <Select
                     value={filters.status}
                     onChange={(e) => updateFilter('status', e.target.value as FinancialEventStatus | '')}
                     className="px-3 py-2.5 border border-hairline-strong rounded-xl text-sm bg-surface text-ink-muted font-semibold focus:outline-none focus:ring-2 focus:ring-brand-500/30"
                 >
                     <option value="">All statuses</option>
                     {FINANCIAL_EVENT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-                <select
+                </Select>
+                <Select
                     value={filters.eventType}
                     onChange={(e) => updateFilter('eventType', e.target.value as FinancialEventType | '')}
                     className="px-3 py-2.5 border border-hairline-strong rounded-xl text-sm bg-surface text-ink-muted font-semibold focus:outline-none focus:ring-2 focus:ring-brand-500/30"
                 >
                     <option value="">All event types</option>
                     {FINANCIAL_EVENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
+                </Select>
                 <input
                     type="date"
                     value={filters.dateFrom}
@@ -140,7 +144,7 @@ export default function EventsManager({ initialRows, initialTotal }: { initialRo
                                         <td className="px-4 py-3 font-mono text-xs font-bold">{ev.event_code}</td>
                                         <td className="px-4 py-3">{ev.event_type}</td>
                                         <td className="px-4 py-3 text-ink-subtle text-xs">{ev.source_module}</td>
-                                        <td className="px-4 py-3">{new Date(ev.business_date).toLocaleDateString()}</td>
+                                        <td className="px-4 py-3"><DateCell value={ev.business_date} /></td>
                                         <td className="px-4 py-3">{formatCurrency(ev.amount, ev.currency)}</td>
                                         <td className="px-4 py-3"><StatusBadge status={ev.status} /></td>
                                         <td className="px-4 py-3">{ev.retry_count}</td>
@@ -178,12 +182,12 @@ export default function EventsManager({ initialRows, initialTotal }: { initialRo
                             <Field label="Status" value={<StatusBadge status={selected.status} />} />
                             <Field label="Source Module" value={selected.source_module} />
                             <Field label="Source ID" value={selected.source_id || '—'} />
-                            <Field label="Business Date" value={new Date(selected.business_date).toLocaleDateString()} />
-                            <Field label="Accounting Date" value={new Date(selected.accounting_date).toLocaleDateString()} />
+                            <Field label="Business Date" value={formatDate(selected.business_date)} />
+                            <Field label="Accounting Date" value={formatDate(selected.accounting_date)} />
                             <Field label="Amount" value={formatCurrency(selected.amount, selected.currency)} />
                             <Field label="Reference Number" value={selected.reference_number || '—'} />
                             <Field label="Retry Count" value={String(selected.retry_count)} />
-                            <Field label="Processed At" value={selected.processed_at ? new Date(selected.processed_at).toLocaleString() : '—'} />
+                            <Field label="Processed At" value={selected.processed_at ? formatDate(selected.processed_at) : '—'} />
                             <Field label="Supplier" value={selected.suppliers?.name || '—'} />
                             <Field label="Payment Method" value={selected.finance_payment_methods?.name || '—'} />
                         </div>

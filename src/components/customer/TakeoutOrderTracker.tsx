@@ -1,5 +1,6 @@
 'use client'
 
+import { catchUpOnResubscribe } from '@/lib/realtime/channelCatchUp'
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
@@ -15,6 +16,30 @@ interface Props {
     orderId: string
     initialOrder: TakeoutOrder
     restaurantSlug: string
+}
+
+/**
+ * A takeout order plus the delivery columns this screen renders.
+ *
+ * `TakeoutOrder` predates delivery, so every delivery field was reached through
+ * an `as any` cast — including in the realtime handler, where a typo would have
+ * silently produced `undefined` rather than a compile error.
+ */
+type TrackedOrder = TakeoutOrder & {
+    order_type?: string | null
+    delivery_address?: string | null
+    delivery_verification_code?: string | null
+    delivery_staff_id?: string | null
+}
+
+/** The `orders` columns this tracker projects onto its TrackedOrder view. */
+type OrderRow = {
+    status: OrderStatus
+    confirmed_at?: string | null
+    ready_at?: string | null
+    delivered_at?: string | null
+    delivery_verification_code?: string | null
+    delivery_staff_id?: string | null
 }
 
 const STATUS_INDEX: Record<string, number> = {
@@ -57,11 +82,11 @@ function CountdownDisplay({ time, isDelivery }: { time: string; isDelivery: bool
 }
 
 export default function TakeoutOrderTracker({ orderId, initialOrder, restaurantSlug }: Props) {
-    const [order, setOrder] = useState<TakeoutOrder>(initialOrder)
+    const [order, setOrder] = useState<TrackedOrder>(initialOrder)
     const money = useCurrency()
     const currentStep = STATUS_INDEX[order.status] ?? -1
 
-    const isDelivery = (order as any).order_type === 'delivery'
+    const isDelivery = order.order_type === 'delivery'
 
     const steps = isDelivery ? [
         { status: 'placed' as const, label: 'Order Placed', icon: <ShoppingBag size={18} /> },
@@ -81,6 +106,20 @@ export default function TakeoutOrderTracker({ orderId, initialOrder, restaurantS
     useEffect(() => {
         const supabase = createClient()
 
+        // Shared by the live payload and the reconnect catch-up below, which
+        // read the same orders row from different places.
+        const applyOrderRow = (row: OrderRow) => {
+            setOrder((prev) => ({
+                ...prev,
+                status: ORDER_STATUS_TO_TAKEOUT[row.status] ?? prev.status,
+                confirmed_at: row.confirmed_at ?? prev.confirmed_at,
+                ready_at: row.ready_at ?? prev.ready_at,
+                picked_up_at: row.delivered_at ?? prev.picked_up_at,
+                delivery_verification_code: row.delivery_verification_code ?? prev.delivery_verification_code,
+                delivery_staff_id: row.delivery_staff_id ?? prev.delivery_staff_id,
+            }))
+        }
+
         const channel = supabase
             .channel(`takeout-${orderId}`)
             .on(
@@ -91,20 +130,12 @@ export default function TakeoutOrderTracker({ orderId, initialOrder, restaurantS
                     table: 'orders',
                     filter: `id=eq.${orderId}`,
                 },
-                (payload) => {
-                    const row = payload.new as any
-                    setOrder((prev) => ({
-                        ...prev,
-                        status: ORDER_STATUS_TO_TAKEOUT[row.status as OrderStatus] ?? prev.status,
-                        confirmed_at: row.confirmed_at ?? prev.confirmed_at,
-                        ready_at: row.ready_at ?? prev.ready_at,
-                        picked_up_at: row.delivered_at ?? prev.picked_up_at,
-                        delivery_verification_code: row.delivery_verification_code ?? (prev as any).delivery_verification_code,
-                        delivery_staff_id: row.delivery_staff_id ?? (prev as any).delivery_staff_id,
-                    }))
-                }
+                (payload) => applyOrderRow(payload.new as OrderRow)
             )
-            .subscribe()
+            .subscribe(catchUpOnResubscribe(`takeout-${orderId}`, async () => {
+                const { data } = await supabase.from('orders').select('*').eq('id', orderId).single()
+                if (data) applyOrderRow(data as OrderRow)
+            }))
 
         return () => { supabase.removeChannel(channel) }
     }, [orderId])
@@ -142,13 +173,13 @@ export default function TakeoutOrderTracker({ orderId, initialOrder, restaurantS
             </div>
 
             {/* Verification Code for Delivery */}
-            {isDelivery && (order as any).delivery_verification_code && order.status !== 'picked_up' && (
+            {isDelivery && order.delivery_verification_code && order.status !== 'picked_up' && (
                 <div className="bg-blue-50 border-2 border-blue-100 rounded-2xl p-5 text-center space-y-1.5 animate-pulse">
                     <p className="text-[10px] text-blue-600 font-bold uppercase tracking-wider flex items-center justify-center gap-1">
                         <ShieldCheck size={12} /> Secure Delivery Code
                     </p>
                     <p className="text-3xl font-black font-mono tracking-widest text-blue-700">
-                        {(order as any).delivery_verification_code}
+                        {order.delivery_verification_code}
                     </p>
                     <p className="text-[10px] text-blue-500 px-4">
                         Please tell this code to the delivery driver to receive your food.
@@ -264,10 +295,10 @@ export default function TakeoutOrderTracker({ orderId, initialOrder, restaurantS
                             {new Date(order.pickup_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                     </div>
-                    {isDelivery && (order as any).delivery_address && (
+                    {isDelivery && order.delivery_address && (
                         <div className="flex items-start gap-2 text-ink-muted">
                             <MapPin size={13} className="mt-0.5 text-ink-subtle shrink-0" />
-                            <span>{(order as any).delivery_address}</span>
+                            <span>{order.delivery_address}</span>
                         </div>
                     )}
                     {order.customer_note && (

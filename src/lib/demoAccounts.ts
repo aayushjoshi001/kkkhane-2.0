@@ -20,7 +20,7 @@ export const DEMO_PASSWORD = 'Password123!'
 // 'production' on preview builds too, so it can't tell them apart. This is
 // SERVER-ONLY: in the client bundle VERCEL_ENV is not inlined (it isn't a
 // NEXT_PUBLIC_ var), so read it on the server and pass the boolean to the client.
-export const DEMO_LOGIN_ENABLED = process.env.VERCEL_ENV !== 'production'
+export const DEMO_LOGIN_ENABLED = process.env.SHOW_DEMO_ACCOUNTS === 'true'
 
 /** Which demo restaurant an account belongs to. */
 export type DemoTenant = 'restaurant' | 'hotel'

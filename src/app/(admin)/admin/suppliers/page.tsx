@@ -3,21 +3,27 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import SuppliersLedgerManager from './SuppliersLedgerManager'
 
+import { getRestaurantFeatures } from '@/lib/features'
+
 export const dynamic = 'force-dynamic'
 
 export default async function SuppliersLedgerPage() {
     const currentUser = await getCurrentUser()
     if (!currentUser || !currentUser.restaurantId) redirect('/login')
 
-    const supabase = await createAdminClient()
     const restaurantId = currentUser.restaurantId
+    const features = await getRestaurantFeatures(restaurantId)
+    if (!features?.financeEnabled) redirect('/admin/dashboard')
 
-    // Fetch suppliers, expenses, expense categories, and bank accounts in parallel
+    const supabase = await createAdminClient()
+
+    // Fetch suppliers, expenses, expense categories, bank accounts, and ingredients in parallel
     const [
         { data: suppliers },
         { data: expenses },
         { data: expenseCategories },
-        { data: bankAccounts }
+        { data: bankAccounts },
+        { data: ingredients }
     ] = await Promise.all([
         supabase
             .from('suppliers')
@@ -39,6 +45,11 @@ export default async function SuppliersLedgerPage() {
             .select('*')
             .eq('restaurant_id', restaurantId)
             .eq('is_active', true)
+            .order('name', { ascending: true }),
+        supabase
+            .from('ingredients')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
             .order('name', { ascending: true })
     ])
 
@@ -48,6 +59,7 @@ export default async function SuppliersLedgerPage() {
             expenses={expenses || []}
             expenseCategories={expenseCategories || []}
             bankAccounts={bankAccounts || []}
+            ingredients={ingredients || []}
         />
     )
 }

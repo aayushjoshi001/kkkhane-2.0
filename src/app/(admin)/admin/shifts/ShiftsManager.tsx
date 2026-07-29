@@ -4,6 +4,9 @@ import { useState } from 'react'
 import { approveShiftAction, forceClockOutAction, correctShiftAction } from './actions'
 import { Clock, CheckCircle, LogOut, User, Pencil, X, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import Modal from '@/components/ui/Modal'
+import { useConfirmStore } from '@/lib/stores/confirm'
+import DateCell from '@/components/ui/DateCell'
 
 interface ShiftRow {
     id: string
@@ -85,8 +88,7 @@ function CorrectionModal({ shift, onClose, onSaved }: {
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-surface rounded-card shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 text-left">
+        <Modal open onClose={onClose} size="sm" ariaLabel={`Correct shift — ${getStaffName(shift)}`} className="text-left">
                 <div className="px-6 py-5 border-b border-hairline bg-surface-muted/30 flex justify-between items-center">
                     <h2 className="text-h3 font-extrabold text-ink flex items-center gap-2">
                         <div className="w-8 h-8 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 shadow-[inset_0_2px_4px_rgba(251,99,3,0.05)]">
@@ -135,8 +137,7 @@ function CorrectionModal({ shift, onClose, onSaved }: {
                         Save Correction
                     </button>
                 </div>
-            </div>
-        </div>
+        </Modal>
     )
 }
 
@@ -144,12 +145,14 @@ export default function ShiftsManager({ activeShifts, recentShifts }: {
     activeShifts: ShiftRow[]
     recentShifts: ShiftRow[]
 }) {
+    const { confirm } = useConfirmStore()
     const [active, setActive] = useState(activeShifts)
     const [recent, setRecent] = useState(recentShifts)
     const [correcting, setCorrecting] = useState<ShiftRow | null>(null)
 
     async function handleForceClockOut(shift: ShiftRow) {
-        if (!confirm(`Force clock-out ${getStaffName(shift)}?`)) return
+        const ok = await confirm({ title: `Force clock-out ${getStaffName(shift)}?`, message: 'This action cannot be undone.', confirmText: 'Confirm', isDestructive: true })
+        if (!ok) return
         const result = await forceClockOutAction(shift.id)
         if (result.error) { toast.error(result.error); return }
         setActive(prev => prev.filter(s => s.id !== shift.id))
@@ -250,7 +253,7 @@ export default function ShiftsManager({ activeShifts, recentShifts }: {
                             <tr key={s.id} className="hover:bg-surface-muted/30 transition-colors">
                                 <td className="px-5 py-4 font-extrabold text-ink">{getStaffName(s)}</td>
                                 <td className="px-5 py-4 text-ink-subtle font-medium capitalize hidden md:table-cell">{getStaffRole(s)}</td>
-                                <td className="px-5 py-4 text-ink-subtle font-medium tabular-nums hidden md:table-cell">{new Date(s.clock_in).toLocaleDateString()}</td>
+                                <td className="px-5 py-4 text-ink-subtle font-medium hidden md:table-cell"><DateCell value={s.clock_in} /></td>
                                 <td className="px-5 py-4 text-ink-subtle font-bold tabular-nums">
                                     {new Date(s.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     {' → '}

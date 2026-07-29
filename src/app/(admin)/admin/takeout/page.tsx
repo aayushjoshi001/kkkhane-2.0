@@ -3,10 +3,18 @@ import { createAdminClient } from '@/lib/supabase/server'
 import TakeoutDashboard from './TakeoutDashboard'
 import { TAKEOUT_ORDER_SELECT, mapOrderRowToTakeout, type TakeoutOrderRow } from '@/lib/takeout'
 
+import { redirect } from 'next/navigation'
+import { getRestaurantFeatures } from '@/lib/features'
+import RealtimeRefresh from '@/components/shared/RealtimeRefresh'
+
 export const revalidate = 0
 
 export default async function AdminTakeoutPage() {
     const { restaurantId: rid } = await getCurrentUser()
+    const features = await getRestaurantFeatures(rid)
+    if (!features?.takeoutEnabled) {
+        redirect('/admin/dashboard')
+    }
     const adminSupabase = await createAdminClient()
 
     const { data: restaurant } = await adminSupabase
@@ -28,6 +36,7 @@ export default async function AdminTakeoutPage() {
 
     return (
         <div className="space-y-6">
+            <RealtimeRefresh restaurantId={rid} tables={['orders']} />
             <header className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
                     <h1 className="text-h2 font-extrabold text-ink">Takeout Orders</h1>

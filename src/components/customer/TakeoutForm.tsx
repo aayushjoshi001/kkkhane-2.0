@@ -8,6 +8,7 @@ import { useActiveOrders } from '@/lib/stores/activeOrders'
 import { useHydratedStore } from '@/lib/stores/useHydratedStore'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import PromoCodeInput from '@/components/customer/PromoCodeInput'
+import StickyBottomBar from '@/components/customer/StickyBottomBar'
 import type { PromoCode } from '@/types/database'
 import { ArrowLeft, Clock, Loader2, ShoppingBag, MapPin } from 'lucide-react'
 import { toast } from 'react-hot-toast'
@@ -50,6 +51,25 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
     const [longitude, setLongitude] = useState<number | null>(null)
     const [geoStatus, setGeoStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
     const [mounted, setMounted] = useState(false)
+
+    // A logged-in staff member ringing up a walk-in counter takeaway usually
+    // doesn't have the guest's name/phone or a scheduled pickup slot. When /api/me
+    // confirms a staff session we relax those requirements; the public customer
+    // form stays strict. Detected client-side so this page keeps its ISR cache.
+    const [isStaff, setIsStaff] = useState(false)
+    useEffect(() => {
+        let active = true
+        const STAFF_ROLES = ['cashier', 'waiter', 'manager', 'admin', 'super_admin']
+        fetch('/api/me', { cache: 'no-store' })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d) => {
+                if (active && d?.authenticated && STAFF_ROLES.includes(d.role)) setIsStaff(true)
+            })
+            .catch(() => {})
+        return () => {
+            active = false
+        }
+    }, [])
 
     useEffect(() => {
         setMounted(true)
@@ -127,7 +147,9 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
-        if (!customerName.trim() || !customerPhone.trim() || !pickupTime) {
+        // Staff walk-in takeaways don't require name/phone/pickup; the public
+        // customer form still enforces them.
+        if (!isStaff && (!customerName.trim() || !customerPhone.trim() || !pickupTime)) {
             toast.error('Please fill in all required fields.')
             return
         }
@@ -143,9 +165,11 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
         setIsSubmitting(true)
 
         let result
+        // 'asap' (or blank, for staff) means "as soon as possible" — send now.
+        const resolvedPickup = pickupTime && pickupTime !== 'asap' ? pickupTime : new Date().toISOString()
         const commonInput = {
             restaurantId,
-            customerName: customerName.trim(),
+            customerName: customerName.trim() || (isStaff ? 'Walk-in' : ''),
             customerPhone: customerPhone.trim(),
             customerEmail: customerEmail.trim() || undefined,
             items,
@@ -163,7 +187,7 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
         } else {
             result = await createTakeoutOrder({
                 ...commonInput,
-                pickupTime,
+                pickupTime: resolvedPickup,
             })
         }
 
@@ -276,22 +300,23 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                 <div className="bg-surface rounded-xl shadow-sm border border-hairline p-4 space-y-4">
                     <h2 className="font-semibold text-ink-muted">Your Details</h2>
                     <div>
-                        <label className="block text-sm font-medium text-ink-muted mb-1">Name *</label>
+                        <label className="block text-sm font-medium text-ink-muted mb-1">Name {isStaff ? <span className="text-ink-subtle font-normal">(optional)</span> : '*'}</label>
                         <input
                             type="text"
                             value={customerName}
                             onChange={(e) => setCustomerName(e.target.value)}
-                            required
+                            required={!isStaff}
+                            placeholder={isStaff ? 'Walk-in' : undefined}
                             className="w-full rounded-lg border border-hairline-strong px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-ink-muted mb-1">Phone *</label>
+                        <label className="block text-sm font-medium text-ink-muted mb-1">Phone {isStaff ? <span className="text-ink-subtle font-normal">(optional)</span> : '*'}</label>
                         <input
                             type="tel"
                             value={customerPhone}
                             onChange={(e) => setCustomerPhone(e.target.value)}
-                            required
+                            required={!isStaff}
                             className="w-full rounded-lg border border-hairline-strong px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                     </div>
@@ -385,9 +410,22 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
                 <div className="bg-surface rounded-xl shadow-sm border border-hairline p-4">
                     <h2 className="font-semibold text-ink-muted mb-3 flex items-center gap-2">
                         <Clock size={18} className="text-ink-subtle" />
-                        {orderType === 'delivery' ? 'Delivery Time Window *' : 'Pickup Time *'}
+                        {orderType === 'delivery' ? 'Delivery Time Window' : 'Pickup Time'} {isStaff ? '' : '*'}
                     </h2>
                     <div className="grid grid-cols-4 gap-2">
+                        {isStaff && (
+                            <button
+                                type="button"
+                                onClick={() => setPickupTime('asap')}
+                                className={`px-3 py-2 rounded-lg text-sm font-bold border transition-colors cursor-pointer ${
+                                    pickupTime === 'asap' || !pickupTime
+                                        ? 'bg-ink text-white border-gray-900'
+                                        : 'bg-surface text-ink-muted border-hairline-strong hover:border-gray-400'
+                                }`}
+                            >
+                                ASAP
+                            </button>
+                        )}
                         {timeSlots.map((slot) => (
                             <button
                                 key={slot}
@@ -430,37 +468,35 @@ export default function TakeoutForm({ restaurantId, restaurantName, restaurantSl
             </form>
 
             {/* Bottom bar */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 z-50 bg-surface border-t border-hairline-strong">
-                <div className="max-w-xl mx-auto">
-                    <div className="space-y-1 mb-3">
-                        <div className="flex justify-between text-sm text-ink-subtle">
-                            <span>Subtotal</span>
-                            <span>{money(totalAmount())}</span>
-                        </div>
-                        {promoDiscount > 0 && (
-                            <div className="flex justify-between text-sm text-green-600">
-                                <span>Discount</span>
-                                <span>-{money(promoDiscount)}</span>
-                            </div>
-                        )}
-                        <div className="flex justify-between items-center pt-1 border-t border-hairline">
-                            <span className="font-medium text-ink-muted">Total</span>
-                            <span className="text-xl font-bold text-ink">{money(finalTotal)}</span>
-                        </div>
+            <StickyBottomBar className="z-50">
+                <div className="space-y-1 mb-3">
+                    <div className="flex justify-between text-sm text-ink-subtle">
+                        <span>Subtotal</span>
+                        <span>{money(totalAmount())}</span>
                     </div>
-                    <button
-                        onClick={handleSubmit as unknown as () => void}
-                        disabled={isSubmitting}
-                        className="w-full bg-ink text-white font-medium rounded-xl py-4 flex items-center justify-center gap-2 disabled:opacity-70 shadow-lg cursor-pointer hover:bg-gray-800"
-                    >
-                        {isSubmitting ? (
-                            <><Loader2 className="animate-spin" size={20} /> Placing Order...</>
-                        ) : (
-                            orderType === 'delivery' ? 'Place Delivery Order' : 'Place Takeaway Order'
-                        )}
-                    </button>
+                    {promoDiscount > 0 && (
+                        <div className="flex justify-between text-sm text-green-600">
+                            <span>Discount</span>
+                            <span>-{money(promoDiscount)}</span>
+                        </div>
+                    )}
+                    <div className="flex justify-between items-center pt-1 border-t border-hairline">
+                        <span className="font-medium text-ink-muted">Total</span>
+                        <span className="text-xl font-bold text-ink">{money(finalTotal)}</span>
+                    </div>
                 </div>
-            </div>
+                <button
+                    onClick={handleSubmit as unknown as () => void}
+                    disabled={isSubmitting}
+                    className="w-full bg-ink text-white font-medium rounded-xl py-4 flex items-center justify-center gap-2 disabled:opacity-70 shadow-lg cursor-pointer hover:bg-gray-800"
+                >
+                    {isSubmitting ? (
+                        <><Loader2 className="animate-spin" size={20} /> Placing Order...</>
+                    ) : (
+                        orderType === 'delivery' ? 'Place Delivery Order' : 'Place Takeaway Order'
+                    )}
+                </button>
+            </StickyBottomBar>
         </div>
     )
 }

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { X, Loader2, Check, Globe } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { upsertTranslation } from '@/app/(admin)/admin/menu/translation-actions'
+import Modal from '@/components/ui/Modal'
 
 interface TranslationRow {
     language_code: string
@@ -72,8 +73,7 @@ export default function TranslationModal({
     }
 
     return (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-surface rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+        <Modal open onClose={onClose} size="md" ariaLabel="Nepali Translation" className="overflow-hidden">
                 <div className="px-6 py-4 border-b border-hairline flex justify-between items-center">
                     <div className="flex items-center gap-2">
                         <Globe size={18} className="text-[var(--color-primary)]" />
@@ -138,7 +138,6 @@ export default function TranslationModal({
                         Save Translation
                     </button>
                 </div>
-            </div>
-        </div>
+        </Modal>
     )
 }

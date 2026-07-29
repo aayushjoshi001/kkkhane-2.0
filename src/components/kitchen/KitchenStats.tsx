@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { Zap, Clock, CheckCircle2, Package } from 'lucide-react'
+import { useServerState } from '@/lib/hooks/useServerState'
 
 interface Props {
     queuedOrders: number
@@ -19,10 +19,10 @@ export default function KitchenStats({
     completedToday: initCompleted,
     restaurantId,
 }: Props) {
-    const [queued, setQueued] = useState(initQueued)
-    const [preparing, setPreparing] = useState(initPreparing)
-    const [ready, setReady] = useState(initReady)
-    const [completed, setCompleted] = useState(initCompleted)
+    const [queued, setQueued] = useServerState(initQueued)
+    const [preparing, setPreparing] = useServerState(initPreparing)
+    const [ready, setReady] = useServerState(initReady)
+    const [completed, setCompleted] = useServerState(initCompleted)
 
     // Live counters via the shared per-restaurant channel.
     useRestaurantTable(restaurantId, 'orders', (payload) => {

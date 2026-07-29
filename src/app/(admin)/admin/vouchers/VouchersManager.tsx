@@ -1,12 +1,19 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import {
-    FileText, Plus, Search, Trash2, Printer, X, Loader2, ArrowUpRight, ArrowDownRight, RefreshCw, Check, AlertCircle
+    FileText, Plus, Search, Trash2, Printer, X, Loader2, ArrowUpRight, ArrowDownRight, RefreshCw, Check, AlertCircle, Download
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
-import { createVoucherAction, deleteVoucherAction, approveChequeAction, rejectChequeAction, openTodayDayBookSessionAction } from './actions'
+import { createVoucherAction, deleteVoucherAction, approveChequeAction, rejectChequeAction, openTodayDayBookSessionAction, getSupplierOutstandingBalanceAction, getStaffCurrentDueAction } from './actions'
 import { toast } from 'react-hot-toast'
+import { downloadCsv } from '@/lib/exportCsv'
+import PrintableReport, { type PrintableReportHandle } from '@/components/admin/PrintableReport'
+import VoucherPrintSlip from '@/components/admin/VoucherPrintSlip'
+import { useDateFormatter, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
+import { useConfirmStore } from '@/lib/stores/confirm'
+import Select from '@/components/ui/Select'
+import DateCell from '@/components/ui/DateCell'
 
 interface BankAccount {
     id: string
@@ -66,27 +73,6 @@ interface VouchersManagerProps {
     hasOpenSession: boolean
 }
 
-function amountInWords(amount: number): string {
-    const num = Math.floor(amount)
-    if (num === 0) return 'Zero Rupees Only'
-    
-    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 
-                  'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen']
-    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
-    
-    function helper(n: number): string {
-        if (n < 20) return ones[n]
-        if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + ones[n % 10] : '')
-        if (n < 1000) return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' ' + helper(n % 150) : '')
-        if (n < 100000) return helper(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 !== 0 ? ' ' + helper(n % 1000) : '')
-        if (n < 10000000) return helper(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 !== 0 ? ' ' + helper(n % 100000) : '')
-        return helper(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 !== 0 ? ' ' + helper(n % 10000000) : '')
-    }
-    
-    // Quick and safe Nepalese conversion helper
-    return helper(num) + ' Rupees Only'
-}
-
 export default function VouchersManager({
     bankAccounts,
     initialEntries,
@@ -94,7 +80,9 @@ export default function VouchersManager({
     staffList,
     hasOpenSession
 }: VouchersManagerProps) {
+    const { confirm } = useConfirmStore()
     const [entriesList, setEntriesList] = useState<RawVoucherEntry[]>(initialEntries)
+    const formatDate = useDateFormatter()
 
     // Session opening states
     const [openingSession, setOpeningSession] = useState(false)
@@ -134,6 +122,41 @@ export default function VouchersManager({
     const [payoutCategory, setPayoutCategory] = useState<'suppliers' | 'staff' | 'expenses' | 'other'>('other')
     const [selectedSupplierId, setSelectedSupplierId] = useState('')
     const [selectedStaffUserId, setSelectedStaffUserId] = useState('')
+    // Salary Payout is capped at the staff member's current due; Advance
+    // Payment and Bonus are not (paid before due, or discretionary).
+    const [staffEntryType, setStaffEntryType] = useState<'salary_payout' | 'advance_payment' | 'bonus'>('salary_payout')
+
+    const [supplierDue, setSupplierDue] = useState<number | null>(null)
+    const [staffDue, setStaffDue] = useState<number | null>(null)
+    const [loadingDue, setLoadingDue] = useState(false)
+
+    useEffect(() => {
+        if (!selectedSupplierId || payoutCategory !== 'suppliers') {
+            setSupplierDue(null)
+            return
+        }
+        setLoadingDue(true)
+        getSupplierOutstandingBalanceAction(selectedSupplierId)
+            .then(res => {
+                if (res.data !== undefined) setSupplierDue(res.data)
+            })
+            .catch(() => {})
+            .finally(() => setLoadingDue(false))
+    }, [selectedSupplierId, payoutCategory])
+
+    useEffect(() => {
+        if (!selectedStaffUserId || payoutCategory !== 'staff') {
+            setStaffDue(null)
+            return
+        }
+        setLoadingDue(true)
+        getStaffCurrentDueAction(selectedStaffUserId)
+            .then(res => {
+                if (res.data !== undefined) setStaffDue(res.data)
+            })
+            .catch(() => {})
+            .finally(() => setLoadingDue(false))
+    }, [selectedStaffUserId, payoutCategory])
 
     // Cheque specific form fields
     const [chequeWrittenName, setChequeWrittenName] = useState('')
@@ -155,6 +178,11 @@ export default function VouchersManager({
 
     // Pending approvals action state
     const [actioningId, setActioningId] = useState<string | null>(null)
+
+    // Delete-voucher reason prompt
+    const [deleteTarget, setDeleteTarget] = useState<{ id: string; number: string } | null>(null)
+    const [deleteReason, setDeleteReason] = useState('')
+    const [deleting, setDeleting] = useState(false)
 
     // Parse bank account ownership labels reactively
     const parsedBankAccounts = useMemo(() => {
@@ -242,6 +270,27 @@ export default function VouchersManager({
         })
     }, [parsedVouchers, searchQuery, filterType, filterMode, activeTab])
 
+    const printRef = useRef<PrintableReportHandle>(null)
+    const reportColumns = [
+        { key: 'date', label: 'Date', dateStacked: true },
+        { key: 'voucher_number', label: 'Voucher No' },
+        { key: 'type', label: 'Type' },
+        { key: 'party_name', label: 'Party Name' },
+        { key: 'mode', label: 'Mode' },
+        { key: 'amount', label: 'Amount', align: 'right' as const },
+        { key: 'particulars', label: 'Particulars' },
+    ]
+    const reportRows = filteredVouchers.map(v => ({
+        date: formatDate(v.date),
+        voucher_number: v.voucher_number,
+        type: v.voucher_type === 'receipt' ? 'Receipt' : 'Payment',
+        party_name: v.party_name,
+        mode: v.payment_mode === 'cash' ? 'Cash' : v.payment_mode === 'qr' ? `QR (${v.bank_name})` : v.payment_mode === 'cheque' ? `Cheque (${v.bank_name})` : v.bank_name,
+        amount: (v.voucher_type === 'receipt' ? '+' : '-') + formatCurrency(v.amount),
+        particulars: v.payment_mode === 'cheque' && v.cheque_details ? `No: ${v.cheque_details.cheque_number} (${v.cheque_details.bank_cheque})` : v.particulars,
+    }))
+    const handleExportCsv = () => downloadCsv(`vouchers-ledger-${activeTab}`, reportColumns, reportRows)
+
     // Summary calculations
     const stats = useMemo(() => {
         const approvedVouchers = parsedVouchers.filter(v => v.status === 'approved')
@@ -323,6 +372,7 @@ export default function VouchersManager({
                 category: voucherType === 'payment' ? payoutCategory : undefined,
                 supplier_id: voucherType === 'payment' && payoutCategory === 'suppliers' ? selectedSupplierId : undefined,
                 staff_user_id: voucherType === 'payment' && payoutCategory === 'staff' ? selectedStaffUserId : undefined,
+                staff_entry_type: voucherType === 'payment' && payoutCategory === 'staff' ? staffEntryType : undefined,
                 cheque_details: paymentMode === 'cheque' ? {
                     written_name: chequeWrittenName.trim(),
                     bank_cheque: chequeBank.trim(),
@@ -349,6 +399,7 @@ export default function VouchersManager({
                 setSelectedSupplierId('')
                 setSelectedStaffUserId('')
                 setPayoutCategory('other')
+                setStaffEntryType('salary_payout')
                 setCreateModalOpen(false)
                 
                 // Determine redirect tab
@@ -401,7 +452,8 @@ export default function VouchersManager({
 
     // Reject Cheque handler
     const handleRejectCheque = async (id: string) => {
-        if (!confirm('Are you sure you want to reject this cheque?')) return
+        const ok = await confirm({ title: 'Are you sure you want to reject this cheque?', message: 'This action cannot be undone.', confirmText: 'Reject', isDestructive: true })
+        if (!ok) return
         setActioningId(id)
         try {
             const res = await rejectChequeAction(id)
@@ -430,25 +482,31 @@ export default function VouchersManager({
         }
     }
 
-    // Delete handler
-    const handleDeleteVoucher = async (id: string, number: string) => {
-        if (!confirm(`Are you sure you want to delete/void voucher ${number}? This will reverse its Cash/Bank book entry.`)) return
+    // Delete handler — opens the reason-prompt modal instead of deleting directly
+    const handleDeleteVoucher = (id: string, number: string) => {
+        setDeleteTarget({ id, number })
+        setDeleteReason('')
+    }
 
+    const confirmDeleteVoucher = async () => {
+        if (!deleteTarget) return
+        if (!deleteReason.trim()) { toast.error('Please enter a reason.'); return }
+        setDeleting(true)
         try {
-            const res = await deleteVoucherAction(id)
+            const res = await deleteVoucherAction(deleteTarget.id, deleteReason)
             if (res.error) {
                 toast.error(res.error)
             } else {
-                setEntriesList(prev => prev.filter(e => e.id !== id))
-                toast.success(`Voucher ${number} deleted successfully!`)
+                setEntriesList(prev => prev.filter(e => e.id !== deleteTarget.id))
+                toast.success(`Voucher ${deleteTarget.number} deleted successfully!`)
+                setDeleteTarget(null)
+                setDeleteReason('')
             }
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'Failed to delete voucher')
+        } finally {
+            setDeleting(false)
         }
-    }
-
-    const handlePrint = () => {
-        window.print()
     }
 
     return (
@@ -485,8 +543,8 @@ export default function VouchersManager({
                             <FileText size={20} />
                         </div>
                         <div>
-                            <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Receipt & Payment Vouchers</h1>
-                            <p className="text-sm text-gray-500 mt-0.5">
+                            <h1 className="text-2xl font-extrabold text-ink tracking-tight">Receipt & Payment Vouchers</h1>
+                            <p className="text-sm text-ink-subtle mt-0.5">
                                 Log cash, bank QR, or cheques to auto-update books with manager approvals.
                             </p>
                         </div>
@@ -528,58 +586,58 @@ export default function VouchersManager({
 
             {/* Stats calculated boxes */}
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex items-center gap-4">
+                <div className="bg-surface border border-hairline rounded-2xl p-4 shadow-sm flex items-center gap-4">
                     <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shrink-0">
                         <ArrowUpRight size={18} />
                     </div>
                     <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Receipts</p>
+                        <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Total Receipts</p>
                         <p className="text-base font-black text-emerald-600 mt-0.5">{formatCurrency(stats.receipts)}</p>
                     </div>
                 </div>
 
-                <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex items-center gap-4">
+                <div className="bg-surface border border-hairline rounded-2xl p-4 shadow-sm flex items-center gap-4">
                     <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100 shrink-0">
                         <ArrowDownRight size={18} />
                     </div>
                     <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Payments</p>
+                        <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Total Payments</p>
                         <p className="text-base font-black text-rose-600 mt-0.5">{formatCurrency(stats.payments)}</p>
                     </div>
                 </div>
 
-                <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex items-center gap-4">
+                <div className="bg-surface border border-hairline rounded-2xl p-4 shadow-sm flex items-center gap-4">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center border shrink-0 ${stats.net >= 0 ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
                         <RefreshCw size={18} />
                     </div>
                     <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Net Cash Flow</p>
+                        <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Net Cash Flow</p>
                         <p className={`text-base font-black mt-0.5 ${stats.net >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>{stats.net >= 0 ? '+' : ''}{formatCurrency(stats.net)}</p>
                     </div>
                 </div>
 
-                <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center border shrink-0 ${stats.pendingCount > 0 ? 'bg-amber-50 text-amber-600 border-amber-100 animate-pulse' : 'bg-gray-50 text-gray-400 border-gray-100'}`}>
+                <div className="bg-surface border border-hairline rounded-2xl p-4 shadow-sm flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center border shrink-0 ${stats.pendingCount > 0 ? 'bg-amber-50 text-amber-600 border-amber-100 animate-pulse' : 'bg-surface-muted text-ink-subtle border-hairline'}`}>
                         <AlertCircle size={18} />
                     </div>
                     <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Pending Cheques</p>
-                        <p className={`text-base font-black mt-0.5 ${stats.pendingCount > 0 ? 'text-amber-600' : 'text-gray-600'}`}>{stats.pendingCount} Cheques</p>
+                        <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Pending Cheques</p>
+                        <p className={`text-base font-black mt-0.5 ${stats.pendingCount > 0 ? 'text-amber-600' : 'text-ink-subtle'}`}>{stats.pendingCount} Cheques</p>
                     </div>
                 </div>
             </div>
 
             {/* Directory Navigation Tabs */}
-            <div className="flex border-b border-gray-250 gap-6">
+            <div className="flex border-b border-hairline gap-6">
                 <button
                     onClick={() => setActiveTab('vouchers')}
-                    className={`pb-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all relative ${activeTab === 'vouchers' ? 'border-brand-500 text-brand-600 font-extrabold' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+                    className={`pb-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all relative ${activeTab === 'vouchers' ? 'border-brand-500 text-brand-600 font-extrabold' : 'border-transparent text-ink-subtle hover:text-ink-subtle'}`}
                 >
                     Active Vouchers
                 </button>
                 <button
                     onClick={() => setActiveTab('approvals')}
-                    className={`pb-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all relative flex items-center gap-1.5 ${activeTab === 'approvals' ? 'border-amber-500 text-amber-600 font-extrabold' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+                    className={`pb-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all relative flex items-center gap-1.5 ${activeTab === 'approvals' ? 'border-amber-500 text-amber-600 font-extrabold' : 'border-transparent text-ink-subtle hover:text-ink-subtle'}`}
                 >
                     Pending Cheque Approvals
                     {stats.pendingCount > 0 && (
@@ -591,13 +649,13 @@ export default function VouchersManager({
             </div>
 
             {/* List and Filter controls */}
-            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-                <div className="p-5 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="bg-surface border border-hairline rounded-2xl shadow-sm overflow-hidden">
+                <div className="p-5 border-b border-hairline flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
-                        <h3 className="font-extrabold text-gray-900 text-sm">
+                        <h3 className="font-extrabold text-ink text-sm">
                             {activeTab === 'vouchers' ? 'Active Voucher Logs' : 'Pending Cheque Approvals Queue'}
                         </h3>
-                        <p className="text-[10px] text-gray-400 mt-0.5">
+                        <p className="text-[10px] text-ink-subtle mt-0.5">
                             {activeTab === 'vouchers' 
                                 ? 'List of all approved and posted transactions' 
                                 : 'Cheques awaiting manager deposit approval to post to ledger'}
@@ -605,29 +663,29 @@ export default function VouchersManager({
                     </div>
 
                     <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-                        <select
+                        <Select
                             value={filterType}
                             onChange={e => setFilterType(e.target.value as typeof filterType)}
-                            className="px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
+                            className="px-3 py-2 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
                         >
                             <option value="all">All Types</option>
                             <option value="receipt">Receipts (RV)</option>
                             <option value="payment">Payments (PV)</option>
-                        </select>
+                        </Select>
 
-                        <select
+                        <Select
                             value={filterMode}
                             onChange={e => setFilterMode(e.target.value as typeof filterMode)}
-                            className="px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
+                            className="px-3 py-2 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
                         >
                             <option value="all">All Modes</option>
                             <option value="cash">Cash Only</option>
                             <option value="qr">QR Only</option>
                             <option value="cheque">Cheque Only</option>
-                        </select>
+                        </Select>
 
                         <div className="relative w-full sm:w-60">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle">
                                 <Search size={14} />
                             </span>
                             <input
@@ -635,22 +693,39 @@ export default function VouchersManager({
                                 placeholder="Search party, voucher no..."
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
+                                className="w-full pl-9 pr-4 py-2 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
                             />
                         </div>
+
+                        {filteredVouchers.length > 0 && (
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={handleExportCsv}
+                                    className="flex items-center gap-1.5 px-3 py-2 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[10px] uppercase tracking-wider border border-hairline transition-all shrink-0"
+                                >
+                                    <Download size={13} /> Export
+                                </button>
+                                <button
+                                    onClick={() => printRef.current?.print()}
+                                    className="flex items-center gap-1.5 px-3 py-2 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[10px] uppercase tracking-wider border border-hairline transition-all shrink-0"
+                                >
+                                    <Printer size={13} /> Print
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
 
                 <div className="overflow-x-auto">
                     {filteredVouchers.length === 0 ? (
-                        <div className="text-center py-20 text-gray-400">
+                        <div className="text-center py-20 text-ink-subtle">
                             <FileText size={44} className="mx-auto mb-3 opacity-30" />
                             <p className="text-sm font-bold">No voucher logs found in this view</p>
                         </div>
                     ) : (
                         <table className="w-full text-left text-xs border-collapse">
                             <thead>
-                                <tr className="bg-gray-50 border-b border-gray-100 text-gray-500">
+                                <tr className="bg-surface-muted border-b border-hairline text-ink-subtle">
                                     <th className="px-5 py-3 font-bold w-28">Date</th>
                                     <th className="px-5 py-3 font-bold w-32">Voucher No</th>
                                     <th className="px-5 py-3 font-bold w-28">Type</th>
@@ -661,13 +736,13 @@ export default function VouchersManager({
                                     <th className="px-5 py-3 font-bold text-center w-36">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-100">
+                            <tbody className="divide-y divide-hairline">
                                 {filteredVouchers.map(v => (
-                                    <tr key={v.id} className="hover:bg-gray-50/50 transition-colors">
-                                        <td className="px-5 py-4 text-gray-500 font-semibold whitespace-nowrap">
-                                            {new Date(v.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                    <tr key={v.id} className="hover:bg-surface-muted/50 transition-colors">
+                                        <td className="px-5 py-4 text-ink-subtle font-semibold">
+                                            <DateCell value={v.date} />
                                         </td>
-                                        <td className="px-5 py-4 font-extrabold text-gray-800 whitespace-nowrap">{v.voucher_number}</td>
+                                        <td className="px-5 py-4 font-extrabold text-ink whitespace-nowrap">{v.voucher_number}</td>
                                         <td className="px-5 py-4">
                                             <div className="flex flex-col gap-0.5">
                                                 <span className={`inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase w-fit ${
@@ -676,13 +751,13 @@ export default function VouchersManager({
                                                     {v.voucher_type === 'receipt' ? 'Receipt' : 'Payment'}
                                                 </span>
                                                 {v.voucher_type === 'payment' && v.category && v.category !== 'other' && (
-                                                    <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider pl-1">
+                                                    <span className="text-[9px] text-ink-subtle font-bold uppercase tracking-wider pl-1">
                                                         ↳ {v.category}
                                                     </span>
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-5 py-4 font-bold text-gray-800 truncate max-w-[150px]" title={v.party_name}>
+                                        <td className="px-5 py-4 font-bold text-ink truncate max-w-[150px]" title={v.party_name}>
                                             {v.party_name}
                                         </td>
                                         <td className="px-5 py-4">
@@ -695,7 +770,7 @@ export default function VouchersManager({
                                         <td className={`px-5 py-4 text-right font-black text-xs ${v.voucher_type === 'receipt' ? 'text-emerald-600' : 'text-rose-600'}`}>
                                             {v.voucher_type === 'receipt' ? '+' : '-'}{formatCurrency(v.amount)}
                                         </td>
-                                        <td className="px-5 py-4 font-bold text-gray-500 max-w-[180px] truncate">
+                                        <td className="px-5 py-4 font-bold text-ink-subtle max-w-[180px] truncate">
                                             {v.payment_mode === 'cheque' && v.cheque_details ? (
                                                 <span className="text-purple-600">
                                                     No: {v.cheque_details.cheque_number} ({v.cheque_details.bank_cheque})
@@ -726,14 +801,14 @@ export default function VouchersManager({
                                                 <div className="inline-flex gap-2">
                                                     <button
                                                         onClick={() => setPrintVoucher(v)}
-                                                        className="p-1.5 hover:bg-indigo-50 hover:text-indigo-600 border border-transparent hover:border-indigo-100 rounded-lg text-gray-400 transition-all focus-ring"
+                                                        className="p-1.5 hover:bg-indigo-50 hover:text-indigo-600 border border-transparent hover:border-indigo-100 rounded-lg text-ink-subtle transition-all focus-ring"
                                                         title="View / Print Slip"
                                                     >
                                                         <Printer size={14} />
                                                     </button>
                                                     <button
                                                         onClick={() => handleDeleteVoucher(v.id, v.voucher_number)}
-                                                        className="p-1.5 hover:bg-rose-50 hover:text-rose-600 border border-transparent hover:border-rose-100 rounded-lg text-gray-400 transition-all focus-ring"
+                                                        className="p-1.5 hover:bg-rose-50 hover:text-rose-600 border border-transparent hover:border-rose-100 rounded-lg text-ink-subtle transition-all focus-ring"
                                                         title="Delete / Void"
                                                     >
                                                         <Trash2 size={14} />
@@ -757,17 +832,17 @@ export default function VouchersManager({
                         onClick={() => setCreateModalOpen(false)}
                     />
                     
-                    <div className="bg-white rounded-2xl border border-gray-150 shadow-2xl w-full max-w-lg relative z-10 overflow-hidden animate-in fade-in-50 zoom-in-95 duration-200">
-                        <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                    <div className="bg-surface rounded-2xl border border-hairline shadow-2xl w-full max-w-lg relative z-10 overflow-hidden animate-in fade-in-50 zoom-in-95 duration-200">
+                        <div className="p-5 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
                             <div>
-                                <h3 className="font-extrabold text-gray-900 text-sm">
+                                <h3 className="font-extrabold text-ink text-sm">
                                     Create New {voucherType === 'receipt' ? 'Receipt' : 'Payment'} Voucher
                                 </h3>
-                                <p className="text-[10px] text-gray-400 mt-0.5">Logs money {voucherType === 'receipt' ? 'inward' : 'outward'} transaction</p>
+                                <p className="text-[10px] text-ink-subtle mt-0.5">Logs money {voucherType === 'receipt' ? 'inward' : 'outward'} transaction</p>
                             </div>
                             <button 
                                 onClick={() => setCreateModalOpen(false)}
-                                className="p-1.5 hover:bg-gray-150 rounded-xl text-gray-400 hover:text-gray-600 transition-colors focus:outline-none"
+                                className="p-1.5 hover:bg-surface-muted rounded-xl text-ink-subtle hover:text-ink-subtle transition-colors focus:outline-none"
                             >
                                 <X size={16} />
                             </button>
@@ -776,9 +851,9 @@ export default function VouchersManager({
                         <form onSubmit={handleCreateVoucher} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
                             {/* Payout Category Selection (Only for Payment Vouchers) */}
                             {voucherType === 'payment' && (
-                                <div className="space-y-3 bg-gray-50 p-3 rounded-xl border border-gray-150">
+                                <div className="space-y-3 bg-surface-muted p-3 rounded-xl border border-hairline">
                                     <div>
-                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Payment Ledger Category</label>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Payment Ledger Category</label>
                                         <div className="grid grid-cols-4 gap-1.5">
                                             {(['suppliers', 'staff', 'expenses', 'other'] as const).map(cat => (
                                                 <button
@@ -790,7 +865,7 @@ export default function VouchersManager({
                                                         setSelectedSupplierId('')
                                                         setSelectedStaffUserId('')
                                                     }}
-                                                    className={`py-1.5 rounded-lg text-[10px] font-bold border transition capitalize ${payoutCategory === cat ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                                                    className={`py-1.5 rounded-lg text-[10px] font-bold border transition capitalize ${payoutCategory === cat ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm' : 'bg-surface border-hairline text-ink-subtle hover:bg-surface-muted'}`}
                                                 >
                                                     {cat}
                                                 </button>
@@ -800,8 +875,8 @@ export default function VouchersManager({
 
                                     {payoutCategory === 'suppliers' && (
                                         <div className="animate-in slide-in-from-top-1 duration-150">
-                                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Select Supplier *</label>
-                                            <select
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1">Select Supplier *</label>
+                                            <Select
                                                 value={selectedSupplierId}
                                                 onChange={(e) => {
                                                     const sId = e.target.value
@@ -810,18 +885,33 @@ export default function VouchersManager({
                                                     if (match) setPartyName(match.name)
                                                 }}
                                                 required
-                                                className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
+                                                className="w-full px-3 py-2 bg-surface border border-hairline rounded-lg text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
                                             >
                                                 <option value="">Choose Supplier</option>
                                                 {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                            </select>
+                                            </Select>
+
+                                            {selectedSupplierId && (
+                                                <div className="mt-2 p-2 rounded-lg bg-rose-50/50 border border-rose-100 flex items-center justify-between">
+                                                    <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider">Outstanding Due:</span>
+                                                    <span className="text-xs font-black text-rose-600 flex items-center gap-1">
+                                                        {loadingDue ? (
+                                                            <Loader2 className="animate-spin text-rose-500" size={12} />
+                                                        ) : supplierDue !== null ? (
+                                                            formatCurrency(supplierDue)
+                                                        ) : (
+                                                            '—'
+                                                        )}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
 
                                     {payoutCategory === 'staff' && (
                                         <div className="animate-in slide-in-from-top-1 duration-150">
-                                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Select Staff Member *</label>
-                                            <select
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1">Select Staff Member *</label>
+                                            <Select
                                                 value={selectedStaffUserId}
                                                 onChange={(e) => {
                                                     const sId = e.target.value
@@ -830,11 +920,49 @@ export default function VouchersManager({
                                                     if (match) setPartyName(match.full_name)
                                                 }}
                                                 required
-                                                className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
+                                                className="w-full px-3 py-2 bg-surface border border-hairline rounded-lg text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
                                             >
                                                 <option value="">Choose Staff Profile</option>
                                                 {staffList.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
-                                            </select>
+                                            </Select>
+
+                                            {selectedStaffUserId && (
+                                                <div className="mt-2 p-2 rounded-lg bg-indigo-50/50 border border-indigo-100 flex items-center justify-between">
+                                                    <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider">Current Salary Due:</span>
+                                                    <span className="text-xs font-black text-indigo-600 flex items-center gap-1">
+                                                        {loadingDue ? (
+                                                            <Loader2 className="animate-spin text-indigo-500" size={12} />
+                                                        ) : staffDue !== null ? (
+                                                            formatCurrency(staffDue)
+                                                        ) : (
+                                                            '—'
+                                                        )}
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1 mt-3">Pay Category *</label>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {([
+                                                    { value: 'salary_payout', label: 'Salary Payout' },
+                                                    { value: 'advance_payment', label: 'Advance Payment' },
+                                                    { value: 'bonus', label: 'Bonus' },
+                                                ] as const).map(opt => (
+                                                    <button
+                                                        key={opt.value}
+                                                        type="button"
+                                                        onClick={() => setStaffEntryType(opt.value)}
+                                                        className={`py-2 text-[10px] font-black uppercase tracking-wider border rounded-lg transition-all ${
+                                                            staffEntryType === opt.value ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm' : 'bg-surface border-hairline text-ink-subtle hover:bg-surface-muted'
+                                                        }`}
+                                                    >
+                                                        {opt.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <p className="text-[10px] text-ink-subtle mt-1">
+                                                Salary Payout is capped at what&apos;s currently due; Advance Payment and Bonus are not.
+                                            </p>
                                         </div>
                                     )}
                                 </div>
@@ -842,7 +970,7 @@ export default function VouchersManager({
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">
                                         {voucherType === 'receipt' ? 'Received From *' : 'Paid To *'}
                                     </label>
                                     <input
@@ -852,12 +980,12 @@ export default function VouchersManager({
                                         onChange={e => setPartyName(e.target.value)}
                                         required
                                         disabled={voucherType === 'payment' && (payoutCategory === 'suppliers' || payoutCategory === 'staff')}
-                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] disabled:bg-gray-50 disabled:text-gray-400"
+                                        className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] disabled:bg-surface-muted disabled:text-ink-subtle"
                                     />
                                 </div>
 
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Amount (Rs.) *</label>
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Amount (Rs.) *</label>
                                     <input
                                         type="number"
                                         min="0.01"
@@ -866,44 +994,44 @@ export default function VouchersManager({
                                         value={amount}
                                         onChange={e => setAmount(e.target.value)}
                                         required
-                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
+                                        className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
                                     />
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Reference / Phone Number</label>
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Reference / Phone Number</label>
                                     <input
                                         type="tel"
                                         placeholder="e.g. 98XXXXXXXX"
                                         value={referenceNo}
                                         onChange={e => setReferenceNo(e.target.value)}
-                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
+                                        className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
                                     />
                                 </div>
 
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Receiver Staff Name</label>
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Receiver Staff Name</label>
                                     <input
                                         type="text"
                                         placeholder="e.g. Cashier Ram"
                                         value={receiverName}
                                         onChange={e => setReceiverName(e.target.value)}
-                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
+                                        className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
                                     />
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Payment Method</label>
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Payment Method</label>
                                 <div className="grid grid-cols-3 gap-2">
                                     {(['cash', 'qr', 'cheque'] as const).map(mode => (
                                         <button
                                             key={mode}
                                             type="button"
                                             onClick={() => { setPaymentMode(mode); setBankName(''); }}
-                                            className={`py-2.5 rounded-xl text-xs font-bold border transition capitalize ${paymentMode === mode ? 'bg-brand-50 border-brand-500 text-brand-600 shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                                            className={`py-2.5 rounded-xl text-xs font-bold border transition capitalize ${paymentMode === mode ? 'bg-brand-50 border-brand-500 text-brand-600 shadow-sm' : 'bg-surface border-hairline text-ink-subtle hover:bg-surface-muted'}`}
                                         >
                                             {mode}
                                         </button>
@@ -913,14 +1041,14 @@ export default function VouchersManager({
 
                             {(paymentMode === 'qr' || paymentMode === 'cheque') && (
                                 <div className="animate-in slide-in-from-top-1 duration-150">
-                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">
                                         Destination / Source Bank Account *
                                     </label>
-                                    <select
+                                    <Select
                                         value={bankName}
                                         onChange={e => setBankName(e.target.value)}
                                         required
-                                        className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
+                                        className="w-full px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
                                     >
                                         <option value="">Select Account</option>
                                         {parsedBankAccounts.map(b => (
@@ -928,80 +1056,80 @@ export default function VouchersManager({
                                                 {b.name} ({b.displayName} — {b.ownership === 'personal' ? 'Personal' : 'Company (A/C Payee)'})
                                             </option>
                                         ))}
-                                    </select>
+                                    </Select>
                                 </div>
                             )}
 
                             {/* Cheque specific inputs */}
                             {paymentMode === 'cheque' && (
-                                <div className="space-y-4 border-t border-gray-150 pt-4 animate-in slide-in-from-top-2 duration-200">
+                                <div className="space-y-4 border-t border-hairline pt-4 animate-in slide-in-from-top-2 duration-200">
                                     <p className="text-xs font-black text-purple-700 uppercase tracking-wider">Cheque Specifications</p>
                                     
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Written Name on Cheque *</label>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Written Name on Cheque *</label>
                                             <input
                                                 type="text"
                                                 placeholder="e.g. KKKhane Restaurant"
                                                 value={chequeWrittenName}
                                                 onChange={e => setChequeWrittenName(e.target.value)}
                                                 required
-                                                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
+                                                className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
                                             />
                                         </div>
 
                                         <div>
-                                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Which Bank Cheque (Issuer) *</label>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Which Bank Cheque (Issuer) *</label>
                                             <input
                                                 type="text"
                                                 placeholder="e.g. Global IME Bank"
                                                 value={chequeBank}
                                                 onChange={e => setChequeBank(e.target.value)}
                                                 required
-                                                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
+                                                className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
                                             />
                                         </div>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Cheque Number *</label>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Cheque Number *</label>
                                             <input
                                                 type="text"
                                                 placeholder="e.g. 10293847"
                                                 value={chequeNumber}
                                                 onChange={e => setChequeNumber(e.target.value)}
                                                 required
-                                                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
+                                                className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
                                             />
                                         </div>
 
                                         <div>
-                                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Cheque Date *</label>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Cheque Date *</label>
                                             <input
                                                 type="date"
                                                 value={chequeDate}
                                                 onChange={e => setChequeDate(e.target.value)}
                                                 required
-                                                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
+                                                className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
                                             />
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Cheque Type / Payee Category</label>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Cheque Type / Payee Category</label>
                                         <div className="grid grid-cols-2 gap-2">
                                             <button
                                                 type="button"
                                                 onClick={() => setChequeType('ac_payee')}
-                                                className={`py-2 rounded-xl text-xs font-bold border transition ${chequeType === 'ac_payee' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 font-extrabold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                                                className={`py-2 rounded-xl text-xs font-bold border transition ${chequeType === 'ac_payee' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 font-extrabold' : 'bg-surface border-hairline text-ink-subtle hover:bg-surface-muted'}`}
                                             >
                                                 A/C Payee (Company Cheque)
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={() => setChequeType('normal')}
-                                                className={`py-2 rounded-xl text-xs font-bold border transition ${chequeType === 'normal' ? 'bg-amber-50 border-amber-500 text-amber-700 font-extrabold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                                                className={`py-2 rounded-xl text-xs font-bold border transition ${chequeType === 'normal' ? 'bg-amber-50 border-amber-500 text-amber-700 font-extrabold' : 'bg-surface border-hairline text-ink-subtle hover:bg-surface-muted'}`}
                                             >
                                                 Normal Person Cheque
                                             </button>
@@ -1011,14 +1139,14 @@ export default function VouchersManager({
                             )}
 
                             <div>
-                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Particulars / Description *</label>
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Particulars / Description *</label>
                                 <textarea
                                     placeholder="Details of the payment or receipt..."
                                     value={particulars}
                                     onChange={e => setParticulars(e.target.value)}
                                     required
                                     rows={2}
-                                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] resize-none"
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] resize-none"
                                 />
                             </div>
 
@@ -1037,184 +1165,63 @@ export default function VouchersManager({
                 </div>
             )}
 
-            {/* Printable Voucher Slip Modal */}
             {printVoucher && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 print:p-0 print:absolute print:inset-0">
-                    <div 
-                        className="fixed inset-0 bg-[#0a0a0a]/60 backdrop-blur-md transition-opacity duration-300 print:hidden"
-                        onClick={() => setPrintVoucher(null)}
-                    />
+                <VoucherPrintSlip voucher={printVoucher} onClose={() => setPrintVoucher(null)} />
+            )}
 
-                    <div className="bg-white rounded-2xl border border-gray-150 shadow-2xl w-full max-w-2xl relative z-10 overflow-hidden flex flex-col max-h-[90vh] print:max-h-none print:w-full print:border-none print:shadow-none print:static">
-                        
-                        <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50 print:hidden shrink-0">
-                            <span className="text-xs font-black text-gray-800 uppercase tracking-wider">Voucher Print Preview</span>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={handlePrint}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-500 hover:bg-brand-600 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition shadow-md shadow-brand-500/10 focus-ring"
-                                >
-                                    <Printer size={13} /> Print Slip
-                                </button>
-                                <button
-                                    onClick={() => setPrintVoucher(null)}
-                                    className="p-1.5 hover:bg-gray-150 rounded-xl text-gray-400 hover:text-gray-600 transition-colors"
-                                >
-                                    <X size={16} />
-                                </button>
-                            </div>
+            {/* Delete voucher — requires a reason, same pattern as refunds
+                (RefundOrderButton.tsx), and gets logged via logAudit in
+                deleteVoucherAction so there's a record of who deleted it and why. */}
+            {deleteTarget && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-surface rounded-card shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-hairline w-full max-w-sm p-6 space-y-5">
+                        <div className="flex items-center gap-2">
+                            <Trash2 size={18} className="text-danger-fg" />
+                            <h2 className="text-h3 text-ink">Delete Voucher {deleteTarget.number}</h2>
                         </div>
-
-                        <div className="flex-1 overflow-y-auto p-8 print:p-0 print:overflow-visible">
-                            <div className="border border-gray-300 p-6 rounded-xl font-mono text-xs text-gray-800 space-y-6 print:border-none print:p-0 print:rounded-none">
-                                
-                                <div className="text-center border-b border-dashed border-gray-300 pb-4">
-                                    <h2 className="text-lg font-black tracking-tight text-gray-900">KKKHANE RESTAURANT</h2>
-                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mt-0.5">Workspace Account Voucher</p>
-                                </div>
-
-                                <div className="text-center py-1.5 bg-gray-100 border border-gray-200 rounded-lg">
-                                    <h3 className="text-sm font-black tracking-widest text-gray-900 uppercase">
-                                        {printVoucher.voucher_type === 'receipt' ? 'RECEIPT VOUCHER' : 'PAYMENT VOUCHER'}
-                                    </h3>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-y-2 border-b border-dashed border-gray-300 pb-4 text-[11px]">
-                                    <div>
-                                        <span className="font-bold text-gray-400 uppercase">Voucher No:</span>{' '}
-                                        <span className="font-black text-gray-900">{printVoucher.voucher_number}</span>
-                                    </div>
-                                    <div className="text-right">
-                                        <span className="font-bold text-gray-400 uppercase">Date:</span>{' '}
-                                        <span className="font-black text-gray-900">
-                                            {new Date(printVoucher.date).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <span className="font-bold text-gray-400 uppercase">
-                                            {printVoucher.voucher_type === 'receipt' ? 'Received From:' : 'Paid To:'}
-                                        </span>{' '}
-                                        <span className="font-black text-gray-900 uppercase">{printVoucher.party_name}</span>
-                                    </div>
-                                    <div className="text-right">
-                                        <span className="font-bold text-gray-400 uppercase">Payment Mode:</span>{' '}
-                                        <span className="font-black text-gray-900 uppercase">
-                                            {printVoucher.payment_mode === 'cash' ? 'CASH' : printVoucher.payment_mode === 'qr' ? `QR (${printVoucher.bank_name})` : printVoucher.payment_mode === 'cheque' ? `CHEQUE (${printVoucher.bank_name})` : `BANK (${printVoucher.bank_name})`}
-                                        </span>
-                                    </div>
-                                    {printVoucher.reference_no && (
-                                        <div>
-                                            <span className="font-bold text-gray-400 uppercase">Ref Phone:</span>{' '}
-                                            <span className="font-black text-gray-900">{printVoucher.reference_no}</span>
-                                        </div>
-                                    )}
-                                    {printVoucher.receiver_name && (
-                                        <div className="text-right">
-                                            <span className="font-bold text-gray-400 uppercase">Receiver Staff:</span>{' '}
-                                            <span className="font-black text-gray-900 uppercase">{printVoucher.receiver_name}</span>
-                                        </div>
-                                    )}
-                                    {printVoucher.voucher_type === 'payment' && printVoucher.category && (
-                                        <div>
-                                            <span className="font-bold text-gray-400 uppercase">Ledger Category:</span>{' '}
-                                            <span className="font-black text-gray-950 uppercase">{printVoucher.category}</span>
-                                        </div>
-                                    )}
-                                    {printVoucher.payment_mode === 'cheque' && printVoucher.cheque_details && (
-                                        <div className="col-span-2 border-t border-gray-200 pt-2 mt-1 grid grid-cols-2 gap-y-1 text-[10px]">
-                                            <div>
-                                                <span className="font-bold text-gray-400 uppercase">Issuer Bank:</span>{' '}
-                                                <span className="font-black text-gray-900 uppercase">{printVoucher.cheque_details.bank_cheque}</span>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="font-bold text-gray-400 uppercase">Cheque Number:</span>{' '}
-                                                <span className="font-black text-gray-900">{printVoucher.cheque_details.cheque_number}</span>
-                                            </div>
-                                            <div>
-                                                <span className="font-bold text-gray-400 uppercase">Written Name:</span>{' '}
-                                                <span className="font-black text-gray-900 uppercase">{printVoucher.cheque_details.written_name}</span>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="font-bold text-gray-400 uppercase">Cheque Date:</span>{' '}
-                                                <span className="font-black text-gray-900">{printVoucher.cheque_details.cheque_date}</span>
-                                            </div>
-                                            <div>
-                                                <span className="font-bold text-gray-400 uppercase">Cheque Type:</span>{' '}
-                                                <span className="font-black text-gray-900 uppercase">
-                                                    {printVoucher.cheque_details.cheque_type === 'ac_payee' ? 'A/C Payee' : 'Normal Cheque'}
-                                                </span>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="font-bold text-gray-400 uppercase">Status:</span>{' '}
-                                                <span className={`font-black uppercase ${printVoucher.status === 'approved' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                    {printVoucher.status}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="space-y-2">
-                                    <table className="w-full text-left text-[11px] border-collapse">
-                                        <thead>
-                                            <tr className="border-b border-gray-300 text-gray-500 font-bold uppercase">
-                                                <th className="py-2 w-12 text-center">S.N.</th>
-                                                <th className="py-2">Particulars / Description</th>
-                                                <th className="py-2 text-right w-36">Amount</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr className="border-b border-dashed border-gray-200">
-                                                <td className="py-3 text-center font-bold">1.</td>
-                                                <td className="py-3 font-semibold leading-relaxed">
-                                                    {printVoucher.payment_mode === 'cheque' && printVoucher.cheque_details ? (
-                                                        <span>
-                                                            Cheque settlement payout: No. {printVoucher.cheque_details.cheque_number} issued on {printVoucher.cheque_details.bank_cheque}. (Payee: {printVoucher.cheque_details.written_name})
-                                                        </span>
-                                                    ) : (
-                                                        printVoucher.particulars
-                                                    )}
-                                                </td>
-                                                <td className="py-3 text-right font-black text-gray-900">{formatCurrency(printVoucher.amount)}</td>
-                                            </tr>
-                                            <tr className="font-black text-gray-900">
-                                                <td colSpan={2} className="py-3 text-right uppercase text-[10px] text-gray-400">Total Amount:</td>
-                                                <td className="py-3 text-right text-base border-double border-b-4 border-gray-400">
-                                                    {formatCurrency(printVoucher.amount)}
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-
-                                <div className="p-3 bg-gray-50 border border-gray-150 rounded-lg text-[11px] flex gap-2">
-                                    <span className="font-bold text-gray-400 uppercase shrink-0">Sum In Words:</span>
-                                    <span className="font-black text-gray-800 italic capitalize">{amountInWords(printVoucher.amount)}</span>
-                                </div>
-
-                                <div className="grid grid-cols-3 gap-6 pt-16 text-center text-[10px] font-bold text-gray-400 uppercase">
-                                    <div className="space-y-1">
-                                        <div className="border-t border-gray-300 pt-2 text-gray-800 font-black">Prepared By</div>
-                                        <div>Cashier / Accountant</div>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <div className="border-t border-gray-300 pt-2 text-gray-800 font-black">Approved By</div>
-                                        <div>Manager / Owner</div>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <div className="border-t border-gray-300 pt-2 text-gray-800 font-black">
-                                            {printVoucher.voucher_type === 'receipt' ? 'Paid By' : 'Received By'}
-                                        </div>
-                                        <div>Receiver Signature</div>
-                                    </div>
-                                </div>
-
-                            </div>
+                        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-[var(--r-md)] px-3 py-2 font-medium">
+                            This will reverse its Cash/Bank book entry. This cannot be undone.
+                        </p>
+                        <div>
+                            <label className="block text-small font-bold text-ink mb-1.5">Reason</label>
+                            <textarea
+                                value={deleteReason}
+                                onChange={(e) => setDeleteReason(e.target.value)}
+                                placeholder="e.g. entered by mistake, duplicate voucher…"
+                                className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all resize-none"
+                                rows={3}
+                                maxLength={200}
+                                autoFocus
+                            />
                         </div>
-
+                        <div className="flex gap-3 justify-end pt-2 border-t border-hairline mt-2">
+                            <button
+                                onClick={() => { setDeleteTarget(null); setDeleteReason('') }}
+                                className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:shadow-md transition-all focus-ring"
+                                disabled={deleting}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmDeleteVoucher}
+                                disabled={deleting || !deleteReason.trim()}
+                                className="px-5 py-2.5 text-sm font-bold text-white bg-danger-fg rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(239,68,68,0.25)] hover:shadow-[0_6px_16px_rgba(239,68,68,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2 focus-ring"
+                            >
+                                {deleting && <Loader2 size={16} className="animate-spin" />}
+                                Confirm Delete
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
+
+            <PrintableReport
+                ref={printRef}
+                title="Vouchers Ledger"
+                subtitle={activeTab === 'vouchers' ? 'Active Voucher Logs' : 'Pending Cheque Approvals Queue'}
+                columns={reportColumns}
+                rows={reportRows}
+            />
         </div>
     )
 }

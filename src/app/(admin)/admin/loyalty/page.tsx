@@ -2,10 +2,17 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import LoyaltyManager from './LoyaltyManager'
 
+import { redirect } from 'next/navigation'
+import { getRestaurantFeatures } from '@/lib/features'
+
 export const revalidate = 0
 
 export default async function AdminLoyaltyPage() {
     const { restaurantId: rid } = await getCurrentUser()
+    const features = await getRestaurantFeatures(rid)
+    if (!features?.loyaltyEnabled) {
+        redirect('/admin/dashboard')
+    }
     const adminSupabase = await createAdminClient()
 
     const [{ data: config }, { data: members }] = await Promise.all([

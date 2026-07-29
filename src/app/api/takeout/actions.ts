@@ -5,7 +5,8 @@ import { revalidatePath } from 'next/cache'
 import { sendOrderReadySms } from '@/lib/sms'
 import type { CartItem, TakeoutOrder } from '@/types/database'
 import { checkAndAlertLowStock } from '@/app/(admin)/admin/ingredients/actions'
-import { requireRole } from '@/lib/auth'
+import { requireRole, getOptionalUser } from '@/lib/auth'
+import { getOrCreateOutsideFoodItem, recalculateAndUpdateOrderTotals } from '@/app/(staff)/waiter/actions'
 import {
     TAKEOUT_ORDER_SELECT,
     TAKEOUT_STATUS_TO_ORDER,
@@ -13,6 +14,56 @@ import {
     type TakeoutOrderRow,
     type OrderStatus,
 } from '@/lib/takeout'
+
+/**
+ * Map cart items to the RPC item payload. Mirrors the dine-in checkout: the
+ * chosen variation (half/full plate, size, etc.) is passed as `variation_id`
+ * — which place_takeout_order/place_delivery_order price and store — and its
+ * name is prefixed onto special_request as `[Half]` so it shows on the kitchen
+ * ticket and receipt exactly like a dine-in order.
+ */
+const STAFF_ROLES = ['cashier', 'waiter', 'manager', 'admin', 'super_admin']
+
+/**
+ * A staff member ringing up a walk-in takeaway/delivery has already decided to
+ * make it, so send it straight to the kitchen (status 'confirmed') instead of
+ * parking it in 'pending' — the review step a public online order still goes
+ * through before the cashier accepts it. Kitchen queues exclude pending
+ * takeout/delivery, so without this a walk-in would never reach the line.
+ * The staff session is verified server-side, so a customer can't self-confirm.
+ */
+async function autoConfirmIfStaff(
+    supabase: Awaited<ReturnType<typeof createAdminClient>>,
+    orderId: string,
+    restaurantId: string,
+): Promise<void> {
+    const user = await getOptionalUser()
+    if (!user || !STAFF_ROLES.includes(user.role)) return
+    if (user.role !== 'super_admin' && user.restaurantId !== restaurantId) return
+    await supabase
+        .from('orders')
+        .update({ status: 'confirmed', confirmed_at: new Date().toISOString() })
+        .eq('id', orderId)
+        .eq('status', 'pending')
+}
+
+function buildOrderItemsPayload(items: CartItem[]) {
+    return items.map((i) => {
+        let specialRequest = i.specialRequest || ''
+        if (i.variationName) {
+            specialRequest = specialRequest
+                ? `[${i.variationName}] ${specialRequest}`
+                : `[${i.variationName}]`
+        }
+        return {
+            menu_item_id: i.menuItemId,
+            quantity: i.quantity,
+            special_request: specialRequest || null,
+            modifiers: (i.modifiers || []).map((m) => ({ modifier_id: m.modifierId })),
+            variation_id: i.variationId || null,
+        }
+    })
+}
 
 interface TakeoutInput {
     restaurantId: string
@@ -50,12 +101,9 @@ export async function createDeliveryOrder(
 ): Promise<{ orderId?: string; total?: number; code?: string; error?: string }> {
     const supabase = await createAdminClient()
 
-    const payload = input.items.map((i) => ({
-        menu_item_id: i.menuItemId,
-        quantity: i.quantity,
-        special_request: i.specialRequest || null,
-        modifiers: (i.modifiers || []).map((m) => ({ modifier_id: m.modifierId })),
-    }))
+    const outsideItems = input.items.filter((i: any) => i.isOutsideFood)
+    const regularItems = input.items.filter((i: any) => !i.isOutsideFood)
+    const payload = buildOrderItemsPayload(regularItems)
 
     // Auto-link loyalty account if phone matches
     let finalLoyaltyId = input.loyaltyMemberId || null
@@ -97,13 +145,46 @@ export async function createDeliveryOrder(
     }
 
     const result = data as { order_id: string; total: number; code: string }
-    if (result.order_id) void checkAndAlertLowStock(input.restaurantId)
+    if (result.order_id) {
+        if (outsideItems.length > 0) {
+            const outsideFoodId = await getOrCreateOutsideFoodItem(supabase, input.restaurantId)
+            for (const item of outsideItems) {
+                const specialRequest = `[Outside: ${item.name}]${item.specialRequest ? ' ' + item.specialRequest : ''}`
+                await supabase
+                    .from('order_items')
+                    .insert({
+                        order_id: result.order_id,
+                        menu_item_id: outsideFoodId,
+                        quantity: item.quantity,
+                        unit_price: Number((item as any).price ?? 0),
+                        special_request: specialRequest,
+                        status: 'pending'
+                    })
+            }
+            await recalculateAndUpdateOrderTotals(supabase, result.order_id, input.restaurantId)
+        }
+        void checkAndAlertLowStock(input.restaurantId)
+        await autoConfirmIfStaff(supabase, result.order_id, input.restaurantId)
+    }
+
+    let finalTotal = result.total
+    if (outsideItems.length > 0 && result.order_id) {
+        const { data: updatedOrder } = await supabase
+            .from('orders')
+            .select('total_amount')
+            .eq('id', result.order_id)
+            .single()
+        if (updatedOrder) {
+            finalTotal = Number(updatedOrder.total_amount) || 0
+        }
+    }
 
     revalidatePath('/kitchen')
     revalidatePath('/waiter')
     revalidatePath('/admin/takeout')
+    revalidatePath('/cashier')
 
-    return { orderId: result.order_id, total: result.total, code: result.code }
+    return { orderId: result.order_id, total: finalTotal, code: result.code }
 }
 
 /**
@@ -116,12 +197,9 @@ export async function createTakeoutOrder(
 ): Promise<{ orderId?: string; total?: number; error?: string }> {
     const supabase = await createAdminClient()
 
-    const payload = input.items.map((i) => ({
-        menu_item_id: i.menuItemId,
-        quantity: i.quantity,
-        special_request: i.specialRequest || null,
-        modifiers: (i.modifiers || []).map((m) => ({ modifier_id: m.modifierId })),
-    }))
+    const outsideItems = input.items.filter((i: any) => i.isOutsideFood)
+    const regularItems = input.items.filter((i: any) => !i.isOutsideFood)
+    const payload = buildOrderItemsPayload(regularItems)
 
     // Auto-link loyalty account if phone matches
     let finalLoyaltyId = input.loyaltyMemberId || null
@@ -165,14 +243,47 @@ export async function createTakeoutOrder(
     const result = data as { order_id: string; total: number }
 
     // Low-stock check in the background (never blocks the order).
-    if (result.order_id) void checkAndAlertLowStock(input.restaurantId)
+    if (result.order_id) {
+        if (outsideItems.length > 0) {
+            const outsideFoodId = await getOrCreateOutsideFoodItem(supabase, input.restaurantId)
+            for (const item of outsideItems) {
+                const specialRequest = `[Outside: ${item.name}]${item.specialRequest ? ' ' + item.specialRequest : ''}`
+                await supabase
+                    .from('order_items')
+                    .insert({
+                        order_id: result.order_id,
+                        menu_item_id: outsideFoodId,
+                        quantity: item.quantity,
+                        unit_price: Number((item as any).price ?? 0),
+                        special_request: specialRequest,
+                        status: 'pending'
+                    })
+            }
+            await recalculateAndUpdateOrderTotals(supabase, result.order_id, input.restaurantId)
+        }
+        void checkAndAlertLowStock(input.restaurantId)
+        await autoConfirmIfStaff(supabase, result.order_id, input.restaurantId)
+    }
+
+    let finalTotal = result.total
+    if (outsideItems.length > 0 && result.order_id) {
+        const { data: updatedOrder } = await supabase
+            .from('orders')
+            .select('total_amount')
+            .eq('id', result.order_id)
+            .single()
+        if (updatedOrder) {
+            finalTotal = Number(updatedOrder.total_amount) || 0
+        }
+    }
 
     revalidatePath('/takeout')
     revalidatePath('/kitchen')
     revalidatePath('/waiter')
     revalidatePath('/admin/takeout')
+    revalidatePath('/cashier')
 
-    return { orderId: result.order_id, total: result.total }
+    return { orderId: result.order_id, total: finalTotal }
 }
 
 // Active (kitchen-relevant) takeout statuses.

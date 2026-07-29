@@ -68,6 +68,7 @@ export interface Restaurant {
     longitude: number | null
     payment_qr_url: string | null
     payment_qr_label: string
+    qr_bank_account_id: string | null
     // SaaS fields
     custom_domain: string | null
     subscription_tier: SubscriptionTier
@@ -102,6 +103,7 @@ export interface User {
     address: string | null
     role_id: number
     is_active: boolean
+    deleted_at: string | null
     created_at: string
     updated_at: string
     // Joined fields
@@ -128,6 +130,31 @@ export interface Table {
     cleaning_claimed_by?: string | null
     cleaning_claimed_at?: string | null
     created_at: string
+}
+
+// Restaurant-level printer config (see the printers table migration). role maps
+// a printer to what it prints: 'kot' kitchen tickets, 'bot' bar tickets, 'bill'
+// the customer invoice. Network printers carry ip_address + port; usb printers
+// are still selected per-device (printerSettings.ts) and are the fallback.
+export type PrinterType = 'network' | 'usb'
+export type PrinterConfigRole = 'kot' | 'bot' | 'bill'
+export type PaperWidth = '58mm' | '80mm'
+
+export interface Printer {
+    id: string
+    restaurant_id: string
+    name: string
+    printer_type: PrinterType
+    ip_address: string | null
+    port: number
+    role: PrinterConfigRole
+    paper_width: PaperWidth
+    copies: number
+    is_active: boolean
+    is_default: boolean
+    created_by?: string | null
+    created_at: string
+    updated_at: string
 }
 
 export interface MenuCategory {
@@ -213,7 +240,17 @@ export interface Session {
     expires_at: string
     guest_count: number | null
     max_seats: number
+    /** Which "cover" at the table this session belongs to (1-based). A table's
+     *  original single-session behavior is seat 1; a waiter can open additional
+     *  seats (2..capacity) so unrelated parties sharing one table each get their
+     *  own independent order and bill. */
+    seat_number: number
     notes: string | null
+    discount_amount: number
+    discount_reason: string | null
+    discount_applied_by: string | null
+    discount_applied_at: string | null
+    booking_id: string | null
     // Joined fields
     tables?: Table
     seats?: SessionSeat[]
@@ -250,6 +287,10 @@ export interface Order {
     // Mode 2 (waiter confirmation): true while a placed order is waiting for a
     // waiter to confirm the customer is seated; the kitchen hides these until then.
     needs_confirmation?: boolean
+    /** Sold straight over the counter — cigarettes, a bottle off the shelf — so
+     *  no station ticket printed and no station ever queued it. Its lines are
+     *  written already served. Billing and stock are unaffected. */
+    no_kot?: boolean
     cancellation_reason?: string | null
     placed_at: string
     confirmed_at: string | null
@@ -259,6 +300,8 @@ export interface Order {
     seat_id: string | null
     claimed_by: string | null
     claimed_at: string | null
+    /** Staff member who settled this order at checkout; null until it's paid. */
+    cashier_id?: string | null
     // Joined fields
     order_items?: OrderItem[]
     sessions?: Session
@@ -270,16 +313,27 @@ export interface OrderItem {
     id: string
     order_id: string
     menu_item_id: string
+    /** Chosen variation (half/full plate, size, …); null for a plain item. */
+    menu_item_variation_id?: string | null
     quantity: number
     unit_price: number
     special_request: string | null
     status: OrderItemStatus
+    // True while this line is a QR self-order item awaiting cashier review
+    // in the Cashier "Order Confirmation" panel — hidden from the kitchen
+    // and stock is not yet deducted until a cashier confirms it.
+    needs_confirmation: boolean
     // Per-dish chef ownership: set when a chef clicks Cook; only this chef may
     // mark the dish ready. Null until cooking starts (or for legacy rows).
     claimed_by?: string | null
     claimed_at?: string | null
     /** Where this line is made. Resolved and frozen when the line is written. */
     station?: StationKind
+    // When a print station claimed this line for its ticket. Null means the
+    // line is still outstanding, so any station that connects will print it —
+    // this is what stops a ticket depending on a tab being subscribed at the
+    // instant the order landed. Claimed atomically; see printClaims.ts.
+    kot_printed_at?: string | null
     created_at: string
     // Joined fields
     menu_items?: MenuItem
@@ -349,10 +403,35 @@ export interface Settings {
         serviceChargeEnabled?: boolean
         serviceChargeRate?: number
         phoneOtpEnabled: boolean
+        /**
+         * @deprecated Superseded by the per-user calendar toggle (the
+         * kkkhane-calendar cookie, see lib/calendar.ts). Bikram Sambat now
+         * leads by default for everyone and each user flips their own
+         * preference, so nothing reads this. Kept so stored settings rows
+         * still parse; safe to drop in a later migration.
+         */
         bsDateEnabled: boolean
         // Notification
         notificationSoundUrl?: string | null
         financeEnabled?: boolean
+        // In-room service: when true, a hotel room's QR requires the guest to
+        // confirm the phone on their booking, then surfaces a "Call for Service"
+        // tel: button to the reception number below. Off = today's self-service.
+        roomServiceCallEnabled?: boolean
+        // Reception / room-service phone the "Call for Service" button dials.
+        receptionPhone?: string | null
+        printInvoiceEnabled?: boolean
+        generateInvoiceEnabled?: boolean
+        staffManagementEnabled?: boolean
+        tableManagementEnabled?: boolean
+        irdSyncEnabled?: boolean
+        manualEntryEnabled?: boolean
+        printBillEnabled?: boolean
+        showInvoiceEnabled?: boolean
+        kotEnabled?: boolean
+        kdsEnabled?: boolean
+        roomServiceChargeEnabled?: boolean
+        roomServiceChargeRooms?: string[]
     }
     business_hours: BusinessHours | null
     updated_at: string
@@ -530,6 +609,7 @@ export interface EodReport {
     total_voids: number
     total_refunds: number
     total_cancelled: number
+    total_cancellation_cost: number
     avg_order_value: number
     total_cogs: number
     gross_profit: number
@@ -817,6 +897,9 @@ export interface HomepageConfig {
     contact?: {
         enabled?: boolean
         review_link?: string
+        // Free-text physical address (shown in the contact section); distinct
+        // from map_address, which holds the Google Maps link.
+        address?: string
         map_address?: string
         phone?: string
         email?: string
@@ -889,11 +972,18 @@ export interface Room {
     restaurant_id: string
     room_number: string
     floor: string | null
+    beds: number
     status: RoomStatus
     type_id: string | null
+    notes: string | null
+    is_active: boolean
     created_at: string
     room_types?: RoomType | null
 }
+
+// How a booking's advance was collected. Older rows predate the column and
+// carry null; the API writes 'none' when no advance was paid.
+export type AdvancePaymentMethod = 'cash' | 'qr_digital' | 'split' | 'none'
 
 export interface Booking {
     id: string
@@ -904,17 +994,83 @@ export interface Booking {
     guest_email: string | null
     check_in: string
     check_out: string
+    /** Total adults — kept as `adult_male + adult_female` for new bookings. */
     adults: number
+    /**
+     * Adult split. Both 0 on bookings made before this existed, where only the
+     * `adults` total is known — render those as a plain total rather than
+     * implying a breakdown that was never recorded.
+     */
+    adult_male: number
+    adult_female: number
     children: number
     status: BookingStatus
     total_amount: number
     paid_amount: number
     payment_status: 'unpaid' | 'partial' | 'paid' | 'refunded'
-    advance_payment_method: 'cash' | 'qr_digital' | 'none' | null
+    advance_payment_method: AdvancePaymentMethod | null
     notes: string | null
+    created_at: string
+    discount_amount: number
+    discount_reason: string | null
+    discount_applied_by: string | null
+    discount_applied_at: string | null
+    extra_hour_charge?: number
+    /** Service charge the cashier set at checkout, replacing what the folio
+     *  rules produce. Null means no override — recompute from the rules; 0
+     *  means the charge was deliberately waived. */
+    service_charge_override?: number | null
+    /** Staff member who settled this stay at checkout; null while in house. */
+    cashier_id?: string | null
+    /** When this stay's bill was closed out. Stamped by every settlement, and
+     *  kept at the first one if a stay settles more than once. Null means never
+     *  settled — including a room that departed early and is still riding on a
+     *  shared bill. "Paid but still in the room" is this set while `status` is
+     *  not yet `checked_out`. */
+    bill_settled_at?: string | null
+    /** Guest asked for a parking space. Any fee is a `room_charges` row of type
+     *  'parking', never an amount stored here. */
+    parking_required?: boolean
+    /** Vehicle registration taken at the desk. Can be set even when
+     *  `parking_required` is false — a guest with a car but no reserved space. */
+    parking_vehicle_no?: string | null
+    rooms?: Room | null
+}
+
+/**
+ * One room a stay has occupied. `to_ts` null marks the room the guest is in
+ * now, which is also what bookings.room_id points at.
+ *
+ * Exists so a mid-stay move keeps its history: the folio bills each night at
+ * the rate of the room actually occupied that night, instead of re-pricing the
+ * whole stay at whatever room the booking happens to point at now.
+ */
+export interface BookingRoomStay {
+    id: string
+    restaurant_id: string
+    booking_id: string
+    room_id: string
+    from_ts: string
+    to_ts: string | null
+    moved_by: string | null
+    reason: string | null
     created_at: string
     rooms?: Room | null
 }
+
+export interface BookingPayment {
+    id: string
+    restaurant_id: string
+    booking_id: string
+    amount: number
+    payment_method: string
+    cash_amount?: number
+    qr_amount?: number
+    note: string | null
+    created_at: string
+    created_by?: string | null
+}
+
 
 // ─── Day Book ───────────────────────────────────────────────
 export type DayBookSessionStatus = 'open' | 'closed'
@@ -1036,6 +1192,7 @@ export interface BankAccount {
     account_number: string | null
     opening_balance: number
     is_active: boolean
+    deactivation_reason: string | null
     created_by: string | null
     created_at: string
     updated_at: string
@@ -1102,6 +1259,8 @@ export interface ExpenseCategory {
     description: string | null
     is_active: boolean
     is_stock_category: boolean
+    /** Main category this one nests under, or null for a top-level/main category. One level deep. */
+    parent_id: string | null
     created_by: string | null
     created_at: string
 }

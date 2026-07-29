@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { validateInput, CreateTenantSchema } from '@/lib/validation'
 import { ORDER_STATUS_TO_TAKEOUT, type OrderStatus } from '@/lib/takeout'
-import { TIER_LIMITS, FINANCE_TIERS, type Tier } from '@/lib/tiers'
+import { TIER_LIMITS, applyTierModuleDefaults, MODULE_KEYS, type Tier } from '@/lib/tiers'
 import { provisionRestaurant } from '@/lib/provisioning'
 
 export interface CreateTenantInput {
@@ -47,6 +47,7 @@ export async function getAllRestaurants() {
             const features = settingsObj?.features_v2 || {}
             return {
                 ...r,
+                features,
                 financeEnabled: !!features.financeEnabled
             }
         })
@@ -116,30 +117,47 @@ export async function updateSubscriptionTier(
 
     if (error) return { error: error.message }
 
-    // Downgrade protection: the accounting module ships with Premium and above
-    // (see the published plans in lib/pricing.ts), so dropping below that
-    // disables financeEnabled.
-    if (!FINANCE_TIERS.includes(tier)) {
-        const { data: settingsRow } = await supabase
-            .from('settings')
-            .select('features_v2')
-            .eq('restaurant_id', restaurantId)
-            .maybeSingle()
+    // Apply the new plan's module entitlements to the stored flags.
+    //
+    // This previously only ran on a downgrade, and only for financeEnabled — so
+    // moving a restaurant UP a plan changed its caps and nothing else. The
+    // modules the customer had just paid for stayed absent from features_v2,
+    // the server read absent as "off", and there was no way in the app to turn
+    // them on. "Set to the package but the features still don't work" was
+    // exactly this.
+    //
+    // applyTierModuleDefaults grants what the plan includes (respecting a flag
+    // the tenant has deliberately switched off) and revokes what it does not,
+    // which keeps the old downgrade protection.
+    const { data: settingsRow } = await supabase
+        .from('settings')
+        .select('features_v2')
+        .eq('restaurant_id', restaurantId)
+        .maybeSingle()
 
-        const features = settingsRow?.features_v2 || {}
-        if (features.financeEnabled) {
-            const merged = { ...features, financeEnabled: false }
+    if (settingsRow) {
+        const current = (settingsRow.features_v2 || {}) as Record<string, unknown>
+        const merged = applyTierModuleDefaults(current, tier)
+
+        const changed = MODULE_KEYS.some(key => current[key] !== merged[key])
+        if (changed) {
             await supabase
                 .from('settings')
                 .update({ features_v2: merged })
                 .eq('restaurant_id', restaurantId)
-            
+
             // Invalidate Redis cache dynamically to avoid top-level module resolution issues
             try {
                 const { invalidateCache } = await import('@/lib/redis')
                 await invalidateCache(`features:${restaurantId}`)
             } catch (err) {
-                console.error('Failed to invalidate feature cache during downgrade:', err)
+                console.error('Failed to invalidate feature cache after tier change:', err)
+            }
+            try {
+                const { revalidateTag } = await import('next/cache')
+                revalidateTag(`features-${restaurantId}`, 'max')
+            } catch (err) {
+                console.error('Failed to revalidate feature tag after tier change:', err)
             }
         }
     }
@@ -797,5 +815,153 @@ export async function toggleRestaurantFinance(restaurantId: string, enabled: boo
     if (result.error) return { error: result.error }
 
     revalidatePath('/admin/super-admin')
+    return { success: true }
+}
+
+export async function updateRestaurantFeatures(restaurantId: string, features: any) {
+    await requireRole('super_admin')
+
+    const supabase = await createAdminClient()
+
+    const { data: settingsRow } = await supabase
+        .from('settings')
+        .select('features_v2')
+        .eq('restaurant_id', restaurantId)
+        .maybeSingle()
+
+    const currentFeatures = settingsRow?.features_v2 || {}
+    const mergedFeatures = { ...currentFeatures, ...features }
+
+    const { error } = await supabase
+        .from('settings')
+        .update({ features_v2: mergedFeatures })
+        .eq('restaurant_id', restaurantId)
+
+    if (error) {
+        console.error('updateRestaurantFeatures error:', error)
+        return { error: error.message }
+    }
+
+    try {
+        const { invalidateCache } = await import('@/lib/redis')
+        await invalidateCache(`features:${restaurantId}`)
+    } catch (err) {
+        console.error('Failed to invalidate Redis cache:', err)
+    }
+
+    try {
+        const { revalidateTag } = await import('next/cache')
+        revalidateTag(`features-${restaurantId}`, 'max')
+        revalidateTag(`mode-${restaurantId}`, 'max')
+    } catch (err) {
+        console.error('Failed to invalidate NextCache tags:', err)
+    }
+
+    revalidatePath('/admin/super-admin')
+    revalidatePath('/admin/settings')
+    revalidatePath('/waiter')
+    return { success: true }
+}
+
+// ============================================================
+// System Advertisements Management
+// ============================================================
+
+export async function getSystemAdvertisementsAction() {
+    const supabase = await createAdminClient()
+    const { data, error } = await supabase
+        .from('system_advertisements')
+        .select('*')
+        .order('created_at', { ascending: true })
+
+    if (error) {
+        // Fallback to static ads if table doesn't exist yet
+        return {
+            data: [
+                {
+                    id: '1',
+                    badge: 'NEW INTEGRATION',
+                    title: 'Supercharge Room Bookings with Booking.com Sync',
+                    description: 'Connect your hotel rooms directory directly to online travel agents for automatic real-time rate updates and zero overbookings.',
+                    cta: 'Connect Channels',
+                    link: '/admin/settings'
+                },
+                {
+                    id: '2',
+                    badge: 'HARDWARE CORNER',
+                    title: 'Auto-Print KOTs to Your Thermal Printer',
+                    description: 'Point your 80mm LAN printer at the cashier counter and KOT tickets print the moment an order is confirmed. No manual reprints.',
+                    cta: 'Set Up Printer',
+                    link: '/admin/printers'
+                },
+                {
+                    id: '3',
+                    badge: 'SRMS PLATINUM',
+                    title: 'Auto-Backup Data to Google Drive & Dropbox',
+                    description: 'Never worry about server outages or laptop loss. Keep encrypted hourly database backups synced automatically to your own cloud storage.',
+                    cta: 'Enable Backups',
+                    link: '/admin/profile'
+                }
+            ]
+        }
+    }
+    return { data: data || [] }
+}
+
+export async function saveSystemAdvertisementAction(ad: {
+    id?: string
+    badge: string
+    title: string
+    description: string
+    cta: string
+    link: string
+}) {
+    await requireRole('super_admin')
+    const supabase = await createAdminClient()
+
+    if (ad.id) {
+        const { data, error } = await supabase
+            .from('system_advertisements')
+            .update({
+                badge: ad.badge,
+                title: ad.title,
+                description: ad.description,
+                cta: ad.cta,
+                link: ad.link
+            })
+            .eq('id', ad.id)
+            .select()
+            .single()
+
+        if (error) return { error: error.message }
+        return { data }
+    } else {
+        const { data, error } = await supabase
+            .from('system_advertisements')
+            .insert({
+                badge: ad.badge,
+                title: ad.title,
+                description: ad.description,
+                cta: ad.cta,
+                link: ad.link
+            })
+            .select()
+            .single()
+
+        if (error) return { error: error.message }
+        return { data }
+    }
+}
+
+export async function deleteSystemAdvertisementAction(id: string) {
+    await requireRole('super_admin')
+    const supabase = await createAdminClient()
+
+    const { error } = await supabase
+        .from('system_advertisements')
+        .delete()
+        .eq('id', id)
+
+    if (error) return { error: error.message }
     return { success: true }
 }

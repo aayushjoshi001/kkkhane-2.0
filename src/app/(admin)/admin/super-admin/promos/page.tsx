@@ -80,7 +80,7 @@ export default async function PromosPage() {
                                 <th className="px-5 py-3 text-center">Active</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-hairline">
                             {promos.map(p => (
                                 <tr key={p.id} className="group hover:bg-surface-muted/50 transition-colors">
                                     <td className="px-5 py-3 font-medium text-ink">{p.restaurants?.name || '—'}</td>
@@ -98,7 +98,7 @@ export default async function PromosPage() {
                                     <td className="px-5 py-3 text-center">
                                         {p.is_active
                                             ? <CheckCircle size={14} className="text-emerald-500 mx-auto" />
-                                            : <XCircle size={14} className="text-gray-300 mx-auto" />
+                                            : <XCircle size={14} className="text-ink-subtle mx-auto" />
                                         }
                                     </td>
                                 </tr>

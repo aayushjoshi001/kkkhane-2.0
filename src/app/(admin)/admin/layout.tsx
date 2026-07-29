@@ -1,3 +1,4 @@
+import RealtimeCatchUp from '@/components/shared/RealtimeCatchUp'
 import { ReactNode } from 'react'
 import AdminSidebar from '@/components/admin/AdminSidebar'
 import SuperAdminSidebar from '@/components/admin/SuperAdminSidebar'
@@ -13,6 +14,9 @@ import { FeatureProvider, BusinessModeProvider } from '@/lib/contexts/FeatureCon
 import type { BusinessMode } from '@/lib/businessMode'
 import { SidebarProvider } from '@/lib/contexts/SidebarContext'
 import SidebarToggle from '@/components/admin/SidebarToggle'
+import CalendarToggle from '@/components/shared/CalendarToggle'
+import BusinessSessionControl from '@/components/shared/BusinessSessionControl'
+import { getNstDateString } from '@/lib/timezone'
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
     // requireRole() uses the React.cache-wrapped getCurrentUser — no duplicate DB call
@@ -36,30 +40,44 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     let restaurantName: string | undefined
     let features: Awaited<ReturnType<typeof getRestaurantFeatures>> = null
     let mode: BusinessMode = 'dine_in'
+    let openSession: any = null
+    const todayDate = getNstDateString()
+
     if (!isSuperAdmin && currentUser.restaurantId) {
-        const [{ data }, restaurantFeatures, restaurantMode] = await Promise.all([
+        const [{ data }, restaurantFeatures, restaurantMode, { data: sessionData }] = await Promise.all([
             adminSupabase
                 .from('restaurants')
                 .select('name')
                 .eq('id', currentUser.restaurantId)
-                .single(),
+                .maybeSingle(),
             getRestaurantFeatures(currentUser.restaurantId),
             getRestaurantMode(currentUser.restaurantId),
+            adminSupabase
+                .from('day_book_sessions')
+                .select('id, date, status, opening_balance, opening_bank_balance')
+                .eq('restaurant_id', currentUser.restaurantId)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle(),
         ])
         restaurantName = data?.name || undefined
         features = restaurantFeatures
         mode = restaurantMode
+        openSession = sessionData
     }
 
     return (
         <FeatureProvider features={features}>
         <BusinessModeProvider mode={mode}>
             <SidebarProvider>
-                <div className="min-h-screen bg-canvas flex">
+                <div className="h-screen bg-canvas flex overflow-hidden">
                     <SessionSync userId={currentUser.id} />
                     {isSuperAdmin ? <SuperAdminSidebar userRole={roleNameRaw} userAvatar={userAvatar} /> : <AdminSidebar userRole={roleNameRaw} restaurantName={restaurantName} userAvatar={userAvatar} />}
                     {!isSuperAdmin && currentUser.restaurantId && (
-                        <AdminOrderNotifier restaurantId={currentUser.restaurantId} />
+                        <>
+                            <AdminOrderNotifier restaurantId={currentUser.restaurantId} />
+                            <RealtimeCatchUp restaurantId={currentUser.restaurantId} />
+                        </>
                     )}
 
                     {/* Main Content */}
@@ -67,6 +85,21 @@ export default async function AdminLayout({ children }: { children: ReactNode })
                         <header className="print:hidden bg-surface border-b border-hairline px-5 md:px-8 h-16 flex items-center justify-between shrink-0 z-10">
                             <SidebarToggle isSuperAdmin={isSuperAdmin} />
                             <div className="flex items-center gap-3">
+                                {!isSuperAdmin && (
+                                    <BusinessSessionControl
+                                        initialSession={openSession ? {
+                                            id: openSession.id,
+                                            date: openSession.date,
+                                            status: openSession.status as 'open' | 'closed',
+                                            opening_balance: Number(openSession.opening_balance),
+                                            opening_bank_balance: Number(openSession.opening_bank_balance)
+                                        } : null}
+                                        userRole={roleNameRaw}
+                                        todayDate={todayDate}
+                                        variant="compact"
+                                    />
+                                )}
+                                <CalendarToggle />
                                 <CommandHint />
                                 {!isSuperAdmin && <SoundEnableButton variant="light" />}
                                 <span className={`text-caption font-semibold px-2.5 py-1 rounded-full ${

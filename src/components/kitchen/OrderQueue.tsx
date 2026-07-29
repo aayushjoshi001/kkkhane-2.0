@@ -6,26 +6,47 @@ import { useVirtualizer, useWindowVirtualizer } from '@tanstack/react-virtual'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { playNewOrder } from '@/lib/audio'
 import { toast } from 'react-hot-toast'
-import { timeAgo } from '@/lib/utils'
-import { useCurrency } from '@/lib/contexts/FeatureContext'
-import { Bell, Hourglass, Flame, ChefHat, ChevronDown, CheckSquare, Square, Check, Clock } from 'lucide-react'
-import type { OrderStatus, OrderItemStatus, Order, OrderItem, OrderItemModifier, MenuItem, Session, Table } from '@/types/database'
+import { timeAgo, getKOTSourceLabel, getItemKOTDisplay } from '@/lib/utils'
+import { useCurrency, useFeatures } from '@/lib/contexts/FeatureContext'
+import { Bell, Hourglass, Flame, ChefHat, ChevronDown, CheckSquare, Square, Check, Clock, Printer } from 'lucide-react'
+import type { OrderStatus, OrderItemStatus, Order, OrderItem, OrderItemModifier, MenuItem, Session, Table, Booking } from '@/types/database'
 import { setOrderItemsStatus, getKitchenOrders } from '@/app/(staff)/kitchen/actions'
 import { rollUpOrderStatus } from '@/lib/orderRollup'
 import EmptyState from '@/components/ui/EmptyState'
 import { usePrinter } from '@/lib/print/usePrinter'
+import { claimForPrinting } from '@/lib/print/printClaims'
+import { ensureConnected } from '@/lib/print/qzClient'
 import { buildStationTicket } from '@/lib/print/templates/stationTicket'
 import { STATION_META, itemsForStation, type StationKind } from '@/lib/stations'
 import KotPrintFallback from './KotPrintFallback'
 
+// A network (LAN) KOT printer lives in the kitchen, so the browser-print
+// fallback would come out of THIS desktop (typically the counter) — the wrong
+// station. Before falling back, retry a transient network failure (QZ Tray
+// restarting, printer momentarily unreachable) a few times.
+const KOT_PRINT_MAX_RETRIES = 2
+const KOT_PRINT_RETRY_MS = 2500
+// How often the headless print screen re-checks the QZ Tray connection.
+const QZ_HEALTH_POLL_MS = 15000
+
 export type KitchenOrderItem = OrderItem & {
     menu_item_id?: string
     menu_items?: Partial<MenuItem>
+    menu_item_variations?: { name: string } | null
     order_item_modifiers?: Partial<OrderItemModifier>[]
 }
 
 export type KitchenOrder = Order & {
-    sessions?: Session & { tables?: Partial<Table> }
+    sessions?: (Session & {
+        tables?: (Table & {
+            rooms?: { id: string; room_number: string } | null
+            sessions?: { id: string; seat_number: number; status: string }[] | null
+        }) | null
+    }) | null
+    bookings?: {
+        id: string
+        rooms?: { id: string; room_number: string } | null
+    } | null
     order_items?: KitchenOrderItem[]
     order_type?: 'dine_in' | 'takeout' | 'delivery'
 }
@@ -43,11 +64,27 @@ export type ComboItemRow = {
 const QUEUE_AFTER_MS = 2 * 60 * 1000
 
 const ORDER_SELECT = `
-  id, status, order_type, total_amount, placed_at, customer_note,
-  sessions ( tables ( label ) ),
+  id, status, order_type, total_amount, placed_at, customer_note, booking_id, session_id,
+  bookings:booking_id (
+    id,
+    rooms:room_id ( id, room_number )
+  ),
+  sessions (
+    id,
+    seat_number,
+    booking_id,
+    tables:table_id (
+      id,
+      label,
+      room_id,
+      rooms:room_id ( id, room_number ),
+      sessions ( id, seat_number, status )
+    )
+  ),
   order_items (
-    id, menu_item_id, quantity, unit_price, special_request, status, station, claimed_by, claimed_at,
+    id, menu_item_id, quantity, unit_price, special_request, status, station, claimed_by, claimed_at, needs_confirmation, kot_printed_at,
     menu_items ( id, name, is_combo ),
+    menu_item_variations:menu_item_variation_id ( id, name ),
     order_item_modifiers ( modifier_name, price_adjustment )
   )
 ` as const
@@ -61,7 +98,7 @@ const TAB_META: Record<TabKey, { label: string; icon: typeof Bell; accent: strin
     cooking: { label: 'Cooking',    icon: Flame,     accent: '#ef4444', soft: '#FEE2E2', border: '#FCA5A5' },
 }
 
-export default function OrderQueue({ initialOrders, restaurantId, comboItems = [], userId, staffNames = {}, station = 'kitchen' }: {
+export default function OrderQueue({ initialOrders, restaurantId, comboItems = [], userId, staffNames = {}, station = 'kitchen', restaurantName }: {
     initialOrders: KitchenOrder[]
     restaurantId: string
     comboItems?: ComboItemRow[]
@@ -69,14 +106,19 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     staffNames?: Record<string, string>
     /** Which station this board serves. Kitchen sees food lines, bar sees drinks. */
     station?: StationKind
+    restaurantName: string
 }) {
     const stationMeta = STATION_META[station]
     // Project an order down to just this station's lines. Orders with none of
     // our lines (e.g. an all-food order on the bar board) drop out entirely, so
     // the kitchen never sees a drink and the bar never sees a burger.
+    // Items still awaiting cashier confirmation (QR self-orders) are excluded
+    // here too — an order can be partially confirmed, so this filters at the
+    // item level rather than hiding/showing the whole order.
     const projectStation = useCallback((list: KitchenOrder[]): KitchenOrder[] =>
         list.reduce<KitchenOrder[]>((acc, o) => {
-            const mine = itemsForStation(o.order_items, station)
+            const confirmedItems = (o.order_items || []).filter(i => !i.needs_confirmation)
+            const mine = itemsForStation(confirmedItems, station)
             if (mine.length) acc.push({ ...o, order_items: mine })
             return acc
         }, []), [station])
@@ -85,14 +127,57 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     const [now, setNow] = useState(() => Date.now())
     const [activeTab, setActiveTab] = useState<TabKey>('new')
     const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+    const [printOnlyMode, setPrintOnlyMode] = useState<boolean>(() => {
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem(`print_only_${station}`) === 'true'
+        }
+        return false
+    })
     const money = useCurrency()
+    const features = useFeatures()
+    const kdsEnabled = !features.kotEnabled && (features.kdsEnabled ?? true)
     const supabaseRef = useRef(createClient())
-    const { print: printKot } = usePrinter(stationMeta.printerRole)
+    const { print: printKot, networkPrinter } = usePrinter(stationMeta.printerRole)
     // Queued, not a single slot — QZ Tray being down for the whole shift means
     // every order fails to print at once, and a single slot would silently
     // drop all but the most recent order's fallback ticket.
     const [kotFallbackQueue, setKotFallbackQueue] = useState<KitchenOrder[]>([])
     const dequeueKotFallback = useCallback(() => setKotFallbackQueue(q => q.slice(1)), [])
+
+    // Pending retry timers, cleared on unmount so a queued retry can't fire
+    // (and setState) after the screen is gone.
+    const retryTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
+    useEffect(() => () => { retryTimers.current.forEach(clearTimeout); retryTimers.current.clear() }, [])
+
+    // Live QZ Tray connection status for the headless print screen. A dead agent
+    // is the #1 silent cause of "orders aren't printing" — surfacing it stops
+    // tickets from quietly diverting to the browser fallback unnoticed. Only
+    // polls while in print-only mode.
+    const [qzConnected, setQzConnected] = useState<boolean | null>(null)
+    useEffect(() => {
+        if (!printOnlyMode) return
+        let cancelled = false
+        const check = () => { void ensureConnected().then((r) => { if (!cancelled) setQzConnected(r.ok) }) }
+        check()
+        const id = setInterval(check, QZ_HEALTH_POLL_MS)
+        return () => { cancelled = true; clearInterval(id) }
+    }, [printOnlyMode])
+
+    // Latest committed board, readable synchronously from realtime callbacks. A
+    // setState updater's local flag is NOT reliably set by the time you read it
+    // right after the call, so the old `isNew`/`stillPresent`/`added` gates often
+    // read false and skipped the auto-print entirely — the order still landed on
+    // the board (the updater ran later) but the ticket never printed.
+    const ordersRef = useRef<KitchenOrder[]>(orders)
+    useEffect(() => { ordersRef.current = orders }, [orders])
+
+    // Local echo of what this tab has already sent, purely to save a round trip.
+    // It is NOT the record of what has printed — order_items.kot_printed_at is,
+    // and the claim below is what actually decides. Deliberately not seeded from
+    // the initial board any more: an order placed while no station was open
+    // arrives unprinted, and seeding it here would suppress the very ticket the
+    // claim exists to recover.
+    const printedRef = useRef<Set<string>>(new Set())
 
     // Auto-print the KOT. Falls back to a browser print if QZ Tray isn't
     // connected/trusted on this kitchen screen yet. Called as a plain
@@ -102,24 +187,69 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
         // `order` is already projected to this station's lines, so an all-food
         // order reaching the bar board has an empty item list — nothing to print.
         if (!(order.order_items || []).length) return
-        void printKot(buildStationTicket(order, station)).then((result) => {
-            if (result.ok) return
-            setKotFallbackQueue(q => [...q, order])
-            toast.error(
-                result.status === 'no-printer-selected'
-                    ? `No ${stationMeta.ticketAbbr} printer set — printed via browser instead. Set one in Printer Settings.`
-                    : `${stationMeta.ticketAbbr} printer not connected — printed via browser instead.`
-            )
-        })
-    }, [printKot, station, stationMeta.ticketAbbr])
+        // Hoisted function declaration so it can recurse for retries without a
+        // use-before-declared reference to the surrounding useCallback.
+        function attemptPrint(attempt: number) {
+            void printKot(buildStationTicket(order, station, restaurantName)).then((result) => {
+                if (result.ok) return
+                // Retry transient failures on a LAN printer before falling back to
+                // the local browser print (which prints at this desktop, not the
+                // kitchen). Don't retry no-printer-selected or a trust block —
+                // those need a human, not another attempt.
+                const transient = result.status === 'not-running' || result.status === 'print-failed'
+                if (networkPrinter && transient && attempt < KOT_PRINT_MAX_RETRIES) {
+                    const t = setTimeout(() => {
+                        retryTimers.current.delete(t)
+                        attemptPrint(attempt + 1)
+                    }, KOT_PRINT_RETRY_MS)
+                    retryTimers.current.add(t)
+                    return
+                }
+                setKotFallbackQueue(q => [...q, order])
+                toast.error(
+                    result.status === 'no-printer-selected'
+                        ? `No ${stationMeta.ticketAbbr} printer set — printed via browser instead. Set one in Printer Settings.`
+                        : networkPrinter
+                            ? `${stationMeta.ticketAbbr} printer unreachable after ${KOT_PRINT_MAX_RETRIES + 1} tries — printed on this device instead.`
+                            : `${stationMeta.ticketAbbr} printer not connected — printed via browser instead.`
+                )
+            })
+        }
+        attemptPrint(0)
+    }, [printKot, station, stationMeta.ticketAbbr, networkPrinter])
+
+    // Print a KOT for whichever of this order's items haven't been printed
+    // yet — a QR self-order confirmed in multiple batches gets one ticket per
+    // batch, scoped to just the newly-confirmed items; a no-op if there's
+    // nothing new (already printed, or still awaiting confirmation).
+    const maybePrintKot = useCallback(async (order: KitchenOrder) => {
+        const candidates = (order.order_items || []).filter(
+            it => it.id && !it.kot_printed_at && !printedRef.current.has(it.id)
+        )
+        if (candidates.length === 0) return
+        // Claim before printing. If the cashier's till is also open, exactly one
+        // of us gets these lines back and the other prints nothing — which is
+        // what stops two open stations producing two tickets for one order.
+        const wonIds = await claimForPrinting(supabaseRef.current, candidates.map(it => it.id))
+        if (wonIds.length === 0) return
+        const won = new Set(wonIds)
+        wonIds.forEach(id => printedRef.current.add(id))
+        printKotWithFallback({ ...order, order_items: candidates.filter(it => won.has(it.id)) })
+    }, [printKotWithFallback])
 
     // Resync: fetch fresh orders from DB on mount and whenever the realtime
     // channel reconnects. This recovers any orders missed during a disconnect
     // (e.g. logout → login, network blip, token refresh).
     const resync = useCallback(async () => {
         const fresh = await getKitchenOrders(restaurantId)
-        setOrders(projectStation(fresh as unknown as KitchenOrder[]))
-    }, [restaurantId, projectStation])
+        const projected = projectStation(fresh as unknown as KitchenOrder[])
+        setOrders(projected)
+        // Print anything still outstanding. Previously resync only refreshed the
+        // board, so an order that arrived while this tab was closed or dropped
+        // came back on screen having never printed. The claim makes this safe to
+        // run on every mount and reconnect.
+        for (const order of projected) await maybePrintKot(order)
+    }, [restaurantId, projectStation, maybePrintKot])
 
     useEffect(() => {
         resync() // always refresh on mount
@@ -133,55 +263,55 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     useRestaurantTable(restaurantId, 'orders', async (payload) => {
         const orderType = (payload.new as { order_type?: string } | null)?.order_type
         const isTakeoutDelivery = orderType === 'takeout' || orderType === 'delivery'
-        const needsConfirmation = (payload.new as { needs_confirmation?: boolean } | null)?.needs_confirmation === true
-        
+
         if (payload.eventType === 'INSERT') {
-            // Skip unconfirmed or takeout/delivery pending orders.
-            if (needsConfirmation || (isTakeoutDelivery && payload.new.status === 'pending')) return
+            // Skip takeout/delivery orders still pending cashier confirmation.
+            // Dine-in QR self-orders are handled below by projectStation, which
+            // drops an order entirely while every item is still unconfirmed.
+            if (isTakeoutDelivery && payload.new.status === 'pending') return
             const { data } = await supabaseRef.current.from('orders').select(ORDER_SELECT).eq('id', payload.new.id).single()
             if (!data) return
             const [order] = projectStation([data as unknown as KitchenOrder])
-            // No lines for this station (e.g. an all-food order on the bar board).
+            // No lines for this station (e.g. an all-food order on the bar
+            // board), or every item is still awaiting cashier confirmation.
             if (!order) return
-            let isNew = false
-            setOrders(prev => {
-                if (prev.some(o => o.id === order.id)) return prev
-                isNew = true
-                return [...prev, order]
-            })
-            if (!isNew) return
-            // Delay sound + toast 400ms to avoid false alarms: if needs_confirmation=true
-            // arrives on a follow-up UPDATE the order will be removed before the 400ms fires.
-            setTimeout(() => {
-                let stillPresent = false
-                setOrders(cur => {
-                    if (!cur.some(o => o.id === order.id)) return cur // already removed — was a false alarm
-                    stillPresent = true
-                    playNewOrder().catch(() => {})
-                    const tbl = order.sessions?.tables?.label
-                    const isTakeout = order.order_type === 'takeout'
-                    const isDelivery = order.order_type === 'delivery'
-                    const sourceLabel = isTakeout ? 'Takeaway' : isDelivery ? 'Delivery' : (tbl ? `Table ${tbl}` : 'Order')
-                    toast.custom((t) => (
-                        <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-surface shadow-xl rounded-2xl px-4 py-3 flex items-start gap-3 border-2 border-amber-300`}>
-                            <span className="text-xl mt-0.5">🔔</span>
-                            <div>
-                                <p className="font-bold text-sm text-amber-700">New Order!</p>
-                                <p className="text-xs text-ink-subtle mt-0.5">{sourceLabel} · {money(order.total_amount)}</p>
-                            </div>
+            setOrders(prev => prev.some(o => o.id === order.id) ? prev : [...prev, order])
+            // Delay sound + toast + print 400ms to avoid false alarms: if a
+            // follow-up UPDATE (e.g. a cancel) removes the order before the
+            // 400ms fires, it's a false alarm. Presence is read from ordersRef
+            // (the committed board) rather than a setState-updater flag, so the
+            // print actually fires; maybePrintKot dedupes per item id.
+            setTimeout(async () => {
+                if (!ordersRef.current.some(o => o.id === order.id)) return // removed — false alarm
+                playNewOrder().catch(() => {})
+                const sourceLabel = getKOTSourceLabel(order)
+                toast.custom((t) => (
+                    <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-surface shadow-xl rounded-2xl px-4 py-3 flex items-start gap-3 border-2 border-amber-300`}>
+                        <span className="text-xl mt-0.5">🔔</span>
+                        <div>
+                            <p className="font-bold text-sm text-amber-700">New Order!</p>
+                            <p className="text-xs text-ink-subtle mt-0.5">{sourceLabel} · {money(order.total_amount)}</p>
                         </div>
-                    ), { duration: 6000, position: 'top-right' })
-                    return cur
-                })
-                // Outside the updater — a setState updater can run twice under
-                // React 18 StrictMode, and printing is a real side effect.
-                if (stillPresent) printKotWithFallback(order)
-            }, 400)
+                    </div>
+                ), { duration: 6000, position: 'top-right' })
+
+                // Re-fetch complete order with all inserted items after settlement window
+                const { data: latestData } = await supabaseRef.current.from('orders').select(ORDER_SELECT).eq('id', order.id).single()
+                if (latestData) {
+                    const [latestOrder] = projectStation([latestData as unknown as KitchenOrder])
+                    if (latestOrder) {
+                        setOrders(prev => prev.map(o => o.id === latestOrder.id ? latestOrder : o))
+                        void maybePrintKot(latestOrder)
+                        return
+                    }
+                }
+                void maybePrintKot(order)
+            }, 500)
         } else if (payload.eventType === 'UPDATE') {
             const newStatus = payload.new.status as string
             const isTakeoutDeliveryPending = isTakeoutDelivery && newStatus === 'pending'
-            
-            if (newStatus === 'delivered' || newStatus === 'cancelled' || needsConfirmation || isTakeoutDeliveryPending) {
+
+            if (newStatus === 'delivered' || newStatus === 'cancelled' || isTakeoutDeliveryPending) {
                 setOrders(prev => prev.filter(o => o.id !== payload.new.id))
                 return
             }
@@ -189,36 +319,34 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             if (!data) return
             const [fresh] = projectStation([data as unknown as KitchenOrder])
             if (!fresh) {
-                // Order lost its lines for this station — drop it from the board.
+                // Order lost its lines for this station, or every remaining item
+                // is still awaiting confirmation — drop it from the board.
                 setOrders(prev => prev.filter(o => o.id !== payload.new.id))
                 return
             }
-            let added = false
-            setOrders(prev => {
-                if (prev.some(o => o.id === fresh.id)) return prev.map(o => o.id === fresh.id ? fresh : o)
-                added = true
-                return [...prev, fresh]
-            })
-            if (added) {
+            // Whether this order was already on the board (read from the committed
+            // board via ref, not a setState-updater flag — the old `added` flag was
+            // read before the updater ran, so the print here silently never fired).
+            const wasPresent = ordersRef.current.some(o => o.id === fresh.id)
+            setOrders(prev => prev.some(o => o.id === fresh.id) ? prev.map(o => o.id === fresh.id ? fresh : o) : [...prev, fresh])
+            if (!wasPresent) {
                 playNewOrder().catch(() => {})
-                const tbl = fresh.sessions?.tables?.label
-                const isTakeout = fresh.order_type === 'takeout'
-                const isDelivery = fresh.order_type === 'delivery'
-                const sourceLabel = isTakeout ? 'Takeaway' : isDelivery ? 'Delivery' : (tbl ? `Table ${tbl}` : 'Order')
+                const sourceLabel = getKOTSourceLabel(fresh)
                 toast.custom((t) => (
                     <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-surface shadow-xl rounded-2xl px-4 py-3 flex items-start gap-3 border-2 border-amber-300`}>
-                        <span className="text-xl mt-0.5">ðŸ””</span>
+                        <span className="text-xl mt-0.5">🔔</span>
                         <div>
                             <p className="font-bold text-sm text-amber-700">New Order!</p>
-                            <p className="text-xs text-ink-subtle mt-0.5">{sourceLabel} Â· {money(fresh.total_amount)}</p>
+                            <p className="text-xs text-ink-subtle mt-0.5">{sourceLabel} · {money(fresh.total_amount)}</p>
                         </div>
                     </div>
                 ), { duration: 6000, position: 'top-right' })
-                // This path covers orders that only become kitchen-visible via an
-                // UPDATE (e.g. a takeout/delivery order leaving needs_confirmation) —
-                // it needs its own auto-print call, same as the INSERT path above.
-                printKotWithFallback(fresh)
             }
+            // Always check for newly-confirmed items to print, even when the
+            // order was already on the board (a second confirmation batch on
+            // a QR self-order that was partially confirmed earlier).
+            // maybePrintKot dedupes per item id so nothing double-prints.
+            void maybePrintKot(fresh)
         }
     }, resync)
 
@@ -245,7 +373,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     }
 
     // Bucket each order's dishes by their own state. Ready dishes leave the kitchen
-    // (they go to the waiter) â€” there is no Pass column here.
+    // (they go to the waiter) — there is no Pass column here.
     const { newO, queueO, cookO } = useMemo(() => {
         const sorted = [...orders].sort((a, b) => new Date(a.placed_at).getTime() - new Date(b.placed_at).getTime())
         const newO: Section[] = [], queueO: Section[] = [], cookO: Section[] = []
@@ -291,6 +419,7 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             collapsed={collapsed.has(section.order.id)}
             onToggle={() => toggleCollapse(section.order.id)}
             onApply={applyItemStatus}
+            kdsEnabled={kdsEnabled}
         />
     )
 
@@ -298,69 +427,134 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
         <div className="h-full flex flex-col bg-[#FBF7F3]">
             <KotPrintFallback order={kotFallbackQueue[0] ?? null} station={station} onDone={dequeueKotFallback} />
 
-            {/* Mobile: tab bar */}
-            <div className="lg:hidden shrink-0 bg-surface border-b border-hairline px-2 sm:px-4">
-                <div className="max-w-2xl mx-auto grid grid-cols-3">
-                    {(Object.keys(TAB_META) as TabKey[]).map(key => {
-                        const meta = TAB_META[key]
-                        const Icon = meta.icon
-                        const isActive = activeTab === key
-                        const count = sections[key].length
-                        return (
-                            <button
-                                key={key}
-                                onClick={() => setActiveTab(key)}
-                                className="relative py-3 flex flex-col items-center gap-1 transition-colors"
-                                style={{ color: isActive ? meta.accent : '#9ca3af' }}
-                            >
-                                <span className="flex items-center gap-1.5">
-                                    <Icon size={16} />
-                                    {count > 0 && (
-                                        <span className="text-[11px] font-extrabold min-w-4.5 h-4.5 px-1 rounded-full inline-flex items-center justify-center text-white"
-                                              style={{ background: isActive ? meta.accent : '#cbd5e1' }}>
-                                            {count}
+            {/* Top Bar with Print-Only Mode Switch */}
+            <div className="shrink-0 bg-surface border-b border-hairline px-4 py-3.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <h1 className="font-black text-sm uppercase tracking-wider text-ink">
+                        {stationMeta.ticketAbbr} Control Board
+                    </h1>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                            type="checkbox"
+                            checked={printOnlyMode}
+                            onChange={(e) => {
+                                const val = e.target.checked
+                                setPrintOnlyMode(val)
+                                localStorage.setItem(`print_only_${station}`, String(val))
+                            }}
+                            className="w-4 h-4 rounded text-brand-500 border-hairline focus:ring-brand-500 accent-[#FB6303]"
+                        />
+                        <span className="text-xs font-black uppercase tracking-wider text-ink-muted">
+                            KOT Print-Only Mode
+                        </span>
+                    </label>
+                </div>
+            </div>
+
+            {printOnlyMode ? (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-surface m-6 rounded-3xl border border-hairline shadow-sm max-w-2xl mx-auto my-auto h-[400px]">
+                    <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${qzConnected === false ? 'bg-red-50 text-red-500' : 'bg-emerald-50 text-emerald-500 animate-pulse'}`}>
+                        <Printer size={32} />
+                    </div>
+                    <h3 className="text-lg font-black text-ink">KOT Auto-Print Service Active</h3>
+                    <p className="text-sm text-ink-subtle mt-2 max-w-sm">
+                        This tab is running in headless printer mode. Incoming orders will print automatically. Order cards are hidden to maximize browser performance.
+                    </p>
+
+                    {/* Live health — a dead QZ Tray silently diverts every ticket to
+                        the browser fallback, so make its status impossible to miss. */}
+                    <div className="mt-5 flex flex-col items-center gap-2">
+                        <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border ${
+                            qzConnected === false ? 'text-red-600 bg-red-50 border-red-200'
+                            : qzConnected ? 'text-emerald-600 bg-emerald-50 border-emerald-200'
+                            : 'text-ink-subtle bg-surface-muted border-hairline'
+                        }`}>
+                            <span className={`w-2 h-2 rounded-full ${qzConnected === false ? 'bg-red-500' : qzConnected ? 'bg-emerald-500' : 'bg-ink-subtle'}`} />
+                            {qzConnected === false ? 'QZ Tray not running — tickets will print on THIS device'
+                                : qzConnected ? 'QZ Tray connected' : 'Checking QZ Tray…'}
+                        </span>
+                        {networkPrinter ? (
+                            <span className="text-[11px] text-ink-subtle">
+                                Sending {stationMeta.ticketAbbr} to {networkPrinter.target.host}:{networkPrinter.target.port}
+                            </span>
+                        ) : (
+                            <span className="text-[11px] text-amber-600">
+                                No network printer configured — using this device’s local printer
+                            </span>
+                        )}
+                    </div>
+                </div>
+            ) : (
+                <>
+                    {/* Mobile: tab bar */}
+                    <div className="lg:hidden shrink-0 bg-surface border-b border-hairline px-2 sm:px-4">
+                        <div className="max-w-2xl mx-auto grid grid-cols-3">
+                            {(Object.keys(TAB_META) as TabKey[]).map(key => {
+                                const meta = TAB_META[key]
+                                const Icon = meta.icon
+                                const isActive = activeTab === key
+                                const count = sections[key].length
+                                return (
+                                    <button
+                                        key={key}
+                                        onClick={() => setActiveTab(key)}
+                                        className="relative py-3 flex flex-col items-center gap-1 transition-colors"
+                                        style={{ color: isActive ? meta.accent : '#9ca3af' }}
+                                    >
+                                        <span className="flex items-center gap-1.5">
+                                            <Icon size={16} />
+                                            {count > 0 && (
+                                                <span className="text-[11px] font-extrabold min-w-4.5 h-4.5 px-1 rounded-full inline-flex items-center justify-center text-white"
+                                                      style={{ background: isActive ? meta.accent : '#cbd5e1' }}>
+                                                    {count}
+                                                </span>
+                                            )}
                                         </span>
-                                    )}
-                                </span>
-                                <span className="text-xs font-bold">{meta.label}</span>
-                                {isActive && <span className="absolute bottom-0 left-3 right-3 h-0.75 rounded-t-full" style={{ background: meta.accent }} />}
-                            </button>
-                        )
-                    })}
-                </div>
-            </div>
-
-            {/* Mobile: active section list */}
-            <div className="lg:hidden flex-1 overflow-y-auto px-3 sm:px-4 py-4">
-                <div className="max-w-2xl mx-auto space-y-3">
-                    {active.map(section => renderTicket(section, activeTab))}
-                    {active.length === 0 && (
-                        <div className="pt-16">
-                            <EmptyState icon={TAB_META[activeTab].icon} title={emptyTitle(activeTab)} />
+                                        <span className="text-xs font-bold">{meta.label}</span>
+                                        {isActive && <span className="absolute bottom-0 left-3 right-3 h-0.75 rounded-t-full" style={{ background: meta.accent }} />}
+                                    </button>
+                                )
+                            })}
                         </div>
-                    )}
-                </div>
-            </div>
+                    </div>
 
-            {/* Desktop: three columns side by side */}
-            <div className="hidden lg:flex flex-1 overflow-hidden gap-4 p-5">
-                {(Object.keys(TAB_META) as TabKey[]).map(key => {
-                    const meta = TAB_META[key]
-                    const Icon = meta.icon
-                    const list = sections[key]
-                    return (
-                            <VirtualColumn
-                                key={key}
-                                tabKey={key}
-                                meta={meta}
-                                list={list}
-                                renderTicket={(section) => renderTicket(section, key)}
-                                emptyTitle={emptyTitle(key)}
-                            />
-                        )
-                    })}
-                </div>
-            </div>
+                    {/* Mobile: active section list */}
+                    <div className="lg:hidden flex-1 overflow-y-auto px-3 sm:px-4 py-4">
+                        <div className="max-w-2xl mx-auto space-y-3">
+                            {active.map(section => renderTicket(section, activeTab))}
+                            {active.length === 0 && (
+                                <div className="pt-16">
+                                    <EmptyState icon={TAB_META[activeTab].icon} title={emptyTitle(activeTab)} />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Desktop: three columns side by side */}
+                    <div className="hidden lg:flex flex-1 overflow-hidden gap-4 p-5">
+                        {(Object.keys(TAB_META) as TabKey[]).map(key => {
+                            const meta = TAB_META[key]
+                            const Icon = meta.icon
+                            const list = sections[key]
+                            return (
+                                <VirtualColumn
+                                    key={key}
+                                    tabKey={key}
+                                    meta={meta}
+                                    list={list}
+                                    renderTicket={(section) => renderTicket(section, key)}
+                                    emptyTitle={emptyTitle(key)}
+                                />
+                            )
+                        })}
+                    </div>
+                </>
+            )}
+        </div>
         )
     }
     
@@ -416,12 +610,12 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
         )
     }
 function itemStatusPill(status: string) {
-    if (status === 'preparing') return { label: 'Cookingâ€¦', cls: 'text-brand-500' }
+    if (status === 'preparing') return { label: 'Cooking…', cls: 'text-brand-500' }
     if (status === 'ready')     return { label: 'Ready', cls: 'text-emerald-600' }
     return { label: 'Pending', cls: 'text-ink-subtle' }
 }
 
-function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffNames, stationAccent, collapsed, onToggle, onApply }: {
+function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffNames, stationAccent, collapsed, onToggle, onApply, kdsEnabled = true }: {
     tab: TabKey
     order: KitchenOrder
     items: KitchenOrderItem[]
@@ -434,16 +628,14 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
     collapsed: boolean
     onToggle: () => void
     onApply: (orderId: string, itemIds: string[], next: OrderItemStatus) => Promise<void>
+    kdsEnabled?: boolean
 }) {
     const meta = TAB_META[tab]
     const isCooking = tab === 'cooking'
     
-    const tbl = order.sessions?.tables?.label
-    const isTakeout = order.order_type === 'takeout'
-    const isDelivery = order.order_type === 'delivery'
-    const space = isTakeout ? 'Takeaway' : isDelivery ? 'Delivery' : (tbl ? `Table ${tbl}` : 'Order')
+    const space = getKOTSourceLabel(order)
 
-    // Selection: New/Queue â†’ all dishes; Cooking â†’ only dishes this chef owns.
+    // Selection: New/Queue → all dishes; Cooking → only dishes this chef owns.
     const ownItem = (it: KitchenOrderItem) => !it.claimed_by || it.claimed_by === userId
     const selectable = useMemo(
         () => isCooking ? items.filter(it => !it.claimed_by || it.claimed_by === userId) : items,
@@ -491,7 +683,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
             <button onClick={onToggle} className="w-full text-left px-4 pt-3.5 pb-3">
                 <div className="flex items-center gap-2 flex-wrap pr-6 relative">
                     <span className="font-extrabold text-ink">#{order.id.slice(0, 4).toUpperCase()}</span>
-                    <span className="text-[11px] font-bold text-white px-2 py-0.5 rounded-full" style={{ background: stationAccent }}>{space}</span>
+                    <span className="text-[11px] font-bold text-white px-2 py-0.5 rounded-full truncate max-w-[140px]" style={{ background: stationAccent }}>{space}</span>
                     <span className="text-[11px] font-semibold text-ink-subtle bg-surface-muted px-2 py-0.5 rounded-full">{items.length} dish{items.length > 1 ? 'es' : ''}</span>
                     {chefLabel && (
                         <span className="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
@@ -503,14 +695,14 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
                 <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-ink-subtle font-medium">
                     <Clock size={11} />
                     {tab === 'queue' ? `waiting ${waitedMin}m` : timeAgo(order.placed_at)}
-                    {!isCooking && selIds.length > 0 && <span className="ml-1" style={{ color: meta.accent }}>Â· {selIds.length} selected</span>}
+                    {!isCooking && selIds.length > 0 && <span className="ml-1" style={{ color: meta.accent }}>· {selIds.length} selected</span>}
                 </div>
             </button>
 
             {!collapsed && (
                 <div className="px-4 pb-4">
                     {/* Select-all + action (New/Queue) */}
-                    {!isCooking && items.length > 0 && (
+                    {kdsEnabled && !isCooking && items.length > 0 && (
                         <div className="flex items-center justify-between mb-2 pb-2 border-b border-hairline">
                             {items.length > 1 ? (
                                 <button onClick={toggleAll} className="flex items-center gap-2 text-xs font-bold text-ink-subtle">
@@ -528,7 +720,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
                     <div className="space-y-1">
                         {items.map(item => {
                             const mine = ownItem(item)
-                            const canSelect = isCooking ? mine : true
+                            const canSelect = kdsEnabled && (isCooking ? mine : true)
                             const isSel = selected.has(item.id)
                             const pill = itemStatusPill(item.status)
                             const lineTotal = Number(item.unit_price ?? 0) * item.quantity
@@ -538,23 +730,32 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
                                     onClick={canSelect ? () => toggle(item.id) : undefined}
                                     className={`flex items-center gap-3 py-2 rounded-lg px-1 ${canSelect ? 'cursor-pointer' : 'opacity-70'} ${isSel ? 'bg-brand-50/60' : ''}`}
                                 >
-                                    {canSelect ? (
+                                    {kdsEnabled && (canSelect ? (
                                         isSel ? <CheckSquare size={18} style={{ color: meta.accent }} className="shrink-0" /> : <Square size={18} className="text-gray-300 shrink-0" />
                                     ) : (
                                         <span className="w-[18px] h-[18px] rounded border border-hairline-strong shrink-0" />
-                                    )}
+                                    ))}
                                     <div className="flex-1 min-w-0">
-                                        <p className="font-semibold text-ink text-sm leading-tight truncate">{item.menu_items?.name}</p>
-                                        <p className="text-[11px] text-ink-subtle">Ã—{item.quantity}{lineTotal > 0 ? ` Â· ${money(lineTotal)}` : ''}{item.special_request ? ` Â· ${item.special_request}` : ''}</p>
+                                        {(() => {
+                                            const { name, note } = getItemKOTDisplay(item, order.order_type === 'takeout' && !order.bookings)
+                                            return (
+                                                <>
+                                                    <p className="font-semibold text-ink text-sm leading-tight truncate">{name}</p>
+                                                    <p className="text-[11px] text-ink-subtle">×{item.quantity}{lineTotal > 0 ? ` · ${money(lineTotal)}` : ''}{note ? ` · ${note}` : ''}</p>
+                                                </>
+                                            )
+                                        })()}
                                         {item.menu_items?.is_combo && (
                                             <div className="mt-0.5 pl-2 border-l-2 border-hairline text-[10px] text-ink-subtle space-y-0.5">
                                                 {comboItems.filter(c => c.combo_id === item.menu_item_id).map(c => (
-                                                    <div key={c.id}>â€¢ {c.quantity * item.quantity}Ã— {c.menu_items?.name || 'Item'}</div>
+                                                    <div key={c.id}>• {c.quantity * item.quantity}× {c.menu_items?.name || 'Item'}</div>
                                                 ))}
                                             </div>
                                         )}
                                     </div>
-                                    <span className={`text-[11px] font-semibold italic shrink-0 ${pill.cls}`}>{pill.label}</span>
+                                    {kdsEnabled && (
+                                        <span className={`text-[11px] font-semibold italic shrink-0 ${pill.cls}`}>{pill.label}</span>
+                                    )}
                                 </div>
                             )
                         })}
@@ -568,7 +769,7 @@ function OrderTicket({ tab, order, items, comboItems, money, now, userId, staffN
                     )}
 
                     {/* Mark Ready (Cooking, owner) */}
-                    {isCooking && (
+                    {kdsEnabled && isCooking && (
                         selectable.length > 0 ? (
                             <button
                                 onClick={() => run('ready')}

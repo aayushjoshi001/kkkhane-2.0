@@ -43,7 +43,8 @@ export async function computeMonthlyAccrualPreview(
             .from('users')
             .select('id, full_name, created_at, join_date, monthly_salary')
             .eq('restaurant_id', restaurantId)
-            .eq('is_active', true),
+            .eq('is_active', true)
+            .is('deleted_at', null),
         supabase
             .from('staff_ledger')
             .select('user_id')

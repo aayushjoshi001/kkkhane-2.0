@@ -10,6 +10,7 @@ import { useCurrency } from '@/lib/contexts/FeatureContext'
 import FeedSection from '@/components/ui/FeedSection'
 import OrderCard from '@/components/ui/OrderCard'
 import Button from '@/components/ui/Button'
+import { useServerState } from '@/lib/hooks/useServerState'
 
 export interface UnpaidOrder {
     id: string
@@ -28,7 +29,7 @@ export default function CashPaymentFeed({
     restaurantId: string
     onPendingCountChange?: (count: number) => void
 }) {
-    const [orders, setOrders] = useState<UnpaidOrder[]>(initialOrders)
+    const [orders, setOrders] = useServerState<UnpaidOrder[]>(initialOrders)
     const money = useCurrency()
     const [processingId, setProcessingId] = useState<string | null>(null)
 
@@ -77,10 +78,10 @@ export default function CashPaymentFeed({
                         title={tableLabel ? `Table ${tableLabel}` : 'Takeout'}
                         meta={order.delivered_at ? <span>Delivered {timeAgo(order.delivered_at)}</span> : undefined}
                         trailing={
-                            <div className="flex flex-col items-end gap-2">
-                                <span className="text-h3 text-ink tabular">{money(order.total_amount)}</span>
+                            <div className="flex flex-col items-end gap-2 max-w-[160px]">
+                                <span className="text-h3 text-ink tabular truncate max-w-full">{money(order.total_amount)}</span>
                                 <Button variant="primary" size="sm" icon={CheckCircle} loading={isProcessing} onClick={() => handleCashPaid(order.id)}>
-                                    I'm Going to Collect
+                                    Collect
                                 </Button>
                             </div>
                         }

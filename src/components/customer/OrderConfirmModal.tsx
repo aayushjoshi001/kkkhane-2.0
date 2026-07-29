@@ -2,6 +2,7 @@
 
 import { X, ShoppingBag, Loader2 } from 'lucide-react'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
+import Modal from '@/components/ui/Modal'
 
 interface OrderConfirmModalProps {
     itemCount: number
@@ -20,15 +21,15 @@ export default function OrderConfirmModal({
 }: OrderConfirmModalProps) {
     const money = useCurrency()
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-fade-in">
-            {/* Backdrop */}
-            <div
-                className="absolute inset-0 bg-ink/50 backdrop-blur-sm"
-                onClick={!isPlacing ? onCancel : undefined}
-            />
-
-            {/* Modal */}
-            <div className="relative bg-surface rounded-3xl max-w-sm w-full border border-hairline shadow-2xl overflow-hidden animate-scale-in">
+        <Modal
+            open
+            onClose={onCancel}
+            size="sm"
+            ariaLabel="Confirm your order"
+            closeOnBackdrop={!isPlacing}
+            closeOnEscape={!isPlacing}
+            className="overflow-hidden"
+        >
                 {/* Header */}
                 <div className="bg-gradient-to-br from-[#FB6303] to-[#D14E00] px-6 pt-6 pb-8 text-center text-white relative">
                     {!isPlacing && (
@@ -84,7 +85,6 @@ export default function OrderConfirmModal({
                         )}
                     </button>
                 </div>
-            </div>
-        </div>
+        </Modal>
     )
 }

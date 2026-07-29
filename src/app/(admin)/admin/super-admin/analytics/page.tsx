@@ -175,7 +175,7 @@ export default async function AnalyticsPage() {
                                 <th className="px-5 py-3 text-left">Status</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-hairline">
                             {analytics.restaurantStats.map((r, i) => {
                                 const avgOrderVal = r.orders30d > 0 ? r.revenue30d / r.orders30d : 0
                                 return (

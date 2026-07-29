@@ -106,7 +106,7 @@ function ShiftTable({ shifts }: { shifts: Shift[] }) {
                         <th className="px-5 py-3 text-left">Duration</th>
                     </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-hairline">
                     {shifts.map(s => {
                         const roleName = s.users?.roles?.name || ''
                         return (

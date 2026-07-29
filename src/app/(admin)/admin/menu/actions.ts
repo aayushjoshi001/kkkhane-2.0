@@ -1,11 +1,13 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/server'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { invalidateCache } from '@/lib/redis'
 import type { StationKind } from '@/lib/stations'
+import { requireRole } from '@/lib/auth'
 
 export async function addCategoryAction(restaurantId: string, name: string, sortOrder: number, isVisible: boolean, imageUrl?: string | null, station: StationKind = 'kitchen') {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
     const { data, error } = await supabase
         .from('menu_categories')
@@ -22,30 +24,55 @@ export async function addCategoryAction(restaurantId: string, name: string, sort
 
     if (error) return { error: error.message }
     await invalidateCache(`menu-data:${restaurantId}`)
+    revalidateTag(`menu-data-${restaurantId}`, 'max')
     revalidatePath('/admin/menu')
     return { data }
 }
 
 export async function updateCategoryAction(id: string, updates: Record<string, unknown>) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
+
+    const { data: cat } = await supabase
+        .from('menu_categories')
+        .select('restaurant_id')
+        .eq('id', id)
+        .single()
+
     const { error } = await supabase
         .from('menu_categories')
         .update(updates)
         .eq('id', id)
 
     if (error) return { error: error.message }
+    if (cat?.restaurant_id) {
+        await invalidateCache(`menu-data:${cat.restaurant_id}`)
+        revalidateTag(`menu-data-${cat.restaurant_id}`, 'max')
+    }
     revalidatePath('/admin/menu')
     return { success: true }
 }
 
 export async function deleteCategoryAction(id: string) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
+
+    const { data: cat } = await supabase
+        .from('menu_categories')
+        .select('restaurant_id')
+        .eq('id', id)
+        .single()
+
     const { error } = await supabase
         .from('menu_categories')
         .delete()
         .eq('id', id)
 
     if (error) return { error: error.message }
+    if (cat?.restaurant_id) {
+        await invalidateCache(`menu-data:${cat.restaurant_id}`)
+        revalidateTag(`menu-data-${cat.restaurant_id}`, 'max')
+    }
     revalidatePath('/admin/menu')
     return { success: true }
 }
@@ -55,6 +82,7 @@ export async function addItemAction(
     variations?: { name: string; price: number; is_available?: boolean; image_url?: string | null }[],
     recipe?: { ingredient_id: string; quantity_needed: number; variation_name?: string | null }[]
 ) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
 
     // Enforce plan menu item limit
@@ -151,6 +179,8 @@ export async function addItemAction(
         }
     }
 
+    await invalidateCache(`menu-data:${restaurantId}`)
+    revalidateTag(`menu-data-${restaurantId}`, 'max')
     revalidatePath('/admin/menu')
     return { data }
 }
@@ -161,8 +191,15 @@ export async function updateItemAction(
     variations?: { id?: string; name: string; price: number; is_available?: boolean; image_url?: string | null }[],
     recipe?: { ingredient_id: string; quantity_needed: number; variation_id?: string | null; variation_name?: string | null }[]
 ) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
-    
+
+    const { data: itemData } = await supabase
+        .from('menu_items')
+        .select('restaurant_id')
+        .eq('id', id)
+        .single()
+
     // Exclude variations from updates object if present
     const { variations: _, ...itemUpdates } = updates
 
@@ -301,11 +338,16 @@ export async function updateItemAction(
         }
     }
 
+    if (itemData?.restaurant_id) {
+        await invalidateCache(`menu-data:${itemData.restaurant_id}`)
+        revalidateTag(`menu-data-${itemData.restaurant_id}`, 'max')
+    }
     revalidatePath('/admin/menu')
     return { success: true }
 }
 
 export async function getItemRecipeAction(menuItemId: string) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
 
     const { data: variations } = await supabase
@@ -331,7 +373,14 @@ export async function getItemRecipeAction(menuItemId: string) {
 }
 
 export async function deleteItemAction(id: string) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
+
+    const { data: itemData } = await supabase
+        .from('menu_items')
+        .select('restaurant_id')
+        .eq('id', id)
+        .single()
 
     // 1. Check if the item has been ordered
     const { count, error: countErr } = await supabase
@@ -390,6 +439,10 @@ export async function deleteItemAction(id: string) {
         }
     }
 
+    if (itemData?.restaurant_id) {
+        await invalidateCache(`menu-data:${itemData.restaurant_id}`)
+        revalidateTag(`menu-data-${itemData.restaurant_id}`, 'max')
+    }
     revalidatePath('/admin/menu')
     return { success: true }
 }

@@ -1,4 +1,5 @@
 import { requireRole } from '@/lib/auth'
+import AdManager from './AdManager'
 import { Settings, CheckCircle, XCircle, Shield } from 'lucide-react'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import { TIER_FEATURES, TIER_LIMITS, TIERS, TIER_LABELS, isUnlimited, type Tier } from '@/lib/tiers'
@@ -71,7 +72,7 @@ export default async function ConfigPage() {
                                 ))}
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-hairline">
                             {featureKeys.map(key => (
                                 <tr key={key} className="group hover:bg-surface-muted/50 transition-colors">
                                     <td className="px-5 py-3 font-medium text-ink">{FEATURE_LABELS[key] || key}</td>
@@ -79,7 +80,7 @@ export default async function ConfigPage() {
                                         <td key={tier} className="px-5 py-3 text-center border-l border-hairline">
                                             {TIER_FEATURES[tier][key]
                                                 ? <CheckCircle size={16} className="text-emerald-500 mx-auto" />
-                                                : <XCircle size={16} className="text-gray-200 mx-auto" />
+                                                : <XCircle size={16} className="text-ink-subtle mx-auto" />
                                             }
                                         </td>
                                     ))}
@@ -105,7 +106,7 @@ export default async function ConfigPage() {
                                 <th className="px-5 py-3 text-right text-xs font-semibold text-ink-subtle uppercase">Max Menu Items</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-hairline">
                             {tiers.map(tier => (
                                 <tr key={tier} className="group hover:bg-surface-muted/50 transition-colors">
                                     <td className="px-5 py-4">
@@ -162,6 +163,9 @@ export default async function ConfigPage() {
                 </div>
                 <p className="text-xs text-ink-subtle mt-3">Methods available when recording subscription payments via the Restaurants page.</p>
             </div>
+
+            {/* Dashboard Advertisements Manager */}
+            <AdManager />
         </div>
     )
 }
@@ -185,7 +189,7 @@ function DefaultField({
                 <span className="text-xs font-semibold text-ink-subtle uppercase tracking-wide">{label}</span>
                 {isBoolean && (enabled
                     ? <CheckCircle size={14} className="text-emerald-500 shrink-0" />
-                    : <XCircle size={14} className="text-gray-300 shrink-0" />
+                    : <XCircle size={14} className="text-ink-subtle shrink-0" />
                 )}
             </div>
             <div className={`text-lg font-extrabold mt-1 ${isBoolean ? (enabled ? 'text-emerald-700' : 'text-ink-subtle') : 'text-ink'}`}>

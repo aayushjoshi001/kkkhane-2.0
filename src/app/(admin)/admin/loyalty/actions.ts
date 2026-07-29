@@ -2,8 +2,10 @@
 
 import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { requireRole } from '@/lib/auth'
 
 export async function getLoyaltyConfigAction(restaurantId: string) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
     const { data } = await supabase
         .from('loyalty_config')
@@ -25,6 +27,7 @@ export async function upsertLoyaltyConfigAction(input: {
     platinum_threshold: number
     is_active: boolean
 }) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
 
     // Check if config exists
@@ -52,6 +55,7 @@ export async function upsertLoyaltyConfigAction(input: {
 }
 
 export async function getLoyaltyMembersAction(restaurantId: string) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
     const { data } = await supabase
         .from('loyalty_members')

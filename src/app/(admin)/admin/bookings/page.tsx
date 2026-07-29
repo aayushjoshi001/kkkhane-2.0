@@ -1,8 +1,10 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import type { BillingTable, BillingOrder } from '@/components/admin/RoomBillingModal'
 import { getCurrentUser } from '@/lib/auth'
+import { getRestaurantName } from '@/lib/features'
 import BookingsClient from './BookingsClient'
 import type { Booking, Room } from '@/types/database'
+import RealtimeRefresh from '@/components/shared/RealtimeRefresh'
 
 export const revalidate = 0
 
@@ -11,7 +13,8 @@ export default async function BookingsPage() {
     const { restaurantId } = currentUser
 
     const adminSupabase = await createAdminClient()
-    
+    const restaurantName = await getRestaurantName(restaurantId)
+
     // Fetch bookings, rooms, tables, sessions and active orders with safety
     let bookings: Booking[] = []
     let rooms: Room[] = []
@@ -19,6 +22,17 @@ export default async function BookingsPage() {
     let activeOrders: BillingOrder[] = []
 
     try {
+        const { data: restData } = await adminSupabase
+            .from('restaurants')
+            .select('linked_restaurant_id')
+            .eq('id', restaurantId)
+            .maybeSingle()
+
+        const targetRestaurantIds = [restaurantId]
+        if (restData?.linked_restaurant_id) {
+            targetRestaurantIds.push(restData.linked_restaurant_id)
+        }
+
         const [bookingsRes, roomsRes, tablesRes, activeSessionsRes, activeOrdersRes] = await Promise.all([
             adminSupabase
                 .from('bookings')
@@ -48,8 +62,13 @@ export default async function BookingsPage() {
                     sessions ( id, tables ( label ) ),
                     order_items ( id, quantity, status, unit_price, menu_items ( name ) )
                 `)
-                .eq('restaurant_id', restaurantId)
-                .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
+                .in('restaurant_id', targetRestaurantIds)
+                // Every unpaid, non-cancelled order still owed on this room's bill -
+                // not just ones still in the kitchen workflow. A 'delivered' order
+                // that hasn't been paid yet used to be silently excluded here, making
+                // the Room Billing total lower than what was actually owed.
+                .neq('status', 'cancelled')
+                .neq('payment_status', 'paid')
         ])
 
         bookings = (bookingsRes.data as unknown as Booking[]) || []
@@ -69,12 +88,16 @@ export default async function BookingsPage() {
     }
 
     return (
-        <BookingsClient 
-            initialBookings={bookings} 
+        <>
+        <RealtimeRefresh restaurantId={restaurantId} tables={['bookings', 'rooms']} />
+        <BookingsClient
+            initialBookings={bookings}
             rooms={rooms}
-            restaurantId={restaurantId} 
+            restaurantId={restaurantId}
+            restaurantName={restaurantName}
             tables={tablesMapped}
             activeOrders={activeOrders}
         />
+        </>
     )
 }

@@ -7,11 +7,13 @@ import { DataTable, FormModal, FormInput, FormSelect, SectionTabs, type SectionT
 import Button from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
 import { formatCurrency } from '@/lib/utils'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 import type { CustomerCreditAccount, ReceivableTransaction, ReceivableTransactionType } from '@/types/database'
 import {
     createCustomerCreditAccountAction, updateCustomerCreditAccountAction, deleteCustomerCreditAccountAction,
     createReceivableTransactionAction, deleteReceivableTransactionAction,
 } from './actions'
+import { useConfirmStore } from '@/lib/stores/confirm'
 
 export default function ReceivablesManager({
     initialAccounts,
@@ -20,7 +22,9 @@ export default function ReceivablesManager({
     initialAccounts: CustomerCreditAccount[]
     initialTransactions: ReceivableTransaction[]
 }) {
+    const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('accounts')
+    const formatDate = useDateFormatter()
     const [accounts, setAccounts] = useState(initialAccounts)
     const [transactions, setTransactions] = useState(initialTransactions)
 
@@ -39,6 +43,7 @@ export default function ReceivablesManager({
 }
 
 function AccountsTab({ accounts, setAccounts }: { accounts: CustomerCreditAccount[]; setAccounts: (fn: (prev: CustomerCreditAccount[]) => CustomerCreditAccount[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ customer_name: '', customer_phone: '', credit_limit: '0' })
@@ -66,7 +71,8 @@ function AccountsTab({ accounts, setAccounts }: { accounts: CustomerCreditAccoun
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this customer credit account?')) return
+        const ok = await confirm({ title: 'Delete this customer credit account?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteCustomerCreditAccountAction(id)
         if (result.error) { toast.error(result.error); return }
         setAccounts((prev) => prev.filter((a) => a.id !== id))
@@ -116,6 +122,8 @@ function TransactionsTab({
     transactions: ReceivableTransaction[]
     setTransactions: (fn: (prev: ReceivableTransaction[]) => ReceivableTransaction[]) => void
 }) {
+    const { confirm } = useConfirmStore()
+    const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ customer_credit_account_id: '', type: 'charge' as ReceivableTransactionType, amount: '', description: '' })
@@ -138,7 +146,8 @@ function TransactionsTab({
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this transaction?')) return
+        const ok = await confirm({ title: 'Delete this transaction?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteReceivableTransactionAction(id)
         if (result.error) { toast.error(result.error); return }
         setTransactions((prev) => prev.filter((t) => t.id !== id))
@@ -152,7 +161,7 @@ function TransactionsTab({
             </div>
             <DataTable
                 columns={[
-                    { key: 'created_at', header: 'Date', render: (t) => new Date(t.created_at).toLocaleString(), sortValue: (t) => t.created_at },
+                    { key: 'created_at', header: 'Date', render: (t) => formatDate(t.created_at), sortValue: (t) => t.created_at },
                     { key: 'customer', header: 'Customer', render: (t) => t.customer_credit_accounts?.customer_name || '—' },
                     { key: 'type', header: 'Type', render: (t) => (t.type === 'charge' ? 'Charge' : 'Payment Collected') },
                     { key: 'description', header: 'Description', render: (t) => t.description },

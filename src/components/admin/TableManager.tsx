@@ -6,11 +6,13 @@ import { QrCode, Plus, Edit2, Trash2, Check, X, Loader2, Download, Smartphone } 
 import NextImage from 'next/image'
 import type { Table } from '@/types/database'
 import { QRCodeCanvas } from 'qrcode.react'
+import Modal from '@/components/ui/Modal'
 import { updateTableAction, deleteTableAction, addTableAction } from '@/app/(admin)/admin/tables/actions'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import { fetchTablesData } from '@/lib/swr-fetchers'
 import { renderQrCardPng, downloadDataUrl } from '@/lib/qrCardCanvas'
+import DownloadAllQrsButton from '@/components/admin/DownloadAllQrsButton'
 
 // Brand colors for QR code customization
 const QR_FG_COLOR = '#000000'   // black for QR code body to maximize scan readability
@@ -76,29 +78,39 @@ export default function TableManager({
 
         const capacityNum = formData.capacity ? parseInt(formData.capacity) : undefined
 
-        if (editingTable) {
-            const res = await updateTableAction(editingTable.id, {
-                label: formData.label,
-                capacity: capacityNum
-            })
-            if (res.success) {
-                mutate()
-                toast.success('Table updated')
+        // Wrap the server-action calls: a transient network failure rejects the
+        // promise with "Failed to fetch" (or "Failed to fetch..."). Without this
+        // it surfaced as an unhandled rejection with the modal stuck open and the
+        // spinner never resetting. Catch it, show a retriable toast, and always
+        // clear the submitting state in finally.
+        try {
+            if (editingTable) {
+                const res = await updateTableAction(editingTable.id, {
+                    label: formData.label,
+                    capacity: capacityNum
+                })
+                if (res.success) {
+                    mutate()
+                    toast.success('Table updated')
+                    setIsModalOpen(false)
+                } else {
+                    toast.error(res.error || 'Failed to update table')
+                }
             } else {
-                toast.error(res.error || 'Failed to update table')
+                const res = await addTableAction(restaurantId, formData.label, capacityNum)
+                if (res.data) {
+                    mutate()
+                    toast.success('Table added')
+                    setIsModalOpen(false)
+                } else {
+                    toast.error(res.error || 'Failed to add table')
+                }
             }
-        } else {
-            const res = await addTableAction(restaurantId, formData.label, capacityNum)
-            if (res.data) {
-                mutate()
-                toast.success('Table added')
-            } else {
-                toast.error(res.error || 'Failed to add table')
-            }
+        } catch {
+            toast.error('Network error — please check your connection and try again.')
+        } finally {
+            setIsSubmitting(false)
         }
-
-        setIsModalOpen(false)
-        setIsSubmitting(false)
     }
 
     const deleteTable = async (id: string, label: string) => {
@@ -167,14 +179,17 @@ export default function TableManager({
 
     return (
         <div className="bg-surface rounded-card shadow-sm border border-hairline overflow-hidden">
-            <div className="p-6 border-b border-hairline flex justify-between items-center bg-surface-muted/30">
+            <div className="p-6 border-b border-hairline flex justify-between items-center gap-3 bg-surface-muted/30">
                 <h3 className="text-h3 font-extrabold text-ink">Restaurant Layout ({tables.length})</h3>
-                <button
-                    onClick={() => openModal()}
-                    className="flex items-center gap-2 bg-brand-500 text-white px-5 py-2.5 rounded-[var(--r-md)] text-sm font-bold hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] focus-ring"
-                >
-                    <Plus size={16} /> Add Table
-                </button>
+                <div className="flex items-center gap-3 shrink-0">
+                    <DownloadAllQrsButton className="flex items-center gap-2 px-4 py-2.5 rounded-[var(--r-md)] text-sm font-bold bg-surface border border-hairline-strong text-ink-muted hover:bg-surface-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed" />
+                    <button
+                        onClick={() => openModal()}
+                        className="flex items-center gap-2 bg-brand-500 text-white px-5 py-2.5 rounded-[var(--r-md)] text-sm font-bold hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] focus-ring"
+                    >
+                        <Plus size={16} /> Add Table
+                    </button>
+                </div>
             </div>
 
             <div className="p-6">
@@ -302,8 +317,7 @@ export default function TableManager({
 
             {/* Table Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setIsModalOpen(false)} size="sm" ariaLabel={editingTable ? 'Edit Table' : 'Add Table'}>
                         <div className="px-6 py-5 border-b border-hairline flex justify-between items-center bg-surface-muted/30">
                             <h3 className="text-h3 font-extrabold text-ink">{editingTable ? 'Edit Table' : 'Add Table'}</h3>
                             <button onClick={() => setIsModalOpen(false)} className="text-ink-subtle hover:text-ink transition-colors p-1 rounded-full hover:bg-surface-muted focus-ring">
@@ -342,8 +356,7 @@ export default function TableManager({
                                 {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} Save
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* URL/Phone Preview Modal - ALWAYS RENDERED but conditionally visible for instant iframe swapping */}
@@ -381,7 +394,7 @@ export default function TableManager({
                         {/* Browser chrome */}
                         <div className="bg-surface-muted px-3 sm:px-4 pb-1.5 sm:pb-2 pt-6 sm:pt-7 border-b border-hairline-strong shrink-0 flex items-center gap-2">
                             <div className="w-4 h-4 text-ink-subtle"><Smartphone size={14} /></div>
-                            <div className="flex-1 bg-surface-muted/80 rounded-lg text-[9px] sm:text-[10px] text-center text-ink-subtle py-1 sm:py-1.5 px-2 truncate font-mono">
+                            <div className="flex-1 min-w-0 bg-surface-muted/80 rounded-lg text-[9px] sm:text-[10px] text-center text-ink-subtle py-1 sm:py-1.5 px-2 truncate font-mono">
                                 {baseUrl.replace(/https?:\/\//, '')}/t/{previewTable?.qr_token?.substring(0, 8) || '...'}…
                             </div>
                         </div>

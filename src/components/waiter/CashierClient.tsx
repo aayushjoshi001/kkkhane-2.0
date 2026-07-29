@@ -1,133 +1,535 @@
 'use client'
 
-import { useRef, useState, useMemo, useEffect } from 'react'
+import { useRef, useState, useMemo, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { markDeliveredAndCashPaid } from '@/app/(staff)/waiter/order-actions'
 import { updateTakeoutStatusAction } from '@/app/(admin)/admin/takeout/actions'
-import { closeSession } from '@/app/(staff)/waiter/actions'
-import { useCurrency } from '@/lib/contexts/FeatureContext'
+import { useCurrency, useFeatureEnabled, useDateFormatter, useFeatures } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
-import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart } from 'lucide-react'
-import PaymentVerificationFeed, { type PaymentClaim } from './PaymentVerificationFeed'
+import { useConfirmStore } from '@/lib/stores/confirm'
+import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent, PenLine, Printer, Search, History, Utensils, QrCode, RotateCcw } from 'lucide-react'
+import AdvancePaymentHistoryModal from '@/components/admin/AdvancePaymentHistoryModal'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import Button from '@/components/ui/Button'
 import { usePrinter } from '@/lib/print/usePrinter'
+import { usePrinterSettingsStore } from '@/lib/stores/printerSettings'
 import { buildInvoiceTicket } from '@/lib/print/templates/invoiceTicket'
+import { buildStationTicket } from '@/lib/print/templates/stationTicket'
+import { itemsForStation, STATION_META, type StationKind } from '@/lib/stations'
+import { claimForPrinting, releasePrintClaim, fetchOrdersWithUnprintedItems, OUTSTANDING_PRINT_SELECT } from '@/lib/print/printClaims'
+import KotPrintFallback from '@/components/kitchen/KotPrintFallback'
+import type { KitchenOrder } from '@/components/kitchen/OrderQueue'
+import ManualEntryClient from '@/app/(admin)/admin/manual-entry/ManualEntryClient'
+import AdSpace from '@/components/shared/AdSpace'
+import BusinessSessionControl from '@/components/shared/BusinessSessionControl'
+import { getNstDateString } from '@/lib/timezone'
+import { autoRoomServiceCharge, resolveRoomServiceCharge, roomServiceChargeApplies, ROOM_SERVICE_CHARGE_RATE } from '@/lib/roomServiceCharge'
+import CashierOrdersPanel from './CashierOrdersPanel'
+import type { BankAccount, ExpenseCategory, Supplier, Session } from '@/types/database'
+import QuickOrderModal from './QuickOrderModal'
 
 
-import { formatDateTime, calculateNights } from '@/lib/utils'
+import { calculateNights, lateCheckoutNights, resolveDeparture, LATE_CHECKOUT_GRACE_HOURS, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
+import { type GroupBill } from '@/lib/bookingGroup'
+import { useQrCodes } from '@/lib/hooks/useQrCodes'
 
-type OrderItem = { 
+// Auto-print retry/fallback tuning, matching the kitchen screen's.
+const KOT_PRINT_MAX_RETRIES = 2
+const KOT_PRINT_RETRY_MS = 2500
+
+// Backstop sweep for outstanding tickets. Slow on purpose: realtime carries the
+// normal case, so this only has to cover a channel that is wedged rather than
+// disconnected — a state no reconnect callback ever fires for.
+const OUTSTANDING_POLL_MS = 60_000
+
+// Money is compared against a server-side total to the paisa, so every figure
+// the cashier's edits feed into is rounded the same way the API rounds it.
+const round2 = (n: number) => Math.round(n * 100) / 100
+
+type OrderItem = {
     id?: string
     quantity: number
     status?: string
     unit_price?: number
-    menu_items: { name: string } | null 
+    needs_confirmation?: boolean
+    menu_items: { name: string } | null
 }
-type TableRef = { label?: string } | null
+type TableRef = { id?: string; label?: string; room_id?: string | null } | null
+type BookingRoomRef = { id: string; rooms?: { id: string; room_number: string } | null } | null
 
 export type UnpaidOrder = {
     id: string
     status?: string
+    subtotal_amount?: number
+    service_charge_amount?: number
+    tax_amount?: number
     total_amount: number
+    placed_at: string
     delivered_at: string | null
     payment_status: string
     payment_method: string | null
     session_id: string | null
-    sessions: { id: string; tables: TableRef } | null
+    booking_id?: string | null
+    order_type?: 'dine_in' | 'takeout' | 'delivery'
+    customer_name?: string | null
+    customer_phone?: string | null
+    delivery_address?: string | null
+    sessions: { id: string; seat_number?: number; booking_id?: string | null; tables: TableRef; bookings?: BookingRoomRef } | null
+    bookings?: BookingRoomRef
     order_items: OrderItem[]
 }
 
 export type ActiveOrder = {
     id: string
     status: string
+    subtotal_amount?: number
+    service_charge_amount?: number
+    tax_amount?: number
     total_amount: number
     placed_at: string
     session_id: string | null
+    booking_id?: string | null
     order_type?: 'dine_in' | 'takeout' | 'delivery'
     payment_status?: string
     customer_name?: string | null
     customer_phone?: string | null
     delivery_address?: string | null
-    sessions: { id: string; tables: TableRef } | null
+    sessions: { id: string; seat_number?: number; booking_id?: string | null; tables: TableRef; bookings?: BookingRoomRef } | null
+    bookings?: BookingRoomRef
     order_items?: OrderItem[]
 }
 
 import CashierTableManager, { type TableWithSession } from './CashierTableManager'
 import CashierRoomManager from './CashierRoomManager'
+import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
+import Select from '@/components/ui/Select'
+import { useDates } from '@/lib/contexts/CalendarContext'
 
 interface Props {
     restaurantId: string
     restaurantSlug: string
+    restaurantName: string
+    restaurantAddress?: string
+    restaurantPhone?: string
     userId: string
+    /** Printed on the receipt so bills from two cashiers on one till are told apart. */
+    userName?: string
     initialUnpaid: UnpaidOrder[]
     initialActive: ActiveOrder[]
-    initialClaims: PaymentClaim[]
     tables: TableWithSession[]
     rooms?: any[]
     isHotel?: boolean
     initialBookings?: any[]
+    userRole: string
+    manualEntryBankAccounts: BankAccount[]
+    manualEntrySuppliers: Supplier[]
+    manualEntryStaffList: { id: string; full_name: string }[]
+    manualEntryExpenseCategories: ExpenseCategory[]
+    manualEntryIngredients: { id: string; name: string; unit: string; stock_quantity: number }[]
+    manualEntryCustomerAccounts?: any[]
+    manualEntryHasOpenSession: boolean
+    manualEntrySessionId: string | null
+    openSession?: any
 }
 
-function tableLabel(sessions: { tables: TableRef } | null): string {
-    return (sessions?.tables as { label?: string } | null)?.label ?? '?'
+// Label for an order's table, seat-aware: seat 2+ of a split table is always
+// "4-2"; seat 1 only gets the "-1" suffix when its table is actually split
+// (splitSessionIds), so ordinary single-session tables stay plain "4".
+export function tableLabel(
+    sessions: { id?: string; seat_number?: number; tables: TableRef } | null,
+    splitSessionIds?: Set<string>,
+): string {
+    const base = (sessions?.tables as { label?: string } | null)?.label ?? '?'
+    const seat = sessions?.seat_number ?? 1
+    if (seat >= 2 || (sessions?.id && splitSessionIds?.has(sessions.id))) return `${base}-${seat}`
+    return base
 }
 
-export default function CashierClient({ 
-    restaurantId, 
-    restaurantSlug, 
-    userId, 
-    initialUnpaid, 
-    initialActive, 
-    initialClaims, 
+/**
+ * Does this guest's name or phone match what the cashier typed?
+ *
+ * Names match on any part, not just the start: the desk is told "the bill for
+ * Mohan" and a booking registered as "MOHAN THAKUR" has to come back for
+ * "thakur" too. Case is ignored because check-in entries are typed however the
+ * cashier felt at the time — production holds both "MOHAN THAKUR" and
+ * "manoj bartaula".
+ *
+ * Phone matching compares digits only, on both sides. A number written down as
+ * "980-718-5400" or "+977 9807185400" must still find the stay saved as
+ * "9807185400", and a search for a name never reaches this because stripping a
+ * name of non-digits leaves nothing to match on.
+ */
+export function matchesGuestSearch(
+    query: string,
+    fields: (string | null | undefined)[],
+): boolean {
+    const needle = query.trim().toLowerCase()
+    if (!needle) return true
+
+    const present = fields.filter((f): f is string => !!f && f.trim() !== '')
+    if (present.some(f => f.toLowerCase().includes(needle))) return true
+
+    const digits = needle.replace(/\D/g, '')
+    if (!digits) return false
+    return present.some(f => f.replace(/\D/g, '').includes(digits))
+}
+
+export default function CashierClient({
+    restaurantId,
+    restaurantSlug,
+    restaurantName,
+    restaurantAddress = '',
+    restaurantPhone = '',
+    userId,
+    userName = '',
+    initialUnpaid,
+    initialActive,
     tables,
     rooms = [],
     isHotel = false,
     initialBookings = [],
+    userRole,
+    manualEntryBankAccounts,
+    manualEntrySuppliers,
+    manualEntryStaffList,
+    manualEntryExpenseCategories,
+    manualEntryIngredients,
+    manualEntryCustomerAccounts = [],
+    manualEntryHasOpenSession,
+    manualEntrySessionId,
+    openSession,
 }: Props) {
+    const router = useRouter()
+    const [showManualEntry, setShowManualEntry] = useState(false)
+    const { confirm } = useConfirmStore()
     const [unpaid, setUnpaid] = useState<UnpaidOrder[]>(initialUnpaid)
     const money = useCurrency()
+    const features = useFeatures()
+    const formatDate = useDateFormatter()
+    const printInvoiceEnabled = useFeatureEnabled('printInvoiceEnabled')
+    const printBillEnabled = useFeatureEnabled('printBillEnabled')
+    const showInvoiceEnabled = useFeatureEnabled('showInvoiceEnabled')
+    const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
+    const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
+    const { formatDateTime, calendar } = useDates()
     const { print: printInvoice } = usePrinter('invoice')
+    const { print: printKot, networkPrinter: kotNetworkPrinter } = usePrinter('kot')
+    const { print: printBot, networkPrinter: botNetworkPrinter } = usePrinter('bot')
+
+    const [showSettlementPrintPrompt, setShowSettlementPrintPrompt] = useState(false)
+    const [settlementCopies, setSettlementCopies] = useState(1)
+
+    // Station tickets that reached no thermal printer, queued for the browser
+    // fallback. A queue rather than a single slot: QZ Tray down for a whole
+    // shift would otherwise drop every ticket but the most recent.
+    const [ticketFallbackQueue, setTicketFallbackQueue] = useState<{ order: KitchenOrder; station: StationKind }[]>([])
+    const dequeueTicketFallback = useCallback(() => setTicketFallbackQueue(q => q.slice(1)), [])
+
+    // Pending retry timers, cleared on unmount so a queued retry can't fire
+    // (and setState) after the panel is gone.
+    const printRetryTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
+    useEffect(() => () => {
+        const timers = printRetryTimers.current
+        timers.forEach(clearTimeout)
+        timers.clear()
+    }, [])
+
+    /**
+     * Auto-print one station's ticket for an order, with the safety net the
+     * kitchen screen already had: retry a transient LAN failure, fall back to a
+     * browser print on this device, and always say what happened.
+     *
+     * Previously a failed cashier auto-print was a console.error and nothing
+     * else — indistinguishable, from behind the till, from KOT printing simply
+     * not being wired up. A misconfigured LAN printer silently cost every
+     * ticket.
+     */
+    const printStationTicket = useCallback((
+        order: KitchenOrder,
+        station: StationKind,
+        // Called only when this ticket produced no paper at all, so the caller
+        // can hand its claim back and leave the lines outstanding.
+        onProducedNothing?: (itemIds: string[]) => void,
+    ) => {
+        const items = itemsForStation(order.order_items, station)
+        if (items.length === 0) return
+        // Project to this station's lines so the browser fallback renders the
+        // same subset the thermal ticket would.
+        const projected = { ...order, order_items: items }
+        const send = station === 'bar' ? printBot : printKot
+        const network = station === 'bar' ? botNetworkPrinter : kotNetworkPrinter
+        const abbr = STATION_META[station].ticketAbbr
+
+        // Hoisted so it can recurse for retries without referencing the
+        // surrounding useCallback before it is declared.
+        function attemptPrint(attempt: number) {
+            void send(buildStationTicket(projected, station, restaurantName)).then((result) => {
+                if (result.ok) {
+                    if (result.usedLocalFallback) {
+                        toast(`${abbr} printer unreachable — printed on this device instead.`)
+                    }
+                    return
+                }
+                // Retry a transient LAN failure before giving up on the roll the
+                // ticket belongs on. A missing printer or a trust block needs a
+                // human, not another attempt.
+                const transient = result.status === 'not-running' || result.status === 'print-failed'
+                if (network && transient && attempt < KOT_PRINT_MAX_RETRIES) {
+                    const t = setTimeout(() => {
+                        printRetryTimers.current.delete(t)
+                        attemptPrint(attempt + 1)
+                    }, KOT_PRINT_RETRY_MS)
+                    printRetryTimers.current.add(t)
+                    return
+                }
+                // The browser fallback is still paper, so the claim stands.
+                setTicketFallbackQueue(q => [...q, { order: projected, station }])
+                toast.error(
+                    result.status === 'no-printer-selected'
+                        ? `No ${abbr} printer set — printed via browser instead. Set one in Printer Settings.`
+                        : network
+                            ? `${abbr} printer unreachable after ${KOT_PRINT_MAX_RETRIES + 1} tries — printed via browser instead.`
+                            : `${abbr} printer not connected — printed via browser instead.`
+                )
+            }).catch((err) => {
+                // Nothing was printed and no fallback was queued, so the claim
+                // must go back or these lines are lost to a ticket that never
+                // existed.
+                console.error(`[Cashier ${abbr} print] threw:`, err)
+                onProducedNothing?.(items.map(i => i.id).filter(Boolean))
+                toast.error(`${abbr} print failed — the order stays queued to print.`)
+            })
+        }
+        attemptPrint(0)
+    }, [printKot, printBot, kotNetworkPrinter, botNetworkPrinter, restaurantName])
+
+    /**
+     * Claim this order's unprinted lines, then print exactly what we won.
+     *
+     * The claim is the whole coordination story: it is a conditional UPDATE, so
+     * if a kitchen station is also open only one of us gets the lines back and
+     * the other prints nothing. Nothing is remembered in this component — the
+     * database is the record of what has printed, which is what lets a tab that
+     * was closed, asleep or disconnected still pick the work up later.
+     */
+    const claimAndPrint = useCallback(async (order: KitchenOrder) => {
+        // Items still awaiting cashier confirmation (QR self-orders) are not
+        // ours to print — they go out from the Order Confirmation panel once
+        // confirmed.
+        const printable = (order.order_items || []).filter(i => !i.needs_confirmation && i.id && !i.kot_printed_at)
+        if (printable.length === 0) return
+        const wonIds = await claimForPrinting(supabaseRef.current, printable.map(i => i.id))
+        if (wonIds.length === 0) return // another station got there first
+        const won = new Set(wonIds)
+        const scoped = { ...order, order_items: printable.filter(i => won.has(i.id)) }
+        // Each is a no-op when the order has no lines for that station. Handing
+        // the claim back on total failure keeps the lines outstanding rather
+        // than losing them to a claim that printed nothing.
+        printStationTicket(scoped, 'kitchen', releaseIds => void releasePrintClaim(supabaseRef.current, releaseIds))
+        printStationTicket(scoped, 'bar', releaseIds => void releasePrintClaim(supabaseRef.current, releaseIds))
+    }, [printStationTicket])
+
+    /**
+     * Print everything nobody has printed yet.
+     *
+     * Runs on mount, on realtime reconnect and on a slow poll. Because
+     * outstanding work is a database query rather than a memory of events seen,
+     * this recovers every gap uniformly: an order placed while no station was
+     * open at all, one missed during a wifi blip, or one whose printer was down
+     * at the time. The claim makes running it often harmless.
+     */
+    const printOutstanding = useCallback(async () => {
+        if (!features?.kotEnabled) return
+        const orders = await fetchOrdersWithUnprintedItems(supabaseRef.current, restaurantId)
+        for (const order of orders) await claimAndPrint(order)
+    }, [features?.kotEnabled, restaurantId, claimAndPrint])
+
+    // Mount + slow poll. The poll is the backstop that makes auto-print survive
+    // a realtime channel that is wedged rather than disconnected — a state the
+    // reconnect callback never fires for.
+    useEffect(() => {
+        if (!features?.kotEnabled) return
+        void printOutstanding()
+        const id = setInterval(() => { void printOutstanding() }, OUTSTANDING_POLL_MS)
+        return () => clearInterval(id)
+    }, [features?.kotEnabled, printOutstanding])
+
     const [active, setActive] = useState<ActiveOrder[]>(initialActive)
     const [processingId, setProcessingId] = useState<string | null>(null)
-    const [pendingClaims, setPendingClaims] = useState(
-        initialClaims.filter(c => !c.staff_verified && !c.staff_rejected).length
-    )
     const supabaseRef = useRef(createClient())
-    const [activeTab, setActiveTab] = useState<'rooms' | 'tables' | 'space' | 'takeaway' | 'billing'>('billing')
-    const [takeawaySubTab, setTakeawaySubTab] = useState<'takeaway' | 'delivery'>('takeaway')
+    const [activeTab, setActiveTab] = useState<'rooms' | 'tables' | 'space' | 'billing' | 'orders'>('billing')
     const [spaceFilter, setSpaceFilter] = useState<'all' | 'available' | 'reserved' | 'occupied' | 'dirty'>('all')
     const [roomsFilter, setRoomsFilter] = useState<'all' | 'available' | 'reserve' | 'occupied' | 'dirty' | 'closed'>('all')
     const [highlightSessionId, setHighlightSessionId] = useState<string | null>(null)
-    const [selectedOrder, setSelectedOrder] = useState<ActiveOrder | null>(null)
-    
+
     // Stays and Billing states
     const [roomsState, setRoomsState] = useState<any[]>(rooms)
+    // Local, realtime-patchable copy of the `tables` prop — table sessions
+    // opening/closing needs to reflect live in the Billing tab (a newly
+    // seated table, or one just paid off) without a page refresh.
+    const [tablesState, setTablesState] = useState<TableWithSession[]>(tables)
+    const [roomTypeFilter, setRoomTypeFilter] = useState<string>('all')
+    const [billingRoomTypeFilter, setBillingRoomTypeFilter] = useState<string>('all')
+
+    const roomTypesList = useMemo(() => {
+        const unique = new Map()
+        roomsState.forEach(r => {
+            if (r.type_id && r.room_types?.name) {
+                unique.set(r.type_id, r.room_types.name)
+            }
+        })
+        return Array.from(unique.entries()).map(([id, name]) => ({ id, name }))
+    }, [roomsState])
+
+    const filteredBillingRooms = useMemo(() => {
+        return roomsState
+            .filter(r => r.status === 'occupied')
+            .filter(r => billingRoomTypeFilter === 'all' || r.type_id === billingRoomTypeFilter)
+    }, [roomsState, billingRoomTypeFilter])
+
+    // Who the cashier is looking for, by the name or number taken at check-in.
+    // The desk is given a name at settling time — "the bill for Mohan" — and had
+    // to know which room that was to find it in a grid keyed by room number.
+    const [billingSearch, setBillingSearch] = useState('')
+
     const [bookings, setBookings] = useState<any[]>(initialBookings)
-    const [billingSubTab, setBillingSubTab] = useState<'rooms' | 'tables'>('rooms')
+    const [billingSubTab, setBillingSubTab] = useState<'all' | 'rooms' | 'tables' | 'takeout' | 'delivery'>('rooms')
     const [selectedBillingRoom, setSelectedBillingRoom] = useState<any | null>(null)
+    const [advanceHistoryModalOpen, setAdvanceHistoryModalOpen] = useState(false)
     const [selectedBillingTable, setSelectedBillingTable] = useState<any | null>(null)
+    const [selectedBillingOrder, setSelectedBillingOrder] = useState<UnpaidOrder | null>(null)
     const [activeInvoice, setActiveInvoice] = useState<any | null>(null)
     const [isSettlingInvoice, setIsSettlingInvoice] = useState(false)
+    // Synchronous re-entry guard: state updates from setIsSettlingInvoice are
+    // batched/async, so a fast double-click can fire handleMarkPaid twice
+    // before the button actually disables — settling the bill (and printing
+    // the invoice) twice. A ref blocks re-entry the instant the first click lands.
+    const isSettlingRef = useRef(false)
+    // True once the bill is actually settled in the database — printing (which
+    // can be slow or block on a native dialog if no printer is configured)
+    // happens after this, so the cashier sees "Paid" immediately instead of a
+    // spinner that looks stuck for as long as the print step takes.
+    const [invoiceSettled, setInvoiceSettled] = useState(false)
+    const [partnerRestaurantId, setPartnerRestaurantId] = useState<string | null>(null)
+
+    useEffect(() => {
+        const fetchPartner = async () => {
+            const { data } = await supabaseRef.current
+                .from('restaurants')
+                .select('linked_restaurant_id')
+                .eq('id', restaurantId)
+                .maybeSingle()
+            if (data?.linked_restaurant_id) {
+                setPartnerRestaurantId(data.linked_restaurant_id)
+            }
+        }
+        fetchPartner()
+    }, [restaurantId])
 
     // For stay billing detail states
     const [loadingStayDetails, setLoadingStayDetails] = useState(false)
     const [billingStayBooking, setBillingStayBooking] = useState<any | null>(null)
     const [billingRoomCharges, setBillingRoomCharges] = useState<any[]>([])
     const [billingLinkedOrders, setBillingLinkedOrders] = useState<any[]>([])
-    const [billingPaymentMethod, setBillingPaymentMethod] = useState<'cash' | 'qr_digital' | 'both'>('cash')
+    // The rest of the reservation, when this room is one of several a guest
+    // took on a single booking (see /api/bookings/group). Those rooms settle on
+    // ONE bill, so the room cost and the advance shown here have to be the
+    // reservation's, not this room's share of it — quoting one room's figures
+    // was undercharging the guest by every other room on the folio. Null for an
+    // ordinary single-room stay, which keeps its original per-room math.
+    const [billingGroup, setBillingGroup] = useState<GroupBill | null>(null)
+    const filteredRoomOrders = useMemo(() => {
+        return billingLinkedOrders.filter(o => o.is_room_order && o.status !== 'cancelled')
+    }, [billingLinkedOrders])
+    const filteredLinkedOrders = useMemo(() => {
+        return billingLinkedOrders.filter(o => !o.is_room_order && o.status !== 'cancelled')
+    }, [billingLinkedOrders])
+    const [billingPaymentMethod, setBillingPaymentMethod] = useState<'none' | 'cash' | 'qr_digital' | 'both' | 'credit'>('none')
+    const [cashReceivedAmount, setCashReceivedAmount] = useState<string>('')
+    const [qrReceivedAmount, setQrReceivedAmount] = useState<string>('')
     const [splitCashAmount, setSplitCashAmount] = useState<string>('')
     const [splitQrAmount, setSplitQrAmount] = useState<string>('')
+    const [billingQrCodeId, setBillingQrCodeId] = useState<string>('')
+    const [showTakeoutQuickOrder, setShowTakeoutQuickOrder] = useState<boolean>(false)
+    // Bargain rate for the takeaway/delivery order billing panel (PR #96). The
+    // table billing panel uses foodDiscount below instead; only one panel is
+    // ever open at a time, so this state is dedicated to takeaway/delivery.
+    const [tableBargainRate, setTableBargainRate] = useState<string>('')
+    const [tableBargainReason, setTableBargainReason] = useState<string>('')
+    // Table Food Discount: entered directly (like foodDiscount in room service)
+    const [tableDiscount, setTableDiscount] = useState<string>('')
+    const [tableDiscountReason, setTableDiscountReason] = useState<string>('')
+    // Service charge the cashier typed over the auto-calculated one. Empty
+    // string means "leave it on auto" — an explicit '0' is a real override
+    // that waives the charge, so the two can't be collapsed into a number.
+    const [tableServiceCharge, setTableServiceCharge] = useState<string>('')
+    // Room service charge the cashier typed over the auto figure — same
+    // empty-means-auto convention as tableServiceCharge above. Stamped with the
+    // room it belongs to so switching rooms starts from auto again, and so the
+    // drawer's "Go to Billing" can seed it without an effect racing the reset.
+    const [roomServiceChargeEdit, setRoomServiceChargeEdit] = useState<{ roomId: string; value: string } | null>(null)
+    const [roomDiscount, setRoomDiscount] = useState<string>('')
+    const [foodDiscount, setFoodDiscount] = useState<string>('')
+    const [discountReason, setDiscountReason] = useState<string>('')
+    const [extraHourCharge, setExtraHourCharge] = useState<string>('')
+
+    useEffect(() => {
+        setRoomDiscount('')
+        setFoodDiscount('')
+        setDiscountReason('')
+        setExtraHourCharge('')
+        setBillingPaymentMethod('none')
+        setSplitCashAmount('')
+        setSplitQrAmount('')
+        setBillingQrCodeId('')
+        setCreditCustomerName('')
+        setCreditCustomerPhone('')
+        setCashReceivedAmount('')
+        setQrReceivedAmount('')
+    }, [selectedBillingRoom?.id])
+    // Shared by both the room and table billing panels below — only one is
+    // ever open at a time, so one pair of fields is enough. Only ever read
+    // from the settlement confirmation popup now (see showSettlementConfirm) —
+    // 'both'/'credit' settlements no longer show these inline.
+    const [creditCustomerName, setCreditCustomerName] = useState<string>('')
+    const [creditCustomerPhone, setCreditCustomerPhone] = useState<string>('')
+    // Gates every 'both' or 'credit' settlement (room or table) behind one
+    // confirmation popup — protects against a cashier's typo in the split
+    // amounts, and is where a credit portion's name/phone gets collected.
+    const [showSettlementConfirm, setShowSettlementConfirm] = useState(false)
+    const [pendingInvoice, setPendingInvoice] = useState<{ type: 'room' | 'table' | 'takeout' | 'delivery'; item: any; data: any } | null>(null)
+    const [isDirectCheckingOut, setIsDirectCheckingOut] = useState(false)
+    const qrCodes = useQrCodes()
 
     const [mounted, setMounted] = useState(false)
+    useEffect(() => {
+        setMounted(true)
+    }, [])
 
 
     // Sync rooms state when prop changes
     useEffect(() => {
         setRoomsState(rooms)
     }, [rooms])
+
+    // Sync tables state when prop changes
+    useEffect(() => {
+        setTablesState(tables)
+    }, [tables])
+
+    // Sync unpaid/active order state when props change — previously missing,
+    // unlike rooms/bookings/tables above, so a server refresh (e.g. the
+    // realtime reconnect catch-up below) never actually reached these two.
+    useEffect(() => {
+        setUnpaid(initialUnpaid)
+    }, [initialUnpaid])
+
+    useEffect(() => {
+        setActive(initialActive)
+    }, [initialActive])
 
     // Sync bookings state when prop changes (e.g. on server reload or catch up)
     useEffect(() => {
@@ -149,13 +551,113 @@ export default function CashierClient({
     // Realtime subscriptions for bookings
     useRestaurantTable(restaurantId, 'bookings', (payload) => {
         if (payload.eventType === 'INSERT') {
-            setBookings((prev: any[]) => [...prev, payload.new])
+            setBookings((prev: any[]) => {
+                if (prev.some(b => b.id === payload.new.id)) return prev
+                return [...prev, payload.new]
+            })
         } else if (payload.eventType === 'UPDATE') {
             const b = payload.new as any
             setBookings((prev: any[]) => prev.map(item => item.id === b.id ? b : item))
             if (billingStayBooking?.id === b.id) {
                 setBillingStayBooking(b)
             }
+        }
+    })
+
+    // Realtime subscriptions for table sessions — a table becoming newly
+    // occupied (or its session closing once paid) needs to show up in/drop
+    // out of the Billing tab's Tables grid without a manual refresh.
+    // Mirrors CashierTableManager.tsx's identical patch logic exactly.
+    useRestaurantTable(restaurantId, 'sessions', (payload) => {
+        if (payload.eventType === 'INSERT') {
+            const s = payload.new as Session
+            const seatNumber = s.seat_number ?? 1
+            const patch = seatNumber === 1
+                ? { activeSession: s }
+                : (t: TableWithSession) => ({ otherActiveSessions: [...(t.otherActiveSessions || []).filter(x => x.id !== s.id), s] })
+
+            setTablesState(prev => prev.map(t => t.id === s.table_id
+                ? { ...t, ...(typeof patch === 'function' ? patch(t) : patch) }
+                : t))
+            setSelectedBillingTable((prev: any) => prev?.id === s.table_id
+                ? { ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) }
+                : prev)
+        } else if (payload.eventType === 'UPDATE') {
+            const s = payload.new as Session
+            const isClosed = s.status === 'closed' || s.status === 'expired'
+
+            setTablesState(prev => {
+                // Detect if the session moved to a different table (table_id changed)
+                const oldTable = prev.find(t => t.activeSession?.id === s.id)
+                const movedToNewTable = !isClosed && oldTable && oldTable.id !== s.table_id
+
+                return prev.map(t => {
+                    if (t.activeSession?.id === s.id) {
+                        // Old table: if session moved away, detach it; otherwise update in-place
+                        return { ...t, activeSession: (isClosed || movedToNewTable) ? null : s }
+                    }
+                    if (t.otherActiveSessions?.some(x => x.id === s.id)) {
+                        return {
+                            ...t,
+                            otherActiveSessions: (isClosed || movedToNewTable)
+                                ? t.otherActiveSessions.filter(x => x.id !== s.id)
+                                : t.otherActiveSessions.map(x => x.id === s.id ? s : x)
+                        }
+                    }
+                    // New table: attach the moved session
+                    if (!isClosed && movedToNewTable && t.id === s.table_id) {
+                        return { ...t, activeSession: s }
+                    }
+                    return t
+                })
+            })
+            setSelectedBillingTable((prev: any) => {
+                if (!prev) return null
+                if (prev.activeSession?.id === s.id) {
+                    if (isClosed) return { ...prev, activeSession: null }
+                    // Session moved to a different table — close the old table's billing panel
+                    if (prev.id !== s.table_id) return null
+                    return { ...prev, activeSession: s }
+                }
+                if (prev.otherActiveSessions?.some((x: Session) => x.id === s.id)) {
+                    return {
+                        ...prev,
+                        otherActiveSessions: isClosed
+                            ? prev.otherActiveSessions.filter((x: Session) => x.id !== s.id)
+                            : prev.otherActiveSessions.map((x: Session) => x.id === s.id ? s : x)
+                    }
+                }
+                return prev
+            })
+        }
+    })
+
+    useRestaurantTable(restaurantId, 'tables', (payload) => {
+        if (payload.eventType !== 'UPDATE') return
+        const u = payload.new as TableWithSession
+        const patch = {
+            table_status: u.table_status,
+            cleaning_claimed_by: u.cleaning_claimed_by ?? null,
+            cleaning_claimed_at: u.cleaning_claimed_at ?? null,
+        }
+        setTablesState(prev => prev.map(t => t.id === u.id ? { ...t, ...patch } : t))
+        setSelectedBillingTable((prev: any) => prev?.id === u.id ? { ...prev, ...patch } : prev)
+    })
+
+    // Realtime subscriptions for orders — updates order state (including booking_id link) dynamically
+    useRestaurantTable(restaurantId, 'orders', (payload) => {
+        if (payload.eventType === 'INSERT') {
+            const updatedOrder = payload.new as any
+            if (updatedOrder.payment_status === 'paid') return
+            setUnpaid(prev => [...prev.filter(o => o.id !== updatedOrder.id), updatedOrder])
+        } else if (payload.eventType === 'UPDATE') {
+            const updatedOrder = payload.new as any
+            const isPaidOrCancelled = updatedOrder.payment_status === 'paid' || updatedOrder.status === 'cancelled'
+            setUnpaid(prev => isPaidOrCancelled 
+                ? prev.filter(o => o.id !== updatedOrder.id)
+                : prev.map(o => o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o)
+            )
+            setActive(prev => prev.map(o => o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o))
         }
     })
 
@@ -166,6 +668,7 @@ export default function CashierClient({
             setBillingStayBooking(null)
             setBillingRoomCharges([])
             setBillingLinkedOrders([])
+            setBillingGroup(null)
             setLoadingStayDetails(true)
 
             // Fetch newest checked_in booking from API (ORDER BY created_at DESC)
@@ -176,12 +679,15 @@ export default function CashierClient({
                     if (data.success && data.data) {
                         const booking = data.data
                         try {
-                            // Concurrently fetch charges and linked dining orders
-                            const [chargesRes, ordersRes] = await Promise.all([
+                            // Concurrently fetch charges, linked dining orders,
+                            // and the rest of the reservation if this room is
+                            // part of a multi-room one.
+                            const [chargesRes, ordersRes, groupRes] = await Promise.all([
                                 fetch(`/api/rooms/charges?bookingId=${booking.id}`).then(r => r.json()),
-                                fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`).then(r => r.json())
+                                fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`).then(r => r.json()),
+                                fetch(`/api/bookings/group?bookingId=${booking.id}`).then(r => r.json())
                             ])
-                            
+
                             // Set all states simultaneously
                             setBillingStayBooking(booking)
                             if (chargesRes.success) {
@@ -190,17 +696,20 @@ export default function CashierClient({
                             if (ordersRes.success) {
                                 setBillingLinkedOrders(ordersRes.items || [])
                             }
+                            setBillingGroup(groupRes?.success && groupRes.isGroup ? groupRes : null)
                         } catch (err) {
                             console.error('Error loading secondary billing details:', err)
                             // Set basic stay booking at least
                             setBillingStayBooking(booking)
                             setBillingRoomCharges([])
                             setBillingLinkedOrders([])
+                            setBillingGroup(null)
                         }
                     } else {
                         setBillingStayBooking(null)
                         setBillingRoomCharges([])
                         setBillingLinkedOrders([])
+                        setBillingGroup(null)
                     }
                 })
                 .catch(err => {
@@ -208,50 +717,159 @@ export default function CashierClient({
                     setBillingStayBooking(null)
                     setBillingRoomCharges([])
                     setBillingLinkedOrders([])
+                    setBillingGroup(null)
                 })
                 .finally(() => setLoadingStayDetails(false))
         } else {
             setBillingStayBooking(null)
             setBillingRoomCharges([])
             setBillingLinkedOrders([])
-            setBillingPaymentMethod('cash')
+            setBillingGroup(null)
+            setBillingPaymentMethod('none')
             setSplitCashAmount('')
             setSplitQrAmount('')
+            setBillingQrCodeId('')
+            setCreditCustomerName('')
+            setCreditCustomerPhone('')
+            setCashReceivedAmount('')
+            setQrReceivedAmount('')
         }
     }, [selectedBillingRoom, bookings])
 
+    // Same reset for the table billing panel — keyed on the table's id so it
+    // also fires when switching straight from one table to another, not just
+    // on close.
+    useEffect(() => {
+        setBillingPaymentMethod('none')
+        setSplitCashAmount('')
+        setSplitQrAmount('')
+        setBillingQrCodeId('')
+        setTableDiscount('')
+        setTableDiscountReason('')
+        setTableServiceCharge('')
+        setCreditCustomerName('')
+        setCreditCustomerPhone('')
+        setCashReceivedAmount('')
+        setQrReceivedAmount('')
+    }, [selectedBillingTable?.id])
+
+    // Same reset for the takeaway/delivery order billing panel — shares the
+    // table panel's bargain-rate/payment-method state since only one of the
+    // two panels is ever open at a time.
+    useEffect(() => {
+        setBillingPaymentMethod('none')
+        setSplitCashAmount('')
+        setSplitQrAmount('')
+        setBillingQrCodeId('')
+        setTableBargainRate('')
+        setTableBargainReason('')
+        setCreditCustomerName(selectedBillingOrder?.customer_name || '')
+        setCreditCustomerPhone(selectedBillingOrder?.customer_phone || '')
+        setCashReceivedAmount('')
+        setQrReceivedAmount('')
+    }, [selectedBillingOrder?.id])
+
+    // Mirrors the server folio, including the late-checkout rule — if this
+    // preview left the overstay out, the cashier would quote a total the
+    // server then charged more than.
     const calculateStayCost = (room: any, booking: any) => {
+        // A multi-room reservation is billed as one folio, so the room charge is
+        // every room's, priced server-side (each room can be a different type).
+        if (billingGroup) return billingGroup.stayCost
         if (!room || !booking) return 0
         const price = room.room_types?.base_price || 0
         const nights = calculateNights(booking.check_in, booking.check_out)
+            + lateCheckoutNights(booking.check_out, resolveDeparture(booking))
         return price * nights
     }
 
+    /**
+     * What the guest has already handed over on this folio. On a reservation the
+     * advance was split across its rooms at booking time, so the amount to
+     * deduct is their sum — deducting only the clicked room's share left the
+     * rest of the advance uncredited and overstated the balance due.
+     */
+    const advancePaidFor = (booking: any) =>
+        billingGroup ? billingGroup.advancePaid : (Number(booking?.paid_amount) || 0)
+
     const getRoomQrOrders = (room: any) => {
         if (!room) return []
-        // Keyed on tables.room_id (see migration 20260709140000) — no label matching.
-        const matchingTable = tables.find(t => t.room_id === room.id)
-        if (!matchingTable?.activeSession) return []
+        if (filteredRoomOrders.length > 0) {
+            // Merge duplicate items (same dish ordered at different times)
+            const mergeMap = new Map<string, { name: string; quantity: number; unitPrice: number; status: string }>()
+            for (const item of filteredRoomOrders) {
+                const name = getItemDisplayName(item)
+                const unitPrice = Number(item.unit_price ?? 0)
+                const key = `${name}__${unitPrice}`
+                const existing = mergeMap.get(key)
+                if (existing) {
+                    existing.quantity += item.quantity || 0
+                } else {
+                    mergeMap.set(key, { name, quantity: item.quantity || 0, unitPrice, status: 'active' })
+                }
+            }
+            return Array.from(mergeMap.values())
+        }
+        
+        // Fallback for immediate UI responsiveness before API returns
+        const booking = billingStayBooking ?? bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
+        if (!booking) return []
 
-        const sessionId = matchingTable.activeSession.id
-        const allActive = active.filter(o => o.session_id === sessionId)
-        const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
-        const combinedOrders = [...allActive, ...allUnpaid]
+        const allActive = active.filter(o => o.booking_id === booking.id)
+        const allUnpaid = unpaid.filter(o => o.booking_id === booking.id)
+        const matchingTable = tablesState.find(t => t.room_id === room.id)
+        const sessionId = matchingTable?.activeSession?.id
+        const additionalActive = sessionId ? active.filter(o => o.session_id === sessionId && o.booking_id !== booking.id) : []
+        const additionalUnpaid = sessionId ? unpaid.filter(o => o.session_id === sessionId && o.booking_id !== booking.id) : []
 
+        const combinedOrders = [...allActive, ...allUnpaid, ...additionalActive, ...additionalUnpaid]
+        const uniqueOrdersMap = new Map<string, any>()
+        for (const o of combinedOrders) {
+            uniqueOrdersMap.set(o.id, o)
+        }
         const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
-        for (const order of combinedOrders) {
+        const mergeMap = new Map<string, { name: string; quantity: number; unitPrice: number; status: string }>()
+        for (const order of Array.from(uniqueOrdersMap.values())) {
             const orderItems = order.order_items || []
             for (const item of orderItems) {
-                items.push({
-                    name: item.menu_items?.name || 'Item',
-                    quantity: item.quantity || 0,
-                    unitPrice: Number(item.unit_price ?? 0),
-                    status: item.status || order.status || 'unknown'
-                })
+                const name = getItemDisplayName(item)
+                const unitPrice = Number(item.unit_price ?? 0)
+                const key = `${name}__${unitPrice}`
+                const existing = mergeMap.get(key)
+                if (existing) {
+                    existing.quantity += item.quantity || 0
+                } else {
+                    mergeMap.set(key, {
+                        name,
+                        quantity: item.quantity || 0,
+                        unitPrice,
+                        status: item.status || order.status || 'unknown'
+                    })
+                }
             }
         }
-        return items
+        return Array.from(mergeMap.values())
     }
+
+    const stayCost = selectedBillingRoom && billingStayBooking ? calculateStayCost(selectedBillingRoom, billingStayBooking) : 0
+    const qrOrdersTotal = selectedBillingRoom ? filteredRoomOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0) : 0
+    const linkedOrdersTotal = selectedBillingRoom ? filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0) : 0
+    const totalFoodOrders = qrOrdersTotal + linkedOrdersTotal
+
+    const roomDiscountVal = roomDiscount.trim() !== '' ? parseFloat(roomDiscount) || 0 : 0
+    const foodDiscountVal = foodDiscount.trim() !== '' ? parseFloat(foodDiscount) || 0 : 0
+    const totalDiscountAmount = roomDiscountVal + foodDiscountVal
+
+    const extraHourChargeVal = extraHourCharge.trim() !== '' ? parseFloat(extraHourCharge) || 0 : 0
+
+    const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost || foodDiscountVal < 0 || foodDiscountVal > totalFoodOrders
+
+    const checkOutTime = billingStayBooking ? new Date(billingStayBooking.check_out) : null
+    const currentTime = new Date()
+    const isExceeded = checkOutTime ? currentTime > checkOutTime : false
+    const extraHours = isExceeded && checkOutTime
+        ? Math.ceil((currentTime.getTime() - checkOutTime.getTime()) / (1000 * 60 * 60))
+        : 0
 
     const getTableSessionItems = (table: any) => {
         if (!table || !table.activeSession) return []
@@ -260,66 +878,358 @@ export default function CashierClient({
         const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
         const combinedOrders = [...allActive, ...allUnpaid]
 
-        const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
+        const itemsMap: Record<string, { id: string; name: string; quantity: number; unitPrice: number; status: string }> = {}
         for (const order of combinedOrders) {
+            if (order.status === 'cancelled') continue
             const orderItems = order.order_items || []
             for (const item of orderItems) {
-                items.push({
-                    name: item.menu_items?.name || 'Item',
-                    quantity: item.quantity || 0,
-                    unitPrice: Number(item.unit_price ?? 0),
-                    status: item.status || order.status || 'unknown'
-                })
+                if (item.status === 'cancelled') continue
+                const name = getItemDisplayName(item)
+                const unitPrice = Number(item.unit_price ?? 0)
+                
+                const key = `${name}-${unitPrice}`
+                if (itemsMap[key]) {
+                    itemsMap[key].quantity += item.quantity || 0
+                } else {
+                    itemsMap[key] = {
+                        id: item.id || '',
+                        name,
+                        quantity: item.quantity || 0,
+                        unitPrice,
+                        status: item.status || order.status || 'unknown'
+                    }
+                }
             }
         }
-        return items
+        return Object.values(itemsMap)
+    }
+
+    // The authoritative bill for a table session — sums each order's own
+    // total_amount (already includes tax/service charge from placement time),
+    // NOT unitPrice*quantity like getTableSessionItems above, which is only
+    // the pre-tax line-item breakdown. /api/tables/checkout bills off this
+    // same total_amount field, so the bargain rate and split-payment amounts
+    // must be calculated against this number, not the pre-tax item sum —
+    // otherwise a bargain rate entered against the wrong baseline over- or
+    // under-charges the guest relative to what's displayed.
+    const getTableSessionOrdersTotal = (table: any) => {
+        if (!table || !table.activeSession) return 0
+        const sessionId = table.activeSession.id
+        const allActive = active.filter(o => o.session_id === sessionId)
+        const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
+        return [...allActive, ...allUnpaid]
+            .filter(o => o.status !== 'cancelled')
+            .reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0)
+    }
+
+    const getTableSessionOrders = (table: any) => {
+        if (!table?.activeSession) return []
+        return [...active, ...unpaid].filter(o => o.session_id === table.activeSession.id && o.status !== 'cancelled')
+    }
+
+    // The service charge as it stands on the bill: what the orders locked in at
+    // placement time, and what the cashier has decided it should be. `delta` is
+    // the only part that changes the money owed — the auto figure is already
+    // baked into each order's total_amount, so charging the override means
+    // adding the difference on top, never the whole overridden amount.
+    const resolveTableServiceCharge = (table: any) => {
+        const auto = round2(getTableSessionOrders(table).reduce((sum, o) => sum + (Number(o.service_charge_amount) || 0), 0))
+        const isOverridden = tableServiceCharge.trim() !== ''
+        const charged = isOverridden ? round2(Math.max(0, parseFloat(tableServiceCharge) || 0)) : auto
+        return { auto, charged, isOverridden, delta: round2(charged - auto) }
+    }
+
+    // Mirrors the folio's room service charge rule (src/lib/folio.ts) so the
+    // figure the cashier reads is the one /api/bookings/checkout will bill.
+    const resolveRoomSc = (room: any) => {
+        const auto = autoRoomServiceCharge(billingLinkedOrders, features, room?.id)
+        const typed = roomServiceChargeEdit?.roomId === room?.id ? roomServiceChargeEdit?.value ?? '' : ''
+        return resolveRoomServiceCharge(auto, typed)
     }
 
     const calculateGrandTotal = (room: any, booking: any) => {
         const stayCost = calculateStayCost(room, booking)
-        const qrOrdersTotal = getRoomQrOrders(room).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
-        const linkedOrdersTotal = billingLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+        const qrOrdersTotal = filteredRoomOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
+        const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
+        const totalFoodOrders = qrOrdersTotal + linkedOrdersTotal
+
+        const roomDiscountVal = roomDiscount.trim() !== '' ? parseFloat(roomDiscount) || 0 : 0
+        const foodDiscountVal = foodDiscount.trim() !== '' ? parseFloat(foodDiscount) || 0 : 0
+
+        const effectiveStayCost = Math.max(0, stayCost - roomDiscountVal)
+        const effectiveFoodOrders = Math.max(0, totalFoodOrders - foodDiscountVal)
         const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
-        return stayCost + qrOrdersTotal + linkedOrdersTotal + manualChargesTotal
+        const extraHourChargeVal = extraHourCharge.trim() !== '' ? parseFloat(extraHourCharge) || 0 : 0
+        // Added whole rather than as a delta: unlike the folio's ordersTotal,
+        // the food totals above are raw line items with no service charge in
+        // them, so there is nothing here to double up on.
+        return round2(effectiveStayCost + effectiveFoodOrders + manualChargesTotal + extraHourChargeVal + resolveRoomSc(room).charged)
     }
 
-    const compileInvoice = (type: 'room' | 'table', item: any) => {
+    const renderPaymentInputsAndCalculator = (balanceDue: number) => {
+        if (billingPaymentMethod === 'none') {
+            return (
+                <div className="mt-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl text-center">
+                    <p className="text-xs font-bold text-ink-subtle">
+                        No payment method selected. Clicking "Generate Estimate" below will print/preview the estimate bill.
+                    </p>
+                </div>
+            )
+        }
+
+        if (billingPaymentMethod === 'cash') {
+            const cashVal = parseFloat(cashReceivedAmount) || 0
+            const changeToReturn = cashVal > balanceDue ? cashVal - balanceDue : 0
+            const remainingBalance = cashVal < balanceDue ? balanceDue - cashVal : 0
+
+            return (
+                <div className="mt-3 space-y-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl">
+                    <div>
+                        <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Amount Received (Cash)</label>
+                        <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                            <input
+                                type="number"
+                                min="0"
+                                placeholder={balanceDue.toFixed(2)}
+                                value={cashReceivedAmount}
+                                onChange={e => setCashReceivedAmount(e.target.value)}
+                                className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                            />
+                        </div>
+                    </div>
+                    {cashReceivedAmount.trim() !== '' && (
+                        <div className="text-center space-y-1">
+                            {changeToReturn > 0.01 && (
+                                <p className="text-xs font-black text-emerald-600 animate-scale-in">
+                                    Return / Change: {money(changeToReturn)}
+                                </p>
+                            )}
+                            {remainingBalance > 0.01 && (
+                                <p className="text-xs font-black text-brand-600 animate-scale-in">
+                                    Balance Due: {money(remainingBalance)}
+                                </p>
+                            )}
+                            {Math.abs(changeToReturn) <= 0.01 && Math.abs(remainingBalance) <= 0.01 && (
+                                <p className="text-[10px] font-bold text-emerald-600">✓ Exact Amount Received</p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )
+        }
+
+        if (billingPaymentMethod === 'qr_digital') {
+            const qrVal = parseFloat(qrReceivedAmount) || 0
+            const remainingBalance = qrVal < balanceDue ? balanceDue - qrVal : 0
+
+            return (
+                <div className="mt-3 space-y-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl">
+                    <div>
+                        <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Amount Received (QR / Digital)</label>
+                        <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                            <input
+                                type="number"
+                                min="0"
+                                placeholder={balanceDue.toFixed(2)}
+                                value={qrReceivedAmount}
+                                onChange={e => setQrReceivedAmount(e.target.value)}
+                                className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                            />
+                        </div>
+                    </div>
+                    {qrReceivedAmount.trim() !== '' && remainingBalance > 0.01 && (
+                        <div className="text-center">
+                            <p className="text-xs font-black text-brand-600 animate-scale-in">
+                                Balance Due: {money(remainingBalance)}
+                            </p>
+                        </div>
+                    )}
+                    {qrCodes.length > 1 && (
+                        <div>
+                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
+                            <Select
+                                value={billingQrCodeId}
+                                onChange={e => setBillingQrCodeId(e.target.value)}
+                                className="w-full text-xs font-bold"
+                            >
+                                <option value="">Select QR Account</option>
+                                {qrCodes.map(qr => (
+                                    <option key={qr.id} value={qr.id}>{qr.label}</option>
+                                ))}
+                            </Select>
+                        </div>
+                    )}
+                </div>
+            )
+        }
+
+        if (billingPaymentMethod === 'both') {
+            const cash = parseFloat(splitCashAmount) || 0
+            const qr = parseFloat(splitQrAmount) || 0
+            const totalPaid = cash + qr
+            const changeToReturn = totalPaid > balanceDue ? totalPaid - balanceDue : 0
+            const remainingBalance = totalPaid < balanceDue ? balanceDue - totalPaid : 0
+
+            return (
+                <div className="mt-3 space-y-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl">
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash Amount</label>
+                            <div className="relative">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="0.00"
+                                    value={splitCashAmount}
+                                    onChange={e => setSplitCashAmount(e.target.value)}
+                                    className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">QR / Digital Amount</label>
+                            <div className="relative">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="0.00"
+                                    value={splitQrAmount}
+                                    onChange={e => setSplitQrAmount(e.target.value)}
+                                    className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    <div className="text-center space-y-1">
+                        {changeToReturn > 0.01 && (
+                            <p className="text-xs font-black text-emerald-600 animate-scale-in">
+                                Return / Change: {money(changeToReturn)}
+                            </p>
+                        )}
+                        {remainingBalance > 0.01 && (
+                            <p className="text-xs font-black text-brand-600 animate-scale-in">
+                                Balance Due: {money(remainingBalance)}
+                            </p>
+                        )}
+                        {Math.abs(changeToReturn) <= 0.01 && Math.abs(remainingBalance) <= 0.01 && (
+                            <p className="text-[10px] font-bold text-emerald-600">✓ Amounts Balanced</p>
+                        )}
+                    </div>
+                    {qrCodes.length > 1 && (
+                        <div>
+                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
+                            <Select
+                                value={billingQrCodeId}
+                                onChange={e => setBillingQrCodeId(e.target.value)}
+                                className="w-full text-xs font-bold"
+                            >
+                                <option value="">Select QR Account</option>
+                                {qrCodes.map(qr => (
+                                    <option key={qr.id} value={qr.id}>{qr.label}</option>
+                                ))}
+                            </Select>
+                        </div>
+                    )}
+                </div>
+            )
+        }
+
+        return null
+    }
+
+    // Pure computation — no side effects — so compileInvoice below can inspect
+    // the result (does this settlement involve credit? is it overpaid?) before
+    // deciding whether to open the confirmation popup or go straight to the
+    // invoice preview.
+    const buildInvoiceData = (type: 'room' | 'table' | 'takeout' | 'delivery', item: any): any => {
         if (type === 'room') {
             const room = item
             // Prefer the freshly fetched billingStayBooking (newest checked_in via API)
             // This avoids showing stale data from a previous booking session
             const booking = billingStayBooking ?? bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
-            if (!booking) return
-            
+            if (!booking) return null
+
             const price = room.room_types?.base_price || 0
-            const nights = calculateNights(booking.check_in, booking.check_out)
-            const stayCost = price * nights
+            // Late-checkout aware (and reservation-wide when this room is part
+            // of one), so the printed room line adds up to the total charged
+            // rather than quietly omitting the overstay night.
+            const stayCost = calculateStayCost(room, booking)
+            const nights = billingGroup
+                ? billingGroup.nights
+                : calculateNights(booking.check_in, booking.check_out)
+                    + lateCheckoutNights(booking.check_out, resolveDeparture(booking))
+            // One printed line per room when several settle together, so the
+            // guest can see what each room cost instead of one opaque lump.
+            const roomLines = billingGroup
+                ? billingGroup.rooms.map(r => ({
+                    roomNumber: r.roomNumber,
+                    nights: r.nights,
+                    stayCost: r.stayCost,
+                }))
+                : undefined
 
-            const matchingTable = tables.find(t => t.room_id === room.id)
-            const sessionOrders = matchingTable?.activeSession ? getRoomQrOrders(room) : []
-            const qrOrdersTotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
+            // Merge duplicate items (same dish ordered at different times in the same session)
+            const mergeFn = (rawItems: any[]) => {
+                const map = new Map<string, { name: string; quantity: number; unitPrice: number }>()
+                for (const item of rawItems) {
+                    const name = getItemDisplayName(item)
+                    const unitPrice = Number(item.unit_price ?? 0)
+                    const key = `${name}__${unitPrice}`
+                    const existing = map.get(key)
+                    if (existing) {
+                        existing.quantity += item.quantity || 0
+                    } else {
+                        map.set(key, { name, quantity: item.quantity || 0, unitPrice })
+                    }
+                }
+                return Array.from(map.values())
+            }
+            const sessionOrders = mergeFn(filteredRoomOrders)
+            const qrOrdersTotal = filteredRoomOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
 
-            const linkedOrdersTotal = billingLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+            const linkedOrders = mergeFn(filteredLinkedOrders)
+            const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
             const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
-            const total = stayCost + qrOrdersTotal + linkedOrdersTotal + manualChargesTotal
+            const roomSc = resolveRoomSc(room)
+            const total = calculateGrandTotal(room, booking)
 
             // Advance already paid at booking
-            const advancePaid = Number(booking.paid_amount) || 0
+            const advancePaid = advancePaidFor(booking)
             const balanceDue = Math.max(0, total - advancePaid)
 
-            // Resolve split amounts (apply to balance due, not gross total)
+            // Resolve split amounts (apply to balance due, not gross total).
+            // Each branch is explicit (rather than falling through to an
+            // "else") so a stale splitCashAmount left over from a previous
+            // 'both' selection can't leak into a 'credit' settlement.
             const resolvedCash = billingPaymentMethod === 'cash' ? balanceDue
-                : billingPaymentMethod === 'qr_digital' ? 0
-                : parseFloat(splitCashAmount) || 0
+                : billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0)
+                : 0
             const resolvedQr = billingPaymentMethod === 'qr_digital' ? balanceDue
-                : billingPaymentMethod === 'cash' ? 0
-                : parseFloat(splitQrAmount) || 0
+                : billingPaymentMethod === 'both' ? (parseFloat(splitQrAmount) || 0)
+                : 0
+            // 'both' no longer requires cash+qr to exactly equal the balance —
+            // whatever's left over (if any) becomes credit, confirmed via the
+            // settlement popup below (guards against a cashier's typo, not
+            // just a deliberate part-credit sale).
+            const resolvedCredit = billingPaymentMethod === 'credit' ? balanceDue
+                : billingPaymentMethod === 'both' ? Math.max(0, balanceDue - resolvedCash - resolvedQr)
+                : 0
+            const overpaid = billingPaymentMethod === 'both' && (resolvedCash + resolvedQr) > balanceDue + 0.01
 
-            setActiveInvoice({
+            return {
                 type: 'room',
                 id: room.id,
-                label: `Room ${room.room_number}`,
-                roomType: room.room_types?.name || 'Deluxe',
+                label: billingGroup
+                    ? `Rooms ${billingGroup.rooms.map(r => r.roomNumber).filter(Boolean).join(', ')}`
+                    : `Room ${room.room_number}`,
+                // A reservation can hold rooms of different types, so naming one
+                // of them on a combined bill would be wrong.
+                roomType: billingGroup ? undefined : (room.room_types?.name || 'Deluxe'),
+                roomLines,
                 guestName: booking.guest_name,
                 guestPhone: booking.guest_phone,
                 checkIn: booking.check_in,
@@ -327,13 +1237,9 @@ export default function CashierClient({
                 nights,
                 basePrice: price,
                 stayCost,
-                qrOrders: getRoomQrOrders(room),
+                qrOrders: sessionOrders,
                 qrOrdersTotal,
-                linkedOrders: billingLinkedOrders.map(item => ({
-                    name: item.menu_items?.name || 'Item',
-                    quantity: item.quantity,
-                    unitPrice: Number(item.unit_price)
-                })),
+                linkedOrders,
                 linkedOrdersTotal,
                 manualCharges: billingRoomCharges,
                 manualChargesTotal,
@@ -346,68 +1252,388 @@ export default function CashierClient({
                 paymentMethod: billingPaymentMethod,
                 cashPaid: resolvedCash,
                 qrPaid: resolvedQr,
-            })
-        } else {
+                creditPaid: resolvedCredit,
+                overpaid,
+                qrCodeId: (resolvedQr > 0) ? (billingQrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined)) : undefined,
+                customerName: booking.guest_name,
+                customerPhone: booking.guest_phone,
+                discountAmount: (parseFloat(roomDiscount) || 0) + (parseFloat(foodDiscount) || 0),
+                discountReason: discountReason,
+                extraHourCharge: extraHourChargeVal,
+                serviceCharge: roomSc.charged,
+                serviceChargeOverride: roomSc.isOverridden ? roomSc.charged : undefined,
+            }
+        } else if (type === 'table') {
             const table = item
             const sessionOrders = getTableSessionItems(table)
-            const total = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
+            const itemsSubtotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
+            const sessionOrdersList = getTableSessionOrders(table)
+            const sc = resolveTableServiceCharge(table)
+            const serviceCharge = sc.charged
+            const taxAmount = sessionOrdersList.reduce((sum, o) => sum + (Number((o as any).tax_amount) || 0), 0)
 
-            setActiveInvoice({
+            // Food Discount: discount amount entered directly
+            const discountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
+            // Billed off the orders' own total_amount plus whatever the cashier
+            // moved the service charge by — the exact arithmetic
+            // /api/tables/checkout re-does server-side, so the split payment
+            // amounts sent up always reconcile against it.
+            const total = Math.max(0, round2(getTableSessionOrdersTotal(table) + sc.delta - discountAmount))
+
+            const resolvedCash = billingPaymentMethod === 'cash' ? total
+                : billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0)
+                : 0
+            const resolvedQr = billingPaymentMethod === 'qr_digital' ? total
+                : billingPaymentMethod === 'both' ? (parseFloat(splitQrAmount) || 0)
+                : 0
+            const resolvedCredit = billingPaymentMethod === 'credit' ? total
+                : billingPaymentMethod === 'both' ? Math.max(0, total - resolvedCash - resolvedQr)
+                : 0
+            const overpaid = billingPaymentMethod === 'both' && (resolvedCash + resolvedQr) > total + 0.01
+
+            return {
                 type: 'table',
                 id: table.id,
                 label: `Table ${table.label}`,
-                guestName: `Table Guest`,
+                guestName: 'Table Guest',
                 guestPhone: null,
                 checkIn: table.activeSession.opened_at,
                 checkOut: new Date().toISOString(),
                 nights: 0,
                 basePrice: 0,
                 stayCost: 0,
+                subtotal: itemsSubtotal,
+                serviceCharge,
+                serviceChargeOverride: sc.isOverridden ? sc.charged : undefined,
+                taxAmount,
                 qrOrders: sessionOrders,
-                qrOrdersTotal: total,
+                qrOrdersTotal: itemsSubtotal,
                 manualCharges: [],
                 manualChargesTotal: 0,
                 total,
-                sessionId: table.activeSession.id
-            })
+                discountAmount,
+                discountReason: discountAmount > 0 ? tableDiscountReason.trim() : '',
+                sessionId: table.activeSession.id,
+                paymentMethod: billingPaymentMethod,
+                cashPaid: resolvedCash,
+                qrPaid: resolvedQr,
+                creditPaid: resolvedCredit,
+                overpaid,
+                qrCodeId: (resolvedQr > 0) ? (billingQrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined)) : undefined,
+                customerName: undefined,
+                customerPhone: undefined,
+            }
+        } else {
+            // Takeaway ('takeout') or delivery — a single standalone order,
+            // no session to draw items/total from. order.total_amount is the
+            // same already-tax/promo/loyalty-adjusted authoritative figure
+            // the new /api/orders/checkout route bills off.
+            const order: UnpaidOrder = item
+            const lineItems = (order.order_items || []).map(oi => ({
+                name: getItemDisplayName(oi),
+                quantity: oi.quantity,
+                unitPrice: Number(oi.unit_price) || 0,
+            }))
+            const itemsSubtotal = lineItems.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
+            const subtotal = Number(order.total_amount) || 0
+
+            const bargainRateEntered = tableBargainRate.trim() !== ''
+            const bargainRateValue = bargainRateEntered ? parseFloat(tableBargainRate) || 0 : subtotal
+            const discountAmount = bargainRateEntered ? Math.max(0, subtotal - bargainRateValue) : 0
+            const total = subtotal - discountAmount
+
+            const resolvedCash = billingPaymentMethod === 'cash' ? total
+                : billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0)
+                : 0
+            const resolvedQr = billingPaymentMethod === 'qr_digital' ? total
+                : billingPaymentMethod === 'both' ? (parseFloat(splitQrAmount) || 0)
+                : 0
+            const resolvedCredit = billingPaymentMethod === 'credit' ? total
+                : billingPaymentMethod === 'both' ? Math.max(0, total - resolvedCash - resolvedQr)
+                : 0
+            const overpaid = billingPaymentMethod === 'both' && (resolvedCash + resolvedQr) > total + 0.01
+
+            return {
+                type,
+                id: order.id,
+                orderId: order.id,
+                label: order.customer_name || (type === 'delivery' ? 'Delivery Guest' : 'Takeaway Guest'),
+                guestName: order.customer_name || 'Walk-in Customer',
+                guestPhone: order.customer_phone || null,
+                nights: 0,
+                basePrice: 0,
+                stayCost: 0,
+                qrOrders: lineItems,
+                qrOrdersTotal: itemsSubtotal,
+                manualCharges: [],
+                manualChargesTotal: 0,
+                total,
+                discountAmount,
+                discountReason: discountAmount > 0 ? tableBargainReason.trim() : '',
+                paymentMethod: billingPaymentMethod,
+                cashPaid: resolvedCash,
+                qrPaid: resolvedQr,
+                creditPaid: resolvedCredit,
+                overpaid,
+                qrCodeId: (resolvedQr > 0) ? (billingQrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined)) : undefined,
+                customerName: order.customer_name || undefined,
+                customerPhone: order.customer_phone || undefined,
+            }
         }
     }
 
-    const handleMarkPaid = async () => {
-        if (!activeInvoice) return
-        setIsSettlingInvoice(true)
-        try {
-            // Settle all unpaid orders associated with this room or table
-            const sessionId = activeInvoice.type === 'room'
-                ? tables.find(t => t.room_id === activeInvoice.roomId)?.activeSession?.id
-                : activeInvoice.sessionId
+    // 'cash' and 'qr_digital' are unambiguous (one method, the full amount) —
+    // straight to the invoice preview. 'both' and 'credit' always go through
+    // the settlement confirmation popup first: 'both' because a typo in the
+    // split fields would otherwise silently under- or over-charge, 'credit'
+    // (whether the whole bill or a leftover from 'both') because it needs a
+    // customer name + phone to post against.
+    const compileInvoice = (type: 'room' | 'table' | 'takeout' | 'delivery', item: any) => {
+        const built = buildInvoiceData(type, item)
+        if (!built) return
+        // Stamped here, at the one funnel every invoice type passes through,
+        // rather than in each of buildInvoiceData's three branches — the
+        // settlement popup's finalData spreads this object, so it carries
+        // through to both the preview and the thermal ticket.
+        const data = { ...built, cashierName: userName }
 
+        if (data.paymentMethod === 'both' || data.paymentMethod === 'credit') {
+            // Seed the popup's name/phone from whatever identity is already
+            // known (a room's own booking guest — blank for a table, where
+            // there's no such default) rather than always starting blank.
+            setCreditCustomerName(data.customerName || '')
+            setCreditCustomerPhone(data.customerPhone || '')
+            setPendingInvoice({ type, item, data })
+            setShowSettlementConfirm(true)
+            return
+        }
+        if (showInvoiceEnabled) {
+            setActiveInvoice(data)
+        } else {
+            handleMarkPaid(data)
+        }
+    }
+
+    // Confirm button on the settlement popup — folds the just-entered (or
+    // pre-filled) customer details into the invoice and only now actually
+    // opens the invoice preview / Mark Paid step.
+    const finalizeSettlementConfirm = () => {
+        if (!pendingInvoice) return
+        const d = pendingInvoice.data
+        const finalData = {
+            ...d,
+            guestName: d.creditPaid > 0.01 ? (creditCustomerName.trim() || d.guestName) : d.guestName,
+            guestPhone: d.creditPaid > 0.01 ? (creditCustomerPhone.trim() || d.guestPhone) : d.guestPhone,
+            customerName: d.creditPaid > 0.01 ? creditCustomerName.trim() : undefined,
+            customerPhone: d.creditPaid > 0.01 ? creditCustomerPhone.trim() : undefined,
+        }
+        setShowSettlementConfirm(false)
+        setPendingInvoice(null)
+        if (showInvoiceEnabled) {
+            setActiveInvoice(finalData)
+        } else {
+            handleMarkPaid(finalData)
+        }
+    }
+
+    const cancelSettlementConfirm = () => {
+        setShowSettlementConfirm(false)
+        setPendingInvoice(null)
+    }
+
+    /**
+     * Settle a room bill from the till.
+     *
+     * `closeStay` false takes the money and leaves the guest in the room — the
+     * card is here now, they're leaving before the desk opens, the group is
+     * splitting up. The room is released later with handleReleaseRoom, which
+     * moves no money at all.
+     */
+    const handleCloseGuestDirectly = async (room: any, closeStay = true) => {
+        if (!room || isDirectCheckingOut) return
+        setIsDirectCheckingOut(true)
+        try {
+            const booking = billingStayBooking ?? bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
+            if (!booking) return
+
+            const total = calculateGrandTotal(room, booking)
+            const advancePaid = advancePaidFor(booking)
+            const balanceDue = Math.max(0, total - advancePaid)
+            const matchingTable = tablesState.find(t => t.room_id === room.id)
+            const sessionId = matchingTable?.activeSession?.id
+
+            // Settle all unpaid orders associated with this booking's session
             if (sessionId) {
                 const sessionOrders = active.filter(o => o.session_id === sessionId)
                 const sessionUnpaid = unpaid.filter(o => o.session_id === sessionId)
-                const allUnpaid = [...sessionOrders, ...sessionUnpaid]
-
-                for (const order of allUnpaid) {
-                    if (order.payment_status === 'unpaid') {
-                        const res = await markDeliveredAndCashPaid(order.id)
-                        if (res.error) {
-                            throw new Error(res.error)
-                        }
-                    }
-                }
+                const allUnpaid = [...sessionOrders, ...sessionUnpaid].filter(o => o.payment_status === 'unpaid')
+                
+                await Promise.all(
+                    allUnpaid.map(order => markDeliveredAndCashPaid(order.id, 'cash'))
+                )
             }
 
-            if (activeInvoice.type === 'room') {
+            const res = await fetch(`/api/bookings/checkout`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    booking_id: booking.id,
+                    room_id: room.id,
+                    total_amount: total,
+                    cash_paid: balanceDue,
+                    qr_paid: 0,
+                    session_id: sessionId || null,
+                    credit_amount: 0,
+                    discount_amount: (parseFloat(roomDiscount) || 0) + (parseFloat(foodDiscount) || 0),
+                    discount_reason: discountReason || undefined,
+                    extra_hour_charge: extraHourChargeVal,
+                    service_charge_override: resolveRoomSc(room).isOverridden ? resolveRoomSc(room).charged : undefined,
+                    close_stay: closeStay,
+                })
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Failed to checkout booking')
+
+            // The guest who kept their room is still in it — flipping the room
+            // to dirty here would show it free with someone asleep in it.
+            if (closeStay) {
+                setBookings(prev => prev.map(b =>
+                    b.id === booking.id ? { ...b, status: 'checked_out' } : b
+                ))
+                setRoomsState(prev => prev.map(r =>
+                    r.id === room.id ? { ...r, status: 'dirty' } : r
+                ))
+            }
+
+            toast.success(
+                closeStay
+                    ? 'Room guest checked out successfully!'
+                    : 'Bill settled — the guest keeps the room until you check them out.'
+            )
+            setSelectedBillingRoom(null)
+            router.refresh()
+        } catch (err) {
+            console.error('Error during direct checkout:', err)
+            toast.error(err instanceof Error ? err.message : 'Checkout failed')
+        } finally {
+            setIsDirectCheckingOut(false)
+        }
+    }
+
+    /**
+     * Release a room whose bill was already settled. Posts nothing — the money
+     * went through when the guest paid — so it goes nowhere near the settlement
+     * path. The server refuses if anything was charged since, and says how much.
+     */
+    const handleReleaseRoom = async (room: { id: string }) => {
+        if (!room || isDirectCheckingOut) return
+        const booking = billingStayBooking ?? bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
+        if (!booking) return
+
+        setIsDirectCheckingOut(true)
+        try {
+            const res = await fetch('/api/bookings/close-stay', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ booking_id: booking.id }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Could not check the guest out')
+
+            const closedIds = new Set<string>(data.bookingIds || [booking.id])
+            const closedRoomIds = new Set<string>(data.roomIds || [room.id])
+            setBookings(prev => prev.map(b => closedIds.has(b.id) ? { ...b, status: 'checked_out' } : b))
+            setRoomsState(prev => prev.map(r => closedRoomIds.has(r.id) ? { ...r, status: 'dirty' } : r))
+
+            toast.success(
+                data.roomsClosed > 1
+                    ? `${data.roomsClosed} rooms checked out and sent to housekeeping`
+                    : 'Guest checked out — room sent to housekeeping'
+            )
+            setSelectedBillingRoom(null)
+            router.refresh()
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not check the guest out')
+        } finally {
+            setIsDirectCheckingOut(false)
+        }
+    }
+
+    const handleMarkPaid = async (directInvoice?: any, overrideCopies?: number) => {
+        const invoice = directInvoice || activeInvoice
+        if (!invoice || isSettlingRef.current) return
+        isSettlingRef.current = true
+        setIsSettlingInvoice(true)
+        try {
+            if (invoice.type === 'room') {
+                // Settle all unpaid orders associated with this room's session
+                // client-side first — /api/bookings/checkout also settles
+                // idempotently, but doing it here records exactly what the
+                // cashier selected (Cash / QR / Both) per order for the EOD
+                // report's cash-vs-digital breakdown.
+                const sessionId = tablesState.find(t => t.room_id === invoice.roomId)?.activeSession?.id
+
+                if (sessionId) {
+                    const sessionOrders = active.filter(o => o.session_id === sessionId)
+                    const sessionUnpaid = unpaid.filter(o => o.session_id === sessionId)
+                    const allUnpaid = [...sessionOrders, ...sessionUnpaid].filter(o => o.payment_status === 'unpaid')
+
+                    // For a split settlement there's no single right answer per
+                    // order, so draw sequentially from the cash pool first, then
+                    // the QR pool — whatever's left over (both pools exhausted)
+                    // is the credit portion, which has no fitting method for
+                    // markDeliveredAndCashPaid, so those orders are left unpaid
+                    // here for /api/bookings/checkout's own settling to pick up
+                    // without a payment_verifications row (no cash/qr method
+                    // fits a credit sale).
+                    let remainingCash = billingPaymentMethod === 'both' ? (parseFloat(splitCashAmount) || 0) : billingPaymentMethod === 'cash' ? Infinity : 0
+                    let remainingQr = billingPaymentMethod === 'both' ? (parseFloat(splitQrAmount) || 0) : billingPaymentMethod === 'qr_digital' ? Infinity : 0
+                    const methodForOrder = (amount: number): 'cash' | 'qr_scan' | null => {
+                        if (remainingCash >= amount) {
+                            remainingCash -= amount
+                            return 'cash'
+                        }
+                        if (remainingQr >= amount) {
+                            remainingQr -= amount
+                            return 'qr_scan'
+                        }
+                        return null
+                    }
+
+                    if (billingPaymentMethod !== 'credit') {
+                        // Independent per-order updates (each keyed by its own id) —
+                        // settle them concurrently instead of one network round-trip
+                        // at a time, which was the main reason "Mark Paid" felt slow
+                        // on a big bill.
+                        const results = await Promise.all(
+                            allUnpaid.map(order => {
+                                const method = methodForOrder(order.total_amount)
+                                return method ? markDeliveredAndCashPaid(order.id, method) : Promise.resolve<{ error?: string; success?: boolean }>({ success: true })
+                            })
+                        )
+                        const failed = results.find(res => res.error)
+                        if (failed) throw new Error(failed.error)
+                    }
+                }
+
                 const res = await fetch(`/api/bookings/checkout`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        booking_id: activeInvoice.bookingId,
-                        room_id: activeInvoice.roomId,
-                        total_amount: activeInvoice.total,
-                        cash_paid: activeInvoice.cashPaid,
-                        qr_paid: activeInvoice.qrPaid,
-                        session_id: sessionId || null
+                        booking_id: invoice.bookingId,
+                        room_id: invoice.roomId,
+                        total_amount: invoice.total,
+                        cash_paid: invoice.cashPaid,
+                        qr_paid: invoice.qrPaid,
+                        qr_code_id: invoice.qrCodeId,
+                        session_id: sessionId || null,
+                        credit_amount: invoice.creditPaid || 0,
+                        customer_name: invoice.customerName,
+                        customer_phone: invoice.customerPhone,
+                        discount_amount: invoice.discountAmount || 0,
+                        discount_reason: invoice.discountReason,
+                        extra_hour_charge: invoice.extraHourCharge || 0,
+                        service_charge_override: invoice.serviceChargeOverride,
                     })
                 })
                 const data = await res.json()
@@ -415,45 +1641,125 @@ export default function CashierClient({
 
                 // Immediately update local state so UI reflects changes without refresh
                 setBookings(prev => prev.map(b =>
-                    b.id === activeInvoice.bookingId ? { ...b, status: 'checked_out' } : b
+                    b.id === invoice.bookingId ? { ...b, status: 'checked_out' } : b
                 ))
                 setRoomsState(prev => prev.map(r =>
-                    r.id === activeInvoice.roomId ? { ...r, status: 'dirty' } : r
+                    r.id === invoice.roomId ? { ...r, status: 'dirty' } : r
                 ))
 
                 toast.success('Room billing settled and guest checked out successfully!')
-                setTimeout(() => { window.location.reload() }, 1000)
-            } else {
-                const res = await closeSession(activeInvoice.sessionId)
-                if (res.error) throw new Error(res.error)
+
+                // `tables` is a server-fetched prop, never refreshed on the client —
+                // the checkout just closed this room's dining session and marked its
+                // orders paid in the DB. Without this, the next guest booked into the
+                // room would still see the previous guest's now-settled orders here.
+                router.refresh()
+            } else if (invoice.type === 'table') {
+                // The dine-in equivalent — /api/tables/checkout does its own
+                // order settling, session closing, and ledger/credit posting
+                // server-side (no client-side pre-settle loop needed).
+                const res = await fetch(`/api/tables/checkout`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: invoice.sessionId,
+                        cash_paid: invoice.cashPaid,
+                        qr_paid: invoice.qrPaid,
+                        credit_amount: invoice.creditPaid || 0,
+                        qr_code_id: invoice.qrCodeId,
+                        discount_amount: invoice.discountAmount || 0,
+                        discount_reason: invoice.discountReason,
+                        service_charge_override: invoice.serviceChargeOverride,
+                        customer_name: invoice.customerName,
+                        customer_phone: invoice.customerPhone,
+                    })
+                })
+                const data = await res.json()
+                if (!res.ok) throw new Error(data.error || 'Failed to checkout table')
 
                 toast.success('Table session settled and closed successfully!')
-                setTimeout(() => { window.location.reload() }, 1000)
+            } else {
+                // Takeaway/delivery — a single standalone order, no session.
+                const res = await fetch(`/api/orders/checkout`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        order_id: invoice.orderId,
+                        cash_paid: invoice.cashPaid,
+                        qr_paid: invoice.qrPaid,
+                        credit_amount: invoice.creditPaid || 0,
+                        qr_code_id: invoice.qrCodeId,
+                        discount_amount: invoice.discountAmount || 0,
+                        discount_reason: invoice.discountReason,
+                        customer_name: invoice.customerName,
+                        customer_phone: invoice.customerPhone,
+                    })
+                })
+                const data = await res.json()
+                if (!res.ok) throw new Error(data.error || 'Failed to checkout order')
+
+                toast.success(`${invoice.type === 'delivery' ? 'Delivery' : 'Takeaway'} order settled successfully!`)
             }
 
-            // Auto-print the invoice. Falls back to the browser print dialog
-            // (this modal is already styled for it) if QZ Tray isn't
-            // connected/trusted on this till yet.
-            const printResult = await printInvoice(buildInvoiceTicket(activeInvoice, money))
-            if (!printResult.ok) {
-                toast.error(
-                    printResult.status === 'no-printer-selected'
-                        ? 'No invoice printer set — opening browser print instead.'
-                        : 'Invoice printer not connected — opening browser print instead.'
-                )
-                window.print()
+            // The bill is settled in the database at this point already — what
+            // happens next is purely about paper. window.print() opens the
+            // browser's own print dialog (pick a printer, preview, cancel);
+            // it's a blocking call, so this line doesn't return until the
+            // cashier closes that dialog one way or the other. Whether they
+            // print or cancel makes no difference to the settlement above —
+            // it already happened.
+            isSettlingRef.current = false
+            setIsSettlingInvoice(false)
+            setInvoiceSettled(true)
+
+            const copiesToPrint = overrideCopies !== undefined ? overrideCopies : (usePrinterSettingsStore.getState().autoPrintBillOnSettle ? 1 : 0)
+            if (copiesToPrint > 0 && printInvoiceEnabled && printBillEnabled) {
+                for (let i = 0; i < copiesToPrint; i++) {
+                    const result = await printInvoice(buildInvoiceTicket(invoice, money, restaurantName, restaurantAddress, restaurantPhone, calendar))
+                    if (!result.ok) {
+                        toast.error(
+                            result.status === 'no-printer-selected'
+                                ? 'No printer set for this till — pick one in Printer Settings.'
+                                : 'Printer not connected — opening browser print instead.'
+                        )
+                        if (result.status !== 'no-printer-selected') window.print()
+                        break
+                    }
+                }
             }
 
             setActiveInvoice(null)
             setSelectedBillingRoom(null)
             setSelectedBillingTable(null)
+            setSelectedBillingOrder(null)
+            setInvoiceSettled(false)
+            window.location.reload()
         } catch (e: any) {
             toast.error(e.message || 'Failed to settle invoice')
         } finally {
+            isSettlingRef.current = false
             setIsSettlingInvoice(false)
         }
     }
-    
+
+    // Manual re-print of the current invoice. Goes through QZ Tray as raw
+    // ESC/POS (the same path the kitchen KOT printer uses), so it prints a
+    // clean receipt on a thermal roll instead of the browser rasterizing an
+    // A4 page to a driverless raw queue. Only if QZ can't be reached at all do
+    // we fall back to the browser print dialog for driver-based printers.
+    const handlePrintBill = async () => {
+        if (!activeInvoice) return
+        const result = await printInvoice(buildInvoiceTicket(activeInvoice, money, restaurantName, restaurantAddress, restaurantPhone, calendar))
+        if (!result.ok) {
+            toast.error(
+                result.status === 'no-printer-selected'
+                    ? 'No printer set for this till — pick one in Printer Settings.'
+                    : 'Printer not connected — opening browser print instead.'
+            )
+            if (result.status !== 'no-printer-selected') window.print()
+        }
+    }
+
     // Set default active tab correctly
     useEffect(() => {
         setMounted(true)
@@ -466,20 +1772,21 @@ export default function CashierClient({
     }, [isHotel])
 
     const spaceCounts = useMemo(() => {
-        let all = tables.length
+        let all = tablesState.length
         let available = 0
         let reserved = 0
         let occupied = 0
         let dirty = 0
-        for (const t of tables) {
-            const status = t.activeSession ? 'active' : (t.table_status || 'available')
+        for (const t of tablesState) {
+            const rawStatus = t.activeSession ? 'active' : (t.table_status || 'available')
+            const status = (isHotel && rawStatus === 'dirty') ? 'available' : rawStatus
             if (status === 'active') occupied++
             else if (status === 'dirty') dirty++
             else if (status === 'reserved') reserved++
             else available++
         }
         return { all, available, reserved, occupied, dirty }
-    }, [tables])
+    }, [tablesState, isHotel])
 
     const roomsCounts = useMemo(() => {
         let all = rooms.length
@@ -513,32 +1820,73 @@ export default function CashierClient({
         }
 
         if (payload.eventType === 'INSERT') {
-            const { data } = await supabase
+            const { data, error } = await supabase
                 .from('orders')
-                .select(`id, status, total_amount, placed_at, session_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, tables ( label ) ), order_items ( id, quantity, status, menu_items ( name ) )`)
+                .select(OUTSTANDING_PRINT_SELECT)
                 .eq('id', payload.new.id)
                 .single()
-            if (data) setActive(prev => [...prev, data as unknown as ActiveOrder])
+            // Previously silent — if this fetch fails (RLS, network, ...) the new
+            // order just never shows up anywhere in Billing/Orders, with no sign why.
+            if (error) console.error('[Cashier orders realtime] INSERT fetch failed:', error.message || error)
+            if (data) {
+                // Guard against a duplicate/replayed INSERT event (reconnects,
+                // redelivery) adding the same order twice — React then throws
+                // on the duplicate order.id key everywhere this list renders.
+                setActive(prev => prev.some(o => o.id === data.id) ? prev : [...prev, data as unknown as ActiveOrder])
+
+                // Auto-print the KOT/BOT if KOT printing is enabled. Dedupes per
+                // item, retries, and falls back to a browser print.
+                if (features?.kotEnabled) {
+                    void claimAndPrint(data as unknown as KitchenOrder)
+                }
+            }
         } else if (payload.eventType === 'UPDATE') {
             const { id, status, payment_status } = payload.new
             if (status === 'delivered' && payment_status === 'unpaid') {
                 // Fetch full record to show in unpaid list
-                const { data } = await supabase
+                const { data, error } = await supabase
                     .from('orders')
-                    .select(`id, total_amount, delivered_at, payment_status, payment_method, session_id, sessions ( id, tables ( label ) ), order_items ( quantity, menu_items ( name ) )`)
+                    .select(`id, total_amount, placed_at, delivered_at, payment_status, payment_method, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, seat_number, tables ( id, label, room_id ) ), order_items ( id, quantity, status, unit_price, needs_confirmation, menu_items ( name ) )`)
                     .eq('id', id)
                     .single()
+                if (error) console.error('[Cashier orders realtime] UPDATE (unpaid) fetch failed:', error)
                 if (data) {
-                    setUnpaid(prev => [...prev, data as unknown as UnpaidOrder])
+                    // Same duplicate-event guard as the INSERT branch above —
+                    // a second UPDATE landing on the same order (e.g. a
+                    // follow-up write setting delivered_at) would otherwise
+                    // push a second copy of it into `unpaid`.
+                    setUnpaid(prev => prev.some(o => o.id === data.id) ? prev : [...prev, data as unknown as UnpaidOrder])
                 }
                 setActive(prev => prev.filter(o => o.id !== id))
             } else if (payment_status === 'paid' || status === 'cancelled') {
                 setUnpaid(prev => prev.filter(o => o.id !== id))
                 setActive(prev => prev.filter(o => o.id !== id))
             } else {
-                setActive(prev => prev.map(o => o.id === id ? { ...o, status, total_amount: payload.new.total_amount } : o))
+                setActive(prev => prev.map(o => o.id === id ? { 
+                    ...o, 
+                    status, 
+                    total_amount: payload.new.total_amount,
+                    booking_id: payload.new.booking_id,
+                    order_type: payload.new.order_type,
+                    customer_name: payload.new.customer_name,
+                    customer_phone: payload.new.customer_phone,
+                    delivery_address: payload.new.delivery_address
+                } : o))
             }
         }
+    }, () => {
+        // Fires whenever the shared realtime channel (re)connects, including
+        // after a drop (laptop sleep, network blip, a backgrounded tab) — the
+        // one gap incremental postgres_changes patches can never close, since
+        // anything that happened while disconnected was never delivered.
+        // router.refresh() re-runs the server fetch; the resync effects above
+        // (initialUnpaid/initialActive/rooms/bookings/tables) pick the fresh
+        // props back up.
+        console.log('[CashierClient] Realtime reconnected — refreshing to catch up on any missed updates')
+        router.refresh()
+        // router.refresh() restores the board but prints nothing, so an order
+        // placed during the drop would silently never reach the kitchen.
+        void printOutstanding()
     })
 
     const handleCashPay = async (orderId: string) => {
@@ -552,34 +1900,112 @@ export default function CashierClient({
         setProcessingId(null)
     }
 
+    // Seat-1 session ids of split tables — their orders must display as "4-1"
+    // even though seat 1 alone can't tell it belongs to a split table.
+    const splitSessionIds = useMemo(() => {
+        const ids = new Set<string>()
+        for (const t of tablesState as any[]) {
+            if (t.activeSession && (t.otherActiveSessions?.length ?? 0) > 0) ids.add(t.activeSession.id)
+        }
+        return ids
+    }, [tablesState])
+
+    // One billing card per active session — a split table (Table 4-1, 4-2, ...)
+    // settles each seat as its own independent bill, so each seat session becomes
+    // its own entry with the seat-suffixed label and that seat's session as
+    // `activeSession` (which is all the downstream items/total/checkout code reads).
+    const billingTableEntries = useMemo(() => {
+        const entries: any[] = []
+        for (const t of tablesState as any[]) {
+            const tableSessions = [t.activeSession, ...(t.otherActiveSessions || [])].filter(Boolean)
+            for (const s of tableSessions) {
+                if (s.booking_id) continue
+                const split = tableSessions.length > 1 || (s.seat_number ?? 1) >= 2
+                entries.push({
+                    ...t,
+                    label: split ? `${t.label}-${s.seat_number ?? 1}` : t.label,
+                    activeSession: s,
+                    otherActiveSessions: [],
+                    uiKey: `${t.id}:${s.seat_number ?? 1}`,
+                })
+            }
+        }
+        return entries
+    }, [tablesState])
+
+    // Unpaid takeaway/delivery orders — each is its own billing target (no
+    // session to group by, unlike dine-in tables).
+    const billingTakeoutEntries = useMemo(() => unpaid.filter(o => o.order_type === 'takeout' && !o.booking_id), [unpaid])
+    const billingDeliveryEntries = useMemo(() => unpaid.filter(o => o.order_type === 'delivery' && !o.booking_id), [unpaid])
+
+    // ── Billing search ──────────────────────────────────────────────────────
+    // Each kind of bill knows its guest differently. A room's guest is the stay
+    // checked into it, which is where the name and number the desk is quoting
+    // were taken. A takeaway or delivery order carries its own customer. A
+    // dine-in table has no guest of its own at all, so it matches on the orders
+    // sitting against it — a walk-in table with nothing named stays unmatched
+    // rather than pretending to be a hit.
+    const roomMatchesSearch = useCallback((room: any) => {
+        if (!billingSearch.trim()) return true
+        const booking = bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
+        return matchesGuestSearch(billingSearch, [booking?.guest_name, booking?.guest_phone])
+    }, [billingSearch, bookings])
+
+    const tableMatchesSearch = useCallback((entry: any) => {
+        if (!billingSearch.trim()) return true
+        const sessionId = entry.activeSession?.id
+        if (!sessionId) return false
+        return unpaid.some(o => o.session_id === sessionId
+            && matchesGuestSearch(billingSearch, [o.customer_name, o.customer_phone]))
+    }, [billingSearch, unpaid])
+
+    const orderMatchesSearch = useCallback((order: UnpaidOrder) =>
+        matchesGuestSearch(billingSearch, [order.customer_name, order.customer_phone]),
+    [billingSearch])
+
+    // Every occupied room, before the room-type filter — what the All tab lists.
+    const occupiedBillingRooms = useMemo(
+        () => (isHotel ? roomsState.filter((r: any) => r.status === 'occupied') : []),
+        [isHotel, roomsState])
+
+    const searchedOccupiedRooms = useMemo(
+        () => occupiedBillingRooms.filter(roomMatchesSearch), [occupiedBillingRooms, roomMatchesSearch])
+    const searchedBillingRooms = useMemo(
+        () => filteredBillingRooms.filter(roomMatchesSearch), [filteredBillingRooms, roomMatchesSearch])
+    const searchedTableEntries = useMemo(
+        () => billingTableEntries.filter(tableMatchesSearch), [billingTableEntries, tableMatchesSearch])
+    const searchedTakeoutEntries = useMemo(
+        () => billingTakeoutEntries.filter(orderMatchesSearch), [billingTakeoutEntries, orderMatchesSearch])
+    const searchedDeliveryEntries = useMemo(
+        () => billingDeliveryEntries.filter(orderMatchesSearch), [billingDeliveryEntries, orderMatchesSearch])
+
     // Group unpaid by session
     const unpaidBySession = useMemo(() => {
         const groups = new Map<string, { label: string; orders: UnpaidOrder[]; total: number }>()
         for (const o of unpaid) {
             const key = o.session_id ?? o.id
-            const label = tableLabel(o.sessions)
+            const label = tableLabel(o.sessions, splitSessionIds)
             if (!groups.has(key)) groups.set(key, { label, orders: [], total: 0 })
             const g = groups.get(key)!
             g.orders.push(o)
             g.total += o.total_amount ?? 0
         }
         return [...groups.entries()].sort(([, a], [, b]) => a.label.localeCompare(b.label))
-    }, [unpaid])
+    }, [unpaid, splitSessionIds])
 
     const activeDineIn = useMemo(() => active.filter(o => o.order_type === 'dine_in' || o.session_id !== null), [active])
-    const activeTakeoutDelivery = useMemo(() => active.filter(o => o.order_type === 'takeout' || o.order_type === 'delivery'), [active])
 
     // Group active by session for the pipeline view
     const activePipeline = useMemo(() => {
         const groups = new Map<string, { label: string; orders: ActiveOrder[] }>()
         for (const o of activeDineIn) {
             const key = o.session_id ?? o.id
-            const label = tableLabel(o.sessions)
+            const label = tableLabel(o.sessions, splitSessionIds)
             if (!groups.has(key)) groups.set(key, { label, orders: [] })
             groups.get(key)!.orders.push(o)
         }
         return [...groups.entries()].sort(([, a], [, b]) => a.label.localeCompare(b.label))
-    }, [activeDineIn])
+    }, [activeDineIn, splitSessionIds])
 
     const handleUpdateStatus = async (orderId: string, status: 'confirmed' | 'cancelled') => {
         const res = await updateTakeoutStatusAction(orderId, status)
@@ -597,16 +2023,21 @@ export default function CashierClient({
 
     const totalUnpaid = unpaid.reduce((s, o) => s + (o.total_amount ?? 0), 0)
 
-    const tabs: { id: 'rooms' | 'tables' | 'space' | 'takeaway' | 'billing'; label: string }[] = isHotel ? [
+    const tabs: { id: 'rooms' | 'tables' | 'space' | 'billing' | 'orders'; label: string; shortLabel?: string }[] = isHotel ? [
         { id: 'rooms', label: 'Rooms' },
         { id: 'tables', label: 'Tables' },
-        { id: 'takeaway', label: 'Takeaway/Delivery' },
         { id: 'billing', label: 'Billing' },
+        { id: 'orders', label: 'Orders' },
     ] : [
         { id: 'space', label: 'Space' },
-        { id: 'takeaway', label: 'Takeaway/Delivery' },
         { id: 'billing', label: 'Billing' },
+        { id: 'orders', label: 'Orders' },
     ]
+
+    const ordersNeedingConfirmationCount = active.filter(o =>
+        (o.order_items || []).some(i => i.needs_confirmation) ||
+        ((o.order_type === 'takeout' || o.order_type === 'delivery') && o.status === 'pending')
+    ).length
 
     return (
         <div className="space-y-5">
@@ -617,7 +2048,39 @@ export default function CashierClient({
                     <p className="text-caption text-ink-subtle">Manage table orders, room stays, billing, and settlements.</p>
                 </div>
 
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <BusinessSessionControl
+                        initialSession={openSession ? {
+                            id: openSession.id,
+                            date: openSession.date,
+                            status: openSession.status,
+                            opening_balance: Number(openSession.opening_balance),
+                            opening_bank_balance: Number(openSession.opening_bank_balance)
+                        } : null}
+                        userRole={userRole}
+                        todayDate={getNstDateString()}
+                        variant="compact"
+                    />
+                    <button
+                        onClick={() => setShowTakeoutQuickOrder(true)}
+                        className="flex items-center gap-2 text-sm font-bold text-ink-muted bg-surface border border-hairline hover:bg-surface-muted px-4 py-2.5 rounded-xl transition-colors shadow-sm"
+                    >
+                        <ShoppingBag size={15} />
+                        Manual Takeaway/Delivery
+                    </button>
+                    {!!features.financeEnabled && (features.manualEntryEnabled ?? true) && (
+                        <button
+                            onClick={() => setShowManualEntry(true)}
+                            className="flex items-center gap-2 text-sm font-bold text-white bg-brand-500 hover:bg-brand-600 px-4 py-2.5 rounded-xl transition-colors shadow-sm"
+                        >
+                            <PenLine size={15} />
+                            Manual Entry
+                        </button>
+                    )}
+                </div>
             </div>
+
+            <AdSpace />
 
             {/* Cashier Tab Navigation */}
             <div className={`grid ${isHotel ? 'grid-cols-4' : 'grid-cols-3'} border-b border-hairline mb-4 bg-surface sticky top-14 z-20 -mx-3 px-3 md:mx-0 md:px-0`}>
@@ -627,17 +2090,10 @@ export default function CashierClient({
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`flex items-center justify-center gap-1.5 py-4 text-xs md:text-sm font-bold whitespace-nowrap transition-colors relative focus:outline-none w-full ${
+                            className={`flex items-center justify-center gap-1.5 py-4 px-1 text-xs md:text-sm font-bold whitespace-nowrap transition-colors relative focus:outline-none w-full ${
                                 isActive ? 'text-[var(--brand-500)]' : 'text-ink-muted hover:text-ink'
                             }`}
                         >
-                            {tab.id === 'takeaway' && activeTakeoutDelivery.length > 0 && (
-                                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md min-w-[18px] text-center ${
-                                    isActive ? 'bg-[var(--brand-500)] text-white' : 'bg-amber-100 text-amber-700'
-                                }`}>
-                                    {activeTakeoutDelivery.length}
-                                </span>
-                            )}
                             {tab.id === 'billing' && unpaid.length > 0 && (
                                 <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md min-w-[18px] text-center ${
                                     isActive ? 'bg-[var(--brand-500)] text-white' : 'bg-red-100 text-red-700'
@@ -645,7 +2101,15 @@ export default function CashierClient({
                                     {unpaid.length}
                                 </span>
                             )}
-                            <span>{tab.label}</span>
+                            {tab.id === 'orders' && ordersNeedingConfirmationCount > 0 && (
+                                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md min-w-[18px] text-center ${
+                                    isActive ? 'bg-[var(--brand-500)] text-white' : 'bg-amber-100 text-amber-700'
+                                }`}>
+                                    {ordersNeedingConfirmationCount}
+                                </span>
+                            )}
+                            <span className="sm:hidden truncate">{tab.shortLabel ?? tab.label}</span>
+                            <span className="hidden sm:inline">{tab.label}</span>
                             {isActive && (
                                 <div className="absolute bottom-0 left-0 w-full h-[3px] bg-[var(--brand-500)] rounded-t-full" />
                             )}
@@ -659,8 +2123,8 @@ export default function CashierClient({
                 {activeTab === 'rooms' && (
                     <div className="flex flex-col gap-4 w-full">
                         {/* Sticky Sub-tabs / Filters for Rooms */}
-                        <div className="sticky top-28 z-20 bg-canvas -mx-3 px-3 md:mx-0 md:px-0 py-2 border-b border-hairline flex items-center w-full justify-center">
-                            <div className="grid grid-cols-6 gap-1.5 sm:gap-2.5 w-full">
+                        <div className="sticky top-28 z-20 bg-canvas -mx-3 px-3 md:mx-0 md:px-0 py-2 border-b border-hairline flex flex-col md:flex-row items-center w-full justify-between gap-3 shadow-sm">
+                            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 sm:gap-2.5 w-full md:w-auto flex-1">
                                 {([
                                     { key: 'all', label: 'ALL', count: roomsCounts.all },
                                     { key: 'available', label: 'Available', count: roomsCounts.available },
@@ -701,6 +2165,20 @@ export default function CashierClient({
                                     )
                                 })}
                             </div>
+                            {/* Room Category Filter select */}
+                            <div className="w-full md:w-60 flex items-center gap-2 shrink-0 md:justify-end">
+                                <span className="text-[10px] font-black text-ink-subtle uppercase shrink-0">Type:</span>
+                                <Select
+                                    value={roomTypeFilter}
+                                    onChange={(e) => setRoomTypeFilter(e.target.value)}
+                                    className="w-full md:w-48 text-xs"
+                                >
+                                    <option value="all">All Room Types</option>
+                                    {roomTypesList.map(type => (
+                                        <option key={type.id} value={type.id}>{type.name}</option>
+                                    ))}
+                                </Select>
+                            </div>
                         </div>
 
                         <CashierRoomManager
@@ -709,14 +2187,40 @@ export default function CashierClient({
                             bookings={bookings}
                             setBookings={setBookings}
                             restaurantId={restaurantId}
+                            partnerRestaurantId={partnerRestaurantId}
                             roomsFilter={roomsFilter}
-                            tables={tables}
+                            roomTypeFilter={roomTypeFilter}
+                            tables={tablesState}
                             activeOrders={active}
                             unpaidOrders={unpaid}
-                            onGoToBilling={(room) => {
+                            onGoToBilling={(room, serviceChargeOverride) => {
                                 setActiveTab('billing')
                                 setBillingSubTab('rooms')
                                 setSelectedBillingRoom(room)
+                                // Carry the drawer's edit over rather than
+                                // silently reverting to auto on the panel that
+                                // actually settles.
+                                setRoomServiceChargeEdit(
+                                    serviceChargeOverride === undefined
+                                        ? null
+                                        : { roomId: room.id, value: String(serviceChargeOverride) }
+                                )
+                            }}
+                            onOrderPlaced={async (orderId) => {
+                                const supabase = supabaseRef.current
+                                const { data } = await supabase
+                                    .from('orders')
+                                    .select(`id, status, total_amount, placed_at, session_id, booking_id, order_type, customer_name, customer_phone, delivery_address, sessions ( id, seat_number, tables ( id, label, room_id ) ), order_items ( id, quantity, status, unit_price, menu_items ( name ) )`)
+                                    .eq('id', orderId)
+                                    .single()
+                                if (data) {
+                                    setActive(prev => {
+                                        if (prev.some(o => o.id === orderId)) {
+                                            return prev.map(o => o.id === orderId ? (data as unknown as ActiveOrder) : o)
+                                        }
+                                        return [...prev, data as unknown as ActiveOrder]
+                                    })
+                                }
                             }}
                         />
                     </div>
@@ -726,14 +2230,16 @@ export default function CashierClient({
                     <div className="flex flex-col gap-4 w-full">
                         {/* Sticky Sub-tabs / Filters */}
                         <div className="sticky top-28 z-20 bg-canvas -mx-3 px-3 md:mx-0 md:px-0 py-2 border-b border-hairline flex items-center w-full justify-center">
-                            <div className="grid grid-cols-5 gap-1.5 sm:gap-2.5 w-full">
+                            <div className={`flex overflow-x-auto no-scrollbar gap-1.5 sm:gap-2.5 w-full py-1 sm:grid ${isHotel ? 'sm:grid-cols-4' : 'sm:grid-cols-5'}`}>
                                 {([
                                     { key: 'all', label: 'ALL', count: spaceCounts.all },
                                     { key: 'available', label: 'Available', count: spaceCounts.available },
                                     { key: 'reserved', label: 'Reserved', count: spaceCounts.reserved },
                                     { key: 'dirty', label: 'Dirty', count: spaceCounts.dirty },
                                     { key: 'occupied', label: 'Occupied', count: spaceCounts.occupied }
-                                ] as const).map(({ key, label, count }) => {
+                                ] as const)
+                                .filter(({ key }) => !(isHotel && key === 'dirty'))
+                                .map(({ key, label, count }) => {
                                     const isActive = spaceFilter === key
                                     const activeColors = {
                                         all: 'bg-[var(--color-primary)] text-white',
@@ -747,7 +2253,7 @@ export default function CashierClient({
                                         <button
                                             key={key}
                                             onClick={() => setSpaceFilter(key)}
-                                            className={`relative flex items-center justify-center gap-1.5 py-2 px-1 sm:py-2.5 sm:px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 w-full whitespace-nowrap ${
+                                            className={`relative flex items-center justify-center gap-1.5 py-2 px-3 sm:py-2.5 sm:px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 shrink-0 w-auto sm:w-full whitespace-nowrap ${
                                                 isActive 
                                                     ? activeColors[key] 
                                                     : 'bg-surface border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink-muted shadow-sm'
@@ -768,7 +2274,7 @@ export default function CashierClient({
                         </div>
 
                         <CashierTableManager
-                            initialTables={tables}
+                            initialTables={tablesState}
                             restaurantId={restaurantId}
                             activeOrders={active}
                             unpaidOrders={unpaid}
@@ -783,172 +2289,162 @@ export default function CashierClient({
                     </div>
                 )}
 
-                {activeTab === 'takeaway' && (
-                    <div className="flex flex-col gap-4 w-full">
-                        {/* Top action row */}
-                        <div className="flex justify-between items-center bg-surface rounded-2xl border border-hairline p-4 shadow-sm">
-                            <div>
-                                <h3 className="text-sm font-bold text-ink-muted">Takeaway &amp; Delivery Panel</h3>
-                                <p className="text-caption text-ink-subtle">Monitor status and manage takeaway/delivery orders.</p>
-                            </div>
-                            <button 
-                                onClick={() => {
-                                    if (restaurantSlug) {
-                                        window.open(`/takeout/${restaurantSlug}`, '_blank')
-                                    } else {
-                                        toast.error('Restaurant slug not found')
-                                    }
-                                }}
-                                className="bg-[var(--brand-500)] text-white hover:bg-[var(--brand-600)] font-extrabold text-xs px-4 py-2.5 rounded-xl active:scale-95 transition shadow-sm"
-                            >
-                                Manual Takeaway/Delivery
-                            </button>
-                        </div>
-
-                        {/* Sub-tabs / Filters */}
-                        <div className="sticky top-28 z-20 bg-canvas -mx-3 px-3 md:mx-0 md:px-0 py-2 border-b border-hairline flex items-center w-full justify-center">
-                            <div className="grid grid-cols-2 gap-2 sm:gap-4 w-full">
-                                {([
-                                    { key: 'takeaway', label: 'Takeaway orders', count: activeTakeoutDelivery.filter(o => o.order_type === 'takeout').length },
-                                    { key: 'delivery', label: 'Delivery orders', count: activeTakeoutDelivery.filter(o => o.order_type === 'delivery').length }
-                                ] as const).map(({ key, label, count }) => {
-                                    const isActive = takeawaySubTab === key
-                                    const activeColors = {
-                                        takeaway: 'bg-amber-500 text-white',
-                                        delivery: 'bg-purple-600 text-white',
-                                    }
-                                    
-                                     return (
-                                        <button
-                                            key={key}
-                                            onClick={() => setTakeawaySubTab(key)}
-                                            className={`relative flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 w-full whitespace-nowrap ${
-                                                isActive 
-                                                    ? activeColors[key] 
-                                                    : 'bg-surface border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink-muted shadow-sm'
-                                            }`}
-                                        >
-                                            {count > 0 && (
-                                                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md min-w-[18px] text-center ${
-                                                    isActive ? 'bg-surface/20 text-white' : 'bg-red-100 text-red-700'
-                                                }`}>
-                                                    {count}
-                                                </span>
-                                            )}
-                                            <span>{label}</span>
-                                        </button>
-                                    )
-                                })}
-                            </div>
-                        </div>
-
-                        {/* List grid */}
-                        <div className="bg-surface rounded-[24px] border border-hairline p-5 shadow-sm">
-                            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
-                                {activeTakeoutDelivery.filter(o => o.order_type === (takeawaySubTab === 'takeaway' ? 'takeout' : 'delivery')).length === 0 ? (
-                                    <div className="col-span-full py-12 text-center text-xs text-ink-subtle font-semibold">
-                                        No active {takeawaySubTab === 'takeaway' ? 'takeaway' : 'delivery'} orders
-                                    </div>
-                                ) : (
-                                    activeTakeoutDelivery.filter(o => o.order_type === (takeawaySubTab === 'takeaway' ? 'takeout' : 'delivery')).map(order => {
-                                        const statusColors = {
-                                            pending: 'border-yellow-200 bg-yellow-50/10 text-yellow-700',
-                                            confirmed: 'border-blue-200 bg-blue-50/10 text-blue-700',
-                                            preparing: 'border-brand-200 bg-brand-50/10 text-orange-700',
-                                            ready: 'border-emerald-200 bg-emerald-50/10 text-emerald-700',
-                                        } as any
-                                        const cls = statusColors[order.status] || 'border-hairline bg-surface text-ink-subtle'
-
-                                        return (
-                                            <button
-                                                key={order.id}
-                                                onClick={() => setSelectedOrder(order)}
-                                                className={`aspect-square rounded-[20px] border flex flex-col items-center justify-center p-3 text-center transition-all duration-300 ${cls} hover:-translate-y-1 hover:shadow-md active:scale-95`}
-                                            >
-                                                <span className="text-sm font-black tracking-tight text-ink block font-mono">
-                                                    #{order.id.slice(0, 4).toUpperCase()}
-                                                </span>
-                                                <span className="text-[9px] font-extrabold uppercase tracking-wide mt-2.5 px-2 py-0.5 rounded bg-surface/60 border border-black/5 shadow-sm">
-                                                    {order.status === 'ready' ? 'Ready' : order.status}
-                                                </span>
-                                            </button>
-                                        )
-                                    })
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
-
                 {activeTab === 'billing' && (
                     <div className="space-y-5">
-                        {/* Online payment claims (UPI/card) awaiting verification */}
-                        <PaymentVerificationFeed
-                            initialClaims={initialClaims}
-                            restaurantId={restaurantId}
-                            userId={userId}
-                            onPendingCountChange={setPendingClaims}
-                        />
                         {/* Awaiting Payment section */}
                         <div>
-                            {isHotel && (
-                                <div className="border-b border-hairline pb-3 mb-4 flex items-center justify-between">
-                                    <h2 className="text-sm font-semibold text-ink-muted flex items-center gap-2">
-                                        <Receipt size={14} className="text-red-400" />
-                                        Awaiting Settlement
-                                    </h2>
-                                    <div className="flex bg-surface-muted p-1 rounded-xl border border-hairline">
+                            <div className="border-b border-hairline pb-3 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <h2 className="text-sm font-semibold text-ink-muted flex items-center gap-2">
+                                    <Receipt size={14} className="text-red-400" />
+                                    Awaiting Payment
+                                </h2>
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    {/* Find a bill by the guest rather than by the room
+                                        number — the desk is given a name, not a number. */}
+                                    <div className="relative">
+                                        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" />
+                                        <input
+                                            type="text"
+                                            value={billingSearch}
+                                            onChange={(e) => setBillingSearch(e.target.value)}
+                                            placeholder="Search guest name or phone"
+                                            aria-label="Search bills by guest name or phone"
+                                            className="w-56 pl-8 pr-7 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                        />
+                                        {billingSearch && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setBillingSearch('')}
+                                                aria-label="Clear search"
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-ink"
+                                            >
+                                                <X size={13} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    {billingSubTab === 'rooms' && (
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-[10px] font-black text-ink-subtle uppercase shrink-0">Type:</span>
+                                            <Select
+                                                value={billingRoomTypeFilter}
+                                                onChange={(e) => setBillingRoomTypeFilter(e.target.value)}
+                                                className="w-48 text-xs"
+                                            >
+                                                <option value="all">All Room Types</option>
+                                                {roomTypesList.map(type => (
+                                                    <option key={type.id} value={type.id}>{type.name}</option>
+                                                ))}
+                                            </Select>
+                                        </div>
+                                    )}
+                                    <div className="flex bg-surface-muted p-1 rounded-xl border border-hairline shrink-0 flex-wrap">
                                         <button
-                                            onClick={() => setBillingSubTab('rooms')}
+                                            onClick={() => setBillingSubTab('all')}
                                             className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                                billingSubTab === 'rooms' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
+                                                billingSubTab === 'all' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
                                             }`}
                                         >
-                                            Rooms ({roomsState.filter(r => r.status === 'occupied').length})
+                                            All ({
+                                                searchedOccupiedRooms.length + searchedTableEntries.length
+                                                + searchedTakeoutEntries.length + searchedDeliveryEntries.length
+                                            })
                                         </button>
+                                        {isHotel && (
+                                            <button
+                                                onClick={() => setBillingSubTab('rooms')}
+                                                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                                    billingSubTab === 'rooms' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
+                                                }`}
+                                            >
+                                                Rooms ({searchedOccupiedRooms.length})
+                                            </button>
+                                        )}
                                         <button
                                             onClick={() => setBillingSubTab('tables')}
                                             className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
                                                 billingSubTab === 'tables' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
                                             }`}
                                         >
-                                            Tables ({tables.filter(t => t.activeSession !== null && !(t.activeSession as any).booking_id).length})
+                                            Tables ({searchedTableEntries.length})
+                                        </button>
+                                        <button
+                                            onClick={() => setBillingSubTab('takeout')}
+                                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                                billingSubTab === 'takeout' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
+                                            }`}
+                                        >
+                                            Takeaway ({searchedTakeoutEntries.length})
+                                        </button>
+                                        <button
+                                            onClick={() => setBillingSubTab('delivery')}
+                                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                                billingSubTab === 'delivery' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
+                                            }`}
+                                        >
+                                            Delivery ({searchedDeliveryEntries.length})
                                         </button>
                                     </div>
                                 </div>
-                            )}
+                            </div>
 
-                            {!isHotel && (
-                                <h2 className="text-sm font-semibold text-ink-muted mb-4 flex items-center gap-2">
-                                    <Receipt size={14} className="text-red-400" />
-                                    Awaiting Payment
-                                </h2>
-                            )}
+                            {(() => {
+                                const occupiedRooms = searchedOccupiedRooms
+                                const activeList = billingSubTab === 'all' ? [...occupiedRooms, ...searchedTableEntries, ...searchedTakeoutEntries, ...searchedDeliveryEntries]
+                                    : billingSubTab === 'rooms' ? searchedBillingRooms
+                                    : billingSubTab === 'tables' ? searchedTableEntries
+                                    : billingSubTab === 'takeout' ? searchedTakeoutEntries
+                                    : searchedDeliveryEntries
 
-                            {((isHotel && billingSubTab === 'rooms') ? roomsState.filter(r => r.status === 'occupied') : tables.filter(t => t.activeSession !== null && !(t.activeSession as any).booking_id)).length === 0 ? (
-                                <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-10 text-center">
-                                    <CheckCircle size={32} className="mx-auto text-emerald-300 mb-2" />
-                                    <p className="text-sm font-medium text-ink-subtle">All bills settled</p>
-                                    <p className="text-xs text-gray-300 mt-1">No pending payments in this category</p>
-                                </div>
-                            ) : (
-                                <div>
-                                    {isHotel && billingSubTab === 'rooms' ? (
-                                        // Occupied Rooms Grid
+                                if (activeList.length === 0) {
+                                    // An empty grid means two different things. "All bills
+                                    // settled" under an active search would be a lie — the
+                                    // bills are there, they just don't match — and would
+                                    // send the cashier looking for a stay they were told
+                                    // had already been paid.
+                                    if (billingSearch.trim()) {
+                                        return (
+                                            <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-10 text-center">
+                                                <Search size={32} className="mx-auto text-ink-subtle/40 mb-2" />
+                                                <p className="text-sm font-medium text-ink-subtle">
+                                                    No unpaid bill for &ldquo;{billingSearch.trim()}&rdquo;
+                                                </p>
+                                                <p className="text-xs text-gray-300 mt-1">
+                                                    Searches the guest name and phone taken at check-in. Check another category, or clear the search.
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setBillingSearch('')}
+                                                    className="mt-3 px-3 py-1.5 rounded-lg text-xs font-bold bg-surface-muted text-ink-muted hover:text-ink transition-colors"
+                                                >
+                                                    Clear search
+                                                </button>
+                                            </div>
+                                        )
+                                    }
+                                    return (
+                                        <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-10 text-center">
+                                            <CheckCircle size={32} className="mx-auto text-emerald-300 mb-2" />
+                                            <p className="text-sm font-medium text-ink-subtle">All bills settled</p>
+                                            <p className="text-xs text-gray-300 mt-1">No pending payments in this category</p>
+                                        </div>
+                                    )
+                                }
+
+                                if (billingSubTab === 'all') {
+                                    // Combined grid — each card renders per its own kind
+                                    // (room / table / takeaway / delivery) but routes to
+                                    // the same selection handlers the dedicated tabs use.
+                                    return (
                                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                                            {roomsState.filter(r => r.status === 'occupied').map(room => {
+                                            {occupiedRooms.map((room: any) => {
                                                 const booking = bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
-                                                const stayCost = calculateStayCost(room, booking)
-                                                const qrOrdersTotal = getRoomQrOrders(room).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
-                                                const total = stayCost + qrOrdersTotal
-                                                
                                                 return (
                                                     <button
-                                                        key={room.id}
+                                                        key={`room:${room.id}`}
                                                         onClick={() => setSelectedBillingRoom(room)}
                                                         className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
                                                     >
-                                                        <span className="text-lg font-black text-ink block leading-tight">
+                                                        <span className="text-lg font-black text-ink block leading-tight truncate max-w-full px-1">
                                                             Room {room.room_number}
                                                         </span>
                                                         {booking && (
@@ -956,9 +2452,76 @@ export default function CashierClient({
                                                                 {booking.guest_name}
                                                             </span>
                                                         )}
-                                                        <span className="text-[11px] font-extrabold text-brand-650 mt-1">
-                                                            {money(total)}
+                                                        <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">
+                                                            Awaiting Pay
                                                         </span>
+                                                    </button>
+                                                )
+                                            })}
+                                            {searchedTableEntries.map(table => {
+                                                const sessionItems = getTableSessionItems(table)
+                                                return (
+                                                    <button
+                                                        key={`table:${table.uiKey}`}
+                                                        onClick={() => setSelectedBillingTable(table)}
+                                                        className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
+                                                    >
+                                                        <span className="text-lg font-black text-ink block leading-tight truncate max-w-full px-1">
+                                                            Table {table.label}
+                                                        </span>
+                                                        <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">
+                                                            {sessionItems.length} items unpaid
+                                                        </span>
+                                                    </button>
+                                                )
+                                            })}
+                                            {[...searchedTakeoutEntries, ...searchedDeliveryEntries].map(order => (
+                                                <button
+                                                    key={`order:${order.id}`}
+                                                    onClick={() => setSelectedBillingOrder(order)}
+                                                    className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
+                                                >
+                                                    <span className="text-lg font-black text-ink block leading-tight truncate max-w-full px-1">
+                                                        {order.customer_name || 'Walk-in'}
+                                                    </span>
+                                                    <span className="text-[10px] font-bold text-ink-subtle mt-1.5 truncate max-w-full">
+                                                        #{order.id.slice(0, 8).toUpperCase()}
+                                                    </span>
+                                                    {order.customer_phone && (
+                                                        <span className="text-[10px] font-bold text-ink-subtle truncate max-w-full">
+                                                            {order.customer_phone}
+                                                        </span>
+                                                    )}
+                                                    <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">
+                                                        {order.order_type === 'delivery' ? 'Delivery' : 'Takeaway'}
+                                                    </span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )
+                                }
+
+                                if (billingSubTab === 'rooms') {
+                                    return (
+                                        // Occupied Rooms Grid
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                            {filteredBillingRooms.map(room => {
+                                                const booking = bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
+
+                                                return (
+                                                    <button
+                                                        key={room.id}
+                                                        onClick={() => setSelectedBillingRoom(room)}
+                                                        className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
+                                                    >
+                                                        <span className="text-lg font-black text-ink block leading-tight truncate max-w-full px-1">
+                                                            Room {room.room_number}
+                                                        </span>
+                                                        {booking && (
+                                                            <span className="text-[10px] font-bold text-ink-subtle mt-1.5 truncate max-w-full">
+                                                                {booking.guest_name}
+                                                            </span>
+                                                        )}
                                                         <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">
                                                             Awaiting Pay
                                                         </span>
@@ -966,24 +2529,24 @@ export default function CashierClient({
                                                 )
                                             })}
                                         </div>
-                                    ) : (
+                                    )
+                                }
+
+                                if (billingSubTab === 'tables') {
+                                    return (
                                         // Occupied Tables Grid
                                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                                            {tables.filter(t => t.activeSession !== null && !(t.activeSession as any).booking_id).map(table => {
+                                            {billingTableEntries.map(table => {
                                                 const sessionItems = getTableSessionItems(table)
-                                                const total = sessionItems.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
-                                                
+
                                                 return (
                                                     <button
-                                                        key={table.id}
+                                                        key={table.uiKey}
                                                         onClick={() => setSelectedBillingTable(table)}
                                                         className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
                                                     >
-                                                        <span className="text-lg font-black text-ink block leading-tight">
+                                                        <span className="text-lg font-black text-ink block leading-tight truncate max-w-full px-1">
                                                             Table {table.label}
-                                                        </span>
-                                                        <span className="text-[11px] font-extrabold text-brand-650 mt-1">
-                                                            {money(total)}
                                                         </span>
                                                         <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">
                                                             {sessionItems.length} items unpaid
@@ -992,15 +2555,46 @@ export default function CashierClient({
                                                 )
                                             })}
                                         </div>
-                                    )}
-                                </div>
-                            )}
+                                    )
+                                }
+
+                                // Takeaway / Delivery Grid — one box per unpaid order, no
+                                // session grouping. Customer name, short order id, phone.
+                                const orderEntries = billingSubTab === 'takeout' ? billingTakeoutEntries : billingDeliveryEntries
+                                return (
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                        {orderEntries.map(order => (
+                                            <button
+                                                key={order.id}
+                                                onClick={() => setSelectedBillingOrder(order)}
+                                                className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
+                                            >
+                                                <span className="text-lg font-black text-ink block leading-tight truncate max-w-full px-1">
+                                                    {order.customer_name || 'Walk-in'}
+                                                </span>
+                                                <span className="text-[10px] font-bold text-ink-subtle mt-1.5 truncate max-w-full">
+                                                    #{order.id.slice(0, 8).toUpperCase()}
+                                                </span>
+                                                {order.customer_phone && (
+                                                    <span className="text-[10px] font-bold text-ink-subtle truncate max-w-full">
+                                                        {order.customer_phone}
+                                                    </span>
+                                                )}
+                                                <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">
+                                                    Awaiting Pay
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )
+                            })()}
                         </div>
 
 
 
                         {/* Active Pipeline — read-only overview for cashier */}
-                        {activePipeline.length > 0 && (
+                        {/* Active Pipeline — read-only overview for cashier */}
+                        {!isHotel && activePipeline.length > 0 && (
                             <div>
                                 <h2 className="text-sm font-semibold text-ink-muted mb-3 flex items-center gap-2">
                                     <ChefHat size={14} className="text-orange-400" />
@@ -1043,138 +2637,67 @@ export default function CashierClient({
                             </div>
                         )}
 
-                        {unpaid.length === 0 && activePipeline.length === 0 && activeTakeoutDelivery.length === 0 && pendingClaims === 0 && (
-                            <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-12 text-center">
-                                <CreditCard size={36} className="mx-auto text-gray-200 mb-3" />
-                                <p className="text-base font-semibold text-ink-subtle">All quiet at the counter</p>
-                                <p className="text-sm text-gray-350 mt-1">No active orders or pending payments</p>
-                            </div>
-                        )}
                     </div>
                 )}
+
+                {activeTab === 'orders' && (
+                    <CashierOrdersPanel
+                        active={active}
+                        unpaid={unpaid}
+                        splitSessionIds={splitSessionIds}
+                        money={money}
+                        onUpdateTakeoutStatus={handleUpdateStatus}
+                        restaurantName={restaurantName}
+                        onCancelOrder={(orderId) => {
+                            setActive(prev => prev.filter(o => o.id !== orderId))
+                            setUnpaid(prev => prev.filter(o => o.id !== orderId))
+                        }}
+                        onCancelOrderItem={(orderId, itemId, cancelQuantity) => {
+                            const updateItems = (orders: any[]) => {
+                                return orders.map(o => {
+                                    if (o.id !== orderId) return o
+                                    const targetItem = (o.order_items || []).find((i: any) => i.id === itemId)
+                                    if (!targetItem) return o
+
+                                    let updatedItems: any[]
+                                    if (cancelQuantity >= targetItem.quantity) {
+                                        updatedItems = (o.order_items || []).map((i: any) => i.id === itemId ? { ...i, status: 'cancelled' } : i)
+                                    } else {
+                                        updatedItems = []
+                                        for (const i of o.order_items || []) {
+                                            if (i.id === itemId) {
+                                                updatedItems.push({
+                                                    ...i,
+                                                    quantity: i.quantity - cancelQuantity
+                                                })
+                                                updatedItems.push({
+                                                    ...i,
+                                                    id: `${itemId}-cancelled`,
+                                                    quantity: cancelQuantity,
+                                                    status: 'cancelled'
+                                                })
+                                            } else {
+                                                updatedItems.push(i)
+                                            }
+                                        }
+                                    }
+                                    return {
+                                        ...o,
+                                        order_items: updatedItems
+                                    }
+                                }).filter(o => {
+                                    if (o.id === orderId) {
+                                        return (o.order_items || []).some((i: any) => i.status !== 'cancelled')
+                                    }
+                                    return true
+                                })
+                            }
+                            setActive(prev => updateItems(prev))
+                            setUnpaid(prev => updateItems(prev))
+                        }}
+                    />
+                )}
             </div>
-
-            {/* Takeaway/Delivery Order Detail Modal */}
-            {mounted && selectedOrder && createPortal(
-                <div 
-                    className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-all duration-300"
-                    onClick={() => setSelectedOrder(null)}
-                >
-                    <div 
-                        className="bg-surface rounded-[24px] border border-hairline shadow-2xl w-full max-w-md overflow-hidden transform transition-all"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {/* Header */}
-                        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
-                            <div>
-                                <h3 className="text-h3 font-black text-ink font-mono">
-                                    Order #{selectedOrder.id.substring(0, 6).toUpperCase()}
-                                </h3>
-                                <p className="text-caption text-ink-subtle mt-0.5 capitalize">
-                                    {selectedOrder.order_type} · {selectedOrder.status}
-                                </p>
-                            </div>
-                            <button 
-                                onClick={() => setSelectedOrder(null)}
-                                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink-muted"
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
-
-                        {/* Content */}
-                        <div className="p-6 max-h-[70vh] overflow-y-auto space-y-4">
-                            {/* Customer info */}
-                            <div className="space-y-1 text-xs text-ink-muted bg-surface-muted p-3.5 rounded-xl border border-hairline">
-                                <p className="font-bold text-ink text-sm">{selectedOrder.customer_name || 'Customer'}</p>
-                                <p className="font-mono">{selectedOrder.customer_phone}</p>
-                                {selectedOrder.order_type === 'delivery' && selectedOrder.delivery_address && (
-                                    <p className="text-ink-subtle italic mt-1 bg-surface p-2.5 rounded border border-hairline">
-                                        {selectedOrder.delivery_address}
-                                    </p>
-                                )}
-                            </div>
-
-                            {/* Order Items */}
-                            <div className="space-y-2">
-                                <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Order Items</h4>
-                                <div className="space-y-2 border border-hairline rounded-xl p-3 bg-surface-muted/50 divide-y divide-gray-100">
-                                    {(selectedOrder.order_items || []).map((item, idx) => {
-                                        const price = Number(item.unit_price ?? 0)
-                                        const qty = item.quantity || 0
-                                        return (
-                                            <div key={idx} className="flex justify-between items-center py-2 text-xs">
-                                                <div className="flex-1 min-w-0 pr-2">
-                                                    <p className="font-extrabold text-ink truncate text-[13px]">
-                                                        {item.menu_items?.name || 'Item'}
-                                                    </p>
-                                                    <p className="text-[10px] text-ink-subtle capitalize">
-                                                        Status: <span className="text-brand-500 font-extrabold">{item.status || selectedOrder.status}</span>
-                                                    </p>
-                                                </div>
-                                                <div className="flex items-center gap-3 shrink-0">
-                                                    <span className="text-xs font-extrabold text-brand-600 bg-brand-50 border border-brand-100/50 px-2 py-0.5 rounded-lg tabular-nums">
-                                                        {qty}×
-                                                    </span>
-                                                    <span className="font-semibold text-ink-muted tabular-nums">
-                                                        {money(price * qty)}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* Total Amount & Prepaid status */}
-                            <div className="flex flex-col gap-2 pt-3 border-t border-hairline">
-                                <div className="flex justify-between items-center font-bold text-sm">
-                                    <span className="text-ink-muted">Total Amount:</span>
-                                    <span className="text-brand-600 text-base tabular-nums">{money(selectedOrder.total_amount)}</span>
-                                </div>
-
-                                <div className="flex items-center justify-between mt-1 text-xs">
-                                    <span className="text-ink-subtle font-bold">Payment Status:</span>
-                                    {selectedOrder.payment_status === 'paid' ? (
-                                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 font-extrabold px-3 py-1 rounded-full text-[10px]">
-                                            ✓ Prepaid
-                                        </span>
-                                    ) : (
-                                        <span className="bg-red-50 text-red-700 border border-red-200 font-extrabold px-3 py-1 rounded-full text-[10px]">
-                                            Awaiting Payment
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Action Buttons if Pending */}
-                            {selectedOrder.status === 'pending' && (
-                                <div className="grid grid-cols-2 gap-3 pt-2">
-                                    <button
-                                        onClick={async () => {
-                                            await handleUpdateStatus(selectedOrder.id, 'cancelled')
-                                            setSelectedOrder(null)
-                                        }}
-                                        className="w-full bg-surface border border-red-200 text-red-700 hover:bg-red-50 font-extrabold text-xs py-3 rounded-xl transition duration-200 active:scale-95 shadow-sm flex items-center justify-center gap-1.5"
-                                    >
-                                        Cancel Order
-                                    </button>
-                                    <button
-                                        onClick={async () => {
-                                            await handleUpdateStatus(selectedOrder.id, 'confirmed')
-                                            setSelectedOrder(null)
-                                        }}
-                                        className="w-full bg-[var(--brand-500)] text-white hover:bg-[var(--brand-600)] font-extrabold text-xs py-3 rounded-xl transition duration-200 active:scale-95 shadow-sm flex items-center justify-center gap-1.5"
-                                    >
-                                        Confirm Order
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>,
-                document.body
-            )}
 
             {/* Billing Stay Details modal */}
             {mounted && selectedBillingRoom && createPortal(
@@ -1212,47 +2735,186 @@ export default function CashierClient({
                                         <p className="text-[10px] font-bold text-ink-subtle uppercase">Stay schedule</p>
                                         <p className="font-semibold text-ink-muted">In: {formatDateTime(billingStayBooking.check_in)}</p>
                                         <p className="font-semibold text-ink-muted">Out: {formatDateTime(billingStayBooking.check_out)}</p>
+                                        {isExceeded && (
+                                            <p className="text-[9px] text-rose-600 font-bold mt-1">⚠ Exceeded by {extraHours} hr(s)</p>
+                                        )}
                                     </div>
                                 </div>
 
                                 <div className="space-y-4">
                                     <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Stay billing breakdown</h4>
+
+                                    {/* A reservation covering several rooms settles here as one bill,
+                                        so say so plainly — the cashier is closing every one of these
+                                        rooms, not just the one they clicked. */}
+                                    {billingGroup && (
+                                        <div className="border border-brand-200 bg-brand-50/60 rounded-2xl p-4 text-xs space-y-2">
+                                            <p className="font-black text-brand-700 uppercase text-[10px] tracking-wider">
+                                                Combined bill · {billingGroup.rooms.length} rooms
+                                            </p>
+                                            <p className="text-[10px] text-ink-muted font-semibold">
+                                                {billingGroup.guestName || billingStayBooking.guest_name} booked these rooms together. Settling
+                                                here checks all of them out and takes one payment.
+                                            </p>
+                                        </div>
+                                    )}
+
                                     <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-gray-100 bg-surface">
                                         <div className="flex justify-between items-center p-4 text-xs">
                                             <div>
                                                 <p className="font-extrabold text-ink">Room Stay Cost</p>
-                                                <p className="text-[10px] text-ink-subtle">{money(selectedBillingRoom.room_types?.base_price || 0)} / Night</p>
+                                                <p className="text-[10px] text-ink-subtle">
+                                                    {billingGroup
+                                                        ? `${billingGroup.rooms.length} rooms on this reservation`
+                                                        : `${money(selectedBillingRoom.room_types?.base_price || 0)} / Night`}
+                                                </p>
                                             </div>
-                                            <span className="font-extrabold text-ink-muted tabular-nums">{money(calculateStayCost(selectedBillingRoom, billingStayBooking))}</span>
+                                            <span className="font-extrabold text-ink-muted tabular-nums">{money(stayCost)}</span>
                                         </div>
 
-                                        {getRoomQrOrders(selectedBillingRoom).length > 0 && (
-                                            <div className="p-4 space-y-2">
-                                                <p className="font-extrabold text-xs text-indigo-650 font-semibold">QR Room service orders</p>
-                                                <div className="space-y-1.5 pl-3 border-l-2 border-indigo-100">
-                                                    {getRoomQrOrders(selectedBillingRoom).map((item, idx) => (
-                                                        <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
-                                                            <span>{item.name} ({item.quantity}×)</span>
-                                                            <span className="tabular-nums font-semibold">{money(item.unitPrice * item.quantity)}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
+                                        {billingGroup && (
+                                            <div className="p-4 space-y-1.5">
+                                                {billingGroup.rooms.map(r => (
+                                                    <div key={r.bookingId} className="flex justify-between text-[10px] text-ink-muted">
+                                                        <span className="font-semibold">Room {r.roomNumber} · {r.nights}n</span>
+                                                        <span className="tabular-nums font-semibold">{money(r.stayCost)}</span>
+                                                    </div>
+                                                ))}
                                             </div>
                                         )}
 
-                                        {billingLinkedOrders.length > 0 && (
-                                            <div className="p-4 space-y-2">
-                                                <p className="font-extrabold text-xs text-emerald-650 font-semibold">Restaurant dining (table orders)</p>
-                                                <div className="space-y-1.5 pl-3 border-l-2 border-emerald-100">
-                                                    {billingLinkedOrders.map((item, idx) => (
-                                                        <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
-                                                            <span>{item.menu_items?.name || 'Item'} ({item.quantity}×)</span>
+                                        {extraHourChargeVal > 0 && (
+                                            <div className="flex justify-between items-center p-4 text-xs bg-rose-50/20">
+                                                <div>
+                                                    <p className="font-extrabold text-rose-700">Extra Hour Charge</p>
+                                                    <p className="text-[10px] text-rose-500">Late checkout fee</p>
+                                                </div>
+                                                <span className="font-extrabold text-rose-700 tabular-nums">{money(extraHourChargeVal)}</span>
+                                            </div>
+                                        )}
+
+                                        {roomDiscountVal > 0 && (
+                                            <div className="flex justify-between items-center p-4 text-xs bg-rose-50/40">
+                                                <div>
+                                                    <p className="font-extrabold text-rose-600 font-bold">Room Stay Discount</p>
+                                                    <p className="text-[10px] text-gray-400 truncate max-w-[220px]">{discountReason || 'Reason required'}</p>
+                                                </div>
+                                                <span className="font-extrabold text-rose-600 tabular-nums">− {money(roomDiscountVal)}</span>
+                                            </div>
+                                        )}
+
+                                        {foodDiscountVal > 0 && (
+                                            <div className="flex justify-between items-center p-4 text-xs bg-rose-50/40">
+                                                <div>
+                                                    <p className="font-extrabold text-rose-600 font-bold">Order/Food Discount</p>
+                                                    <p className="text-[10px] text-gray-400 truncate max-w-[220px]">{discountReason || 'Reason required'}</p>
+                                                </div>
+                                                <span className="font-extrabold text-rose-600 tabular-nums">− {money(foodDiscountVal)}</span>
+                                            </div>
+                                        )}
+
+                                        {/* Separate Section: Restaurant Dining (Dine-In Table Orders) */}
+                                        {filteredLinkedOrders.length > 0 && (
+                                            <div className="p-4 space-y-2 border-t border-hairline bg-emerald-50/20">
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <p className="font-extrabold text-emerald-700 flex items-center gap-1.5 font-bold">
+                                                        <Utensils size={14} className="text-emerald-600" />
+                                                        Restaurant Dining (Dine-In Table Orders)
+                                                    </p>
+                                                    <span className="font-extrabold text-emerald-700 tabular-nums">
+                                                        {money(filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0))}
+                                                    </span>
+                                                </div>
+                                                <div className="space-y-1.5 pl-3 border-l-2 border-emerald-300">
+                                                    {filteredLinkedOrders.map((item) => (
+                                                        <div key={item.id} className="flex justify-between text-[10px] text-ink-muted">
+                                                            <span>{getItemDisplayName(item)} ({item.quantity}×)</span>
                                                             <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
                                                         </div>
                                                     ))}
                                                 </div>
                                             </div>
                                         )}
+
+                                        {/* Separate Section: In-Room QR & Room Service Orders */}
+                                        {filteredRoomOrders.length > 0 && (
+                                            <div className="p-4 space-y-2 border-t border-hairline bg-indigo-50/20">
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <p className="font-extrabold text-indigo-700 flex items-center gap-1.5 font-bold">
+                                                        <QrCode size={14} className="text-indigo-600" />
+                                                        In-Room QR & Room Service Orders
+                                                    </p>
+                                                    <span className="font-extrabold text-indigo-700 tabular-nums">
+                                                        {money(filteredRoomOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0))}
+                                                    </span>
+                                                </div>
+                                                <div className="space-y-1.5 pl-3 border-l-2 border-indigo-300">
+                                                    {filteredRoomOrders.map((item) => (
+                                                        <div key={item.id} className="flex justify-between text-[10px] text-ink-muted">
+                                                            <span>{getItemDisplayName(item)} ({item.quantity}×)</span>
+                                                            <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Room Service Charge — the folio's own rule, shown
+                                            so the cashier can see and adjust what the
+                                            settlement is about to bill. */}
+                                        {(() => {
+                                            const roomSc = resolveRoomSc(selectedBillingRoom)
+                                            // Shown even for a room that carries no automatic
+                                            // charge: the cashier can still add one, and the
+                                            // settlement bills it as a difference from 0.
+                                            const scIsAutomatic = roomServiceChargeApplies(features, selectedBillingRoom?.id)
+                                            return (
+                                                <div className="p-4 space-y-2 border-t border-hairline bg-sky-50/20">
+                                                    <div className="flex justify-between items-center gap-3">
+                                                        <div className="min-w-0">
+                                                            <p className="text-xs font-extrabold text-sky-700 flex items-center gap-1.5">
+                                                                Room Service Charge
+                                                                {roomSc.isOverridden && (
+                                                                    <span className="text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5">
+                                                                        {scIsAutomatic ? 'EDITED' : 'MANUAL'}
+                                                                    </span>
+                                                                )}
+                                                            </p>
+                                                            <p className="text-[10px] text-sky-600/70 font-semibold">
+                                                                {scIsAutomatic
+                                                                    ? `${ROOM_SERVICE_CHARGE_RATE * 100}% on room food · auto ${money(roomSc.auto)}`
+                                                                    : 'Not charged automatically for this room — type an amount to add one'}
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 shrink-0">
+                                                            {roomSc.isOverridden && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setRoomServiceChargeEdit(null)}
+                                                                    title={scIsAutomatic ? `Reset to the auto-calculated ${money(roomSc.auto)}` : 'Clear the manual charge'}
+                                                                    className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
+                                                                >
+                                                                    <RotateCcw size={12} />
+                                                                </button>
+                                                            )}
+                                                            <div className="relative w-28">
+                                                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                                <input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    step="0.01"
+                                                                    value={roomSc.isOverridden ? (roomServiceChargeEdit?.value ?? '') : (roomSc.auto ? String(roomSc.auto) : '')}
+                                                                    placeholder={roomSc.auto ? String(roomSc.auto) : '0.00'}
+                                                                    onChange={e => setRoomServiceChargeEdit({ roomId: selectedBillingRoom.id, value: e.target.value })}
+                                                                    aria-label="Room service charge"
+                                                                    className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-lg text-xs font-bold text-right tabular-nums bg-surface focus:outline-none focus:border-brand-500"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )
+                                        })()}
 
                                         {billingRoomCharges.length > 0 && (
                                             <div className="p-4 space-y-2">
@@ -1270,10 +2932,104 @@ export default function CashierClient({
                                     </div>
                                 </div>
 
+                                {/* Extra Hour Charge Box (shown only if check-out time is exceeded) */}
+                                {isExceeded && (
+                                    <div className="border border-rose-200 rounded-2xl p-4 space-y-3 bg-rose-50/40 shadow-sm animate-scale-in">
+                                        <div className="flex items-center gap-2 pb-2 border-b border-rose-100">
+                                            <div className="w-7 h-7 rounded-lg bg-rose-100 flex items-center justify-center shrink-0">
+                                                <Clock size={14} className="text-rose-700" />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-black text-rose-800 uppercase tracking-wider">Late Checkout Alert</p>
+                                                <p className="text-[10px] text-rose-700/70 font-semibold">Exceeded by {extraHours} hour(s)</p>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="block text-[9px] font-black text-rose-800 uppercase">Extra Hour Charge (Optional)</label>
+                                            <div className="relative">
+                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-rose-700">Rs.</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    placeholder="0.00"
+                                                    value={extraHourCharge}
+                                                    onChange={e => setExtraHourCharge(e.target.value)}
+                                                    className="w-full pl-7 pr-2 py-2 border border-rose-200 rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-rose-500"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Discounts section */}
+                                <div className="border border-hairline rounded-2xl p-4 space-y-4 bg-surface-muted/30">
+                                    <div className="flex items-center gap-2 pb-2 border-b border-hairline">
+                                        <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                                            <Percent size={14} className="text-amber-700" />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-black text-amber-800 uppercase tracking-wider">Discounts</p>
+                                            <p className="text-[10px] text-amber-700/70 font-semibold">Apply discounts to Room rent and/or Food orders</p>
+                                        </div>
+                                    </div>
+
+                                    <div className={totalFoodOrders > 0 ? "grid grid-cols-2 gap-4" : "space-y-1"}>
+                                        <div className="space-y-1">
+                                            <label className="block text-[9px] font-black text-amber-800 uppercase">Room Discount</label>
+                                            <div className="relative">
+                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-700">Rs.</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max={stayCost}
+                                                    placeholder="0.00"
+                                                    value={roomDiscount}
+                                                    onChange={e => setRoomDiscount(e.target.value)}
+                                                    className={`w-full pl-7 pr-2 py-2 border rounded-xl text-xs font-bold bg-surface focus:outline-none ${roomDiscountVal < 0 || roomDiscountVal > stayCost ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
+                                                />
+                                            </div>
+                                            <span className="text-[9px] text-amber-700/60 font-semibold">Max: {money(stayCost)}</span>
+                                        </div>
+
+                                        {totalFoodOrders > 0 && (
+                                            <div className="space-y-1">
+                                                <label className="block text-[9px] font-black text-amber-800 uppercase">Food Discount</label>
+                                                <div className="relative">
+                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-700">Rs.</span>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        max={totalFoodOrders}
+                                                        placeholder="0.00"
+                                                        value={foodDiscount}
+                                                        onChange={e => setFoodDiscount(e.target.value)}
+                                                        className={`w-full pl-7 pr-2 py-2 border rounded-xl text-xs font-bold bg-surface focus:outline-none ${foodDiscountVal < 0 || foodDiscountVal > totalFoodOrders ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
+                                                    />
+                                                </div>
+                                                <span className="text-[9px] text-amber-700/60 font-semibold">Max: {money(totalFoodOrders)}</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {totalDiscountAmount > 0 && (
+                                        <div className="space-y-1">
+                                            <label className="block text-[9px] font-black text-amber-800 uppercase">Discount Reason (required)</label>
+                                            <input
+                                                type="text"
+                                                value={discountReason}
+                                                onChange={e => setDiscountReason(e.target.value)}
+                                                placeholder="e.g. Regular guest / service delay compensation"
+                                                className="w-full px-3 py-2 border rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-amber-500"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
                                 {/* Payment Method Selector */}
+                                {irdSyncEnabled && (
                                 <div className="pt-4">
                                     <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Payment Method</p>
-                                    <div className="grid grid-cols-3 gap-2">
+                                    <div className="grid grid-cols-4 gap-2">
                                         <button
                                             onClick={() => setBillingPaymentMethod('cash')}
                                             className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
@@ -1311,106 +3067,142 @@ export default function CashierClient({
                                             <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></svg>
                                             Both
                                         </button>
+                                        <button
+                                            onClick={() => setBillingPaymentMethod('credit')}
+                                            className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                billingPaymentMethod === 'credit'
+                                                    ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                    : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                            }`}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 9V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M22 17v-1a2 2 0 0 0-2-2h-1"/><rect width="8" height="8" x="14" y="14" rx="2"/></svg>
+                                            Credit
+                                        </button>
                                     </div>
 
-                                    {/* Split amount inputs — shown only when Both is selected */}
-                                    {billingPaymentMethod === 'both' && (() => {
-                                        const total = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
-                                        const advancePaid = Number(billingStayBooking?.paid_amount) || 0
-                                        const balanceDue = Math.max(0, total - advancePaid)
-                                        return (
-                                            <div className="mt-3 grid grid-cols-2 gap-3 p-3 bg-surface-muted/40 border border-hairline rounded-2xl">
-                                                <div>
-                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash Amount</label>
-                                                    <div className="relative">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            max={balanceDue}
-                                                            placeholder="0.00"
-                                                            value={splitCashAmount}
-                                                            onChange={e => {
-                                                                const v = e.target.value
-                                                                setSplitCashAmount(v)
-                                                                const cash = parseFloat(v) || 0
-                                                                setSplitQrAmount(Math.max(0, balanceDue - cash).toFixed(2))
-                                                            }}
-                                                            className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">QR / Digital Amount</label>
-                                                    <div className="relative">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            max={balanceDue}
-                                                            placeholder="0.00"
-                                                            value={splitQrAmount}
-                                                            onChange={e => {
-                                                                const v = e.target.value
-                                                                setSplitQrAmount(v)
-                                                                const qr = parseFloat(v) || 0
-                                                                setSplitCashAmount(Math.max(0, balanceDue - qr).toFixed(2))
-                                                            }}
-                                                            className="w-full pl-7 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
-                                                        />
-                                                    </div>
-                                                </div>
-                                                {/* Balance check */}
-                                                {(() => {
-                                                    const cash = parseFloat(splitCashAmount) || 0
-                                                    const qr = parseFloat(splitQrAmount) || 0
-                                                    const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
-                                                    const advancePaid = Number(billingStayBooking?.paid_amount) || 0
-                                                    const balanceDue = Math.max(0, grandTotal - advancePaid)
-                                                    const diff = Math.abs(cash + qr - balanceDue)
-                                                    if (diff > 0.01) return (
-                                                        <p className="col-span-2 text-[9px] text-rose-500 font-bold text-center">
-                                                            ⚠ Cash + QR must equal {money(balanceDue)} (difference: {money(diff)})
-                                                        </p>
-                                                    )
-                                                    return (
-                                                        <p className="col-span-2 text-[9px] text-emerald-600 font-bold text-center">✓ Amounts balanced</p>
-                                                    )
-                                                })()}
-                                            </div>
-                                        )
+                                    {(() => {
+                                        const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
+                                        const advancePaid = advancePaidFor(billingStayBooking)
+                                        const netBalance = grandTotal - advancePaid
+                                        const balanceDue = Math.max(0, netBalance)
+                                        return renderPaymentInputsAndCalculator(balanceDue)
                                     })()}
                                 </div>
+                                )}
                             </div>
                             <div className="border-t border-hairline px-6 py-4 flex-shrink-0 bg-surface">
                                     {/* Gross Total + Advance row */}
                                     {(() => {
                                         const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
-                                        const advancePaid = Number(billingStayBooking?.paid_amount) || 0
-                                        const balanceDue = Math.max(0, grandTotal - advancePaid)
+                                        const advancePaid = advancePaidFor(billingStayBooking)
+                                        const netBalance = grandTotal - advancePaid
+                                        const balanceDue = Math.max(0, netBalance)
+                                        const returnAmount = netBalance < 0 ? Math.abs(netBalance) : 0
+                                        // Settled earlier and kept the room: what is left is to
+                                        // release it, unless something was charged since. The
+                                        // half-rupee cushion mirrors the server's — the folio and
+                                        // the stored paid amount both round to paisa.
+                                        // Stamped by every settlement, so "paid but still here" is
+                                        // that stamp against a stay not yet checked out.
+                                        const billAlreadySettled = !!billingStayBooking?.bill_settled_at
+                                            && billingStayBooking?.status !== 'checked_out'
+                                        const balanceOutstanding = balanceDue > 0.5
                                         return (
                                             <>
+                                                {billAlreadySettled && (
+                                                    <div className={`rounded-xl border px-3 py-2 text-[10px] font-bold ${
+                                                        balanceOutstanding
+                                                            ? 'border-amber-200 bg-amber-50 text-amber-800'
+                                                            : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                                    }`}>
+                                                        {balanceOutstanding
+                                                            ? `Bill settled earlier · ${money(balanceDue)} charged since`
+                                                            : 'Bill settled earlier · nothing further owed'}
+                                                    </div>
+                                                )}
                                                 <div className="flex items-center justify-between">
                                                     <span className="text-[10px] font-bold text-ink-subtle uppercase">Total bill amount</span>
                                                     <span className="text-sm font-black text-ink-muted tabular-nums">{money(grandTotal)}</span>
                                                 </div>
                                                 {advancePaid > 0 && (
-                                                    <div className="flex items-center justify-between">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAdvanceHistoryModalOpen(true)}
+                                                        className="flex items-center justify-between w-full hover:underline cursor-pointer group transition-all"
+                                                    >
                                                         <span className="text-[10px] font-bold text-emerald-600 uppercase flex items-center gap-1">
                                                             <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                                            Advance Paid ({billingStayBooking?.advance_payment_method === 'qr_digital' ? 'QR/Digital' : 'Cash'})
+                                                            Advance Paid ({advanceMethodLabel(billingStayBooking?.advance_payment_method)})
+                                                            <History className="w-3 h-3 inline ml-1 opacity-70 group-hover:opacity-100" />
                                                         </span>
                                                         <span className="text-sm font-black text-emerald-600 tabular-nums">− {money(advancePaid)}</span>
-                                                    </div>
+                                                    </button>
                                                 )}
                                                 <div className="flex items-center justify-between pt-1 border-t border-dashed border-hairline">
                                                     <div>
-                                                        <span className="text-[10px] font-bold text-ink-subtle uppercase">{advancePaid > 0 ? 'Balance Due' : 'Total Due'}</span>
-                                                        <p className="text-2xl font-black text-brand-600 tabular-nums">{money(balanceDue)}</p>
+                                                        <span className={`text-[10px] font-bold uppercase ${returnAmount > 0 ? 'text-emerald-600' : 'text-ink-subtle'}`}>
+                                                            {returnAmount > 0 ? 'Return to Guest' : advancePaid > 0 ? 'Balance Due' : 'Total Due'}
+                                                        </span>
+                                                        <p className={`text-2xl font-black tabular-nums ${returnAmount > 0 ? 'text-emerald-600' : 'text-brand-600'}`}>
+                                                            {returnAmount > 0 ? money(returnAmount) : money(balanceDue)}
+                                                        </p>
                                                     </div>
-                                                    <div className="flex gap-2">
+                                                    <div className="flex gap-2 items-center">
                                                         <Button variant="secondary" onClick={() => setSelectedBillingRoom(null)}>Close</Button>
-                                                        <Button variant="primary" onClick={() => compileInvoice('room', selectedBillingRoom)} className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs">Generate Invoice</Button>
+                                                        {billingPaymentMethod === 'none' ? (
+                                                            <Button
+                                                                variant="primary"
+                                                                disabled={discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
+                                                                onClick={() => compileInvoice('room', selectedBillingRoom)}
+                                                                className="px-6 text-xs animate-scale-in"
+                                                            >
+                                                                Generate Estimate
+                                                            </Button>
+                                                        ) : billAlreadySettled && !balanceOutstanding ? (
+                                                            /* Already paid — this only releases the room.
+                                                               No money moves, so it does not go through
+                                                               the settlement path at all. */
+                                                            <Button
+                                                                variant="primary"
+                                                                loading={isDirectCheckingOut}
+                                                                onClick={() => handleReleaseRoom(selectedBillingRoom)}
+                                                                className="px-6 text-xs animate-scale-in"
+                                                            >
+                                                                Check Out &amp; Release Room
+                                                            </Button>
+                                                        ) : !irdSyncEnabled ? (
+                                                            <>
+                                                                {/* Takes the money and stops there: the stay
+                                                                    stays open, the room stays the guest's. */}
+                                                                <Button
+                                                                    variant="secondary"
+                                                                    loading={isDirectCheckingOut}
+                                                                    disabled={discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
+                                                                    onClick={() => handleCloseGuestDirectly(selectedBillingRoom, false)}
+                                                                    className="px-4 text-xs animate-scale-in"
+                                                                >
+                                                                    Settle, Keep Room
+                                                                </Button>
+                                                                <Button
+                                                                    variant="primary"
+                                                                    loading={isDirectCheckingOut}
+                                                                    disabled={discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
+                                                                    onClick={() => handleCloseGuestDirectly(selectedBillingRoom)}
+                                                                    className="px-6 text-xs animate-scale-in"
+                                                                >
+                                                                    Close Guest
+                                                                </Button>
+                                                            </>
+                                                        ) : (
+                                                            <Button
+                                                                variant="primary"
+                                                                disabled={discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
+                                                                onClick={() => compileInvoice('room', selectedBillingRoom)}
+                                                                className="px-6 text-xs animate-scale-in"
+                                                            >
+                                                                Generate Estimate
+                                                            </Button>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </>
@@ -1437,10 +3229,10 @@ export default function CashierClient({
                     onClick={() => setSelectedBillingTable(null)}
                 >
                     <div 
-                        className="bg-surface w-full max-w-2xl rounded-[28px] shadow-2xl overflow-hidden border border-hairline p-6 space-y-6 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+                        className="bg-surface w-full max-w-2xl rounded-[28px] shadow-2xl overflow-hidden border border-hairline flex flex-col max-h-[90vh] md:max-h-[85vh] animate-in zoom-in-95 duration-200"
                         onClick={e => e.stopPropagation()}
                     >
-                        <div className="flex items-center justify-between border-b border-hairline pb-4">
+                        <div className="flex items-center justify-between border-b border-hairline px-6 py-4 bg-surface-muted/50 flex-shrink-0">
                             <div>
                                 <h3 className="text-lg font-black text-ink">Table {selectedBillingTable.label} details</h3>
                                 <p className="text-xs text-ink-subtle mt-0.5">Capacity: {selectedBillingTable.capacity} Seats</p>
@@ -1448,38 +3240,596 @@ export default function CashierClient({
                             <button onClick={() => setSelectedBillingTable(null)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink"><X size={16} /></button>
                         </div>
 
-                        <div className="space-y-4">
-                            <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Session order items</h4>
-                            {getTableSessionItems(selectedBillingTable).length > 0 ? (
-                                <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-gray-100 bg-surface p-4 space-y-2">
-                                    {getTableSessionItems(selectedBillingTable).map((item, idx) => (
-                                        <div key={idx} className="flex justify-between items-center py-1.5 text-xs">
-                                            <div>
-                                                <p className="font-extrabold text-ink">{item.name}</p>
-                                                <p className="text-[10px] text-ink-subtle">Qty: {item.quantity} × {money(item.unitPrice)}</p>
+                        <div className="space-y-6 p-6 overflow-y-auto flex-1">
+                            <div className="space-y-4">
+                                <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Session order items</h4>
+                                {getTableSessionItems(selectedBillingTable).length > 0 ? (
+                                    <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-gray-100 bg-surface p-4 space-y-2">
+                                        {getTableSessionItems(selectedBillingTable).map((item) => (
+                                            <div key={item.id} className="flex justify-between items-center py-1.5 text-xs">
+                                                <div>
+                                                    <p className="font-extrabold text-ink">{item.name}</p>
+                                                    <p className="text-[10px] text-ink-subtle">Qty: {item.quantity} × {money(item.unitPrice)}</p>
+                                                </div>
+                                                <span className="font-extrabold text-ink-muted tabular-nums">{money(item.unitPrice * item.quantity)}</span>
                                             </div>
-                                            <span className="font-extrabold text-ink-muted tabular-nums">{money(item.unitPrice * item.quantity)}</span>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="p-8 text-center border border-dashed border-hairline-strong rounded-xl text-xs text-ink-subtle font-semibold">
+                                        No items ordered in this session yet
+                                    </div>
+                                )}
+                            </div>
+
+                            {(() => {
+                                // The authoritative, tax-inclusive total — matches
+                                // exactly what /api/tables/checkout bills off
+                                // (orders.total_amount), unlike the raw item list
+                                // above which is pre-tax and would understate it.
+                                const itemsSubtotal = getTableSessionItems(selectedBillingTable).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
+                                const tableSubtotal = getTableSessionOrdersTotal(selectedBillingTable)
+                                const sc = resolveTableServiceCharge(selectedBillingTable)
+                                // What's owed before the discount: the orders' own
+                                // totals, shifted by however far the cashier moved
+                                // the service charge off its auto figure.
+                                const billableSubtotal = round2(tableSubtotal + sc.delta)
+                                const tableDiscountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
+                                const tableDiscountInvalid = tableDiscountAmount < 0 || tableDiscountAmount > billableSubtotal
+                                const finalCalculatedTotal = Math.max(0, round2(billableSubtotal - tableDiscountAmount))
+
+                                const sessionOrders = getTableSessionOrders(selectedBillingTable)
+                                const sessionTax = sessionOrders.reduce((sum, o) => sum + (Number(o.tax_amount) || 0), 0)
+                                const residualAdjustment = tableSubtotal - (itemsSubtotal + sc.auto + sessionTax)
+
+                                return (
+                                    <div className="space-y-6">
+                                        <div className="space-y-2 px-1 text-xs">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-ink-subtle font-semibold">Subtotal</span>
+                                                <span className="font-bold text-ink tabular-nums">{money(itemsSubtotal)}</span>
+                                            </div>
+
+                                            {tableDiscountAmount > 0 && (
+                                                <div className="flex justify-between items-center text-rose-600">
+                                                    <span className="font-semibold">Discount</span>
+                                                    <span className="font-extrabold tabular-nums">− {money(tableDiscountAmount)}</span>
+                                                </div>
+                                            )}
+
+                                            {sessionOrders.length > 0 && (
+                                                <div className="flex justify-between items-center gap-3">
+                                                    <span className="text-ink-subtle font-semibold shrink-0">
+                                                        Service Charge
+                                                        {sc.isOverridden && (
+                                                            <span className="ml-1.5 text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5 align-middle">EDITED</span>
+                                                        )}
+                                                    </span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        {sc.isOverridden && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setTableServiceCharge('')}
+                                                                title={`Reset to the auto-calculated ${money(sc.auto)}`}
+                                                                className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
+                                                            >
+                                                                <RotateCcw size={12} />
+                                                            </button>
+                                                        )}
+                                                        <div className="relative w-28">
+                                                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                step="0.01"
+                                                                value={sc.isOverridden ? tableServiceCharge : (sc.auto ? String(sc.auto) : '')}
+                                                                placeholder={sc.auto ? String(sc.auto) : '0.00'}
+                                                                onChange={e => setTableServiceCharge(e.target.value)}
+                                                                aria-label="Service charge"
+                                                                className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-lg text-xs font-bold text-right tabular-nums bg-surface focus:outline-none focus:border-brand-500"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {sc.isOverridden && Math.abs(sc.delta) > 0.001 && (
+                                                <p className="text-[9px] text-ink-subtle font-semibold text-right -mt-1">
+                                                    Auto: {money(sc.auto)} · {sc.delta > 0 ? '+' : '−'}{money(Math.abs(sc.delta))} on the bill
+                                                </p>
+                                            )}
+
+                                            {sessionTax > 0 && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-ink-subtle font-semibold">Tax (VAT)</span>
+                                                    <span className="font-bold text-ink tabular-nums">{money(sessionTax)}</span>
+                                                </div>
+                                            )}
+
+                                            {Math.abs(residualAdjustment) > 0.01 && sc.auto === 0 && sessionTax === 0 && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-ink-subtle font-semibold">Tax / Service charge</span>
+                                                    <span className="font-bold text-ink tabular-nums">{money(residualAdjustment)}</span>
+                                                </div>
+                                            )}
+
+                                            <div className="flex justify-between items-center pt-2 border-t border-dashed border-hairline font-extrabold text-sm">
+                                                <span className="text-ink">Grand Total</span>
+                                                <span className="text-brand-600 tabular-nums text-base">{money(finalCalculatedTotal)}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Food Discount */}
+                                        <div className="border-2 border-amber-200 rounded-2xl p-4 space-y-3 bg-amber-50/60 shadow-sm">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                                                        <Percent size={14} className="text-amber-700" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-xs font-black text-amber-800 uppercase tracking-wider">Food Discount</p>
+                                                        <p className="text-[10px] text-amber-700/70 font-semibold">Standard total: {money(billableSubtotal)}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="relative w-32">
+                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-700">Rs.</span>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        max={billableSubtotal}
+                                                        placeholder="0.00"
+                                                        value={tableDiscount}
+                                                        onChange={e => setTableDiscount(e.target.value)}
+                                                        className={`w-full pl-7 pr-2 py-2 border-2 rounded-xl text-xs font-bold bg-white focus:outline-none ${tableDiscountInvalid ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
+                                                    />
+                                                </div>
+                                            </div>
+                                            {tableDiscountInvalid && (
+                                                <p className="text-[9px] text-rose-500 font-bold">Discount must be between Rs. 0 and the standard total.</p>
+                                            )}
+                                            {tableDiscountAmount > 0 && (
+                                                <div>
+                                                    <label className="block text-[9px] font-black text-amber-700 uppercase mb-1">Reason (required)</label>
+                                                    <input
+                                                        type="text"
+                                                        value={tableDiscountReason}
+                                                        onChange={e => setTableDiscountReason(e.target.value)}
+                                                        placeholder="e.g. Repeat guest, manager approved"
+                                                        className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-amber-500"
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Payment Method Selector */}
+                                        {irdSyncEnabled && (
+                                        <div>
+                                            <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Payment Method</p>
+                                            <div className="grid grid-cols-4 gap-2">
+                                                <button
+                                                    onClick={() => setBillingPaymentMethod('cash')}
+                                                    className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                        billingPaymentMethod === 'cash'
+                                                            ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                            : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                    }`}
+                                                >
+                                                    <Banknote size={15} />
+                                                    Cash
+                                                </button>
+                                                <button
+                                                    onClick={() => setBillingPaymentMethod('qr_digital')}
+                                                    className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                        billingPaymentMethod === 'qr_digital'
+                                                            ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                            : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                    }`}
+                                                >
+                                                    <CreditCard size={15} />
+                                                    QR / Digital
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setBillingPaymentMethod('both')
+                                                        setSplitCashAmount('')
+                                                        setSplitQrAmount('')
+                                                    }}
+                                                    className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                        billingPaymentMethod === 'both'
+                                                            ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                            : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                    }`}
+                                                >
+                                                    <Receipt size={15} />
+                                                    Both
+                                                </button>
+                                                <button
+                                                    onClick={() => setBillingPaymentMethod('credit')}
+                                                    className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                        billingPaymentMethod === 'credit'
+                                                            ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                            : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                    }`}
+                                                >
+                                                    <ShoppingBag size={15} />
+                                                    Credit
+                                                </button>
+                                            </div>
+
+                                            {renderPaymentInputsAndCalculator(finalCalculatedTotal)}
+                                        </div>
+                                        )}
+                                    </div>
+                                )
+                            })()}
+                        </div>
+
+                        {/* Fixed Footer */}
+                        {(() => {
+                            const billableSubtotal = round2(getTableSessionOrdersTotal(selectedBillingTable) + resolveTableServiceCharge(selectedBillingTable).delta)
+                            const tableDiscountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
+                            const tableDiscountInvalid = tableDiscountAmount < 0 || tableDiscountAmount > billableSubtotal
+                            const tableTotal = Math.max(0, round2(billableSubtotal - tableDiscountAmount))
+
+                            return (
+                                <div className="border-t border-hairline px-6 py-4 flex-shrink-0 bg-surface flex items-center justify-between">
+                                    <div>
+                                        <span className="text-[10px] font-bold text-ink-subtle uppercase">Total session bill</span>
+                                        <p className="text-2xl font-black text-brand-600 tabular-nums">{money(tableTotal)}</p>
+                                    </div>
+                                    <div className="flex gap-2 items-center">
+                                        <Button variant="secondary" onClick={() => setSelectedBillingTable(null)}>Close</Button>
+                                        {billingPaymentMethod === 'none' ? (
+                                            <Button
+                                                variant="primary"
+                                                disabled={
+                                                    tableDiscountInvalid ||
+                                                    (tableDiscountAmount > 0 && !tableDiscountReason.trim())
+                                                }
+                                                onClick={() => compileInvoice('table', selectedBillingTable)}
+                                                className="px-6 text-xs animate-scale-in"
+                                            >
+                                                Generate Estimate
+                                            </Button>
+                                        ) : !irdSyncEnabled ? (
+                                            <Button
+                                                variant="primary"
+                                                onClick={() => {
+                                                    const data = buildInvoiceData('table', selectedBillingTable)
+                                                    if (data) {
+                                                        setActiveInvoice(data)
+                                                    }
+                                                }}
+                                                className="px-6 text-xs animate-scale-in"
+                                             >
+                                                 Close Guest
+                                             </Button>
+                                        ) : (
+                                            <Button
+                                                variant="primary"
+                                                disabled={
+                                                    tableDiscountInvalid ||
+                                                    (tableDiscountAmount > 0 && !tableDiscountReason.trim())
+                                                }
+                                                onClick={() => compileInvoice('table', selectedBillingTable)}
+                                                className="px-6 text-xs animate-scale-in"
+                                            >
+                                                Generate Estimate
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            )
+                        })()}
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* Takeaway/delivery order details modal — same structure as the
+                table one above, but a single standalone order (no session,
+                no getTableSessionItems). */}
+            {mounted && selectedBillingOrder && createPortal(
+                <div
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-300"
+                    onClick={() => setSelectedBillingOrder(null)}
+                >
+                    <div
+                        className="bg-surface w-full max-w-2xl rounded-[28px] shadow-2xl overflow-hidden border border-hairline p-6 space-y-6 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between border-b border-hairline pb-4">
+                            <div>
+                                <h3 className="text-lg font-black text-ink">{selectedBillingOrder.customer_name || 'Walk-in Customer'}</h3>
+                                <p className="text-xs text-ink-subtle mt-0.5">
+                                    #{selectedBillingOrder.id.slice(0, 8).toUpperCase()}
+                                    {selectedBillingOrder.customer_phone && <> · {selectedBillingOrder.customer_phone}</>}
+                                </p>
+                                {selectedBillingOrder.order_type === 'delivery' && selectedBillingOrder.delivery_address && (
+                                    <p className="text-xs text-ink-subtle mt-0.5">{selectedBillingOrder.delivery_address}</p>
+                                )}
+                            </div>
+                            <button onClick={() => setSelectedBillingOrder(null)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink"><X size={16} /></button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Order items</h4>
+                            {(selectedBillingOrder.order_items || []).length > 0 ? (
+                                <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-gray-100 bg-surface p-4 space-y-2">
+                                    {selectedBillingOrder.order_items.map((oi, idx) => (
+                                        <div key={oi.id || idx} className="flex justify-between items-center py-1.5 text-xs">
+                                            <div>
+                                                <p className="font-extrabold text-ink">{getItemDisplayName(oi)}</p>
+                                                <p className="text-[10px] text-ink-subtle">Qty: {oi.quantity} × {money(Number(oi.unit_price) || 0)}</p>
+                                            </div>
+                                            <span className="font-extrabold text-ink-muted tabular-nums">{money((Number(oi.unit_price) || 0) * oi.quantity)}</span>
                                         </div>
                                     ))}
                                 </div>
                             ) : (
                                 <div className="p-8 text-center border border-dashed border-hairline-strong rounded-xl text-xs text-ink-subtle font-semibold">
-                                    No items ordered in this session yet
+                                    No items on this order
                                 </div>
                             )}
                         </div>
 
-                        <div className="border-t border-hairline pt-4 flex items-center justify-between mt-2">
-                            <div>
-                                <span className="text-[10px] font-bold text-ink-subtle uppercase">Total session bill</span>
-                                <p className="text-2xl font-black text-brand-600 tabular-nums">
-                                    {money(getTableSessionItems(selectedBillingTable).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0))}
+                        {(() => {
+                            const orderSubtotal = Number(selectedBillingOrder.total_amount) || 0
+                            const bargainRateEntered = tableBargainRate.trim() !== ''
+                            const bargainRateValue = bargainRateEntered ? parseFloat(tableBargainRate) || 0 : orderSubtotal
+                            const orderDiscountAmount = bargainRateEntered ? Math.max(0, orderSubtotal - bargainRateValue) : 0
+                            const orderDiscountInvalid = bargainRateEntered && (bargainRateValue < 0 || bargainRateValue > orderSubtotal)
+                            const orderTotal = orderSubtotal - orderDiscountAmount
+                            const invoiceType = selectedBillingOrder.order_type === 'delivery' ? 'delivery' : 'takeout'
+
+                            return (
+                                <>
+                                    {/* Bargain rate */}
+                                    <div className="border-2 border-amber-200 rounded-2xl p-4 space-y-3 bg-amber-50/60 shadow-sm">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                                                    <Percent size={14} className="text-amber-700" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-black text-amber-800 uppercase tracking-wider">Bargain Rate</p>
+                                                    <p className="text-[10px] text-amber-700/70 font-semibold">Standard total: {money(orderSubtotal)}</p>
+                                                </div>
+                                            </div>
+                                            <div className="relative w-32">
+                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-700">Rs.</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max={orderSubtotal}
+                                                    placeholder={orderSubtotal.toFixed(2)}
+                                                    value={tableBargainRate}
+                                                    onChange={e => setTableBargainRate(e.target.value)}
+                                                    className={`w-full pl-7 pr-2 py-2 border-2 rounded-xl text-xs font-bold bg-white focus:outline-none ${orderDiscountInvalid ? 'border-rose-400 focus:border-rose-500' : 'border-amber-200 focus:border-amber-500'}`}
+                                                />
+                                            </div>
+                                        </div>
+                                        {orderDiscountInvalid && (
+                                            <p className="text-[9px] text-rose-500 font-bold">Rate must be between Rs. 0 and the standard total.</p>
+                                        )}
+                                        {orderDiscountAmount > 0 && (
+                                            <div>
+                                                <label className="block text-[9px] font-black text-amber-700 uppercase mb-1">Reason (required)</label>
+                                                <input
+                                                    type="text"
+                                                    value={tableBargainReason}
+                                                    onChange={e => setTableBargainReason(e.target.value)}
+                                                    placeholder="e.g. Repeat guest, manager approved"
+                                                    className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-amber-500"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Payment Method Selector */}
+                                    {irdSyncEnabled && (
+                                    <div>
+                                        <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Payment Method</p>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            <button
+                                                onClick={() => setBillingPaymentMethod('cash')}
+                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                    billingPaymentMethod === 'cash'
+                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                        : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                }`}
+                                            >
+                                                <Banknote size={15} />
+                                                Cash
+                                            </button>
+                                            <button
+                                                onClick={() => setBillingPaymentMethod('qr_digital')}
+                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                    billingPaymentMethod === 'qr_digital'
+                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                        : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                }`}
+                                            >
+                                                <CreditCard size={15} />
+                                                QR / Digital
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setBillingPaymentMethod('both')
+                                                    setSplitCashAmount('')
+                                                    setSplitQrAmount('')
+                                                }}
+                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                    billingPaymentMethod === 'both'
+                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                        : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                }`}
+                                            >
+                                                <Receipt size={15} />
+                                                Both
+                                            </button>
+                                            <button
+                                                onClick={() => setBillingPaymentMethod('credit')}
+                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                    billingPaymentMethod === 'credit'
+                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                        : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
+                                                }`}
+                                            >
+                                                <ShoppingBag size={15} />
+                                                Credit
+                                            </button>
+                                        </div>
+
+                                            {renderPaymentInputsAndCalculator(orderTotal)}
+                                        </div>
+                                        )}
+
+                                    <div className="border-t border-hairline pt-4 flex items-center justify-between mt-2">
+                                        <div>
+                                            <span className="text-[10px] font-bold text-ink-subtle uppercase">Total bill</span>
+                                            <p className="text-2xl font-black text-brand-600 tabular-nums">{money(orderTotal)}</p>
+                                        </div>
+                                        <div className="flex gap-2 items-center">
+                                            <Button variant="secondary" onClick={() => setSelectedBillingOrder(null)}>Close</Button>
+                                            {billingPaymentMethod === 'none' ? (
+                                                <Button
+                                                    variant="primary"
+                                                    disabled={
+                                                        orderDiscountInvalid ||
+                                                        (orderDiscountAmount > 0 && !tableBargainReason.trim())
+                                                    }
+                                                    onClick={() => compileInvoice(invoiceType, selectedBillingOrder)}
+                                                    className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                >
+                                                    Generate Estimate
+                                                </Button>
+                                            ) : !irdSyncEnabled ? (
+                                                <Button
+                                                    variant="primary"
+                                                    onClick={() => {
+                                                        const data = buildInvoiceData(invoiceType, selectedBillingOrder)
+                                                        if (data) {
+                                                            setActiveInvoice(data)
+                                                        }
+                                                    }}
+                                                    className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                >
+                                                    Close Order
+                                                </Button>
+                                            ) : (
+                                                <Button
+                                                    variant="primary"
+                                                    disabled={
+                                                        orderDiscountInvalid ||
+                                                        (orderDiscountAmount > 0 && !tableBargainReason.trim())
+                                                    }
+                                                    onClick={() => compileInvoice(invoiceType, selectedBillingOrder)}
+                                                    className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs animate-scale-in"
+                                                >
+                                                    Generate Estimate
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </>
+                            )
+                        })()}
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* Settlement Confirmation modal — gates every 'both' or 'credit'
+                settlement (room or table) behind one explicit confirm step,
+                showing the exact Cash/QR/Credit breakdown so a typo in the
+                split amounts (not just a deliberate part-credit sale) gets
+                caught before anything is charged, and collecting the
+                customer's name/phone right here when credit is involved. */}
+            {mounted && showSettlementConfirm && pendingInvoice && createPortal(
+                <div
+                    className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100000] flex items-center justify-center p-4 animate-in fade-in duration-200"
+                    onClick={cancelSettlementConfirm}
+                >
+                    <div
+                        className="bg-surface w-full max-w-sm rounded-[28px] shadow-2xl border border-hairline p-6 space-y-4 animate-in zoom-in-95 duration-200"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div>
+                            <h3 className="text-lg font-black text-ink">Confirm Settlement</h3>
+                            <p className="text-xs text-ink-subtle mt-0.5">{pendingInvoice.data.label}</p>
+                        </div>
+
+                        <div className="border border-hairline rounded-2xl p-4 space-y-2 text-xs">
+                            {pendingInvoice.data.cashPaid > 0 && (
+                                <div className="flex justify-between">
+                                    <span className="text-ink-subtle font-semibold">Cash</span>
+                                    <span className="font-bold text-ink tabular-nums">{money(pendingInvoice.data.cashPaid)}</span>
+                                </div>
+                            )}
+                            {pendingInvoice.data.qrPaid > 0 && (
+                                <div className="flex justify-between">
+                                    <span className="text-ink-subtle font-semibold">QR / Digital</span>
+                                    <span className="font-bold text-ink tabular-nums">{money(pendingInvoice.data.qrPaid)}</span>
+                                </div>
+                            )}
+                            {pendingInvoice.data.creditPaid > 0.01 && (
+                                <div className="flex justify-between">
+                                    <span className="text-amber-700 font-semibold">On Credit</span>
+                                    <span className="font-bold text-amber-700 tabular-nums">{money(pendingInvoice.data.creditPaid)}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between pt-2 border-t border-dashed border-hairline">
+                                <span className="text-[10px] font-bold text-ink-subtle uppercase">Total</span>
+                                <span className="font-black text-ink tabular-nums">{money(pendingInvoice.data.total)}</span>
+                            </div>
+                        </div>
+
+                        {pendingInvoice.data.overpaid ? (
+                            <p className="text-[11px] text-rose-500 font-bold text-center">
+                                ⚠ Cash + QR exceeds the total — go back and fix the split before continuing.
+                            </p>
+                        ) : pendingInvoice.data.creditPaid > 0.01 && (
+                            <div className="space-y-3">
+                                <p className="text-[11px] text-amber-700 font-semibold">
+                                    {money(pendingInvoice.data.creditPaid)} will be added to this customer&apos;s credit account — enter their details to continue:
                                 </p>
+                                <div>
+                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Customer Name</label>
+                                    <input
+                                        type="text"
+                                        value={creditCustomerName}
+                                        onChange={e => setCreditCustomerName(e.target.value)}
+                                        placeholder="Customer name"
+                                        className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Phone</label>
+                                    <input
+                                        type="tel"
+                                        value={creditCustomerPhone}
+                                        onChange={e => setCreditCustomerPhone(e.target.value)}
+                                        placeholder="98XXXXXXXX"
+                                        className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                    />
+                                </div>
                             </div>
-                            <div className="flex gap-2">
-                                <Button variant="secondary" onClick={() => setSelectedBillingTable(null)}>Close</Button>
-                                <Button variant="primary" onClick={() => compileInvoice('table', selectedBillingTable)} className="bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 px-6 font-bold text-white text-xs">Generate Invoice</Button>
-                            </div>
+                        )}
+
+                        <div className="flex gap-2 pt-2">
+                            <Button variant="secondary" className="flex-1" onClick={cancelSettlementConfirm}>Cancel</Button>
+                            <Button
+                                variant="primary"
+                                className="flex-1 bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 text-white font-bold"
+                                disabled={
+                                    pendingInvoice.data.overpaid ||
+                                    (pendingInvoice.data.creditPaid > 0.01 && (!creditCustomerName.trim() || !creditCustomerPhone.trim()))
+                                }
+                                onClick={finalizeSettlementConfirm}
+                            >
+                                Confirm &amp; Continue
+                            </Button>
                         </div>
                     </div>
                 </div>,
@@ -1488,240 +3838,219 @@ export default function CashierClient({
 
             {/* Invoice Preview Overlay modal */}
             {mounted && activeInvoice && createPortal(
-                <div 
+                <div
                     className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200"
-                    onClick={() => setActiveInvoice(null)}
+                    onClick={() => { if (!invoiceSettled) setActiveInvoice(null) }}
                 >
-                    <div 
-                        className="bg-white w-full max-w-sm p-5 space-y-4 text-black print-container font-mono text-[11px] shadow-2xl relative border-t-8 border-brand-500"
+                    <div
+                        className="bg-white w-full max-w-sm p-5 space-y-4 shadow-2xl relative border-t-8 border-brand-500"
                         onClick={e => e.stopPropagation()}
                     >
-                        {/* CSS media print override for POS thermal printer */}
-                        <style>{`
-                            @page {
-                                size: 80mm auto;
-                                margin: 0;
-                            }
-                            @media print {
-                                html, body {
-                                    background: #fff !important;
-                                    color: #000 !important;
-                                    margin: 0 !important;
-                                    padding: 0 !important;
-                                }
-                                body * {
-                                    visibility: hidden !important;
-                                }
-                                .print-container, .print-container * {
-                                    visibility: visible !important;
-                                }
-                                .print-container {
-                                    position: absolute !important;
-                                    left: 0 !important;
-                                    top: 0 !important;
-                                    width: 72mm !important; /* standard safe area for 80mm roll */
-                                    max-width: 72mm !important;
-                                    border: none !important;
-                                    border-top: none !important;
-                                    box-shadow: none !important;
-                                    padding: 2mm 0 4mm 0 !important;
-                                    margin: 0 !important;
-                                    background: #fff !important;
-                                    color: #000 !important;
-                                    font-family: monospace !important;
-                                    font-size: 11px !important;
-                                    line-height: 1.3 !important;
-                                }
-                                .print-actions {
-                                    display: none !important;
-                                }
-                            }
-                        `}</style>
-
-                        {/* Invoice Header */}
-                        <div className="text-center space-y-0.5">
-                            <h2 className="text-sm font-black tracking-tight text-black uppercase">KKHANE HOTEL &amp; RESTAURANT</h2>
-                            <p className="text-[10px] text-gray-600">Lalitpur, Nepal · Tel: 01-5500000</p>
-                            <div className="border-t border-dashed border-black my-1.5" />
-                            <p className="font-bold text-[11px] uppercase tracking-wider">*** INVOICE ***</p>
-                            <p className="text-[9px] text-gray-500 font-mono">No: INV-{activeInvoice.id.slice(0,8).toUpperCase()}</p>
-                            <p className="text-[9px] text-gray-500 font-mono">Date: {new Date().toLocaleString()}</p>
-                        </div>
-
-                        <div className="border-t border-dashed border-black my-1.5" />
-
-                        {/* Guest / Table Info */}
-                        <div className="space-y-0.5 text-[10px]">
-                            <div className="flex justify-between">
-                                <span className="font-bold">GUEST:</span>
-                                <span>{activeInvoice.guestName || 'Walk-in Customer'}</span>
-                            </div>
-                            {activeInvoice.guestPhone && (
-                                <div className="flex justify-between">
-                                    <span className="font-bold">PHONE:</span>
-                                    <span>{activeInvoice.guestPhone}</span>
-                                </div>
-                            )}
-                            <div className="flex justify-between">
-                                <span className="font-bold">REF:</span>
-                                <span className="font-bold uppercase text-brand-600">{activeInvoice.label}</span>
-                            </div>
-                            {activeInvoice.roomType && (
-                                <div className="flex justify-between">
-                                    <span className="font-bold">TYPE:</span>
-                                    <span>{activeInvoice.roomType}</span>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="border-t border-dashed border-black my-1.5" />
-
-                        {/* Line Items */}
-                        <div className="space-y-1">
-                            <div className="flex justify-between text-[10px] font-bold pb-1 border-b border-dashed border-black">
-                                <span className="w-1/2 text-left">DESC</span>
-                                <span className="w-12 text-center">QTY</span>
-                                <span className="w-16 text-right">RATE</span>
-                                <span className="w-16 text-right text-black">AMT</span>
-                            </div>
-                            
-                            <div className="divide-y divide-dashed divide-gray-200 text-[10px] space-y-1 pt-1.5">
-                                {/* Stay Charge (if room) */}
-                                {activeInvoice.type === 'room' && (
-                                    <div className="flex justify-between py-0.5">
-                                        <span className="w-1/2 text-left truncate">Room Stay ({activeInvoice.nights}n)</span>
-                                        <span className="w-12 text-center">{activeInvoice.nights}</span>
-                                        <span className="w-16 text-right">{money(activeInvoice.basePrice)}</span>
-                                        <span className="w-16 text-right font-bold text-black">{money(activeInvoice.stayCost)}</span>
-                                    </div>
-                                )}
-
-                                {/* Additional charges */}
-                                {activeInvoice.manualCharges && activeInvoice.manualCharges.map((c: any) => (
-                                    <div key={c.id} className="flex justify-between py-0.5">
-                                        <span className="w-1/2 text-left truncate capitalize">{c.description}</span>
-                                        <span className="w-12 text-center">1</span>
-                                        <span className="w-16 text-right">{money(c.amount)}</span>
-                                        <span className="w-16 text-right font-bold text-black">{money(c.amount)}</span>
-                                    </div>
-                                ))}
-
-                                 {/* QR / Session order items */}
-                                {activeInvoice.type === 'room' ? (
-                                    activeInvoice.qrOrders && activeInvoice.qrOrders.map((item: any, idx: number) => (
-                                        <div key={idx} className="flex justify-between py-0.5">
-                                            <span className="w-1/2 text-left truncate">Food: {item.name}</span>
-                                            <span className="w-12 text-center">{item.quantity}</span>
-                                            <span className="w-16 text-right">{money(item.unitPrice)}</span>
-                                            <span className="w-16 text-right font-bold text-black">{money(item.unitPrice * item.quantity)}</span>
-                                        </div>
-                                    ))
-                                ) : (
-                                    activeInvoice.qrOrders && activeInvoice.qrOrders.map((item: any, idx: number) => (
-                                        <div key={idx} className="flex justify-between py-0.5">
-                                            <span className="w-1/2 text-left truncate">{item.name}</span>
-                                            <span className="w-12 text-center">{item.quantity}</span>
-                                            <span className="w-16 text-right">{money(item.unitPrice)}</span>
-                                            <span className="w-16 text-right font-bold text-black">{money(item.unitPrice * item.quantity)}</span>
-                                        </div>
-                                    ))
-                                )}
-
-                                {/* Waiter-linked Dining table orders */}
-                                {activeInvoice.linkedOrders && activeInvoice.linkedOrders.map((item: any, idx: number) => (
-                                    <div key={idx} className="flex justify-between py-0.5">
-                                        <span className="w-1/2 text-left truncate font-medium">Dine: {item.name}</span>
-                                        <span className="w-12 text-center">{item.quantity}</span>
-                                        <span className="w-16 text-right">{money(item.unitPrice)}</span>
-                                        <span className="w-16 text-right font-bold text-black">{money(item.unitPrice * item.quantity)}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="border-t border-dashed border-black my-1.5" />
-
-                        {/* Invoice Total + Advance + Balance */}
-                        <div className="space-y-0.5 text-[10px]">
-                            <div className="flex justify-between font-bold">
-                                <span className="uppercase">Grand Total</span>
-                                <span className="tabular-nums">{money(activeInvoice.total)}</span>
-                            </div>
-                            {activeInvoice.advancePaid > 0 && (
-                                <div className="flex justify-between text-gray-600">
-                                    <span>Advance Paid ({activeInvoice.advanceMethod === 'qr_digital' ? 'QR/Digital' : 'Cash'})</span>
-                                    <span className="tabular-nums">- {money(activeInvoice.advancePaid)}</span>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="flex justify-between items-center text-xs font-black border-t border-dashed border-black pt-1 mt-1">
-                            <span className="uppercase">{activeInvoice.advancePaid > 0 ? 'BALANCE DUE' : 'TOTAL DUE'}</span>
-                            <span className="text-sm font-black text-black tabular-nums">{money(activeInvoice.balanceDue ?? activeInvoice.total)}</span>
-                        </div>
-
-                        {/* Payment Method on receipt */}
-                        {activeInvoice.paymentMethod && (
-                            <div className="space-y-0.5 pt-1 text-[10px]">
-                                <div className="flex justify-between">
-                                    <span className="font-bold uppercase">Payment</span>
-                                    <span className="font-bold uppercase">
-                                        {activeInvoice.paymentMethod === 'cash' ? 'CASH'
-                                            : activeInvoice.paymentMethod === 'qr_digital' ? 'QR / DIGITAL'
-                                            : 'SPLIT'}
-                                    </span>
-                                </div>
-                                {activeInvoice.paymentMethod === 'both' && (
-                                    <>
-                                        <div className="flex justify-between text-gray-600">
-                                            <span>· Cash</span>
-                                            <span className="tabular-nums">{money(activeInvoice.cashPaid)}</span>
-                                        </div>
-                                        <div className="flex justify-between text-gray-600">
-                                            <span>· QR / Digital</span>
-                                            <span className="tabular-nums">{money(activeInvoice.qrPaid)}</span>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        )}
-
-                        <div className="border-t border-dashed border-black my-1.5" />
-
-                        {/* Thermal Printer Welcome Greeting */}
-                        <div className="text-center text-[9px] text-gray-500 uppercase tracking-widest leading-normal pt-1 pb-2">
-                            <p>*** THANK YOU! ***</p>
-                            <p>WE HOPE TO SEE YOU AGAIN</p>
-                        </div>
+                        <InvoiceReceipt invoice={activeInvoice} money={money} formatDate={formatDate} restaurantName={restaurantName} restaurantAddress={restaurantAddress} restaurantPhone={restaurantPhone} />
 
                         {/* Invoice Footer Actions (Print, Mark Paid, Close) */}
                         <div className="flex gap-2 pt-3 border-t border-gray-100 print-actions flex-wrap">
-                            <Button 
-                                variant="secondary" 
-                                onClick={() => setActiveInvoice(null)}
-                                className="font-bold flex-1 text-[10px] py-1.5 min-w-[70px]"
-                            >
-                                Cancel
-                            </Button>
-                            <button
-                                onClick={() => window.print()}
-                                className="flex-1 py-1.5 px-3 border border-gray-300 rounded-xl text-[10px] font-bold text-gray-700 bg-white hover:bg-gray-50 transition active:scale-95 text-center flex items-center justify-center gap-1.5 shadow-sm min-w-[70px]"
-                            >
-                                Print Bill
-                            </button>
-                            <Button 
-                                variant="primary" 
-                                loading={isSettlingInvoice}
-                                onClick={handleMarkPaid}
-                                className="font-bold flex-1 bg-emerald-600 hover:bg-emerald-700 border-emerald-600 hover:border-emerald-700 text-[10px] text-white py-1.5 min-w-[70px]"
-                            >
-                                Mark Paid
-                            </Button>
+                            {invoiceSettled ? (
+                                <div className="flex-1 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold flex items-center justify-center gap-1.5">
+                                    <CheckCircle size={13} />
+                                    Paid
+                                </div>
+                            ) : (
+                                <>
+                                    <Button
+                                        variant="secondary"
+                                        onClick={() => setActiveInvoice(null)}
+                                        className="font-bold flex-1 text-[10px] py-1.5 min-w-[70px]"
+                                    >
+                                        Cancel
+                                    </Button>
+                                    {printInvoiceEnabled && printBillEnabled && (
+                                        <button
+                                            onClick={handlePrintBill}
+                                            className="flex-1 py-1.5 px-3 border border-gray-300 rounded-xl text-[10px] font-bold text-gray-700 bg-white hover:bg-gray-50 transition active:scale-95 text-center flex items-center justify-center gap-1.5 shadow-sm min-w-[70px] animate-scale-in"
+                                        >
+                                            Print Bill
+                                        </button>
+                                    )}
+                                    {!irdSyncEnabled ? (
+                                        <Button
+                                            variant="primary"
+                                            loading={isSettlingInvoice}
+                                            onClick={() => setShowSettlementPrintPrompt(true)}
+                                            className="font-bold flex-1 bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 text-[10px] text-white py-1.5 min-w-[70px] animate-scale-in"
+                                        >
+                                            Close Guest
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            variant="primary"
+                                            loading={isSettlingInvoice}
+                                            onClick={() => setShowSettlementPrintPrompt(true)}
+                                            className={`font-bold flex-1 text-[10px] text-white py-1.5 min-w-[70px] animate-scale-in ${
+                                                (Number(activeInvoice?.creditPaid || 0) > 0.01 || activeInvoice?.paymentMethod === 'credit')
+                                                    ? 'bg-purple-600 hover:bg-purple-700 border-purple-600 hover:border-purple-700'
+                                                    : 'bg-emerald-600 hover:bg-emerald-700 border-emerald-600 hover:border-emerald-700'
+                                            }`}
+                                        >
+                                            {(Number(activeInvoice?.creditPaid || 0) > 0.01 || activeInvoice?.paymentMethod === 'credit') ? 'Mark Credit' : 'Mark Paid'}
+                                        </Button>
+                                    )}
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>,
                 document.body
             )}
+
+            {/* Settlement Print Prompt Options Modal */}
+            {mounted && showSettlementPrintPrompt && activeInvoice && (() => {
+                const isCredit = Number(activeInvoice?.creditPaid || 0) > 0.01 || activeInvoice?.paymentMethod === 'credit'
+                const actionText = isCredit ? 'Mark Credit' : 'Mark Paid'
+                return createPortal(
+                <div
+                    className="fixed inset-0 bg-black/75 backdrop-blur-md z-[100000] flex items-center justify-center p-4 animate-in fade-in duration-150"
+                    onClick={() => setShowSettlementPrintPrompt(false)}
+                >
+                    <div
+                        className="bg-surface w-full max-w-sm p-6 rounded-2xl shadow-2xl space-y-5 relative border border-hairline"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isCredit ? 'bg-purple-100 text-purple-600' : 'bg-brand-100 text-brand-600'}`}>
+                                <Printer size={20} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-ink text-base">Print Customer Bill?</h3>
+                                <p className="text-xs text-ink-subtle mt-0.5">Select copies to print or {actionText.toLowerCase()} without printing.</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-surface-muted p-3.5 rounded-xl border border-hairline flex items-center justify-between">
+                            <span className="text-xs font-semibold text-ink">Bill Copies:</span>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setSettlementCopies(Math.max(1, settlementCopies - 1))}
+                                    className="w-8 h-8 rounded-lg bg-surface border border-hairline-strong font-bold text-ink hover:bg-surface-muted transition flex items-center justify-center text-sm shadow-sm"
+                                >
+                                    -
+                                </button>
+                                <span className="w-8 text-center font-bold text-sm text-ink">{settlementCopies}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setSettlementCopies(Math.min(5, settlementCopies + 1))}
+                                    className="w-8 h-8 rounded-lg bg-surface border border-hairline-strong font-bold text-ink hover:bg-surface-muted transition flex items-center justify-center text-sm shadow-sm"
+                                >
+                                    +
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2.5 pt-1">
+                            <button
+                                type="button"
+                                disabled={isSettlingInvoice}
+                                onClick={() => {
+                                    setShowSettlementPrintPrompt(false)
+                                    handleMarkPaid(undefined, settlementCopies)
+                                }}
+                                className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold text-white active:scale-95 transition shadow-sm flex items-center justify-center gap-2 ${
+                                    isCredit ? 'bg-purple-600 hover:bg-purple-700' : 'bg-brand-600 hover:bg-brand-700'
+                                }`}
+                            >
+                                <Printer size={15} /> Print {settlementCopies} {settlementCopies === 1 ? 'Copy' : 'Copies'} & {actionText}
+                            </button>
+
+                            <button
+                                type="button"
+                                disabled={isSettlingInvoice}
+                                onClick={() => {
+                                    setShowSettlementPrintPrompt(false)
+                                    handleMarkPaid(undefined, 0)
+                                }}
+                                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-ink bg-surface border border-hairline-strong hover:bg-surface-muted active:scale-95 transition flex items-center justify-center gap-2"
+                            >
+                                <CheckCircle size={15} /> Only {actionText} (No Print)
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setShowSettlementPrintPrompt(false)}
+                                className="w-full py-1.5 text-xs font-medium text-ink-subtle hover:text-ink transition text-center"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )
+            })()}
+
+            {/* Manual Entry Modal — inline, no navigation away from the dashboard */}
+            {mounted && showManualEntry && createPortal(
+                <div
+                    className="fixed inset-0 z-[9999] flex items-start justify-center p-4 md:p-8 bg-black/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200"
+                    onClick={() => setShowManualEntry(false)}
+                >
+                    <div
+                        className="bg-canvas rounded-[24px] border border-hairline shadow-2xl w-full max-w-5xl my-auto overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-end px-4 py-2.5 border-b border-hairline bg-surface">
+                            <button
+                                onClick={() => setShowManualEntry(false)}
+                                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink-muted"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="p-6 max-h-[85vh] overflow-y-auto">
+                            <ManualEntryClient
+                                bankAccounts={manualEntryBankAccounts}
+                                suppliers={manualEntrySuppliers}
+                                staffList={manualEntryStaffList}
+                                expenseCategories={manualEntryExpenseCategories}
+                                ingredients={manualEntryIngredients}
+                                customerAccounts={manualEntryCustomerAccounts}
+                                hasOpenSession={manualEntryHasOpenSession}
+                                sessionId={manualEntrySessionId}
+                                userRole={userRole}
+                            />
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {showTakeoutQuickOrder && (
+                <QuickOrderModal
+                    isOpen={showTakeoutQuickOrder}
+                    onClose={() => setShowTakeoutQuickOrder(false)}
+                    restaurantId={restaurantId}
+                    isManualTakeoutDelivery={true}
+                />
+            )}
+
+            {/* Browser-print fallback for tickets no thermal printer took. One
+                at a time — window.print() is modal, so the queue drains as each
+                afterprint fires. */}
+            {ticketFallbackQueue.length > 0 && (
+                <KotPrintFallback
+                    order={ticketFallbackQueue[0].order}
+                    station={ticketFallbackQueue[0].station}
+                    onDone={dequeueTicketFallback}
+                />
+            )}
+
+            <AdvancePaymentHistoryModal
+                isOpen={advanceHistoryModalOpen}
+                onClose={() => setAdvanceHistoryModalOpen(false)}
+                bookingId={billingStayBooking?.id || null}
+                guestName={billingStayBooking?.guest_name}
+                roomNumber={selectedBillingRoom?.room_number}
+            />
 
         </div>
     )

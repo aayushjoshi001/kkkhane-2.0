@@ -1,11 +1,18 @@
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import PaymentVerificationPanel from '@/components/admin/PaymentVerificationPanel'
+import { getRestaurantFeatures } from '@/lib/features'
+import { redirect } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AdminPaymentsPage() {
-    const { id: userId, restaurantId } = await getCurrentUser()
+    const { id: userId, restaurantId, role } = await getCurrentUser()
+    const features = await getRestaurantFeatures(restaurantId)
+    if (!features?.irdSyncEnabled || role === 'manager') {
+        redirect('/admin/dashboard')
+    }
+
     const supabase = await createAdminClient()
 
     const { data: claims } = await supabase

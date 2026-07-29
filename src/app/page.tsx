@@ -1,22 +1,14 @@
-import { redirect } from 'next/navigation'
-import { getOptionalUser } from '@/lib/auth'
 import Link from 'next/link'
 import Image from 'next/image'
+import { redirect } from 'next/navigation'
+import { getOptionalUser } from '@/lib/auth'
+import { ROLE_LANDING } from '@/lib/roleLanding'
 import { MarketingNav, MarketingFooter, PricingCards } from '@/components/marketing'
 import {
     QrCode, ArrowRight, BarChart3,
     Globe, CheckCircle,
     Plus, ChefHat, Receipt, LayoutDashboard
 } from 'lucide-react'
-
-const ROLE_LANDING: Record<string, string> = {
-    super_admin: '/admin/dashboard',
-    manager: '/admin/dashboard',
-    kitchen: '/kitchen',
-    bartender: '/bar',
-    waiter: '/waiter',
-    onboarding: '/onboarding',
-}
 
 const faqs = [
     { q: "What is KKKhane?", a: "KKKhane is a mobile-first restaurant ordering and table management system built in Nepal — menus, KOTs, billing, and everything in between." },
@@ -28,6 +20,7 @@ const faqs = [
 ]
 
 export default async function Home() {
+    // If logged in, redirect directly to user's dashboard (e.g. /cashier, /admin/dashboard, /kitchen)
     const currentUser = await getOptionalUser()
     if (currentUser) {
         const landing = ROLE_LANDING[currentUser.role] || '/admin/dashboard'

@@ -14,31 +14,28 @@ import type { Metadata } from 'next'
 // below) in this Next.js version — Node runtime here, but ISR still serves cached
 // hits from Vercel's Edge Network regardless, so the customer-facing latency for
 // the common (cache-hit) case is unaffected.
-export const revalidate = 600
-
-// Slugs are tenant-defined and unbounded, so we prerender none at build time and let
-// each slug be generated + cached on first request (on-demand ISR). Without this,
-// the dynamic segment renders per-request and `revalidate` above has no effect.
-export function generateStaticParams() {
-    return []
-}
+export const dynamic = 'force-dynamic'
 
 export async function generateMetadata(props: {
     params: Promise<{ restaurantSlug: string }>
 }): Promise<Metadata> {
-    const params = await props.params;
-    const supabase = await createAdminClient()
-    const { data: restaurant } = await supabase
-        .from('restaurants')
-        .select('id, name')
-        .eq('slug', params.restaurantSlug)
-        .single()
+    try {
+        const params = await props.params;
+        const supabase = await createAdminClient()
+        const { data: restaurant } = await supabase
+            .from('restaurants')
+            .select('id, name')
+            .eq('slug', params.restaurantSlug)
+            .maybeSingle()
 
-    if (restaurant) {
-        return {
-            title: restaurant.name,
-            manifest: `/api/manifest/${restaurant.id}?start_url=${encodeURIComponent(`/r/${params.restaurantSlug}`)}`
+        if (restaurant) {
+            return {
+                title: restaurant.name,
+                manifest: `/api/manifest/${restaurant.id}?start_url=${encodeURIComponent(`/r/${params.restaurantSlug}`)}`
+            }
         }
+    } catch (e) {
+        console.error('generateMetadata error:', e)
     }
     return {}
 }
@@ -54,7 +51,7 @@ export default async function RestaurantMainPage(props: {
         .from('restaurants')
         .select('id, name, logo_url, physical_menu_urls')
         .eq('slug', params.restaurantSlug)
-        .single()
+        .maybeSingle()
 
     if (!restaurant) return notFound()
 
@@ -79,6 +76,7 @@ export default async function RestaurantMainPage(props: {
                 tables={tables || []}
                 restaurantSlug={params.restaurantSlug}
                 dineInEnabled={features?.dineInEnabled ?? true}
+                receptionPhone={features?.receptionPhone ?? null}
             />
         </Suspense>
     )

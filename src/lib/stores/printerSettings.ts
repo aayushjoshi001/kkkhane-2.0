@@ -14,9 +14,11 @@ interface PrinterSettingsState {
     // Bar Order Ticket printer — the bar's counterpart to the KOT printer, so a
     // venue with a separate bar station can send drink tickets to its own roll.
     botPrinterName: string | null
+    autoPrintBillOnSettle: boolean
     setInvoicePrinter: (name: string | null) => void
     setKotPrinter: (name: string | null) => void
     setBotPrinter: (name: string | null) => void
+    setAutoPrintBillOnSettle: (enabled: boolean) => void
 }
 
 export const usePrinterSettingsStore = create<PrinterSettingsState>()(
@@ -25,9 +27,11 @@ export const usePrinterSettingsStore = create<PrinterSettingsState>()(
             invoicePrinterName: null,
             kotPrinterName: null,
             botPrinterName: null,
+            autoPrintBillOnSettle: false,
             setInvoicePrinter: (name) => set({ invoicePrinterName: name }),
             setKotPrinter: (name) => set({ kotPrinterName: name }),
             setBotPrinter: (name) => set({ botPrinterName: name }),
+            setAutoPrintBillOnSettle: (enabled) => set({ autoPrintBillOnSettle: enabled }),
         }),
         { name: 'srms-printer-settings' }
     )

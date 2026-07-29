@@ -13,27 +13,53 @@ export async function POST(req: Request) {
 
         const supabase = await createAdminClient()
 
-        // 1. Resolve restaurant ID from slug
+        // 1. Resolve restaurant ID and linked_hotel_id from slug
         const { data: restaurant, error: restError } = await supabase
             .from('restaurants')
-            .select('id, name')
+            .select('id, name, linked_hotel_id')
             .eq('slug', restaurantSlug)
-            .single()
+            .maybeSingle()
 
         if (restError || !restaurant) {
             return NextResponse.json({ error: 'Restaurant not found' }, { status: 404 })
         }
 
-        // 2. Find the room by number
-        const { data: room, error: roomError } = await supabase
+        // 2. Find the room. The QR now encodes the room's immutable id (so
+        // renaming a room never invalidates a printed QR), but older QRs still
+        // carry the room number — resolve by whichever the param looks like.
+        // Look under the restaurant tenant first, then fall back to the linked
+        // hotel tenant if configured.
+        const roomKey = String(roomNumber).trim()
+        const roomCol = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(roomKey)
+            ? 'id'
+            : 'room_number'
+
+        let targetRestaurantIdForRoom = restaurant.id
+        let { data: room } = await supabase
             .from('rooms')
             .select('id, room_number')
-            .eq('restaurant_id', restaurant.id)
-            .eq('room_number', roomNumber.trim())
-            .single()
+            .eq('restaurant_id', targetRestaurantIdForRoom)
+            .eq(roomCol, roomKey)
+            .maybeSingle()
 
-        if (roomError || !room) {
-            return NextResponse.json({ error: `Room ${roomNumber} not found in this hotel` }, { status: 404 })
+        if (!room && restaurant.linked_hotel_id) {
+            targetRestaurantIdForRoom = restaurant.linked_hotel_id
+            const { data: linkedRoom } = await supabase
+                .from('rooms')
+                .select('id, room_number')
+                .eq('restaurant_id', targetRestaurantIdForRoom)
+                .eq(roomCol, roomKey)
+                .maybeSingle()
+            if (linkedRoom) {
+                room = linkedRoom
+            }
+        }
+
+        if (!room) {
+            // roomKey may be an id (from a new QR) — don't echo it; only the
+            // number is meaningful to a guest.
+            const shown = roomCol === 'room_number' ? `Room ${roomKey}` : 'This room'
+            return NextResponse.json({ error: `${shown} not found in this hotel` }, { status: 404 })
         }
 
         // 3. Find the active checked-in booking for this room (shared with the
@@ -41,7 +67,7 @@ export async function POST(req: Request) {
         const booking = await getActiveBookingForRoom(supabase, room.id)
 
         if (!booking) {
-            return NextResponse.json({ error: `No active stay/check-in found for Room ${roomNumber}` }, { status: 404 })
+            return NextResponse.json({ error: `No active stay/check-in found for Room ${room.room_number}` }, { status: 404 })
         }
 
         // 4. Validate phone number (robust normalization)
@@ -92,7 +118,10 @@ export async function POST(req: Request) {
             success: true,
             guestName: booking.guest_name,
             qrToken: table.qr_token,
-            tableLabel: table.label
+            tableLabel: table.label,
+            // The human room number, so the guest UI can show "Room 101" even
+            // when the QR (and roomParam) carry the room's id.
+            roomNumber: room.room_number
         })
     } catch (e: any) {
         return NextResponse.json({ error: e.message || 'Server error during verification' }, { status: 500 })

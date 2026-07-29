@@ -12,6 +12,8 @@ import { usePathname, useRouter } from 'next/navigation'
 import Logo from '@/components/shared/Logo'
 import { signOutAndRedirect } from '@/lib/auth/signOut'
 import { useSidebar } from '@/lib/contexts/SidebarContext'
+import SidebarShell from '@/components/admin/SidebarShell'
+import { generatedAvatar, isGeneratedAvatar } from '@/lib/avatar'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
@@ -24,12 +26,16 @@ const BASE = '/admin/super-admin'
 export default function SuperAdminSidebar({ userRole = 'super_admin', userAvatar }: { userRole?: string; userAvatar?: string }) {
     const pathname = usePathname()
     const router = useRouter()
-    const { isOpen, isCollapsed, closeMobile } = useSidebar()
+    const { closeMobile } = useSidebar()
     const [imgError, setImgError] = useState(false)
 
     const handleSignOut = () => signOutAndRedirect(router)
 
-    const content = (
+    const avatarSrc = userAvatar || generatedAvatar('superadmin', 'fb6303')
+
+    // Rendered once per frame by SidebarShell — the drawer always gets
+    // `isCollapsed: false`, since collapsing is a desktop-only affordance.
+    const renderContent = (isCollapsed: boolean) => (
         <div className="flex flex-col h-full bg-surface text-ink transition-colors duration-500">
             {/* Header */}
             <div className={cn("py-6 flex items-center shrink-0 relative z-10 transition-all duration-300", isCollapsed ? "px-0 justify-center" : "px-6 justify-between gap-3")}>
@@ -105,10 +111,11 @@ export default function SuperAdminSidebar({ userRole = 'super_admin', userAvatar
                             </div>
                         ) : (
                             <Image 
-                                src={userAvatar || `https://api.dicebear.com/9.x/notionists/svg?seed=superadmin&backgroundColor=fb6303`}
-                                alt="Admin avatar" 
+                                src={avatarSrc}
+                                alt="Admin avatar"
                                 fill
                                 sizes="36px"
+                                unoptimized={isGeneratedAvatar(avatarSrc)}
                                 className="object-cover"
                                 onError={() => setImgError(true)}
                             />
@@ -149,27 +156,7 @@ export default function SuperAdminSidebar({ userRole = 'super_admin', userAvatar
         </div>
     )
 
-    return (
-        <>
-            {isOpen && (
-                <div className="md:hidden fixed inset-0 bg-ink/60 backdrop-blur-sm z-40 animate-fade-in" onClick={closeMobile} />
-            )}
-
-            <aside className={cn(
-                "md:hidden fixed top-0 left-0 bottom-0 w-[280px] z-50 transition-transform duration-500 ease-[var(--ease-spring)] shadow-[20px_0_40px_rgba(0,0,0,0.1)]",
-                isOpen ? "translate-x-0" : "-translate-x-full"
-            )}>
-                {content}
-            </aside>
-
-            <aside className={cn(
-                "hidden md:block shrink-0 z-20 h-screen sticky top-0 overflow-hidden transition-all duration-300 ease-[var(--ease-spring)] shadow-sm border-r border-hairline",
-                isCollapsed ? "w-[80px]" : "w-[280px]"
-            )}>
-                {content}
-            </aside>
-        </>
-    )
+    return <SidebarShell renderContent={renderContent} tone="light" />
 }
 
 function SectionLabel({ children, isCollapsed }: { children: React.ReactNode, isCollapsed: boolean }) {

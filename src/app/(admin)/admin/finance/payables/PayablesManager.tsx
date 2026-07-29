@@ -7,12 +7,14 @@ import { DataTable, FormModal, FormInput, FormSelect, FormTextarea, SectionTabs,
 import Button from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
 import { formatCurrency } from '@/lib/utils'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 import type { Supplier, SupplierBill, SupplierPayment } from '@/types/database'
 import {
     createSupplierAction, updateSupplierAction, deleteSupplierAction,
     createSupplierBillAction, deleteSupplierBillAction,
     createSupplierPaymentAction, deleteSupplierPaymentAction,
 } from './actions'
+import { useConfirmStore } from '@/lib/stores/confirm'
 
 export default function PayablesManager({
     initialSuppliers,
@@ -23,7 +25,9 @@ export default function PayablesManager({
     initialBills: SupplierBill[]
     initialPayments: SupplierPayment[]
 }) {
+    const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('suppliers')
+    const formatDate = useDateFormatter()
     const [suppliers, setSuppliers] = useState(initialSuppliers)
     const [bills, setBills] = useState(initialBills)
     const [payments, setPayments] = useState(initialPayments)
@@ -45,6 +49,7 @@ export default function PayablesManager({
 }
 
 function SuppliersTab({ suppliers, setSuppliers }: { suppliers: Supplier[]; setSuppliers: (fn: (prev: Supplier[]) => Supplier[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ name: '', contact_person: '', phone: '', email: '', address: '' })
@@ -68,7 +73,8 @@ function SuppliersTab({ suppliers, setSuppliers }: { suppliers: Supplier[]; setS
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this supplier?')) return
+        const ok = await confirm({ title: 'Delete this supplier?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteSupplierAction(id)
         if (result.error) { toast.error(result.error); return }
         setSuppliers((prev) => prev.filter((s) => s.id !== id))
@@ -113,6 +119,8 @@ function SuppliersTab({ suppliers, setSuppliers }: { suppliers: Supplier[]; setS
 }
 
 function BillsTab({ suppliers, bills, setBills }: { suppliers: Supplier[]; bills: SupplierBill[]; setBills: (fn: (prev: SupplierBill[]) => SupplierBill[]) => void }) {
+    const { confirm } = useConfirmStore()
+    const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ supplier_id: '', bill_number: '', amount: '', description: '', due_date: '' })
@@ -136,7 +144,8 @@ function BillsTab({ suppliers, bills, setBills }: { suppliers: Supplier[]; bills
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this bill?')) return
+        const ok = await confirm({ title: 'Delete this bill?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteSupplierBillAction(id)
         if (result.error) { toast.error(result.error); return }
         setBills((prev) => prev.filter((b) => b.id !== id))
@@ -150,10 +159,10 @@ function BillsTab({ suppliers, bills, setBills }: { suppliers: Supplier[]; bills
             </div>
             <DataTable
                 columns={[
-                    { key: 'created_at', header: 'Date', render: (b) => new Date(b.created_at).toLocaleDateString(), sortValue: (b) => b.created_at },
+                    { key: 'created_at', header: 'Date', render: (b) => formatDate(b.created_at), sortValue: (b) => b.created_at },
                     { key: 'supplier', header: 'Supplier', render: (b) => b.suppliers?.name || '—' },
                     { key: 'bill_number', header: 'Bill #', render: (b) => b.bill_number || <span className="text-ink-subtle">—</span> },
-                    { key: 'due_date', header: 'Due Date', render: (b) => (b.due_date ? new Date(b.due_date).toLocaleDateString() : '—') },
+                    { key: 'due_date', header: 'Due Date', render: (b) => (b.due_date ? formatDate(b.due_date) : '—') },
                     { key: 'amount', header: 'Amount', align: 'right', render: (b) => formatCurrency(b.amount), sortValue: (b) => b.amount },
                     { key: 'status', header: 'Status', render: (b) => <StatusBadge status={b.status} /> },
                 ]}
@@ -191,6 +200,8 @@ function PaymentsTab({
     payments: SupplierPayment[]
     setPayments: (fn: (prev: SupplierPayment[]) => SupplierPayment[]) => void
 }) {
+    const { confirm } = useConfirmStore()
+    const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ supplier_id: '', bill_id: '', amount: '', description: '' })
@@ -213,7 +224,8 @@ function PaymentsTab({
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this payment?')) return
+        const ok = await confirm({ title: 'Delete this payment?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteSupplierPaymentAction(id)
         if (result.error) { toast.error(result.error); return }
         setPayments((prev) => prev.filter((p) => p.id !== id))
@@ -229,7 +241,7 @@ function PaymentsTab({
             </div>
             <DataTable
                 columns={[
-                    { key: 'created_at', header: 'Date', render: (p) => new Date(p.created_at).toLocaleString(), sortValue: (p) => p.created_at },
+                    { key: 'created_at', header: 'Date', render: (p) => formatDate(p.created_at), sortValue: (p) => p.created_at },
                     { key: 'supplier', header: 'Supplier', render: (p) => p.suppliers?.name || '—' },
                     { key: 'bill', header: 'Bill #', render: (p) => p.supplier_bills?.bill_number || <span className="text-ink-subtle">—</span> },
                     { key: 'description', header: 'Description', render: (p) => p.description || '—' },

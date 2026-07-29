@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import Image from 'next/image'
+import Modal from '@/components/ui/Modal'
 import { Shield, ChefHat, Users, User, Check, AlertTriangle, Loader2, Pencil, Trash2, Eye, EyeOff, Banknote, Search, Mail, X, RotateCw, DollarSign, List, Plus, Calendar, TrendingUp } from 'lucide-react'
 import { updateStaffRoleAction, toggleStaffStatusAction, updateStaffNameAction, resetStaffPasswordAction, deleteStaffAction, updateStaffSalaryAction, updateStaffJoinDateAction, increaseStaffSalaryAction, recordLedgerTransactionAction, fetchStaffLedgerAction, updateOpeningBalanceAction, fetchAutoAccrualPreviewAction, executeAutoAccrualAction } from '@/app/(admin)/admin/staff/actions'
 import { fetchTodayAttendanceAction, markAttendanceAction } from '@/app/(admin)/admin/staff/attendance-actions'
@@ -11,9 +12,13 @@ import { createInvitationAction, revokeInvitationAction, resendInvitationAction 
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import { fetchStaffData } from '@/lib/swr-fetchers'
-import { useFeatures } from '@/lib/contexts/FeatureContext'
+import { useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { FINANCE_GATED_ROLES } from '@/types/database'
 import { formatCurrency } from '@/lib/utils'
+import PayPartyModal from '@/components/admin/PayPartyModal'
+import { computeStaffCurrentDue, type StaffLedgerEntryType } from '@/lib/staffLedger'
+import Select from '@/components/ui/Select'
+import StaffActivityPanel from '@/components/admin/StaffActivityPanel'
 
 // Ledger entry types that represent money actually paid out to staff (as opposed
 // to 'accrual', which only increases what's owed, or 'deduction', which reduces it)
@@ -155,7 +160,7 @@ export default function StaffManager({
     )
     const attendanceMap = attendanceData.attendance
 
-    const [activeTab, setActiveTab] = useState<'staff' | 'departments' | 'invitations' | 'salaries'>('staff')
+    const [activeTab, setActiveTab] = useState<'staff' | 'performance' | 'departments' | 'invitations' | 'salaries'>('staff')
     
     // Salaries & Ledger state
     const [salaryModal, setSalaryModal] = useState<{ isOpen: boolean, user: StaffMember | null, salary: string, saving: boolean }>({
@@ -188,10 +193,14 @@ export default function StaffManager({
         saving: false
     })
 
+    // Deduction/Accrual only now — "Pay" (Salary/Advance/Bonus) is a real
+    // Payment Voucher via PayPartyModal, since only those two are not an
+    // actual payment leaving the business (accrual adds nothing paid yet;
+    // deduction reduces what's owed without cash changing hands).
     const [transactionModal, setTransactionModal] = useState<{
         isOpen: boolean
         user: StaffMember | null
-        entryType: 'salary_payout' | 'advance_payment' | 'bonus' | 'deduction' | 'accrual'
+        entryType: 'deduction' | 'accrual'
         amount: string
         paymentMethod: 'cash' | 'bank_transfer' | 'qr_digital'
         note: string
@@ -200,13 +209,18 @@ export default function StaffManager({
     }>({
         isOpen: false,
         user: null,
-        entryType: 'salary_payout',
+        entryType: 'accrual',
         amount: '',
         paymentMethod: 'cash',
         note: '',
         bankName: '',
         saving: false
     })
+
+    // Pay (Salary Payout / Advance Payment / Bonus) — routes through the
+    // shared voucher-connected modal instead of transactionModal, so it
+    // gets a real voucher number, due-validation, and the print prompt.
+    const [payPartyUser, setPayPartyUser] = useState<StaffMember | null>(null)
 
     const [ledgerModal, setLedgerModal] = useState<{
         isOpen: boolean
@@ -460,7 +474,7 @@ export default function StaffManager({
                 setTransactionModal({
                     isOpen: false,
                     user: null,
-                    entryType: 'salary_payout',
+                    entryType: 'accrual',
                     amount: '',
                     paymentMethod: 'cash',
                     note: '',
@@ -484,6 +498,24 @@ export default function StaffManager({
             toast.error(e instanceof Error ? e.message : 'Failed to record transaction')
         } finally {
             setTransactionModal(prev => ({ ...prev, saving: false }))
+        }
+    }
+
+    // Called after PayPartyModal successfully records a Payment Voucher for
+    // a staff member — refresh the staff list and, if open, the ledger
+    // modal's entries so the new payout shows up immediately.
+    const handlePaySettled = async () => {
+        const userId = payPartyUser?.id
+        mutate()
+        if (userId && ledgerModal.isOpen && ledgerModal.user?.id === userId) {
+            try {
+                const data = await fetchStaffLedgerAction(userId)
+                setLedgerModal(p => ({
+                    ...p,
+                    entries: data.entries,
+                    user: p.user ? { ...p.user, opening_balance: data.openingBalance, monthly_salary: data.monthlySalary } : null
+                }))
+            } catch { /* non-fatal — list still refetches via mutate() */ }
         }
     }
 
@@ -795,9 +827,9 @@ export default function StaffManager({
 
     const handleDeleteStaff = async (user: StaffMember) => {
         const ok = await confirm({
-            title: 'Permanently Delete Account?',
-            message: `This will permanently delete ${user.full_name}'s account and remove all their access. This cannot be undone.`,
-            confirmText: 'Delete Permanently',
+            title: 'Delete Account?',
+            message: `This will remove ${user.full_name}'s account and all their access. Their payroll, salary and attendance records are kept for your books. This cannot be undone.`,
+            confirmText: 'Delete Account',
             isDestructive: true,
         })
         if (!ok) return
@@ -894,9 +926,6 @@ export default function StaffManager({
         return invitation.status
     }
 
-    const isTransactionPay = PAY_ENTRY_TYPES.includes(transactionModal.entryType)
-    const transactionTopLevelType = isTransactionPay ? 'pay' : transactionModal.entryType
-
     return (
         <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden">
             <div className="p-5 md:p-6 border-b border-hairline flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-surface-muted/30">
@@ -923,7 +952,16 @@ export default function StaffManager({
                             </button>
                         </>
                     )}
-                    {activeTab === 'departments' && (
+                    {/* Per-person daily activity. Its own component and its own fetch —
+                the roster above is server-rendered, while this is driven by a
+                date range the manager changes. */}
+            {activeTab === 'performance' && (
+                <div className="p-5 md:p-6">
+                    <StaffActivityPanel />
+                </div>
+            )}
+
+            {activeTab === 'departments' && (
                         <button
                             onClick={() => setDepartmentModal({ isOpen: true, department: null, name: '', description: '', saving: false })}
                             className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 shrink-0 focus-ring"
@@ -942,6 +980,12 @@ export default function StaffManager({
                     className={`py-3.5 px-1 mr-6 text-sm font-bold border-b-2 transition-colors ${activeTab === 'staff' ? 'border-brand-500 text-brand-600' : 'border-transparent text-ink-subtle hover:text-ink'}`}
                 >
                     Team Roster ({staff.length})
+                </button>
+                <button
+                    onClick={() => setActiveTab('performance')}
+                    className={`py-3.5 px-1 mr-6 text-sm font-bold border-b-2 transition-colors ${activeTab === 'performance' ? 'border-brand-500 text-brand-600' : 'border-transparent text-ink-subtle hover:text-ink'}`}
+                >
+                    Performance
                 </button>
                 <button
                     onClick={() => setActiveTab('departments')}
@@ -977,7 +1021,7 @@ export default function StaffManager({
                         className="w-full pl-10 pr-4 py-2.5 rounded-[var(--r-md)] border border-hairline bg-surface text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
                     />
                 </div>
-                <select
+                <Select
                     value={roleFilter}
                     onChange={(e) => setRoleFilter(e.target.value)}
                     className="rounded-[var(--r-md)] border border-hairline bg-surface px-4 py-2.5 text-sm font-bold text-ink outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] sm:w-56"
@@ -986,7 +1030,7 @@ export default function StaffManager({
                     {availableRoles.map(r => (
                         <option key={r.id} value={r.id.toString()}>{formatRoleName(r.name)}</option>
                     ))}
-                </select>
+                </Select>
             </div>
 
             {/* Desktop Table — hidden on mobile */}
@@ -1158,8 +1202,8 @@ export default function StaffManager({
                                     )}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="font-extrabold text-ink flex items-center gap-2 truncate">
-                                        {user.full_name}
+                                    <div className="font-extrabold text-ink flex items-center gap-2 min-w-0">
+                                        <span className="truncate">{user.full_name}</span>
                                         {isMe && <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-brand-50 text-brand-700 uppercase border border-brand-100 shrink-0">You</span>}
                                     </div>
                                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
@@ -1496,11 +1540,11 @@ export default function StaffManager({
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center justify-center gap-3">
-                                                        <button 
-                                                            onClick={() => setTransactionModal({ isOpen: true, user, entryType: 'salary_payout', amount: '', paymentMethod: 'cash', note: '', bankName: '', saving: false })}
+                                                        <button
+                                                            onClick={() => setPayPartyUser(user)}
                                                             className="inline-flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-3 py-2 rounded-[var(--r-md)] border border-brand-100/50 transition-all focus-ring"
                                                         >
-                                                            <DollarSign size={13} /> Pay / Record
+                                                            <DollarSign size={13} /> Pay
                                                         </button>
                                                         <button 
                                                             onClick={() => handleOpenLedger(user)}
@@ -1522,8 +1566,7 @@ export default function StaffManager({
 
             {/* Edit Staff Modal */}
             {editModal.isOpen && editModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+                <Modal open onClose={() => setEditModal(prev => ({ ...prev, isOpen: false }))} size="md" ariaLabel="Edit Staff" className="flex flex-col overflow-hidden max-h-[90vh]">
                         <div className="px-6 py-5 border-b border-hairline flex items-center justify-between shrink-0 bg-surface-muted/30">
                             <div>
                                 <h3 className="font-extrabold text-ink text-lg">Edit Staff</h3>
@@ -1558,7 +1601,7 @@ export default function StaffManager({
                             {/* Department */}
                             <div>
                                 <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-3">Department</label>
-                                <select
+                                <Select
                                     value={editModal.departmentId || ''}
                                     onChange={e => setEditModal(prev => ({ ...prev, departmentId: e.target.value || null }))}
                                     className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
@@ -1567,7 +1610,7 @@ export default function StaffManager({
                                     {departments.map(d => (
                                         <option key={d.id} value={d.id}>{d.name}</option>
                                     ))}
-                                </select>
+                                </Select>
                             </div>
 
                             {/* Password */}
@@ -1614,7 +1657,7 @@ export default function StaffManager({
                             {/* Danger zone */}
                             <div className="border border-danger-bg rounded-[var(--r-md)] p-5 bg-danger-bg/10">
                                 <p className="text-[11px] font-bold uppercase tracking-wider text-danger-fg mb-1.5">Danger Zone</p>
-                                <p className="text-sm font-medium text-danger-fg/80 mb-4">Permanently deletes the account and revokes all access. This cannot be undone.</p>
+                                <p className="text-sm font-medium text-danger-fg/80 mb-4">Deletes the account and revokes all access. Payroll and attendance records are kept. This cannot be undone.</p>
                                 <button
                                     onClick={() => handleDeleteStaff(editModal.user!)}
                                     disabled={!!editModal.deletingId}
@@ -1625,14 +1668,12 @@ export default function StaffManager({
                                 </button>
                             </div>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Role Change Modal */}
             {changeRoleModal.isOpen && changeRoleModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setChangeRoleModal(prev => ({ ...prev, isOpen: false }))} size="md" ariaLabel="Change Role">
                         <div className="p-6">
                             <h3 className="text-h3 font-extrabold text-ink mb-1.5">Change Role</h3>
                             <p className="text-sm text-ink-subtle font-medium mb-6">
@@ -1682,14 +1723,12 @@ export default function StaffManager({
                                 Save Role
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Create Staff Modal */}
             {createModal.isOpen && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setCreateModal(prev => ({ ...prev, isOpen: false }))} size="md" ariaLabel="Create Staff Account">
                         <div className="p-6 pb-0">
                             <h3 className="text-h3 font-extrabold text-ink mb-1.5">Create Staff Account</h3>
                             <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-6">Add a new staff member to your restaurant</p>
@@ -1761,8 +1800,8 @@ export default function StaffManager({
 
                             <div>
                                 <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Initial Role</label>
-                                <select
-                                    value={createModal.roleId}
+                                <Select
+                                    value={String(createModal.roleId)}
                                     onChange={(e) => setCreateModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
                                     disabled={createModal.isCreating}
                                     className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
@@ -1770,12 +1809,12 @@ export default function StaffManager({
                                     {availableRoles.map(role => (
                                         <option key={role.id} value={role.id}>{formatRoleName(role.name)}</option>
                                     ))}
-                                </select>
+                                </Select>
                             </div>
 
                             <div>
                                 <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Department <span className="text-ink-subtle font-normal normal-case">(optional)</span></label>
-                                <select
+                                <Select
                                     value={createModal.departmentId}
                                     onChange={(e) => setCreateModal(prev => ({ ...prev, departmentId: e.target.value }))}
                                     disabled={createModal.isCreating}
@@ -1785,7 +1824,7 @@ export default function StaffManager({
                                     {departments.map(dept => (
                                         <option key={dept.id} value={dept.id}>{dept.name}</option>
                                     ))}
-                                </select>
+                                </Select>
                             </div>
                         </div>
 
@@ -1806,14 +1845,12 @@ export default function StaffManager({
                                 Create Staff
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Invite Staff Modal */}
             {inviteModal.isOpen && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setInviteModal(prev => ({ ...prev, isOpen: false }))} size="md" ariaLabel="Invite via Email">
                         <div className="p-6 pb-0">
                             <h3 className="text-h3 font-extrabold text-ink mb-1.5">Invite via Email</h3>
                             <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-6">They&apos;ll get a link to set their own password</p>
@@ -1834,8 +1871,8 @@ export default function StaffManager({
 
                             <div>
                                 <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Role</label>
-                                <select
-                                    value={inviteModal.roleId}
+                                <Select
+                                    value={String(inviteModal.roleId)}
                                     onChange={(e) => setInviteModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
                                     disabled={inviteModal.isInviting}
                                     className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
@@ -1843,12 +1880,12 @@ export default function StaffManager({
                                     {availableRoles.map(role => (
                                         <option key={role.id} value={role.id}>{formatRoleName(role.name)}</option>
                                     ))}
-                                </select>
+                                </Select>
                             </div>
 
                             <div>
                                 <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Department <span className="text-ink-subtle font-normal normal-case">(optional)</span></label>
-                                <select
+                                <Select
                                     value={inviteModal.departmentId}
                                     onChange={(e) => setInviteModal(prev => ({ ...prev, departmentId: e.target.value }))}
                                     disabled={inviteModal.isInviting}
@@ -1858,7 +1895,7 @@ export default function StaffManager({
                                     {departments.map(dept => (
                                         <option key={dept.id} value={dept.id}>{dept.name}</option>
                                     ))}
-                                </select>
+                                </Select>
                             </div>
                         </div>
 
@@ -1879,14 +1916,12 @@ export default function StaffManager({
                                 Send Invite
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Department Modal */}
             {departmentModal.isOpen && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setDepartmentModal(prev => ({ ...prev, isOpen: false }))} size="md" ariaLabel={departmentModal.department ? 'Edit Department' : 'Create Department'}>
                         <div className="px-6 py-5 border-b border-hairline flex items-center justify-between shrink-0 bg-surface-muted/30">
                             <div>
                                 <h3 className="font-extrabold text-ink text-lg">{departmentModal.department ? 'Edit Department' : 'Create Department'}</h3>
@@ -1935,14 +1970,12 @@ export default function StaffManager({
                                 Save Department
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Set/Edit Salary Modal */}
             {salaryModal.isOpen && salaryModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setSalaryModal(prev => ({ ...prev, isOpen: false }))} size="sm" ariaLabel="Set Monthly Salary">
                         <div className="px-6 py-5 border-b border-hairline flex items-center justify-between bg-surface-muted/30">
                             <div>
                                 <h3 className="font-extrabold text-ink text-base">Set Monthly Salary</h3>
@@ -1987,13 +2020,11 @@ export default function StaffManager({
                                 Save Salary
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {joinDateModal.isOpen && joinDateModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setJoinDateModal(prev => ({ ...prev, isOpen: false }))} size="sm" ariaLabel="Set Join Date">
                         <div className="px-6 py-5 border-b border-hairline flex items-center justify-between bg-surface-muted/30">
                             <div>
                                 <h3 className="font-extrabold text-ink text-base">Set Join Date</h3>
@@ -2033,13 +2064,11 @@ export default function StaffManager({
                                 Save Join Date
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {salaryIncreaseModal.isOpen && salaryIncreaseModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setSalaryIncreaseModal(prev => ({ ...prev, isOpen: false }))} size="sm" ariaLabel="Increase Salary">
                         <div className="px-6 py-5 border-b border-hairline flex items-center justify-between bg-surface-muted/30">
                             <div>
                                 <h3 className="font-extrabold text-ink text-base">Increase Salary</h3>
@@ -2108,17 +2137,17 @@ export default function StaffManager({
                                 Save Salary Change
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
-            {/* Record Payment Transaction Modal */}
+            {/* Add Due / Deduction Modal — actual payments (Salary/Advance/Bonus)
+                go through PayPartyModal instead, since those are real
+                Payment Vouchers, not just ledger bookkeeping entries. */}
             {transactionModal.isOpen && transactionModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setTransactionModal(prev => ({ ...prev, isOpen: false }))} size="md" ariaLabel="Add Due / Deduction">
                         <div className="px-6 py-5 border-b border-hairline flex items-center justify-between bg-surface-muted/30">
                             <div>
-                                <h3 className="font-extrabold text-ink text-base">Record Payment / Ledger Entry</h3>
+                                <h3 className="font-extrabold text-ink text-base">Add Due / Deduction</h3>
                                 <p className="text-[11px] text-ink-subtle uppercase tracking-wider font-bold mt-1">{transactionModal.user.full_name}</p>
                             </div>
                             <button onClick={() => setTransactionModal(prev => ({ ...prev, isOpen: false }))} className="w-8 h-8 flex items-center justify-center rounded-[var(--r-md)] text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors focus-ring">×</button>
@@ -2128,18 +2157,14 @@ export default function StaffManager({
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Entry Type</label>
-                                    <select
-                                        value={transactionTopLevelType}
-                                        onChange={e => {
-                                            const val = e.target.value
-                                            setTransactionModal(prev => ({ ...prev, entryType: val === 'pay' ? 'salary_payout' : val as typeof transactionModal.entryType }))
-                                        }}
+                                    <Select
+                                        value={transactionModal.entryType}
+                                        onChange={e => setTransactionModal(prev => ({ ...prev, entryType: e.target.value as typeof transactionModal.entryType }))}
                                         className="w-full px-3 py-2 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
                                     >
-                                        <option value="pay">Pay</option>
                                         <option value="accrual">Add to Amount Due (Not Paid Yet)</option>
                                         <option value="deduction">Deduction / Fine</option>
-                                    </select>
+                                    </Select>
                                 </div>
                                 <div>
                                     <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Amount</label>
@@ -2157,21 +2182,6 @@ export default function StaffManager({
                                     </div>
                                 </div>
                             </div>
-
-                            {isTransactionPay && (
-                                <div>
-                                    <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Pay Category</label>
-                                    <select
-                                        value={transactionModal.entryType}
-                                        onChange={e => setTransactionModal(prev => ({ ...prev, entryType: e.target.value as typeof transactionModal.entryType }))}
-                                        className="w-full px-3 py-2 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
-                                    >
-                                        <option value="salary_payout">Salary Payout</option>
-                                        <option value="advance_payment">Advance Payment</option>
-                                        <option value="bonus">Bonus / Award</option>
-                                    </select>
-                                </div>
-                            )}
 
                             {transactionModal.entryType !== 'accrual' && (
                                 <div>
@@ -2194,7 +2204,7 @@ export default function StaffManager({
                             {(transactionModal.paymentMethod === 'bank_transfer' || transactionModal.paymentMethod === 'qr_digital') && (
                                 <div className="animate-in slide-in-from-top-1 duration-150">
                                     <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Bank Account</label>
-                                    <select
+                                    <Select
                                         value={transactionModal.bankName}
                                         onChange={e => setTransactionModal(prev => ({ ...prev, bankName: e.target.value }))}
                                         required
@@ -2207,7 +2217,7 @@ export default function StaffManager({
                                         {bankAccounts.length === 0 && (
                                             <option value="General Bank">General Bank</option>
                                         )}
-                                    </select>
+                                    </Select>
                                 </div>
                             )}
 
@@ -2240,14 +2250,32 @@ export default function StaffManager({
                                 Record Entry
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
+            )}
+
+            {payPartyUser && (
+                <PayPartyModal
+                    isOpen={!!payPartyUser}
+                    onClose={() => setPayPartyUser(null)}
+                    category="staff"
+                    partyId={payPartyUser.id}
+                    partyName={payPartyUser.full_name}
+                    currentDue={
+                        ledgerModal.user?.id === payPartyUser.id
+                            ? computeStaffCurrentDue(
+                                  ledgerModal.entries.map(e => ({ entry_type: e.entry_type as StaffLedgerEntryType, amount: Number(e.amount) })),
+                                  Number(ledgerModal.user.opening_balance ?? 0)
+                              )
+                            : undefined
+                    }
+                    bankAccounts={bankAccounts}
+                    onSettled={handlePaySettled}
+                />
             )}
 
             {/* Ledger History Modal */}
             {ledgerModal.isOpen && ledgerModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl rounded-card border border-hairline animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setLedgerModal(prev => ({ ...prev, isOpen: false }))} size="xl" ariaLabel="Staff Ledger Statement" className="max-w-5xl flex flex-col overflow-hidden">
                         {/* Header */}
                         <div className="px-6 py-4 border-b border-hairline flex items-center justify-between shrink-0 bg-surface-muted/30">
                             <div>
@@ -2280,10 +2308,20 @@ export default function StaffManager({
                                 <button
                                     onClick={() => {
                                         if (!ledgerModal.user) return
+                                        setPayPartyUser(ledgerModal.user)
+                                    }}
+                                    className="px-3 py-1.5 text-[11px] font-black text-white bg-brand-500 hover:bg-brand-600 rounded-[var(--r-sm)] flex items-center gap-1.5 transition shadow-sm"
+                                >
+                                    <DollarSign size={12} />
+                                    Pay
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (!ledgerModal.user) return
                                         setTransactionModal({
                                             isOpen: true,
                                             user: ledgerModal.user,
-                                            entryType: 'salary_payout',
+                                            entryType: 'accrual',
                                             amount: '',
                                             paymentMethod: 'cash',
                                             note: '',
@@ -2291,10 +2329,10 @@ export default function StaffManager({
                                             saving: false
                                         })
                                     }}
-                                    className="px-3 py-1.5 text-[11px] font-black text-white bg-brand-500 hover:bg-brand-600 rounded-[var(--r-sm)] flex items-center gap-1.5 transition shadow-sm"
+                                    className="px-3 py-1.5 text-[11px] font-black text-ink bg-surface-muted hover:bg-surface-muted/80 border border-hairline rounded-[var(--r-sm)] flex items-center gap-1.5 transition shadow-sm"
                                 >
                                     <Plus size={12} />
-                                    Add Transaction
+                                    Add Due / Deduction
                                 </button>
                                 <button onClick={() => setLedgerModal(prev => ({ ...prev, isOpen: false }))} className="w-8 h-8 flex items-center justify-center rounded-[var(--r-md)] text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors">×</button>
                             </div>
@@ -2356,7 +2394,7 @@ export default function StaffManager({
                                                 value={ledgerModal.openingBalanceEdit}
                                                 onChange={e => setLedgerModal(prev => ({ ...prev, openingBalanceEdit: e.target.value }))}
                                                 placeholder={String(ledgerModal.user.opening_balance)}
-                                                className="w-32 px-2.5 py-1.5 text-xs font-bold border border-blue-200 rounded-[var(--r-sm)] bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                                className="w-32 px-2.5 py-1.5 text-xs font-bold border border-blue-200 rounded-[var(--r-sm)] bg-surface focus:outline-none focus:ring-2 focus:ring-blue-300"
                                             />
                                             <button
                                                 disabled={ledgerModal.savingOpeningBalance || ledgerModal.openingBalanceEdit === ''}
@@ -2439,7 +2477,7 @@ export default function StaffManager({
                                                             deduction: 'bg-rose-50 text-rose-700 border-rose-100',
                                                             accrual: 'bg-violet-50 text-violet-700 border-violet-100',
                                                         }
-                                                        const colorClass = typeColors[entry.entry_type] || 'bg-gray-50 text-gray-600 border-gray-100'
+                                                        const colorClass = typeColors[entry.entry_type] || 'bg-surface-muted text-ink-subtle border-hairline'
                                                         const methodLabel = entry.payment_method === 'bank_transfer' ? 'Bank' : entry.payment_method === 'qr_digital' ? 'QR' : entry.payment_method === 'cash' ? 'Cash' : '—'
 
                                                         // Running balance: starts from opening, accruals add, payments/deductions subtract
@@ -2527,14 +2565,12 @@ export default function StaffManager({
                                 Close Statement
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Bulk Process Monthly Salaries Modal */}
             {autoAccrualModal.isOpen && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl rounded-card border border-hairline animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setAutoAccrualModal(prev => ({ ...prev, isOpen: false }))} size="xl" ariaLabel="Process Monthly Salaries" className="max-w-4xl flex flex-col overflow-hidden max-h-[85vh]">
                         {/* Header */}
                         <div className="px-6 py-4 border-b border-hairline flex items-center justify-between shrink-0 bg-surface-muted/30">
                             <div>
@@ -2547,8 +2583,8 @@ export default function StaffManager({
                         {/* Month/Year Selectors */}
                         <div className="px-6 py-4 border-b border-hairline flex items-center gap-3 bg-surface shrink-0">
                             <span className="text-xs font-bold text-ink-subtle uppercase tracking-wider">Select Payroll Period:</span>
-                            <select
-                                value={autoAccrualModal.month}
+                            <Select
+                                value={String(autoAccrualModal.month)}
                                 onChange={e => {
                                     const m = parseInt(e.target.value)
                                     loadAutoAccrualPreview(autoAccrualModal.year, m)
@@ -2560,9 +2596,9 @@ export default function StaffManager({
                                         {new Date(2000, i).toLocaleString('default', { month: 'long' })}
                                     </option>
                                 ))}
-                            </select>
-                            <select
-                                value={autoAccrualModal.year}
+                            </Select>
+                            <Select
+                                value={String(autoAccrualModal.year)}
                                 onChange={e => {
                                     const y = parseInt(e.target.value)
                                     loadAutoAccrualPreview(y, autoAccrualModal.month)
@@ -2573,7 +2609,7 @@ export default function StaffManager({
                                     const y = new Date().getFullYear() - i
                                     return <option key={y} value={y}>{y}</option>
                                 })}
-                            </select>
+                            </Select>
                         </div>
 
                         {/* Preview Table */}
@@ -2665,14 +2701,12 @@ export default function StaffManager({
                                 </button>
                             </div>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {/* Mark Absent Modal — optional reason for today's "Out" */}
             {attendanceOutModal.isOpen && attendanceOutModal.user && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface rounded-card shadow-[0_16px_40px_rgba(0,0,0,0.12)] border border-hairline w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <Modal open onClose={() => setAttendanceOutModal(prev => ({ ...prev, isOpen: false }))} size="sm" ariaLabel="Mark Absent">
                         <div className="p-6 pb-0">
                             <h3 className="text-h3 font-extrabold text-ink mb-1.5">Mark Absent</h3>
                             <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-6">{attendanceOutModal.user.full_name} • Today</p>
@@ -2709,8 +2743,7 @@ export default function StaffManager({
                                 Mark Absent
                             </button>
                         </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
         </div>

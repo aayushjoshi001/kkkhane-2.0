@@ -1,11 +1,12 @@
 'use client'
 
+import { catchUpOnResubscribe } from '@/lib/realtime/channelCatchUp'
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { playStatusUpdate } from '@/lib/audio'
 import { playVoice } from '@/lib/voice'
 import { toast } from 'react-hot-toast'
-import { timeAgo } from '@/lib/utils'
+import { timeAgo, getItemDisplayName } from '@/lib/utils'
 import { useCurrency, useBusinessMode } from '@/lib/contexts/FeatureContext'
 import { CheckCircle, Clock, ChefHat, Package, PartyPopper, ChevronLeft, MapPin, Plus } from 'lucide-react'
 import type { Order, OrderItem, MenuItem, OrderItemModifier } from '@/types/database'
@@ -70,7 +71,7 @@ export default function OrderTracker({
     // order status here never advances for them, so live tracking is hidden for
     // every order in a hotel-mode restaurant, not just ones billed to a room.
     const businessMode = useBusinessMode()
-    const hideLiveTracking = isHotelRoom || businessMode === 'hotel'
+    const hideLiveTracking = isHotelRoom || businessMode === 'hotel' || !!features?.kotEnabled
     const activeShowSuccess = hideLiveTracking ? true : showSuccessScreen
 
     useEffect(() => {
@@ -100,7 +101,12 @@ export default function OrderTracker({
                     }
                 }
             )
-            .subscribe()
+            .subscribe(catchUpOnResubscribe(`order:${orderId}`, async () => {
+                // Silent resync — no toast or sound, the guest may well have
+                // been shown this status before the connection dropped.
+                const { data } = await supabase.from('orders').select('*').eq('id', orderId).single()
+                if (data) setOrder((prev) => ({ ...prev, ...(data as Order) }))
+            }))
         return () => { supabase.removeChannel(channel) }
     }, [orderId])
 
@@ -119,12 +125,17 @@ export default function OrderTracker({
         0
     ) || 0
 
-    const displayOrders = sessionOrders.length > 0 ? sessionOrders : [order]
-    const grandTotal = displayOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0)
+    const displayOrders = (sessionOrders.length > 0 ? sessionOrders : [order]).filter(o => o.status !== 'cancelled')
+    const grandTotal = displayOrders.reduce((sum, o) => {
+        const orderItemSum = (o.order_items || [])
+            .filter((i: any) => i.status !== 'cancelled')
+            .reduce((itemSum: number, item: any) => itemSum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
+        return sum + (orderItemSum > 0 ? orderItemSum : Number(o.total_amount || 0))
+    }, 0)
 
     if (activeShowSuccess) {
         return (
-            <div className="flex flex-col min-h-screen bg-surface text-ink font-sans select-none pb-36 animate-in fade-in duration-300">
+            <div className="flex flex-col min-h-screen bg-surface text-ink font-sans select-none pb-48 animate-in fade-in duration-300">
                 {showConfetti && <Confetti />}
 
                 {/* Top Orange Section */}
@@ -174,7 +185,7 @@ export default function OrderTracker({
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-baseline gap-1">
                                                         <span className="font-bold text-ink-subtle tabular-nums text-[10px]">{item.quantity}×</span>
-                                                        <span className="font-bold text-ink leading-snug">{item.menu_items?.name}</span>
+                                                        <span className="font-bold text-ink leading-snug">{getItemDisplayName(item)}</span>
                                                     </div>
                                                     {item.order_item_modifiers && item.order_item_modifiers.length > 0 && (
                                                         <div className="flex flex-wrap gap-1 mt-1">
@@ -359,7 +370,7 @@ export default function OrderTracker({
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-baseline gap-1.5">
                                         <span className="text-xs font-bold text-ink-subtle tabular-nums">{item.quantity}×</span>
-                                        <span className="text-xs font-bold text-ink leading-snug">{item.menu_items?.name}</span>
+                                        <span className="text-xs font-bold text-ink leading-snug">{getItemDisplayName(item)}</span>
                                     </div>
                                     {item.order_item_modifiers && item.order_item_modifiers.length > 0 && (
                                         <div className="flex flex-wrap gap-1 mt-1">

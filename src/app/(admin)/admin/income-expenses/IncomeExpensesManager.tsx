@@ -1,18 +1,27 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import {
     TrendingUp, TrendingDown, Trash2, Plus, X,
-    Search, Loader2, ArrowRightLeft, FileText, User
+    Search, Loader2, ArrowRightLeft, FileText, User,
+    Download, Printer
 } from 'lucide-react'
 import { createCategoryAction, deleteCategoryAction, createEntryAction, deleteEntryAction } from './actions'
 import { toast } from 'react-hot-toast'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, parseExpenseDescription, orderCategoriesForDisplay, findMainCategory } from '@/lib/utils'
+import { NST_OFFSET_MS } from '@/lib/timezone'
+import { downloadCsv } from '@/lib/exportCsv'
+import PrintableReport, { type PrintableReportHandle } from '@/components/admin/PrintableReport'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
+import { useConfirmStore } from '@/lib/stores/confirm'
+import Select from '@/components/ui/Select'
 
 interface Category {
     id: string
     name: string
     description: string | null
+    /** Only meaningful for expense categories — income_categories rows never have this set. */
+    parent_id: string | null
 }
 
 interface BankAccount {
@@ -49,6 +58,7 @@ interface IncomeExpensesManagerProps {
     initialExpenses: ExpenseEntry[]
     suppliers: Array<{ id: string; name: string }>
     bankAccounts: Array<{ id: string; name: string; bank_name: string | null; account_number: string | null }>
+    qrCodes: Array<{ label: string; bank_account_id: string | null }>
 }
 
 export default function IncomeExpensesManager({
@@ -57,8 +67,24 @@ export default function IncomeExpensesManager({
     initialIncomeEntries,
     initialExpenses,
     suppliers,
-    bankAccounts
+    bankAccounts,
+    qrCodes
 }: IncomeExpensesManagerProps) {
+    const { confirm } = useConfirmStore()
+    const formatDate = useDateFormatter()
+    // Which QR code(s), if any, deposit into each bank account — lets staff
+    // paying another party identify the right account by its QR instead of
+    // just a bank name, when a restaurant runs more than one QR/bank pair.
+    const qrLabelsByBank = useMemo(() => {
+        const map = new Map<string, string[]>()
+        for (const qr of qrCodes) {
+            if (!qr.bank_account_id) continue
+            const labels = map.get(qr.bank_account_id) ?? []
+            labels.push(qr.label)
+            map.set(qr.bank_account_id, labels)
+        }
+        return map
+    }, [qrCodes])
     // Categories & Entries state
     const [incomeCategories, setIncomeCategories] = useState<Category[]>(initialIncomeCategories)
     const [expenseCategories, setExpenseCategories] = useState<Category[]>(initialExpenseCategories)
@@ -81,6 +107,7 @@ export default function IncomeExpensesManager({
     const [showNewCatForm, setShowNewCatForm] = useState(false)
     const [newCatName, setNewCatName] = useState('')
     const [newCatDesc, setNewCatDesc] = useState('')
+    const [newCatParentId, setNewCatParentId] = useState('')
     const [submittingCat, setSubmittingCat] = useState(false)
 
     // List tab and filters
@@ -93,7 +120,6 @@ export default function IncomeExpensesManager({
     // Time-range filtered entries (aligned to Nepal Standard Time boundaries)
     const timeFilteredEntries = useMemo(() => {
         const now = new Date()
-        const NST_OFFSET_MS = (5 * 60 + 45) * 60 * 1000
         const nowNst = new Date(now.getTime() + NST_OFFSET_MS)
 
         // Reset hours for comparison boundaries in NST
@@ -136,6 +162,16 @@ export default function IncomeExpensesManager({
 
     // Categories list based on active quick-entry tab
     const currentCategories = activeTab === 'income' ? incomeCategories : expenseCategories
+    const currentCategoryOptions = useMemo(() => orderCategoriesForDisplay(currentCategories), [currentCategories])
+    // Main (top-level) expense categories only — offered as the parent when
+    // creating a new expense category. Income categories have no hierarchy.
+    const mainExpenseCategories = useMemo(() => expenseCategories.filter(c => !c.parent_id), [expenseCategories])
+    const incomeCategoryOptions = useMemo(() => orderCategoriesForDisplay(incomeCategories), [incomeCategories])
+    const expenseCategoryOptions = useMemo(() => orderCategoriesForDisplay(expenseCategories), [expenseCategories])
+    // Auto-identifies the main category once a subcategory is picked, e.g.
+    // selecting "Vegetables" surfaces "Grocery" without the user needing to
+    // know the hierarchy themselves.
+    const selectedMainCategory = useMemo(() => findMainCategory(currentCategories, categoryId), [currentCategories, categoryId])
 
     // Add category handler
     const handleAddCategory = async (e: React.FormEvent) => {
@@ -145,7 +181,7 @@ export default function IncomeExpensesManager({
 
         setSubmittingCat(true)
         try {
-            const res = await createCategoryAction(name, activeTab, newCatDesc)
+            const res = await createCategoryAction(name, activeTab, newCatDesc, activeTab === 'expense' ? (newCatParentId || null) : undefined)
             if (res.error) {
                 toast.error(res.error)
             } else if (res.data) {
@@ -158,6 +194,7 @@ export default function IncomeExpensesManager({
                 setCategoryId(newCat.id)
                 setNewCatName('')
                 setNewCatDesc('')
+                setNewCatParentId('')
                 setShowNewCatForm(false)
                 toast.success('Category created successfully!')
             }
@@ -165,6 +202,67 @@ export default function IncomeExpensesManager({
             toast.error(err instanceof Error ? err.message : 'Failed to create category')
         } finally {
             setSubmittingCat(false)
+        }
+    }
+
+    // Auto-categorize based on description input
+    const handleDescriptionBlur = () => {
+        if (!description.trim()) return
+
+        const query = description.toLowerCase().trim()
+        const entries = activeTab === 'income' ? incomeEntries : expenses
+        const categories = activeTab === 'income' ? incomeCategories : expenseCategories
+
+        let guessedCatId: string | null = null
+
+        // 1. Try to find a previous entry with the exact same description
+        const exactMatch = entries.find(e => e.description.toLowerCase().trim() === query)
+        if (exactMatch && exactMatch.category_id) {
+            guessedCatId = exactMatch.category_id
+        } else {
+            // 2. Try to find a previous entry with partial/fuzzy match
+            const partialMatch = entries.find(e => 
+                e.description.toLowerCase().includes(query) || 
+                query.includes(e.description.toLowerCase())
+            )
+            if (partialMatch && partialMatch.category_id) {
+                guessedCatId = partialMatch.category_id
+            }
+        }
+
+        // 3. Fall back to keyword mappings if no historical match is found
+        if (!guessedCatId) {
+            const keywords: Record<string, string[]> = {
+                'food': ['chicken', 'vegetable', 'rice', 'oil', 'fish', 'meat', 'paneer', 'mutton', 'flour', 'sugar', 'salt', 'spice', 'potato', 'onion', 'milk', 'cheese', 'butter', 'egg', 'grocery', 'sauce', 'cream', 'spices', 'bread', 'yeast', 'bakery', 'tea', 'coffee'],
+                'gas': ['gas', 'cylinder', 'lpg', 'fuel', 'petrol', 'diesel', 'kerosene'],
+                'supplies': ['soap', 'shampoo', 'towel', 'tissue', 'cleaner', 'detergent', 'toilet', 'napkin', 'broom', 'mop', 'harpic', 'sanitizer', 'disinfectant'],
+                'utilities': ['electricity', 'water', 'internet', 'wifi', 'phone', 'bill', 'electricity bill', 'water bill'],
+                'salaries': ['salary', 'wage', 'payroll', 'salary payment', 'bonus', 'staff', 'salary staff'],
+                'marketing': ['facebook', 'ads', 'marketing', 'poster', 'banner', 'flyer', 'ad'],
+            }
+
+            for (const [catName, words] of Object.entries(keywords)) {
+                if (words.some(w => query.includes(w))) {
+                    const matchedCat = categories.find(c => 
+                        c.name.toLowerCase().includes(catName.toLowerCase()) || 
+                        catName.toLowerCase().includes(c.name.toLowerCase())
+                    )
+                    if (matchedCat) {
+                        guessedCatId = matchedCat.id
+                        break
+                    }
+                }
+            }
+        }
+
+        if (guessedCatId && guessedCatId !== categoryId) {
+            const matchedCategory = categories.find(c => c.id === guessedCatId)
+            if (matchedCategory) {
+                setCategoryId(guessedCatId)
+                toast.success(`Auto-selected category: ${matchedCategory.name}`, {
+                    id: 'auto-category-toast'
+                })
+            }
         }
     }
 
@@ -235,7 +333,8 @@ export default function IncomeExpensesManager({
 
     // Delete entry handler
     const handleDeleteEntry = async (id: string, type: 'income' | 'expense') => {
-        if (!confirm(`Are you sure you want to delete this ${type} entry?`)) return
+        const ok = await confirm({ title: `Are you sure you want to delete this ${type} entry?`, message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
 
         try {
             const res = await deleteEntryAction(id, type)
@@ -260,7 +359,8 @@ export default function IncomeExpensesManager({
         const cat = catList.find(c => c.id === id)
         if (!cat) return
 
-        if (!confirm(`Are you sure you want to delete the category "${cat.name}"?`)) return
+        const ok = await confirm({ title: `Are you sure you want to delete the category "${cat.name}"?`, message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
 
         try {
             const res = await deleteCategoryAction(id, activeTab)
@@ -309,6 +409,41 @@ export default function IncomeExpensesManager({
             String(e.amount).includes(q)
         )
     }, [timeFilteredEntries.expenses, searchQuery, selectedExpenseCat])
+
+    const printRef = useRef<PrintableReportHandle>(null)
+    const incomeReportColumns = [
+        { key: 'date', label: 'Date', dateStacked: true },
+        { key: 'category', label: 'Category' },
+        { key: 'payment', label: 'Payment' },
+        { key: 'description', label: 'Description' },
+        { key: 'amount', label: 'Amount', align: 'right' as const },
+    ]
+    const expenseReportColumns = [
+        { key: 'date', label: 'Date', dateStacked: true },
+        { key: 'category', label: 'Category' },
+        { key: 'vendor', label: 'Vendor' },
+        { key: 'payment', label: 'Payment' },
+        { key: 'description', label: 'Description' },
+        { key: 'amount', label: 'Amount', align: 'right' as const },
+    ]
+    const reportColumns = listTab === 'income' ? incomeReportColumns : expenseReportColumns
+    const reportRows = listTab === 'income'
+        ? filteredIncomeEntries.map(item => ({
+            date: formatDate(item.created_at),
+            category: item.income_categories?.name || 'Uncategorized',
+            payment: item.bank_accounts ? item.bank_accounts.name : 'Cash',
+            description: parseExpenseDescription(item.description).text_desc,
+            amount: formatCurrency(item.amount),
+        }))
+        : filteredExpenses.map(item => ({
+            date: formatDate(item.created_at),
+            category: item.expense_categories?.name || 'Uncategorized',
+            vendor: item.vendor_name || '',
+            payment: item.bank_accounts ? item.bank_accounts.name : 'Cash',
+            description: parseExpenseDescription(item.description).text_desc,
+            amount: formatCurrency(item.amount),
+        }))
+    const handleExportCsv = () => downloadCsv(`${listTab}-log`, reportColumns, reportRows)
 
     return (
         <div className="space-y-6">
@@ -403,207 +538,8 @@ export default function IncomeExpensesManager({
             {/* Split Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 
-                {/* Left Side - Quick Entry Form */}
-                <div className="lg:col-span-4 bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm overflow-hidden">
-                    <div className="border-b border-hairline bg-surface-muted/30 p-4">
-                        <p className="text-xs font-black uppercase tracking-wider text-ink">
-                            QUICK RECORD {viewMode === 'income' ? 'INCOME' : 'EXPENSE'}
-                        </p>
-                    </div>
-
-                    <form onSubmit={handleAddEntry} className="p-4 space-y-4">
-                        {/* Amount */}
-                        <div>
-                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Amount (Rs.)</label>
-                            <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-ink-subtle">Rs.</span>
-                                <input
-                                    type="number"
-                                    min="0.01"
-                                    step="0.01"
-                                    placeholder="0.00"
-                                    value={amount}
-                                    onChange={e => setAmount(e.target.value)}
-                                    required
-                                    className="w-full pl-9 pr-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
-                                />
-                            </div>
-                        </div>
-
-                        {/* Category Selector with Inline Creation Button */}
-                        <div>
-                            <div className="flex items-center justify-between mb-1.5">
-                                <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Category</label>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowNewCatForm(!showNewCatForm)}
-                                    className="text-[10px] font-extrabold text-brand-600 hover:text-brand-700 flex items-center gap-1 focus-ring"
-                                >
-                                    {showNewCatForm ? <X size={10} /> : <Plus size={10} />}
-                                    {showNewCatForm ? 'Cancel' : 'New Category'}
-                                </button>
-                            </div>
-
-                            {/* Inline New Category Creation form */}
-                            {showNewCatForm ? (
-                                <div className="p-3 bg-surface-muted/30 border border-dashed border-hairline-strong rounded-xl mb-3 space-y-2">
-                                    <input
-                                        type="text"
-                                        placeholder="Category Name"
-                                        value={newCatName}
-                                        onChange={e => setNewCatName(e.target.value)}
-                                        className="w-full px-3 py-1.5 bg-surface border border-hairline rounded-lg text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
-                                    />
-                                    <input
-                                        type="text"
-                                        placeholder="Description (Optional)"
-                                        value={newCatDesc}
-                                        onChange={e => setNewCatDesc(e.target.value)}
-                                        className="w-full px-3 py-1.5 bg-surface border border-hairline rounded-lg text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={handleAddCategory}
-                                        disabled={submittingCat || !newCatName.trim()}
-                                        className="w-full py-1.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-lg text-xs font-black uppercase tracking-wider shadow-sm flex items-center justify-center gap-1"
-                                    >
-                                        {submittingCat ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
-                                        Save Category
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="flex gap-2">
-                                    <select
-                                        value={categoryId}
-                                        onChange={e => setCategoryId(e.target.value)}
-                                        required
-                                        className="flex-1 px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
-                                    >
-                                        <option value="">Select Category</option>
-                                        {currentCategories.map(cat => (
-                                            <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                        ))}
-                                    </select>
-                                    {categoryId && (
-                                        <button
-                                            type="button"
-                                            onClick={() => handleDeleteCategory(categoryId)}
-                                            className="px-3 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 hover:border-rose-300 rounded-xl transition-colors focus-ring"
-                                            title="Delete selected category"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Payment Source */}
-                        <div>
-                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Payment Source (Post to Cash/Bank Book)</label>
-                            <div className="flex gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setPaymentSource('cash')}
-                                    className={`flex-1 py-2.5 text-xs font-black uppercase tracking-wider border rounded-xl transition-all focus-ring ${paymentSource === 'cash' ? 'bg-[#ff5a00]/10 border-[#ff5a00]/30 text-[#ff5a00] shadow-sm' : 'bg-surface border-hairline text-ink-subtle hover:text-ink hover:bg-surface-muted/50'}`}
-                                >
-                                    Cash Book
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setPaymentSource('bank')}
-                                    className={`flex-1 py-2.5 text-xs font-black uppercase tracking-wider border rounded-xl transition-all focus-ring ${paymentSource === 'bank' ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm' : 'bg-surface border-hairline text-ink-subtle hover:text-ink hover:bg-surface-muted/50'}`}
-                                >
-                                    Bank Book
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Bank Name (conditional) */}
-                        {paymentSource === 'bank' && (
-                            <div>
-                                <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Bank Name</label>
-                                <select
-                                    value={bankName}
-                                    onChange={e => setBankName(e.target.value)}
-                                    required
-                                    className="w-full px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
-                                >
-                                    <option value="">Select Bank Account</option>
-                                    {bankAccounts.map(b => (
-                                        <option key={b.id} value={b.name}>{b.name} ({b.account_number})</option>
-                                    ))}
-                                    {bankAccounts.length === 0 && (
-                                        <option value="General Bank">General Bank</option>
-                                    )}
-                                </select>
-                            </div>
-                        )}
-
-                        {/* Vendor (Expenses only) */}
-                        {activeTab === 'expense' && (
-                            <div>
-                                <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Supplier / Vendor (Optional)</label>
-                                <select
-                                    value={vendorSelection}
-                                    onChange={e => {
-                                        setVendorSelection(e.target.value)
-                                        if (e.target.value !== 'custom') setVendorName('')
-                                    }}
-                                    className="w-full px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
-                                >
-                                    <option value="">No Supplier</option>
-                                    {suppliers.map(s => (
-                                        <option key={s.id} value={s.name}>{s.name}</option>
-                                    ))}
-                                    <option value="custom">Custom Vendor...</option>
-                                </select>
-
-                                {vendorSelection === 'custom' && (
-                                    <div className="relative mt-2 animate-in slide-in-from-top-1 duration-150">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-ink-subtle">
-                                            <User size={14} />
-                                        </span>
-                                        <input
-                                            type="text"
-                                            placeholder="Enter vendor name..."
-                                            value={vendorName}
-                                            onChange={e => setVendorName(e.target.value)}
-                                            required
-                                            className="w-full pl-9 pr-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Description */}
-                        <div>
-                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Description</label>
-                            <textarea
-                                placeholder="Details of this transaction..."
-                                value={description}
-                                onChange={e => setDescription(e.target.value)}
-                                required
-                                rows={3}
-                                className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all resize-none"
-                            />
-                        </div>
-
-                        {/* Submit Button */}
-                        <button
-                            type="submit"
-                            disabled={submitting}
-                            className={`w-full py-3 rounded-xl text-white font-black uppercase tracking-wider shadow-sm flex items-center justify-center gap-2 focus-ring transition-colors ${activeTab === 'income' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'} disabled:opacity-50`}
-                        >
-                            {submitting ? <Loader2 size={16} className="animate-spin" /> : activeTab === 'income' ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
-                            Log {activeTab === 'income' ? 'Income' : 'Expense'}
-                        </button>
-                    </form>
-                </div>
-
-                {/* Right Side - Logs and History */}
-                <div className="lg:col-span-8 bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm overflow-hidden flex flex-col">
+                {/* Transaction Logs and History */}
+                <div className="lg:col-span-12 bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm overflow-hidden flex flex-col">
                     <div className="border-b border-hairline bg-surface-muted/30 p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
                         <p className="text-xs font-black uppercase tracking-wider text-ink">
                             TRANSACTION LOGS ({listTab === 'income' ? filteredIncomeEntries.length : filteredExpenses.length})
@@ -612,27 +548,29 @@ export default function IncomeExpensesManager({
                         <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
                             {/* Category Filter */}
                             {listTab === 'income' ? (
-                                <select
+                                <Select
                                     value={selectedIncomeCat}
                                     onChange={e => setSelectedIncomeCat(e.target.value)}
+                                    searchable
                                     className="px-3 py-1.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)] w-full sm:w-44"
                                 >
                                     <option value="all">All Income Categories</option>
-                                    {incomeCategories.map(cat => (
-                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                    {incomeCategoryOptions.map(({ category, label }) => (
+                                        <option key={category.id} value={category.id}>{label}</option>
                                     ))}
-                                </select>
+                                </Select>
                             ) : (
-                                <select
+                                <Select
                                     value={selectedExpenseCat}
                                     onChange={e => setSelectedExpenseCat(e.target.value)}
+                                    searchable
                                     className="px-3 py-1.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)] w-full sm:w-44"
                                 >
                                     <option value="all">All Expense Categories</option>
-                                    {expenseCategories.map(cat => (
-                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                    {expenseCategoryOptions.map(({ category, label }) => (
+                                        <option key={category.id} value={category.id}>{label}</option>
                                     ))}
-                                </select>
+                                </Select>
                             )}
 
                             {/* Search Input */}
@@ -648,6 +586,23 @@ export default function IncomeExpensesManager({
                                     className="w-full pl-9 pr-4 py-1.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)]"
                                 />
                             </div>
+
+                            {reportRows.length > 0 && (
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={handleExportCsv}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-muted/40 text-ink font-bold rounded-xl text-[10px] uppercase tracking-wider border border-hairline transition-all shrink-0"
+                                    >
+                                        <Download size={13} /> Export
+                                    </button>
+                                    <button
+                                        onClick={() => printRef.current?.print()}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-muted/40 text-ink font-bold rounded-xl text-[10px] uppercase tracking-wider border border-hairline transition-all shrink-0"
+                                    >
+                                        <Printer size={13} /> Print
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -679,7 +634,7 @@ export default function IncomeExpensesManager({
                                             <tr key={item.id} className={`hover:bg-brand-50/5 transition-colors ${idx % 2 === 0 ? 'bg-surface' : 'bg-surface-muted/10'}`}>
                                                 <td className="px-4 py-3 text-center border-r border-hairline font-black text-ink-muted">{idx + 1}</td>
                                                 <td className="px-4 py-3 border-r border-hairline text-ink-subtle font-bold">
-                                                    {new Date(item.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                    {formatDate(item.created_at)}
                                                 </td>
                                                 <td className="px-4 py-3 border-r border-hairline">
                                                     <span className="inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase border border-emerald-100 bg-emerald-50 text-emerald-700">
@@ -693,7 +648,7 @@ export default function IncomeExpensesManager({
                                                         {item.bank_accounts ? item.bank_accounts.name : 'Cash'}
                                                     </span>
                                                 </td>
-                                                <td className="px-4 py-3 border-r border-hairline font-bold text-ink">{item.description}</td>
+                                                <td className="px-4 py-3 border-r border-hairline font-bold text-ink">{parseExpenseDescription(item.description).text_desc}</td>
                                                 <td className="px-4 py-3 text-right font-black border-r border-hairline text-emerald-600 text-sm whitespace-nowrap">
                                                     {formatCurrency(item.amount)}
                                                 </td>
@@ -736,7 +691,7 @@ export default function IncomeExpensesManager({
                                             <tr key={item.id} className={`hover:bg-brand-50/5 transition-colors ${idx % 2 === 0 ? 'bg-surface' : 'bg-surface-muted/10'}`}>
                                                 <td className="px-4 py-3 text-center border-r border-hairline font-black text-ink-muted">{idx + 1}</td>
                                                 <td className="px-4 py-3 border-r border-hairline whitespace-nowrap text-ink-subtle font-bold">
-                                                    {new Date(item.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                    {formatDate(item.created_at)}
                                                 </td>
                                                 <td className="px-4 py-3 border-r border-hairline">
                                                     <span className="inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase border border-rose-100 bg-rose-50 text-rose-700">
@@ -753,7 +708,7 @@ export default function IncomeExpensesManager({
                                                         {item.bank_accounts ? item.bank_accounts.name : 'Cash'}
                                                     </span>
                                                 </td>
-                                                <td className="px-4 py-3 border-r border-hairline font-bold text-ink">{item.description}</td>
+                                                <td className="px-4 py-3 border-r border-hairline font-bold text-ink">{parseExpenseDescription(item.description).text_desc}</td>
                                                 <td className="px-4 py-3 text-right font-black border-r border-hairline text-rose-600 text-sm whitespace-nowrap">
                                                     {formatCurrency(item.amount)}
                                                 </td>
@@ -776,6 +731,13 @@ export default function IncomeExpensesManager({
                 </div>
 
             </div>
+
+            <PrintableReport
+                ref={printRef}
+                title={listTab === 'income' ? 'Income Log' : 'Expense Log'}
+                columns={reportColumns}
+                rows={reportRows}
+            />
         </div>
     )
 }

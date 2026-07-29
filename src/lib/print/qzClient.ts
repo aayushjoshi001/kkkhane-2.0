@@ -16,6 +16,11 @@ import { bytesToBase64 } from './escpos'
 
 export type QzStatus = 'connected' | 'not-running' | 'not-trusted' | 'print-failed'
 
+// Where to send bytes: a named OS printer (USB, per-device) or a raw network
+// socket (host:port, restaurant-level config). QZ Tray still does the actual
+// send in both cases — the cloud server can't reach a LAN printer directly.
+export type PrinterTarget = string | { host: string; port: number }
+
 export interface QzResult {
     ok: boolean
     status: QzStatus
@@ -24,10 +29,46 @@ export interface QzResult {
 
 let qzModule: typeof import('qz-tray').default | null = null
 
+// Wire qz-tray's certificate + signature promises to our server endpoints so
+// QZ Tray trusts this site silently instead of prompting Allow/Block on every
+// print. The private key stays server-side (/api/qz/sign); the browser only
+// ever fetches the public cert and per-request signatures.
+//
+// Fully silent printing also needs the matching public certificate installed
+// as `override.crt` in the QZ Tray desktop app's install dir — without it QZ
+// still recognises the signature but shows its trust prompt once. If the
+// signing env vars aren't set, /api/qz/cert 204s: the cert promise rejects and
+// qz-tray falls back to unsigned mode (one-off prompt), same as before.
+function configureSecurity(qz: typeof import('qz-tray').default) {
+    if (typeof qz.security.setSignatureAlgorithm === 'function') {
+        qz.security.setSignatureAlgorithm('SHA512')
+    }
+    qz.security.setCertificatePromise((resolve: (v: string) => void, reject: (e?: unknown) => void) => {
+        fetch('/api/qz/cert', { cache: 'no-store' })
+            .then((r) => {
+                if (!r.ok) { reject(); return null }
+                return r.text()
+            })
+            .then((text) => { if (text) resolve(text); else reject() })
+            .catch(reject)
+    })
+    qz.security.setSignaturePromise((toSign: string) => (resolve: (v: string) => void, reject: (e?: unknown) => void) => {
+        fetch('/api/qz/sign', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ request: toSign }),
+        })
+            .then((r) => r.text())
+            .then(resolve)
+            .catch(reject)
+    })
+}
+
 async function getQz() {
     if (qzModule) return qzModule
     const mod = await import('qz-tray')
     qzModule = mod.default
+    configureSecurity(qzModule)
     return qzModule
 }
 
@@ -41,7 +82,10 @@ function classifyError(err: unknown, fallback: QzStatus): QzStatus {
 // hangs instead of failing outright (rare, but possible on a misconfigured
 // network), this stops a caller (e.g. a cashier settling a bill) from
 // waiting forever on a connection that will never resolve either way.
-const CONNECT_TIMEOUT_MS = 5000
+// A real, running QZ Tray agent answers in well under a second, so this only
+// needs to be long enough to absorb that — not long enough to make settling
+// a bill visibly hang when the till simply doesn't have QZ Tray open.
+const CONNECT_TIMEOUT_MS = 1500
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
     return new Promise((resolve, reject) => {
@@ -75,17 +119,26 @@ export async function listPrinters(): Promise<string[]> {
     return Array.isArray(found) ? found : [found]
 }
 
-/** Sends raw ESC/POS bytes to a named printer. */
-export async function printRawEscPos(printerName: string, bytes: Uint8Array): Promise<QzResult> {
+/**
+ * Sends raw ESC/POS bytes to a printer. `target` is either a named OS printer
+ * (USB) or a `{ host, port }` network printer — QZ Tray raw-sockets to the
+ * latter over TCP (port 9100 for most thermal printers). `copies` reprints the
+ * same bytes N times (a second KOT for the line, etc.).
+ */
+export async function printRawEscPos(target: PrinterTarget, bytes: Uint8Array, copies = 1): Promise<QzResult> {
     const connect = await ensureConnected()
     if (!connect.ok) return connect
 
     try {
         const qz = await getQz()
-        const config = qz.configs.create(printerName)
-        await qz.print(config, [
-            { type: 'raw', format: 'command', flavor: 'base64', data: bytesToBase64(bytes) },
-        ])
+        const config = typeof target === 'string'
+            ? qz.configs.create(target)
+            : qz.configs.create({ host: target.host, port: target.port })
+        const data = [{ type: 'raw' as const, format: 'command' as const, flavor: 'base64' as const, data: bytesToBase64(bytes) }]
+        const runs = Math.min(9, Math.max(1, Math.round(copies)))
+        for (let i = 0; i < runs; i++) {
+            await qz.print(config, data)
+        }
         return { ok: true, status: 'connected' }
     } catch (err) {
         const status = classifyError(err, 'print-failed')

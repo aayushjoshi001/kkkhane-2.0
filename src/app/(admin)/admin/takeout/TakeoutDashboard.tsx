@@ -11,6 +11,8 @@ import { useCurrency } from '@/lib/contexts/FeatureContext'
 import type { TakeoutOrder } from '@/types/database'
 import Image from 'next/image'
 import { fetchTakeoutOrders } from '@/lib/swr-fetchers'
+import { useConfirmStore } from '@/lib/stores/confirm'
+import Select from '@/components/ui/Select'
 
 const STATUS_COLORS: Record<string, string> = {
     placed: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -34,6 +36,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantId, restaura
     restaurantSlug: string
     restaurantName: string
 }) {
+    const { confirm } = useConfirmStore()
     const { data: orders = initialOrders, mutate } = useSWR(['takeout_orders', restaurantId], () => fetchTakeoutOrders(restaurantId), { fallbackData: initialOrders, refreshInterval: 15000 })
     const money = useCurrency()
     const [searchQuery, setSearchQuery] = useState('')
@@ -88,7 +91,8 @@ export default function TakeoutDashboard({ initialOrders, restaurantId, restaura
     }
 
     async function cancel(order: TakeoutOrder) {
-        if (!confirm('Cancel this takeout order?')) return
+        const ok = await confirm({ title: 'Cancel this takeout order?', message: 'This action cannot be undone.', confirmText: 'Cancel', isDestructive: true })
+        if (!ok) return
         const result = await updateTakeoutStatusAction(order.id, 'cancelled')
         if (result.error) { toast.error(result.error); return }
         mutate()
@@ -214,7 +218,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantId, restaura
                         className="w-full pl-10 pr-4 py-2.5 rounded-[var(--r-md)] border border-hairline text-sm bg-surface text-ink outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
                     />
                 </div>
-                <select
+                <Select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
                     className="rounded-[var(--r-md)] border border-hairline bg-surface px-4 py-2.5 text-sm font-bold text-ink outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 w-full sm:w-48 capitalize shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
@@ -223,7 +227,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantId, restaura
                     {Object.keys(STATUS_COLORS).map(s => (
                         <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
                     ))}
-                </select>
+                </Select>
             </div>
 
             <div className="space-y-4 max-h-[calc(100vh-280px)] overflow-y-auto pr-2" ref={parentRef} style={{ scrollbarWidth: 'thin' }}>

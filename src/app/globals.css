@@ -194,6 +194,10 @@ input[type='number'] { -moz-appearance: textfield; }
 }
 
 /* ─── Base reset & typography ───────────────────────────── */
+html, body {
+    max-width: 100%;
+    overflow-x: hidden;
+}
 body {
     margin: 0;
     background: var(--surface);
@@ -230,4 +234,14 @@ button.cursor-progress, button[aria-busy="true"], button[data-loading="true"] { 
         transition-duration: .001ms !important;
         scroll-behavior: auto !important;
     }
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+/* Hide scrollbar for IE, Edge and Firefox */
+.no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
 }

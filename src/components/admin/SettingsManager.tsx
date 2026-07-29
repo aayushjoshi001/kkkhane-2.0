@@ -1,14 +1,17 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { Save, Store, Mail, Phone, MapPin, Building, Percent, Check, Loader2, QrCode, Shield, ToggleLeft, ToggleRight, Upload, X, Bell, Play, Clock } from 'lucide-react'
+import { Save, Store, Mail, Phone, MapPin, Building, Percent, Check, Loader2, Shield, ToggleLeft, ToggleRight, Upload, X, Bell, Play, Clock, Crown } from 'lucide-react'
 import { updateRestaurantSettingsAction, updateBusinessHoursAction } from '@/app/(admin)/admin/settings/actions'
 import { updateFeaturesAction } from '@/lib/features'
 import { toast } from 'react-hot-toast'
 import type { Settings, BusinessHours, DayHours } from '@/types/database'
 import { unlockAudio, setCustomNotificationSound, playNewOrder } from '@/lib/audio'
 import { ONBOARDING_BUSINESS_TYPES, getBusinessMode } from '@/lib/businessMode'
+import QrPaymentManager, { type QrCodeEntry } from './QrPaymentManager'
+import Select from '@/components/ui/Select'
 
 type RestaurantSettings = {
     id: string
@@ -22,13 +25,57 @@ type RestaurantSettings = {
     currency_symbol: string | null
     pan_number: string | null
     vat_registered: boolean
-    payment_qr_url: string | null
-    payment_qr_label: string | null
+    vat_number: string | null
+    ird_api_url: string | null
+    ird_api_user: string | null
+    ird_api_password: string | null
     allowed_ips: string | null
     business_type: string | null
 }
 
 type Features = Settings['features_v2']
+
+const CURRENCY_MAP: Record<string, string> = {
+    NPR: 'Rs.',
+    USD: '$',
+    EUR: '€',
+    INR: '₹',
+    GBP: '£',
+    JPY: '¥',
+    AUD: '$',
+    CAD: '$',
+    SGD: '$',
+    NZD: '$',
+    HKD: '$',
+    CNY: '¥',
+    AED: 'د.إ',
+    SAR: 'ر.س',
+    QAR: 'ر.ق',
+    KWD: 'د.ك',
+    BHD: '.د.ب',
+    OMR: 'ر.ع.',
+    MYR: 'RM',
+    THB: '฿',
+    KRW: '₩',
+    RUB: '₽',
+}
+
+const SYMBOL_MAP: Record<string, string> = {
+    'Rs.': 'NPR',
+    'Rs': 'NPR',
+    '$': 'USD',
+    '€': 'EUR',
+    '₹': 'INR',
+    '£': 'GBP',
+    '¥': 'JPY',
+    'د.إ': 'AED',
+    'ر.س': 'SAR',
+    'ر.ق': 'QAR',
+    'RM': 'MYR',
+    '฿': 'THB',
+    '₩': 'KRW',
+    '₽': 'RUB',
+}
 
 const WEEKDAYS: { key: string; label: string }[] = [
     { key: 'monday', label: 'Monday' },
@@ -52,46 +99,93 @@ export default function SettingsManager({
     initialRestaurant,
     initialFeatures,
     initialBusinessHours,
-    canEdit
+    bankAccounts,
+    initialQrCodes,
+    canEdit,
+    isSuperAdmin = false,
 }: {
     initialRestaurant: RestaurantSettings
     initialFeatures: Features | null
     initialBusinessHours: BusinessHours | null
+    bankAccounts: any[]
+    initialQrCodes: QrCodeEntry[]
     canEdit: boolean
+    isSuperAdmin?: boolean
 }) {
+    const router = useRouter()
     const [formData, setFormData] = useState<RestaurantSettings>(initialRestaurant)
-    const [features, setFeatures] = useState<Features>(initialFeatures || {
-        loyaltyEnabled: false,
-        promosEnabled: true,
-        takeoutEnabled: false,
-        multiLanguageEnabled: false,
-        serviceRequestsEnabled: true,
-        splitBillingEnabled: true,
-        dynamicPricingEnabled: false,
-        ingredientTrackingEnabled: false,
-        staffShiftsEnabled: false,
-        defaultTaxRate: 13.0,
-        currency: 'NPR',
-        currencySymbol: 'Rs.',
-        nepalPayEnabled: false,
-        vatEnabled: false,
-        phoneOtpEnabled: false,
-        bsDateEnabled: false,
-        feedbackEnabled: true,
-        dineInEnabled: true,
+    const [features, setFeatures] = useState<Features>(() => {
+        const base = initialFeatures || {}
+        return {
+            loyaltyEnabled: false,
+            promosEnabled: true,
+            takeoutEnabled: false,
+            multiLanguageEnabled: false,
+            serviceRequestsEnabled: true,
+            splitBillingEnabled: true,
+            dynamicPricingEnabled: false,
+            ingredientTrackingEnabled: false,
+            staffShiftsEnabled: false,
+            defaultTaxRate: 13.0,
+            currency: 'NPR',
+            currencySymbol: 'Rs.',
+            nepalPayEnabled: false,
+            vatEnabled: false,
+            phoneOtpEnabled: false,
+            bsDateEnabled: false,
+            feedbackEnabled: true,
+            dineInEnabled: true,
+            printInvoiceEnabled: true,
+            generateInvoiceEnabled: true,
+            manualEntryEnabled: true,
+            printBillEnabled: true,
+            showInvoiceEnabled: true,
+            kotEnabled: false,
+            kdsEnabled: true,
+            roomServiceChargeEnabled: false,
+            roomServiceChargeRooms: [],
+            ...(base as any)
+        } as Features
     })
+    const [rooms, setRooms] = useState<{ id: string; room_number: string }[]>([])
+
+    useEffect(() => {
+        // Fetch active rooms for this restaurant
+        async function loadRooms() {
+            const { createClient } = await import('@/lib/supabase/client')
+            const supabase = createClient()
+            const { data } = await supabase
+                .from('rooms')
+                .select('id, room_number')
+                .eq('restaurant_id', formData.id)
+                .eq('is_active', true)
+                .order('room_number', { ascending: true })
+            if (data) {
+                // Natural sort of room numbers
+                const sorted = [...data].sort((a, b) => {
+                    const aNum = parseInt(a.room_number.replace(/\D/g, ''), 10)
+                    const bNum = parseInt(b.room_number.replace(/\D/g, ''), 10)
+                    if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum
+                    return a.room_number.localeCompare(b.room_number, undefined, { numeric: true, sensitivity: 'base' })
+                })
+                setRooms(sorted)
+            }
+        }
+        loadRooms()
+    }, [formData.id])
+
     const [taxRateStr, setTaxRateStr] = useState((initialRestaurant.tax_rate ?? 13).toString())
+    const [scRateStr, setScRateStr] = useState((initialFeatures?.serviceChargeRate ?? 10).toString())
     const [businessHours, setBusinessHours] = useState<BusinessHours>(() => buildBusinessHours(initialBusinessHours))
 
     const updateDayHours = (day: string, patch: Partial<DayHours>) => {
         setBusinessHours(prev => ({ ...prev, [day]: { ...prev[day], ...patch } }))
     }
-    const [uploadingField, setUploadingField] = useState<'logo_url' | 'payment_qr_url' | 'notification_sound' | null>(null)
+    const [uploadingField, setUploadingField] = useState<'logo_url' | 'notification_sound' | null>(null)
     const logoInputRef = useRef<HTMLInputElement>(null)
-    const qrInputRef = useRef<HTMLInputElement>(null)
     const soundInputRef = useRef<HTMLInputElement>(null)
 
-    const handleFileUpload = async (file: File, field: 'logo_url' | 'payment_qr_url') => {
+    const handleFileUpload = async (file: File, field: 'logo_url') => {
         setUploadingField(field)
         const fd = new FormData()
         fd.append('file', file)
@@ -180,7 +274,8 @@ export default function SettingsManager({
         setIsSubmitting(true)
         setIsSuccess(false)
 
-        const finalTaxRate = taxRateStr === '' ? 0 : Number.parseFloat(taxRateStr)
+        const finalTaxRate = taxRateStr === '' ? 0 : Number.parseFloat(taxRateStr) || 0
+        const finalScRate = scRateStr === '' ? 0 : Number.parseFloat(scRateStr) || 0
 
         // Save restaurant, features and business hours in parallel
         const [resRestaurant, resFeatures, resHours] = await Promise.all([
@@ -190,10 +285,8 @@ export default function SettingsManager({
                 contact_email: formData.contact_email,
                 address: formData.address,
                 logo_url: formData.logo_url,
-                pan_number: formData.pan_number,
-                vat_registered: formData.vat_registered,
-                payment_qr_url: formData.payment_qr_url,
-                payment_qr_label: formData.payment_qr_label,
+                pan_number: features.irdSyncEnabled ? formData.pan_number : null,
+                vat_registered: features.irdSyncEnabled ? formData.vat_registered : false,
                 allowed_ips: formData.allowed_ips,
                 business_type: formData.business_type,
             }),
@@ -201,6 +294,10 @@ export default function SettingsManager({
                 defaultTaxRate: finalTaxRate,
                 currency: features.currency,
                 currencySymbol: features.currencySymbol,
+                serviceChargeEnabled: !!features.serviceChargeEnabled,
+                serviceChargeRate: finalScRate,
+                vatEnabled: features.irdSyncEnabled ? features.vatEnabled : false,
+                nepalPayEnabled: features.irdSyncEnabled ? features.nepalPayEnabled : false,
             }),
             updateBusinessHoursAction(formData.id, businessHours),
         ])
@@ -216,17 +313,91 @@ export default function SettingsManager({
         setIsSubmitting(false)
     }
 
+    const toggleRoomScEnabled = async () => {
+        if (!canEdit) return
+        const newVal = !features.roomServiceChargeEnabled
+        const updated = { ...features, roomServiceChargeEnabled: newVal }
+        setFeatures(updated)
+        setIsSavingFeatures(true)
+        const res = await updateFeaturesAction(formData.id, { roomServiceChargeEnabled: newVal })
+        if (!res.success) {
+            setFeatures(features)
+            toast.error('Failed to update service charge toggle')
+        } else {
+            toast.success(`Room service charge ${newVal ? 'enabled' : 'disabled'}`)
+        }
+        setIsSavingFeatures(false)
+    }
+
+    const toggleRoomScForRoom = async (roomId: string) => {
+        if (!canEdit) return
+        const currentRooms = Array.isArray(features.roomServiceChargeRooms) ? features.roomServiceChargeRooms : []
+        const newRooms = currentRooms.includes(roomId)
+            ? currentRooms.filter(id => id !== roomId)
+            : [...currentRooms, roomId]
+        const updated = { ...features, roomServiceChargeRooms: newRooms }
+        setFeatures(updated)
+        setIsSavingFeatures(true)
+        const res = await updateFeaturesAction(formData.id, { roomServiceChargeRooms: newRooms })
+        if (!res.success) {
+            setFeatures(features)
+            toast.error('Failed to update room selection')
+        }
+        setIsSavingFeatures(false)
+    }
+
+    const selectAllRoomsSc = async () => {
+        if (!canEdit) return
+        const allRoomIds = rooms.map(r => r.id)
+        const updated = { ...features, roomServiceChargeRooms: allRoomIds }
+        setFeatures(updated)
+        setIsSavingFeatures(true)
+        const res = await updateFeaturesAction(formData.id, { roomServiceChargeRooms: allRoomIds })
+        if (!res.success) {
+            setFeatures(features)
+            toast.error('Failed to select all rooms')
+        } else {
+            toast.success('All rooms selected')
+        }
+        setIsSavingFeatures(false)
+    }
+
+    const deselectAllRoomsSc = async () => {
+        if (!canEdit) return
+        const updated = { ...features, roomServiceChargeRooms: [] }
+        setFeatures(updated)
+        setIsSavingFeatures(true)
+        const res = await updateFeaturesAction(formData.id, { roomServiceChargeRooms: [] })
+        if (!res.success) {
+            setFeatures(features)
+            toast.error('Failed to deselect rooms')
+        } else {
+            toast.success('All rooms deselected')
+        }
+        setIsSavingFeatures(false)
+    }
+
     const toggleFeature = async (key: keyof Features) => {
         if (!canEdit) return
         const newValue = !features[key]
-        const updated = { ...features, [key]: newValue }
+        
+        let updatePayload: Partial<Features> = { [key]: newValue }
+        if (key === 'kotEnabled' && newValue) {
+            updatePayload.kdsEnabled = false
+        } else if (key === 'kdsEnabled' && newValue) {
+            updatePayload.kotEnabled = false
+        }
+
+        const updated = { ...features, ...updatePayload }
         setFeatures(updated)
 
         setIsSavingFeatures(true)
-        const res = await updateFeaturesAction(formData.id, { [key]: newValue })
+        const res = await updateFeaturesAction(formData.id, updatePayload)
         if (res.error) {
             toast.error('Failed to save feature toggle')
             setFeatures(features) // revert
+        } else {
+            router.refresh() // Re-fetch server layout so FeatureProvider context updates immediately
         }
         setIsSavingFeatures(false)
     }
@@ -255,6 +426,26 @@ export default function SettingsManager({
         if (quickServeItems.some(i => i.toLowerCase() === name.toLowerCase())) { setNewQuickItem(''); return }
         saveQuickItems([...quickServeItems, name])
         setNewQuickItem('')
+    }
+
+    // Reception phone the in-room "Call for Service" button dials. Saved on blur.
+    const [receptionPhoneStr, setReceptionPhoneStr] = useState(
+        (features as { receptionPhone?: string | null }).receptionPhone ?? ''
+    )
+    const saveReceptionPhone = async () => {
+        if (!canEdit) return
+        const val = receptionPhoneStr.trim() || null
+        const current = (features as { receptionPhone?: string | null }).receptionPhone ?? null
+        if (val === current) return
+        const prev = features
+        setFeatures({ ...features, receptionPhone: val })
+        setIsSavingFeatures(true)
+        const res = await updateFeaturesAction(formData.id, { receptionPhone: val } as Partial<Features>)
+        if (res.error) {
+            toast.error('Failed to save reception phone')
+            setFeatures(prev)
+        }
+        setIsSavingFeatures(false)
     }
 
     return (
@@ -311,10 +502,9 @@ export default function SettingsManager({
                                 <Store size={14} className="text-brand-500" />
                                 Business Type
                             </label>
-                            <select
-                                name="business_type"
+                            <Select
                                 value={formData.business_type || ''}
-                                onChange={handleChange}
+                                onChange={e => setFormData({ ...formData, business_type: e.target.value })}
                                 disabled={!canEdit || isSubmitting}
                                 className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
                             >
@@ -322,7 +512,7 @@ export default function SettingsManager({
                                 {ONBOARDING_BUSINESS_TYPES.map(type => (
                                     <option key={type} value={type}>{type}</option>
                                 ))}
-                            </select>
+                            </Select>
                             {getBusinessMode(formData.business_type) !== getBusinessMode(initialRestaurant.business_type) && (
                                 <p className="mt-2 text-[11px] font-bold text-amber-600">
                                     Changing this won&apos;t automatically update dine-in/takeout defaults below — adjust those directly if needed.
@@ -469,7 +659,7 @@ export default function SettingsManager({
                                     <span className="text-ink-subtle text-sm font-bold">%</span>
                                 </div>
                             </div>
-                            <p className="mt-2 text-[11px] font-bold text-ink-muted uppercase tracking-wider">Applied automatically to all menu item purchases.</p>
+                            <p className="mt-2 text-[11px] font-bold text-ink-muted uppercase tracking-wider">Applied automatically to all menu item purchases (0% to disable).</p>
                         </div>
                         <div>
                             <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Currency Code *</label>
@@ -479,7 +669,15 @@ export default function SettingsManager({
                                 value={features.currency || ''}
                                 onChange={e => {
                                     const value = e.target.value
-                                    setFeatures(prev => ({ ...prev, currency: value }))
+                                    setFeatures(prev => {
+                                        const code = value.toUpperCase()
+                                        const guessedSymbol = CURRENCY_MAP[code]
+                                        return {
+                                            ...prev,
+                                            currency: value,
+                                            ...(guessedSymbol ? { currencySymbol: guessedSymbol } : {})
+                                        }
+                                    })
                                 }}
                                 disabled={!canEdit || isSubmitting}
                                 maxLength={3}
@@ -500,13 +698,69 @@ export default function SettingsManager({
                                 value={features.currencySymbol || ''}
                                 onChange={e => {
                                     const value = e.target.value
-                                    setFeatures(prev => ({ ...prev, currencySymbol: value }))
+                                    setFeatures(prev => {
+                                        const guessedCode = SYMBOL_MAP[value]
+                                        return {
+                                            ...prev,
+                                            currencySymbol: value,
+                                            ...(guessedCode ? { currency: guessedCode } : {})
+                                        }
+                                    })
                                 }}
                                 disabled={!canEdit || isSubmitting}
                                 maxLength={5}
                                 className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
                                 placeholder="Rs."
                             />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-hairline">
+                        <div>
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Standard Service Charge</label>
+                            <button
+                                type="button"
+                                onClick={() => setFeatures(prev => ({ ...prev, serviceChargeEnabled: !prev.serviceChargeEnabled }))}
+                                disabled={!canEdit || isSubmitting}
+                                className={`w-full flex items-center justify-between p-3 rounded-[var(--r-md)] border text-xs font-bold transition ${
+                                    features.serviceChargeEnabled
+                                        ? 'bg-emerald-50/20 border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
+                                        : 'bg-surface border-hairline text-ink-muted hover:bg-surface-muted/50'
+                                }`}
+                            >
+                                <span>General Service Charge ({features.serviceChargeEnabled ? 'Enabled' : 'Disabled'})</span>
+                                {features.serviceChargeEnabled ? (
+                                    <ToggleRight size={22} className="text-emerald-500 shrink-0" />
+                                ) : (
+                                    <ToggleLeft size={22} className="text-ink-muted shrink-0" />
+                                )}
+                            </button>
+                            <p className="mt-2 text-[11px] font-bold text-ink-muted uppercase tracking-wider">Applies service charge to standard dine-in and takeout orders.</p>
+                        </div>
+
+                        <div>
+                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Service Charge Rate (%)</label>
+                            <div className="relative bg-surface border border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus-within:ring-4 focus-within:ring-brand-500/10 focus-within:border-brand-500 transition-all overflow-hidden">
+                                <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={scRateStr}
+                                    onChange={e => {
+                                        const value = e.target.value
+                                        if (/^(\d+(\.\d*)?)?$/.test(value)) {
+                                            setScRateStr(value)
+                                            setFeatures(prev => ({ ...prev, serviceChargeRate: parseFloat(value) || 0 }))
+                                        }
+                                    }}
+                                    disabled={!canEdit || isSubmitting || !features.serviceChargeEnabled}
+                                    className="w-full py-2.5 pl-4 pr-10 border-none bg-transparent text-sm font-bold text-ink focus:ring-0 tabular-nums disabled:opacity-50"
+                                    placeholder="e.g. 10"
+                                />
+                                <div className="absolute inset-y-0 right-0 flex items-center pointer-events-none pr-4">
+                                    <span className="text-ink-subtle text-sm font-bold">%</span>
+                                </div>
+                            </div>
+                            <p className="mt-2 text-[11px] font-bold text-ink-muted uppercase tracking-wider">Percentage added to subtotal (standard is 10%).</p>
                         </div>
                     </div>
                 </div>
@@ -568,130 +822,129 @@ export default function SettingsManager({
             </div>
 
             {/* Nepal / IRD Compliance */}
-            <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden mt-6">
-                <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 shadow-[inset_0_2px_4px_rgba(251,99,3,0.05)]">
-                        <Shield size={20} />
-                    </div>
-                    <div>
-                        <h3 className="text-h3 font-extrabold text-ink">Tax & Compliance (Nepal)</h3>
-                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">PAN/VAT registration and IRD invoice settings</p>
-                    </div>
-                </div>
-
-                <div className="p-6 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">PAN Number</label>
-                            <input
-                                type="text"
-                                name="pan_number"
-                                value={formData.pan_number || ''}
-                                onChange={handleChange}
-                                disabled={!canEdit || isSubmitting}
-                                maxLength={9}
-                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50 tabular-nums"
-                                placeholder="123456789"
-                            />
-                            <p className="mt-2 text-[11px] font-bold text-ink-muted uppercase tracking-wider">9-digit IRD PAN number for invoicing</p>
+            {features.irdSyncEnabled && (
+                <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden mt-6">
+                    <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 shadow-[inset_0_2px_4px_rgba(251,99,3,0.05)]">
+                            <Shield size={20} />
                         </div>
-                        <div className="flex items-center gap-4 pt-6">
-                            <label className="flex items-center gap-3 cursor-pointer select-none">
-                                <input
-                                    type="checkbox"
-                                    name="vat_registered"
-                                    checked={formData.vat_registered || false}
-                                    onChange={handleCheckboxChange}
-                                    disabled={!canEdit || isSubmitting}
-                                    className="h-5 w-5 rounded-[4px] border-hairline text-brand-500 focus:ring-brand-500/20 bg-surface shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-colors disabled:opacity-50"
-                                />
-                                <div>
-                                    <span className="text-sm font-bold text-ink block">VAT Registered</span>
-                                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Enable 13% VAT on invoices</p>
-                                </div>
-                            </label>
+                        <div>
+                            <h3 className="text-h3 font-extrabold text-ink">Tax & Compliance (Nepal)</h3>
+                            <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">PAN/VAT registration and IRD invoice settings</p>
                         </div>
                     </div>
-                </div>
-            </div>
 
-            {/* QR Payment Setup */}
-            <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden mt-6">
-                <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 shadow-[inset_0_2px_4px_rgba(251,99,3,0.05)]">
-                        <QrCode size={20} />
-                    </div>
-                    <div>
-                        <h3 className="text-h3 font-extrabold text-ink">QR Payment</h3>
-                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Upload your eSewa/Khalti/Fonepay QR for customers</p>
-                    </div>
-                </div>
-
-                <div className="p-6 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">QR Code Image</label>
-                            <div className="space-y-3">
-                                {canEdit && (
-                                    <label className={`flex items-center gap-2 px-4 py-2.5 border border-dashed rounded-[var(--r-md)] cursor-pointer transition-all focus-ring ${uploadingField === 'payment_qr_url' ? 'border-brand-500/40 bg-brand-50' : 'border-hairline bg-surface hover:border-brand-500 hover:bg-surface-muted'}`}>
-                                        {uploadingField === 'payment_qr_url'
-                                            ? <Loader2 size={16} className="animate-spin text-brand-500" />
-                                            : <Upload size={16} className="text-ink-subtle" />
-                                        }
-                                        <span className="text-sm font-bold text-ink">
-                                            {uploadingField === 'payment_qr_url' ? 'Uploading…' : 'Upload QR Image'}
-                                        </span>
-                                        <input
-                                            ref={qrInputRef}
-                                            type="file"
-                                            accept="image/*"
-                                            className="sr-only"
-                                            onChange={(e) => { if (e.target.files?.[0]) handleFileUpload(e.target.files[0], 'payment_qr_url') }}
-                                        />
-                                    </label>
-                                )}
+                    <div className="p-6 space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">PAN Number</label>
                                 <input
-                                    type="url"
-                                    name="payment_qr_url"
-                                    value={formData.payment_qr_url || ''}
+                                    type="text"
+                                    name="pan_number"
+                                    value={formData.pan_number || ''}
                                     onChange={handleChange}
                                     disabled={!canEdit || isSubmitting}
-                                    className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
-                                    placeholder="or paste QR image URL…"
+                                    maxLength={9}
+                                    className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50 tabular-nums"
+                                    placeholder="123456789"
                                 />
+                                <p className="mt-2 text-[11px] font-bold text-ink-muted uppercase tracking-wider">9-digit IRD PAN number for invoicing</p>
                             </div>
-                        </div>
-                        <div>
-                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">QR Provider</label>
-                            <select
-                                name="payment_qr_label"
-                                value={formData.payment_qr_label || ''}
-                                onChange={handleChange}
-                                disabled={!canEdit || isSubmitting}
-                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5 disabled:opacity-50"
-                            >
-                                <option value="">Select provider…</option>
-                                <option value="esewa">eSewa</option>
-                                <option value="khalti">Khalti</option>
-                                <option value="fonepay">Fonepay</option>
-                                <option value="nepal_pay">Nepal Pay</option>
-                                <option value="other">Other</option>
-                            </select>
+                            <div className="flex items-center gap-4 pt-6">
+                                <label className="flex items-center gap-3 cursor-pointer select-none">
+                                    <input
+                                        type="checkbox"
+                                        name="vat_registered"
+                                        checked={formData.vat_registered || false}
+                                        onChange={handleCheckboxChange}
+                                        disabled={!canEdit || isSubmitting}
+                                        className="h-5 w-5 rounded-[4px] border-hairline text-brand-500 focus:ring-brand-500/20 bg-surface shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-colors disabled:opacity-50"
+                                    />
+                                    <div>
+                                        <span className="text-sm font-bold text-ink block">VAT Registered</span>
+                                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Enable 13% VAT on invoices</p>
+                                    </div>
+                                </label>
+                            </div>
 
-                            {formData.payment_qr_url && (
-                                <div className="mt-4 flex items-start gap-4 p-4 rounded-[var(--r-md)] border border-hairline bg-surface-muted/30 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
-                                    <Image src={formData.payment_qr_url} alt="Payment QR" width={96} height={96} className="h-24 w-24 object-contain bg-surface rounded-[var(--r-md)] p-2 border border-hairline shrink-0 shadow-sm" />
-                                    {canEdit && (
-                                        <button type="button" onClick={() => setFormData(p => ({ ...p, payment_qr_url: null }))} className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-danger-fg hover:text-danger-fg/80 transition-colors mt-1 focus-ring px-1">
-                                            <X size={14} /> Remove QR
-                                        </button>
-                                    )}
+                            {formData.vat_registered && (
+                                <div className="md:col-span-2 p-5 bg-amber-50/20 border border-amber-100 rounded-3xl mt-4 space-y-4 text-left">
+                                    <div className="flex items-center gap-2">
+                                        <Shield size={16} className="text-amber-700 animate-pulse" />
+                                        <div>
+                                            <h4 className="font-extrabold text-sm text-amber-900">Inland Revenue Department (IRD) Synchronization Setup</h4>
+                                            <p className="text-[10px] text-amber-700 font-bold uppercase tracking-wider mt-0.5">Required credentials for CBMS direct API billing transmission</p>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">9-Digit VAT Number *</label>
+                                            <input
+                                                type="text"
+                                                name="vat_number"
+                                                value={formData.vat_number || ''}
+                                                onChange={handleChange}
+                                                disabled={!canEdit || isSubmitting}
+                                                maxLength={9}
+                                                placeholder="e.g. 301234567"
+                                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink p-2.5 outline-none focus:border-brand-500 transition"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">IRD CBMS API URL (Production/Sandbox) *</label>
+                                            <input
+                                                type="text"
+                                                name="ird_api_url"
+                                                value={formData.ird_api_url || ''}
+                                                onChange={handleChange}
+                                                disabled={!canEdit || isSubmitting}
+                                                placeholder="https://cbms.ird.gov.np/api/billing"
+                                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink p-2.5 outline-none focus:border-brand-500 transition"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">IRD API Username *</label>
+                                            <input
+                                                type="text"
+                                                name="ird_api_user"
+                                                value={formData.ird_api_user || ''}
+                                                onChange={handleChange}
+                                                disabled={!canEdit || isSubmitting}
+                                                placeholder="e.g. T1234567"
+                                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink p-2.5 outline-none focus:border-brand-500 transition"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-2">IRD API Password / Dev Key *</label>
+                                            <input
+                                                type="password"
+                                                name="ird_api_password"
+                                                value={formData.ird_api_password || ''}
+                                                onChange={handleChange}
+                                                disabled={!canEdit || isSubmitting}
+                                                placeholder="••••••••"
+                                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink p-2.5 outline-none focus:border-brand-500 transition"
+                                            />
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-ink-subtle leading-normal">
+                                        * Note: Configuring these credentials ensures compliance with IRD real-time sync regulations, enabling direct, secure synchronization of checkout receipts to Nepal tax servers.
+                                    </p>
                                 </div>
                             )}
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
+
+            {features.irdSyncEnabled && (
+                <QrPaymentManager
+                    restaurantId={formData.id}
+                    initialQrCodes={initialQrCodes}
+                    bankAccounts={bankAccounts}
+                    canEdit={canEdit}
+                />
+            )}
 
             {/* Action Bar */}
             <div className="flex items-center justify-end gap-4 bg-surface rounded-[var(--r-md)] p-4 border border-hairline mt-6 shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
@@ -725,8 +978,8 @@ export default function SettingsManager({
                     {isSavingFeatures ? <Loader2 size={20} className="animate-spin" /> : <ToggleRight size={20} />}
                 </div>
                 <div>
-                    <h3 className="text-h3 font-extrabold text-ink">Feature Flags</h3>
-                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Enable or disable features for your restaurant — changes apply instantly</p>
+                    <h3 className="text-h3 font-extrabold text-ink">Workspace Preferences</h3>
+                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Customize behavioral preferences for your dining and billing operations</p>
                 </div>
             </div>
 
@@ -737,20 +990,18 @@ export default function SettingsManager({
                         { key: 'waiterSessionEnabled' as const, label: 'Waiter-Managed Sessions', desc: 'Require a waiter to open a table before guests can order. Off = guests scan & order instantly' },
                         { key: 'waiterOrderConfirmation' as const, label: 'Waiter Order Confirmation', desc: 'Orders wait for a waiter to confirm before the kitchen sees them. Off = orders go straight to the kitchen' },
                         { key: 'selfOrderRequestEnabled' as const, label: 'Ring for Service', desc: 'When waiter-managed sessions are on, let customers ring to request the table be opened' },
+                        { key: 'roomServiceCallEnabled' as const, label: 'In-Room Service Call', desc: 'Hotel room QR asks the guest to confirm their booking phone, then shows a Call-for-Service button to reception' },
                         { key: 'splitBillingEnabled' as const, label: 'Split Billing', desc: 'Allow customers to split bills at checkout' },
-                        { key: 'promosEnabled' as const, label: 'Promo Codes', desc: 'Allow promo/discount codes at checkout' },
-                        { key: 'loyaltyEnabled' as const, label: 'Loyalty Program', desc: 'Points-based loyalty rewards for repeat customers' },
-                        { key: 'takeoutEnabled' as const, label: 'Takeout Orders', desc: 'Accept orders for pickup' },
-                        { key: 'dynamicPricingEnabled' as const, label: 'Dynamic Pricing', desc: 'Time-based price adjustments' },
-                        { key: 'ingredientTrackingEnabled' as const, label: 'Ingredient Tracking', desc: 'Track stock levels for menu items' },
-                        { key: 'staffShiftsEnabled' as const, label: 'Staff Shifts', desc: 'Clock in/out for staff members' },
                         { key: 'nepalPayEnabled' as const, label: 'Nepal QR Pay', desc: 'eSewa/Khalti/Fonepay QR payment' },
                         { key: 'vatEnabled' as const, label: 'VAT on Invoices', desc: 'Show 13% VAT on printed invoices' },
                         { key: 'phoneOtpEnabled' as const, label: 'Phone OTP Login', desc: 'Allow phone number login via SMS OTP' },
                         { key: 'multiLanguageEnabled' as const, label: 'Multi-Language', desc: 'Menu in multiple languages' },
-                        { key: 'bsDateEnabled' as const, label: 'Bikram Sambat Date', desc: 'Show BS calendar dates' },
+                        { key: 'manualEntryEnabled' as const, label: 'Manual Finance Entry', desc: 'Allow manual debit/credit journal entries and vouchers under the Finance section' },
+                        { key: 'printBillEnabled' as const, label: 'Print Checkout Bill', desc: 'Show button to print checkout invoices or receipts' },
+                        { key: 'showInvoiceEnabled' as const, label: 'Show/Generate Invoices', desc: 'Allow generating official invoices at checkout' },
                     ]).map(({ key, label, desc }) => (
                         <button
+                            type="button"
                             key={key}
                             onClick={() => toggleFeature(key)}
                             disabled={!canEdit || isSavingFeatures}
@@ -772,6 +1023,208 @@ export default function SettingsManager({
                         </button>
                     ))}
                 </div>
+            </div>
+
+            {/* Read-Only Subscription Features */}
+            <div className="p-5 border-t border-hairline bg-surface-muted/10">
+                <div className="flex items-center gap-3 p-4 rounded-[var(--r-md)] bg-brand-50/30 border border-brand-500/10 text-ink-muted text-xs">
+                    <Crown size={16} className="text-brand-500 shrink-0" />
+                    <span>
+                        <strong>Subscription Features:</strong> The following features are controlled by your SaaS subscription plan. Please contact your platform administrator/support to enable or disable these modules.
+                    </span>
+                </div>
+            </div>
+
+            <div className="p-6 border-t border-hairline">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {([
+                        { key: 'financeEnabled' as const, label: 'Finance & Accounting', desc: 'General ledger, cash/bank books' },
+                        { key: 'staffManagementEnabled' as const, label: 'Staff Management', desc: 'Staff records and custom permission roles' },
+                        { key: 'staffShiftsEnabled' as const, label: 'Staff Shifts & Schedule', desc: 'Employee rosters and schedules' },
+                        { key: 'tableManagementEnabled' as const, label: 'Tables & Floor layout', desc: 'Design dining table maps and QR codes' },
+                        { key: 'ingredientTrackingEnabled' as const, label: 'Inventory (Ingredients)', desc: 'Track ingredient stock levels' },
+                        { key: 'loyaltyEnabled' as const, label: 'Loyalty Program', desc: 'Customer rewards and points system' },
+                        { key: 'promosEnabled' as const, label: 'Promo Coupons', desc: 'Discount and promo codes' },
+                        { key: 'dynamicPricingEnabled' as const, label: 'Dynamic Pricing', desc: 'Happy hour and surge pricing' },
+                        { key: 'takeoutEnabled' as const, label: 'Takeout Orders', desc: 'Takeout and delivery dispatching' },
+                        { key: 'generateInvoiceEnabled' as const, label: 'Generate Invoice', desc: 'Settle and record official invoice data' },
+                        { key: 'printInvoiceEnabled' as const, label: 'Print Invoice', desc: 'Auto spool print receipts at till checkout' },
+                        { key: 'irdSyncEnabled' as const, label: 'IRD Real-time Sync', desc: 'Sync billing receipts to Inland Revenue Department' },
+                        { key: 'kotEnabled' as const, label: 'KOT Print System', desc: 'Auto-print kitchen tickets' },
+                        { key: 'kdsEnabled' as const, label: 'Kitchen Display System (KDS)', desc: 'Interactive kitchen screen with prep status' },
+                    ]).map(({ key, label, desc }) => {
+                        if (isSuperAdmin) {
+                            return (
+                                <button
+                                    type="button"
+                                    key={key}
+                                    onClick={() => toggleFeature(key)}
+                                    disabled={isSavingFeatures}
+                                    className={`flex items-center justify-between p-4 rounded-[var(--r-md)] border transition-all text-left group focus-ring ${
+                                        features[key]
+                                            ? 'bg-emerald-50/20 border-emerald-500/20 shadow-[inset_0_2px_4px_rgba(16,185,129,0.01)]'
+                                            : 'bg-surface border-hairline hover:bg-surface-muted/50 hover:border-ink-subtle/30 shadow-[0_2px_4px_rgba(0,0,0,0.02)]'
+                                    } disabled:opacity-50`}
+                                >
+                                    <div className="pr-4">
+                                        <span className={`text-sm font-extrabold ${features[key] ? 'text-emerald-700 dark:text-emerald-400' : 'text-ink-muted'}`}>{label}</span>
+                                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-1">{desc}</p>
+                                    </div>
+                                    {features[key] ? (
+                                        <ToggleRight size={28} className="text-emerald-500 shrink-0 drop-shadow-sm" />
+                                    ) : (
+                                        <ToggleLeft size={28} className="text-ink-muted shrink-0 group-hover:text-ink-subtle transition-colors" />
+                                    )}
+                                </button>
+                            )
+                        }
+
+                        return (
+                            <div
+                                key={key}
+                                className={`flex items-center justify-between p-4 rounded-[var(--r-md)] border select-none ${
+                                    features[key]
+                                        ? 'bg-emerald-50/20 border-emerald-500/20 shadow-[inset_0_2px_4px_rgba(16,185,129,0.01)]'
+                                        : 'bg-surface border-hairline opacity-60 shadow-[0_2px_4px_rgba(0,0,0,0.02)]'
+                                }`}
+                            >
+                                <div className="pr-4">
+                                    <span className={`text-sm font-extrabold ${features[key] ? 'text-emerald-700 dark:text-emerald-400' : 'text-ink-muted'}`}>{label}</span>
+                                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-1">{desc}</p>
+                                </div>
+                                {features[key] ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                                        Active
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-ink-subtle/10 text-ink-muted border border-hairline">
+                                        Disabled
+                                    </span>
+                                )}
+                            </div>
+                        )
+                    })}
+                </div>
+            </div>
+        </div>
+
+        {/* Room stay 10% Service Charge Settings */}
+        <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden mt-6 max-w-4xl">
+            <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 shadow-[inset_0_2px_4px_rgba(251,99,3,0.05)]">
+                        {isSavingFeatures ? <Loader2 size={20} className="animate-spin" /> : <Percent size={20} />}
+                    </div>
+                    <div>
+                        <h3 className="text-h3 font-extrabold text-ink">Room Service Charge Settings</h3>
+                        <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Toggle 10% service charge on room stays and select applicable rooms</p>
+                    </div>
+                </div>
+                <button
+                    type="button"
+                    onClick={toggleRoomScEnabled}
+                    disabled={!canEdit || isSavingFeatures}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition ${
+                        features.roomServiceChargeEnabled
+                            ? 'bg-brand-50 border-brand-500/30 text-brand-700'
+                            : 'bg-surface border-hairline text-ink hover:bg-surface-muted/50'
+                    }`}
+                >
+                    {features.roomServiceChargeEnabled ? (
+                        <>
+                            <ToggleRight size={20} className="text-brand-500" />
+                            Enabled
+                        </>
+                    ) : (
+                        <>
+                            <ToggleLeft size={20} className="text-ink-muted" />
+                            Disabled
+                        </>
+                    )}
+                </button>
+            </div>
+
+            {features.roomServiceChargeEnabled && (
+                <div className="p-6 space-y-4">
+                    <div className="flex items-center justify-between border-b border-dashed border-hairline pb-3">
+                        <span className="text-xs font-bold text-ink-muted uppercase tracking-wider">Select Rooms Subject to 10% Service Charge</span>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={selectAllRoomsSc}
+                                disabled={!canEdit || isSavingFeatures || rooms.length === 0}
+                                className="px-3 py-1.5 rounded-lg border border-hairline bg-surface hover:bg-surface-muted/40 text-[10px] font-extrabold text-ink uppercase transition"
+                            >
+                                Select All
+                            </button>
+                            <button
+                                type="button"
+                                onClick={deselectAllRoomsSc}
+                                disabled={!canEdit || isSavingFeatures || rooms.length === 0}
+                                className="px-3 py-1.5 rounded-lg border border-hairline bg-surface hover:bg-surface-muted/40 text-[10px] font-extrabold text-ink uppercase transition"
+                            >
+                                Deselect All
+                            </button>
+                        </div>
+                    </div>
+
+                    {rooms.length === 0 ? (
+                        <p className="text-center text-xs font-bold text-ink-subtle uppercase py-6">No active rooms found.</p>
+                    ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                            {rooms.map(room => {
+                                const selectedRooms = Array.isArray(features.roomServiceChargeRooms) ? features.roomServiceChargeRooms : []
+                                const isChecked = selectedRooms.includes(room.id)
+                                return (
+                                    <button
+                                        type="button"
+                                        key={room.id}
+                                        onClick={() => toggleRoomScForRoom(room.id)}
+                                        disabled={!canEdit || isSavingFeatures}
+                                        className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition-all focus:outline-none ${
+                                            isChecked
+                                                ? 'bg-brand-50/50 border-brand-500 text-brand-700 shadow-sm'
+                                                : 'bg-surface border-hairline text-ink-muted hover:border-brand-200'
+                                        }`}
+                                    >
+                                        <span className="text-xs font-extrabold">Room {room.room_number}</span>
+                                        <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full ${
+                                            isChecked ? 'bg-brand-100/50 text-brand-600' : 'bg-surface-muted text-ink-subtle'
+                                        }`}>
+                                            {isChecked ? 'SC ON' : 'SC OFF'}
+                                        </span>
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+
+        {/* In-Room Service — reception phone the Call-for-Service button dials */}
+        <div className="bg-surface rounded-card shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-hairline overflow-hidden mt-6 max-w-4xl">
+            <div className="p-5 border-b border-hairline bg-surface-muted/30 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 shadow-[inset_0_2px_4px_rgba(251,99,3,0.05)]">
+                    <Phone size={20} />
+                </div>
+                <div>
+                    <h3 className="text-h3 font-extrabold text-ink">In-Room Service</h3>
+                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-0.5">Reception number the room QR&apos;s &ldquo;Call for Service&rdquo; button dials. Requires &ldquo;In-Room Service Call&rdquo; above.</p>
+                </div>
+            </div>
+            <div className="p-6">
+                <label htmlFor="receptionPhone" className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Reception Phone</label>
+                <input
+                    id="receptionPhone"
+                    type="tel"
+                    value={receptionPhoneStr}
+                    onChange={(e) => setReceptionPhoneStr(e.target.value)}
+                    onBlur={saveReceptionPhone}
+                    disabled={!canEdit || isSavingFeatures}
+                    placeholder="e.g. +977 9800000000"
+                    className="w-full max-w-sm bg-surface border border-hairline rounded-[var(--r-md)] px-4 py-2.5 text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50 tabular-nums"
+                />
             </div>
         </div>
 

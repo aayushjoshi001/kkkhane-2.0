@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
-import { openSession, closeSession, setTableStatus, claimTableCleaning, releaseTableCleaning, markTableClean, openSessionFromRequest, findBookingByPhone, getActiveBookings, linkSessionToBooking } from '@/app/(staff)/waiter/actions'
+import { openSession, closeSession, cancelTransientSession, setTableStatus, claimTableCleaning, releaseTableCleaning, markTableClean, openSessionFromRequest, findBookingByRoom, getActiveBookings, linkSessionToBooking } from '@/app/(staff)/waiter/actions'
 import { createClient } from '@/lib/supabase/client'
 import { Users, QrCode, PowerOff, Power, Sparkles, CalendarClock, UtensilsCrossed, Footprints, Check, X, Flame, ShoppingCart, Hotel, Phone, Search, Loader2, Bed, UserCheck } from 'lucide-react'
 import type { Table, Session } from '@/types/database'
@@ -15,8 +15,10 @@ import Button from '@/components/ui/Button'
 import EmptyState from '@/components/ui/EmptyState'
 import { useRouter } from 'next/navigation'
 import QuickOrderModal from './QuickOrderModal'
+import { useFeatures } from '@/lib/contexts/FeatureContext'
+import { useServerState } from '@/lib/hooks/useServerState'
 
-export type TableWithSession = Table & { activeSession?: Session | null }
+export type TableWithSession = Table & { activeSession?: Session | null; otherActiveSessions?: Session[] }
 
 // Status → semantic tokens (active=success, dirty=warning, reserved=info).
 const STATUS_CONFIG = {
@@ -26,9 +28,12 @@ const STATUS_CONFIG = {
     available: { dot: 'bg-ink-subtle',            card: 'border-hairline bg-surface',     label: '',         labelCls: '' },
 }
 
-function getEffectiveStatus(table: TableWithSession): string {
+function getEffectiveStatus(table: TableWithSession, isHotel?: boolean): string {
     if (table.activeSession) return 'active'
-    return table.table_status || 'available'
+    const status = (table.table_status as string) || 'available'
+    if (status === 'active' || status === 'occupied') return 'available'
+    if (isHotel && status === 'dirty') return 'available'
+    return status
 }
 
 function getFontSizeClass(label: string): string {
@@ -39,7 +44,7 @@ function getFontSizeClass(label: string): string {
     return 'text-xs sm:text-sm md:text-base'
 }
 
-export default function TableManager({ initialTables, restaurantId, appUrl, initialOrders = [], userId, staffNames = {}, isHotel = false }: {
+export default function TableManager({ initialTables, restaurantId, appUrl, initialOrders = [], userId, staffNames = {}, isHotel = false, waiterSessionEnabled = true }: {
     initialTables: TableWithSession[]
     restaurantId: string
     appUrl: string
@@ -47,12 +52,39 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
     userId: string
     staffNames?: Record<string, string>
     isHotel?: boolean
+    waiterSessionEnabled?: boolean
 }) {
-    const [tables, setTables] = useState<TableWithSession[]>(initialTables)
+    const [tables, setTables] = useServerState<TableWithSession[]>(initialTables)
+    // Mirror of `tables` for realtime handlers that need the previous state
+    // without reading it inside a setState updater (updaters must stay pure).
+    const tablesRef = useRef(tables)
+    useEffect(() => { tablesRef.current = tables }, [tables])
     const [selectedTable, setSelectedTable] = useState<TableWithSession | null>(null)
     const [isProcessing, setIsProcessing] = useState(false)
     const { confirm } = useConfirmStore()
     const router = useRouter()
+    const features = useFeatures()
+    const kdsEnabled = !features.kotEnabled && (features.kdsEnabled ?? true)
+
+    // Split-table (per-seat billing) state — lets a waiter turn a shared table
+    // into independent covers (Table 5-1, Table 5-2, ...) that each order and
+    // pay separately. `splitView` is a manual toggle; it also turns on
+    // automatically once a table already has more than one active seat (e.g.
+    // after a page refresh). `activeSeat` drills into one seat's own
+    // order/checkout actions; null shows the seat grid.
+    const [splitView, setSplitView] = useState(false)
+    const [activeSeat, setActiveSeat] = useState<number | null>(null)
+    const [vacantStep, setVacantStep] = useState<'choose' | 'room_lookup'>('choose')
+    const [vacantSeatNumber, setVacantSeatNumber] = useState<number | null>(null)
+    const [vacantSeatStep, setVacantSeatStep] = useState<'choose' | 'room_lookup'>('choose')
+
+    useEffect(() => {
+        setSplitView(false)
+        setActiveSeat(null)
+        setVacantStep('choose')
+        setVacantSeatNumber(null)
+        setVacantSeatStep('choose')
+    }, [selectedTable?.id])
 
     // Hotel guest selection state
     const [showGuestPicker, setShowGuestPicker] = useState(false)
@@ -62,6 +94,13 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
     const [phoneResult, setPhoneResult] = useState<any>(null)
     const [activeBookingsList, setActiveBookingsList] = useState<any[]>([])
     const [loadingBookings, setLoadingBookings] = useState(false)
+    const [roomSearchInput, setRoomSearchInput] = useState('')
+
+    useEffect(() => {
+        if (!showGuestPicker) {
+            setRoomSearchInput('')
+        }
+    }, [showGuestPicker])
 
     // Track order statuses per order ID → { session_id, status }
     const [orderStatuses, setOrderStatuses] = useState<Record<string, { session_id: string | null; status: string }>>(() => {
@@ -77,7 +116,9 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
     const [mounted, setMounted] = useState(false)
     useEffect(() => { setMounted(true) }, [])
 
-    const [quickOrderSession, setQuickOrderSession] = useState<{ sessionId: string; tableName: string } | null>(null)
+    const [quickOrderSession, setQuickOrderSession] = useState<{ sessionId: string; tableName: string; sessionUuid?: string; tableId?: string } | null>(null)
+    // Whether the current quick-order session has had an order placed (prevents auto-cancel on close)
+    const quickOrderPlacedRef = useRef(false)
 
     const [openSessionRequests, setOpenSessionRequests] = useState<Record<string, string>>({})
 
@@ -146,23 +187,23 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
         let occupied = 0
         let dirty = 0
         for (const t of tables) {
-            const status = getEffectiveStatus(t)
+            const status = getEffectiveStatus(t, isHotel)
             if (status === 'active') occupied++
             else if (status === 'dirty') dirty++
             else if (status === 'reserved') reserved++
             else available++
         }
         return { all, available, reserved, occupied, dirty }
-    }, [tables])
+    }, [tables, isHotel])
 
     const filteredTables = useMemo(() => {
         if (filter === 'all') return tables
         return tables.filter(t => {
-            const status = getEffectiveStatus(t)
+            const status = getEffectiveStatus(t, isHotel)
             if (filter === 'occupied') return status === 'active'
             return status === filter
         })
-    }, [tables, filter])
+    }, [tables, filter, isHotel])
 
     useRestaurantTable(restaurantId, 'orders', (payload) => {
         if (payload.eventType === 'INSERT') {
@@ -200,13 +241,14 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
             cleaning_claimed_at: u.cleaning_claimed_at ?? null,
         }
         // Alert the floor when a table newly needs cleaning (e.g. payment closed it).
-        setTables(prev => {
-            const before = prev.find(t => t.id === u.id)
-            if (u.table_status === 'dirty' && before && before.table_status !== 'dirty') {
-                toast(`Table ${u.label ?? before.label} needs cleaning`, { icon: '🧹', duration: 6000 })
-            }
-            return prev.map(t => t.id === u.id ? { ...t, ...patch } : t)
-        })
+        // Read the previous status from the ref, not inside the setTables updater —
+        // updaters must stay pure (React replays them during render, and a toast()
+        // there sets state on the Toaster mid-render).
+        const before = tablesRef.current.find(t => t.id === u.id)
+        if (u.table_status === 'dirty' && before && before.table_status !== 'dirty') {
+            toast(`Table ${u.label ?? before.label} needs cleaning`, { icon: '🧹', duration: 6000 })
+        }
+        setTables(prev => prev.map(t => t.id === u.id ? { ...t, ...patch } : t))
         setSelectedTable(prev => prev?.id === u.id ? { ...prev, ...patch } : prev)
     })
 
@@ -239,7 +281,170 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
         setIsProcessing(false)
     }
 
-    const handleCloseSession = async (sessionId: string) => {
+    // Returns the active session for a given seat (1 = the table's primary
+    // session), or null if that seat is currently empty.
+    const getSeatSession = (table: TableWithSession, seatNumber: number): Session | null => {
+        if (seatNumber === 1) return table.activeSession ?? null
+        return table.otherActiveSessions?.find(s => s.seat_number === seatNumber) ?? null
+    }
+
+    const handleOpenSeatSession = async (tableId: string, seatNumber: number) => {
+        setIsProcessing(true)
+        const res = await openSession(tableId, restaurantId, undefined, seatNumber)
+        if (res.error || !res.session) {
+            toast.error(res.error || 'Failed to open seat')
+            setIsProcessing(false)
+            return
+        }
+        const session = res.session as unknown as Session
+        await setTableStatus(tableId, 'available')
+        const patch = seatNumber === 1
+            ? { activeSession: session }
+            : (t: TableWithSession) => ({ otherActiveSessions: [...(t.otherActiveSessions || []), session] })
+        setTables(prev => prev.map(t => t.id === tableId
+            ? { ...t, ...(typeof patch === 'function' ? patch(t) : patch) }
+            : t))
+        setSelectedTable(prev => prev && prev.id === tableId
+            ? { ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) }
+            : prev)
+        toast.success(`Seat ${seatNumber} opened`)
+        setActiveSeat(seatNumber)
+        setIsProcessing(false)
+    }
+
+    const handleSilentOpenSession = async (tableId: string) => {
+        setIsProcessing(true)
+        try {
+            const res = await openSession(tableId, restaurantId, undefined, 1)
+            if (res.error || !res.session) {
+                toast.error(res.error || 'Failed to open session')
+                setIsProcessing(false)
+                return
+            }
+            const session = res.session as unknown as Session
+            await setTableStatus(tableId, 'available')
+            quickOrderPlacedRef.current = false
+            setTables(prev => prev.map(t => t.id === tableId ? { ...t, activeSession: session } : t))
+            setQuickOrderSession({
+                sessionId: session.session_token,
+                tableName: selectedTable?.label || 'Table',
+                sessionUuid: session.id,
+                tableId,
+            })
+            setSelectedTable(null)
+        } catch (err) {
+            toast.error('Failed to open session')
+        } finally {
+            setIsProcessing(false)
+        }
+    }
+
+    const handleSilentOpenSessionAndLink = async (tableId: string, bookingId: string, roomNumber: string) => {
+        setIsProcessing(true)
+        try {
+            const res = await openSession(tableId, restaurantId, undefined, 1)
+            if (res.error || !res.session) {
+                toast.error(res.error || 'Failed to open session')
+                setIsProcessing(false)
+                return
+            }
+            const session = res.session as unknown as Session
+            await setTableStatus(tableId, 'available')
+            
+            const linkRes = await linkSessionToBooking(session.id, bookingId)
+            if (linkRes.error) {
+                toast.error(linkRes.error)
+                setIsProcessing(false)
+                return
+            }
+            quickOrderPlacedRef.current = false
+            toast.success(`Linked to Room ${roomNumber}`)
+            setTables(prev => prev.map(t => t.id === tableId ? { ...t, activeSession: null as any, table_status: 'available' } : t))
+            setQuickOrderSession({
+                sessionId: session.session_token,
+                tableName: selectedTable?.label || 'Table',
+                sessionUuid: session.id,
+                tableId,
+            })
+            setSelectedTable(null)
+        } catch (err) {
+            toast.error('Failed to open and link session')
+        } finally {
+            setIsProcessing(false)
+        }
+    }
+
+    const handleSilentOpenSeatSession = async (tableId: string, seatNumber: number) => {
+        setIsProcessing(true)
+        try {
+            const res = await openSession(tableId, restaurantId, undefined, seatNumber)
+            if (res.error || !res.session) {
+                toast.error(res.error || 'Failed to open seat')
+                setIsProcessing(false)
+                return
+            }
+            const session = res.session as unknown as Session
+            await setTableStatus(tableId, 'available')
+            
+            const patch = seatNumber === 1
+                ? { activeSession: session }
+                : (t: TableWithSession) => ({ otherActiveSessions: [...(t.otherActiveSessions || []), session] })
+            
+            setTables(prev => prev.map(t => t.id === tableId
+                ? { ...t, ...(typeof patch === 'function' ? patch(t) : patch) }
+                : t))
+            
+            setQuickOrderSession({
+                sessionId: session.session_token,
+                tableName: `${selectedTable?.label || 'Table'}-${seatNumber}`
+            })
+            setSelectedTable(null)
+            setVacantSeatNumber(null)
+        } catch (err) {
+            toast.error('Failed to open seat session')
+        } finally {
+            setIsProcessing(false)
+        }
+    }
+
+    const handleSilentOpenSeatSessionAndLink = async (tableId: string, seatNumber: number, bookingId: string, roomNumber: string) => {
+        setIsProcessing(true)
+        try {
+            const res = await openSession(tableId, restaurantId, undefined, seatNumber)
+            if (res.error || !res.session) {
+                toast.error(res.error || 'Failed to open seat')
+                setIsProcessing(false)
+                return
+            }
+            const session = res.session as unknown as Session
+            await setTableStatus(tableId, 'available')
+            
+            const linkRes = await linkSessionToBooking(session.id, bookingId)
+            if (linkRes.error) {
+                toast.error(linkRes.error)
+                setIsProcessing(false)
+                return
+            }
+            
+            setTables(prev => prev.map(t => t.id === tableId ? { ...t, activeSession: null as any, table_status: 'available' } : t))
+            
+            setQuickOrderSession({
+                sessionId: session.session_token,
+                tableName: `${selectedTable?.label || 'Table'}-${seatNumber}`
+            })
+            setSelectedTable(null)
+            setVacantSeatNumber(null)
+        } catch (err) {
+            toast.error('Failed to open and link seat session')
+        } finally {
+            setIsProcessing(false)
+        }
+    }
+
+    // `seatContext` is passed when closing one seat of a split table — instead of
+    // closing the whole modal, it clears just that seat and drops back to the
+    // seat grid so the waiter can keep managing the table's other covers.
+    const handleCloseSession = async (sessionId: string, seatContext?: { tableId: string; seatNumber: number }) => {
         const ok = await confirm({
             title: 'Close Session?',
             message: 'Customers will no longer be able to order and the table will be cleared.',
@@ -251,7 +456,17 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
         await closeSession(sessionId)
         toast.success('Session closed')
         setIsProcessing(false)
-        setSelectedTable(null)
+        if (seatContext) {
+            const { tableId, seatNumber } = seatContext
+            const clear = (t: TableWithSession): TableWithSession => seatNumber === 1
+                ? { ...t, activeSession: null }
+                : { ...t, otherActiveSessions: (t.otherActiveSessions || []).filter(s => s.seat_number !== seatNumber) }
+            setTables(prev => prev.map(t => t.id === tableId ? clear(t) : t))
+            setSelectedTable(prev => prev && prev.id === tableId ? clear(prev) : prev)
+            setActiveSeat(null)
+        } else {
+            setSelectedTable(null)
+        }
     }
 
     const handleSetStatus = async (tableId: string, status: 'available' | 'dirty' | 'reserved') => {
@@ -306,8 +521,10 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
         <div className="flex flex-col gap-4 w-full">
             {/* Sticky Sub-tabs / Filters */}
             <div className="sticky top-28 z-20 bg-canvas -mx-3 px-3 md:mx-0 md:px-0 py-2 border-b border-hairline flex items-center w-full justify-center">
-                <div className="grid grid-cols-5 gap-1.5 sm:gap-2.5 w-full">
-                    {(['all', 'available', 'reserved', 'dirty', 'occupied'] as const).map((key) => {
+                <div className={`flex overflow-x-auto no-scrollbar gap-1.5 sm:gap-2.5 w-full py-1 sm:grid ${isHotel ? 'sm:grid-cols-4' : 'sm:grid-cols-5'}`}>
+                    {(['all', 'available', 'reserved', 'dirty', 'occupied'] as const)
+                        .filter(key => !(isHotel && key === 'dirty'))
+                        .map((key) => {
                         const isActive = filter === key
                         const label = key === 'all' ? 'ALL' : key.charAt(0).toUpperCase() + key.slice(1)
                         const count = counts[key]
@@ -325,7 +542,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                             <button
                                 key={key}
                                 onClick={() => setFilter(key)}
-                                className={`relative flex items-center justify-center gap-1.5 py-2 px-1 sm:py-2.5 sm:px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 w-full whitespace-nowrap ${
+                                className={`relative flex items-center justify-center gap-1.5 py-2 px-3 sm:py-2.5 sm:px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 shrink-0 w-auto sm:w-full whitespace-nowrap ${
                                     isActive 
                                         ? activeColors[key] 
                                         : 'bg-surface border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink-muted shadow-sm'
@@ -360,7 +577,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                         </div>
                     ) : (
                         filteredTables.map(table => {
-                            const status = getEffectiveStatus(table)
+                            const status = getEffectiveStatus(table, isHotel)
                             const cfg = STATUS_CONFIG[status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.available
                             const isSelected = selectedTable?.id === table.id
 
@@ -369,11 +586,13 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                             const sessionOrders = sessionId
                                 ? Object.values(orderStatuses).filter(o => o.session_id === sessionId && !['delivered', 'cancelled'].includes(o.status))
                                 : []
-                            const orderLight = sessionOrders.some(o => o.status === 'ready')
-                                ? 'ready'
-                                : sessionOrders.some(o => o.status === 'preparing' || o.status === 'confirmed')
-                                    ? 'preparing'
-                                    : sessionOrders.length > 0 ? 'pending' : null
+                            const orderLight = !kdsEnabled
+                                ? null
+                                : sessionOrders.some(o => o.status === 'ready')
+                                    ? 'ready'
+                                    : sessionOrders.some(o => o.status === 'preparing' || o.status === 'confirmed')
+                                        ? 'preparing'
+                                        : sessionOrders.length > 0 ? 'pending' : null
 
                             const trafficLight = {
                                 ready:    { dot: 'bg-success animate-pulse', label: '● Ready',   cls: 'text-success-fg' },
@@ -381,7 +600,7 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                 pending:  { dot: 'bg-warning',               label: '● Waiting', cls: 'text-warning-fg' },
                             }
                             const tl = orderLight ? trafficLight[orderLight] : null
-                            const hasOpenRequest = !table.activeSession && !!openSessionRequests[table.id]
+                            const hasOpenRequest = waiterSessionEnabled && !table.activeSession && !!openSessionRequests[table.id]
 
                             return (
                                 <button
@@ -437,175 +656,737 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
-                        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
-                            <div>
-                                <h3 className="text-h3 font-black text-ink">Table {selectedTable.label}</h3>
-                                <p className="text-caption text-ink-subtle mt-0.5">
-                                    {selectedTable.activeSession
-                                        ? 'Occupied'
-                                        : selectedTable.table_status === 'dirty'
-                                            ? 'Needs cleaning'
-                                            : selectedTable.table_status === 'reserved'
-                                                ? 'Reserved'
-                                                : 'Available'}
-                                </p>
-                            </div>
-                            <button 
-                                onClick={() => setSelectedTable(null)}
-                                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink-muted"
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
+                        {(() => {
+                            const seatCount = selectedTable.capacity || 4
+                            const forcedSplit = (selectedTable.otherActiveSessions?.length ?? 0) > 0
+                            const isSplit = forcedSplit || splitView
+                            const occupiedSeats = isSplit
+                                ? Array.from({ length: seatCount }, (_, i) => i + 1).filter(n => getSeatSession(selectedTable, n)).length
+                                : 0
+                            return (
+                                <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
+                                    <div>
+                                        <h3 className="text-h3 font-black text-ink">Table {selectedTable.label}</h3>
+                                        <p className="text-caption text-ink-subtle mt-0.5">
+                                            {isSplit
+                                                ? `Split · ${occupiedSeats} of ${seatCount} seats occupied`
+                                                : selectedTable.activeSession
+                                                    ? 'Occupied'
+                                                    : selectedTable.table_status === 'dirty'
+                                                        ? 'Needs cleaning'
+                                                        : selectedTable.table_status === 'reserved'
+                                                            ? 'Reserved'
+                                                            : 'Available'}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        {!forcedSplit && seatCount > 1 && (
+                                            <button
+                                                onClick={() => { setSplitView(v => !v); setActiveSeat(null) }}
+                                                title={splitView ? 'Back to single order' : 'Split table into separately-paying seats'}
+                                                className="px-2.5 py-1.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wide border border-hairline text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors"
+                                            >
+                                                {splitView ? 'Combined' : 'Split'}
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => setSelectedTable(null)}
+                                            className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink-muted"
+                                        >
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+                                </div>
+                            )
+                        })()}
 
                         {/* Content */}
                         <div className="p-6">
-                            {selectedTable.activeSession ? (
-                                <div className="space-y-4">
-                                    <div className="flex justify-center p-4 bg-surface-muted rounded-[var(--r-md)] border border-hairline">
-                                        <QRCodeSVG
-                                            value={`${baseUrl}/t/${selectedTable.qr_token}?s=${selectedTable.activeSession.session_token}`}
-                                            size={180}
-                                            level="Q"
-                                            marginSize={4}
-                                        />
-                                    </div>
-                                    <p className="text-caption text-center text-ink-subtle">Scan to order · Session valid for 4 hours</p>
-                                    <div className="flex flex-col gap-3">
-                                        <Button
-                                            variant="primary"
-                                            block
-                                            icon={ShoppingCart}
-                                            onClick={() => {
-                                                if (isHotel) {
-                                                    setShowGuestPicker(true)
-                                                    setGuestPickerStep('choose')
-                                                    setPhoneInput('')
-                                                    setPhoneResult(null)
-                                                    setActiveBookingsList([])
-                                                } else {
+                            {isHotel ? (
+                                // --- HOTEL MODE FLOW ---
+                                (selectedTable.otherActiveSessions?.length ?? 0) > 0 || splitView ? (
+                                    vacantSeatNumber !== null ? (
+                                        <div className="space-y-4">
+                                            <button 
+                                                onClick={() => { setVacantSeatNumber(null); setPhoneInput(''); setPhoneResult(null); }} 
+                                                className="text-caption font-bold text-ink-subtle hover:text-ink transition-colors"
+                                            >
+                                                ← Back to seats
+                                            </button>
+                                            <h4 className="text-body font-black text-center text-ink mt-2">Seat {selectedTable.label}-{vacantSeatNumber}</h4>
+                                            
+                                            {vacantSeatStep === 'choose' && (
+                                                <div className="space-y-3">
+                                                    <p className="text-caption text-ink-subtle text-center">Who is ordering for this seat?</p>
+                                                    <Button
+                                                        block
+                                                        variant="primary"
+                                                        icon={Hotel}
+                                                        onClick={() => {
+                                                            setVacantSeatStep('room_lookup')
+                                                            setPhoneInput('')
+                                                            setPhoneResult(null)
+                                                        }}
+                                                    >
+                                                        Hotel Guest (Link to Room)
+                                                    </Button>
+                                                    <Button
+                                                        block
+                                                        variant="secondary"
+                                                        icon={ShoppingCart}
+                                                        loading={isProcessing}
+                                                        onClick={() => handleSilentOpenSeatSession(selectedTable.id, vacantSeatNumber)}
+                                                    >
+                                                        Outside Guest (Direct Order)
+                                                    </Button>
+                                                </div>
+                                            )}
+
+                                            {vacantSeatStep === 'room_lookup' && (
+                                                <div className="space-y-4">
+                                                    <p className="text-caption text-ink-subtle text-center">Enter room number to link guest order</p>
+                                                    <div className="relative">
+                                                        <Bed size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
+                                                        <input
+                                                            type="text"
+                                                            value={phoneInput}
+                                                            onChange={e => setPhoneInput(e.target.value)}
+                                                            placeholder="e.g. 101"
+                                                            className="w-full pl-10 pr-4 py-3 rounded-xl border border-hairline bg-surface-muted text-ink text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 font-semibold"
+                                                            autoFocus
+                                                            onKeyDown={async (e) => {
+                                                                if (e.key === 'Enter' && phoneInput.trim().length > 0 && !phoneSearching) {
+                                                                    setPhoneSearching(true)
+                                                                    setPhoneResult(null)
+                                                                    const res = await findBookingByRoom(phoneInput, restaurantId)
+                                                                    if (res.success) {
+                                                                        if (res.booking) {
+                                                                            setPhoneResult(res.booking)
+                                                                        } else {
+                                                                            setPhoneResult(undefined)
+                                                                        }
+                                                                    } else {
+                                                                        toast.error(res.error || 'Search failed')
+                                                                    }
+                                                                    setPhoneSearching(false)
+                                                                }
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <Button
+                                                        block
+                                                        variant="primary"
+                                                        icon={phoneSearching ? Loader2 : Search}
+                                                        loading={phoneSearching}
+                                                        disabled={phoneInput.trim().length === 0}
+                                                        onClick={async () => {
+                                                            setPhoneSearching(true)
+                                                            setPhoneResult(null)
+                                                            const res = await findBookingByRoom(phoneInput, restaurantId)
+                                                            if (res.success) {
+                                                                if (res.booking) {
+                                                                    setPhoneResult(res.booking)
+                                                                } else {
+                                                                    setPhoneResult(undefined)
+                                                                }
+                                                            } else {
+                                                                toast.error(res.error || 'Search failed')
+                                                            }
+                                                            setPhoneSearching(false)
+                                                        }}
+                                                    >
+                                                        Search Booking
+                                                    </Button>
+
+                                                    {phoneResult === null && !phoneSearching && phoneInput.trim().length > 0 && (
+                                                        <p className="text-caption text-ink-subtle text-center">Press Enter or Search to find guest</p>
+                                                    )}
+
+                                                    {phoneResult === undefined && (
+                                                        <div className="bg-warning/10 border border-warning/20 rounded-xl p-4 text-center">
+                                                            <p className="text-body font-semibold text-warning-fg">No active check-in found</p>
+                                                            <p className="text-caption text-ink-subtle mt-1">Please make sure the room number is correct.</p>
+                                                        </div>
+                                                    )}
+
+                                                    {phoneResult && (
+                                                        <div className="bg-success/10 border border-success/20 rounded-xl p-4">
+                                                            <div className="flex items-center gap-3 mb-3">
+                                                                <div className="w-10 h-10 rounded-full bg-success/20 flex items-center justify-center">
+                                                                    <UserCheck size={20} className="text-success-fg" />
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <p className="text-body font-bold text-ink truncate">{phoneResult.guest_name}</p>
+                                                                    <p className="text-caption text-ink-subtle truncate">
+                                                                        Room {phoneResult.rooms?.room_number || '?'} · {phoneResult.guest_phone}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                            <Button
+                                                                block
+                                                                variant="primary"
+                                                                icon={ShoppingCart}
+                                                                loading={isProcessing}
+                                                                onClick={() => handleSilentOpenSeatSessionAndLink(selectedTable.id, vacantSeatNumber!, phoneResult.id, phoneResult.rooms?.room_number || '?')}
+                                                            >
+                                                                Link to Room &amp; Order
+                                                            </Button>
+                                                        </div>
+                                                    )}
+
+                                                    <button
+                                                        onClick={() => setVacantSeatStep('choose')}
+                                                        className="w-full text-center text-caption text-ink-subtle hover:text-ink mt-2"
+                                                    >
+                                                        ← Back
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : activeSeat === null ? (
+                                        <div className="space-y-4">
+                                            <p className="text-caption text-ink-subtle text-center">Tap a seat to order or manage. Each seat orders and pays separately.</p>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {Array.from({ length: selectedTable.capacity || 4 }, (_, i) => i + 1).map(seatNumber => {
+                                                    const session = getSeatSession(selectedTable, seatNumber)
+                                                    return (
+                                                        <button
+                                                            key={seatNumber}
+                                                            disabled={isProcessing}
+                                                            onClick={() => {
+                                                                if (session) {
+                                                                    setActiveSeat(seatNumber)
+                                                                } else {
+                                                                    setVacantSeatNumber(seatNumber)
+                                                                    setVacantSeatStep('choose')
+                                                                    setPhoneInput('')
+                                                                    setPhoneResult(null)
+                                                                }
+                                                            }}
+                                                            className={`rounded-2xl border p-4 flex flex-col items-center gap-1 transition-all disabled:opacity-50 ${
+                                                                session ? 'border-success/30 bg-success/5 hover:bg-success/10' : 'border-hairline bg-surface hover:bg-surface-muted'
+                                                            }`}
+                                                        >
+                                                            <span className="font-extrabold text-ink text-sm">{selectedTable.label}-{seatNumber}</span>
+                                                            <span className={`text-[10px] font-bold uppercase tracking-wide ${session ? 'text-success-fg' : 'text-ink-subtle'}`}>
+                                                                {session ? 'Occupied' : 'Tap to open'}
+                                                            </span>
+                                                        </button>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    ) : (() => {
+                                        const session = getSeatSession(selectedTable, activeSeat)
+                                        return (
+                                            <div className="space-y-4">
+                                                <button onClick={() => setActiveSeat(null)} className="text-caption font-bold text-ink-subtle hover:text-ink transition-colors">
+                                                    ← Back to seats
+                                                </button>
+                                                {!session ? (
+                                                    <p className="text-center text-caption text-ink-subtle py-6">This seat was closed.</p>
+                                                ) : (
+                                                    <>
+                                                        <div className="bg-surface-muted rounded-xl p-4 border border-hairline text-center">
+                                                            <p className="text-body font-bold text-ink">Seat {selectedTable.label}-{activeSeat}</p>
+                                                            {session.booking_id ? (
+                                                                <p className="text-caption text-success-fg font-semibold mt-1">Linked to Room Bill</p>
+                                                            ) : (
+                                                                <p className="text-caption text-ink-subtle mt-1">Outside Guest (Direct Order)</p>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex flex-col gap-3">
+                                                            <Button
+                                                                variant="primary"
+                                                                block
+                                                                icon={ShoppingCart}
+                                                                onClick={() => {
+                                                                    setQuickOrderSession({ sessionId: session.session_token, tableName: `${selectedTable.label}-${activeSeat}` })
+                                                                    setSelectedTable(null)
+                                                                }}
+                                                            >
+                                                                Order for {selectedTable.label}-{activeSeat}
+                                                            </Button>
+                                                            <Button
+                                                                variant="secondary"
+                                                                block
+                                                                icon={PowerOff}
+                                                                loading={isProcessing}
+                                                                onClick={() => handleCloseSession(session.id, { tableId: selectedTable.id, seatNumber: activeSeat })}
+                                                                className="text-danger-fg border-danger/30 hover:bg-danger-bg"
+                                                            >
+                                                                Close Seat &amp; Checkout
+                                                            </Button>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        )
+                                    })()
+                                ) : selectedTable.activeSession ? (
+                                    <div className="space-y-4">
+                                        <div className="bg-surface-muted rounded-xl p-6 border border-hairline text-center">
+                                            <p className="text-body font-black text-ink">Table {selectedTable.label}</p>
+                                            {selectedTable.activeSession.booking_id ? (
+                                                <p className="text-caption text-success-fg font-extrabold mt-1">Linked to Room Bill</p>
+                                            ) : (
+                                                <p className="text-caption text-ink-subtle mt-1">Outside Guest (Direct Order)</p>
+                                            )}
+                                        </div>
+                                        <div className="flex flex-col gap-3">
+                                            <Button
+                                                variant="primary"
+                                                block
+                                                icon={ShoppingCart}
+                                                onClick={() => {
                                                     setQuickOrderSession({
                                                         sessionId: selectedTable.activeSession!.session_token,
                                                         tableName: selectedTable.label
                                                     })
                                                     setSelectedTable(null)
-                                                }
-                                            }}
-                                        >
-                                            Order for Table
-                                        </Button>
-                                        <Button
-                                            variant="secondary"
-                                            block
-                                            icon={PowerOff}
-                                            loading={isProcessing}
-                                            onClick={async () => {
-                                                await handleCloseSession(selectedTable.activeSession!.id)
-                                                setSelectedTable(null)
-                                            }}
-                                            className="text-danger-fg border-danger/30 hover:bg-danger-bg"
-                                        >
-                                            Close Session &amp; Checkout
-                                        </Button>
+                                                }}
+                                            >
+                                                Order for Table
+                                            </Button>
+                                            <Button
+                                                variant="secondary"
+                                                block
+                                                icon={PowerOff}
+                                                loading={isProcessing}
+                                                onClick={async () => {
+                                                    await handleCloseSession(selectedTable.activeSession!.id)
+                                                    setSelectedTable(null)
+                                                }}
+                                                className="text-danger-fg border-danger/30 hover:bg-danger-bg"
+                                            >
+                                                Close Session &amp; Checkout
+                                            </Button>
+                                        </div>
                                     </div>
-                                </div>
-                            ) : selectedTable.table_status === 'dirty' ? (
-                                (() => {
-                                    const claimedBy = selectedTable.cleaning_claimed_by
-                                    const mine = claimedBy === userId
-                                    const byOther = !!claimedBy && !mine
-                                    return (
+                                ) : (
+                                    <div className="space-y-4">
+                                        {vacantStep === 'choose' && (
+                                            <div className="space-y-3">
+                                                <p className="text-caption text-ink-subtle text-center">Select guest type to open table session</p>
+                                                <Button
+                                                    block
+                                                    variant="primary"
+                                                    icon={Hotel}
+                                                    onClick={() => {
+                                                        setVacantStep('room_lookup')
+                                                        setPhoneInput('')
+                                                        setPhoneResult(null)
+                                                    }}
+                                                >
+                                                    Hotel Guest (Link to Room)
+                                                </Button>
+                                                <Button
+                                                    block
+                                                    variant="secondary"
+                                                    icon={ShoppingCart}
+                                                    loading={isProcessing}
+                                                    onClick={() => handleSilentOpenSession(selectedTable.id)}
+                                                >
+                                                    Outside Guest (Direct Order)
+                                                </Button>
+                                                <Button
+                                                    block
+                                                    variant="secondary"
+                                                    icon={Users}
+                                                    onClick={() => {
+                                                        setSplitView(true)
+                                                    }}
+                                                >
+                                                    Split / Order by Seat
+                                                </Button>
+                                            </div>
+                                        )}
+
+                                        {vacantStep === 'room_lookup' && (
+                                            <div className="space-y-4">
+                                                <p className="text-caption text-ink-subtle text-center">Enter room number to link guest order</p>
+                                                <div className="relative">
+                                                    <Bed size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
+                                                    <input
+                                                        type="text"
+                                                        value={phoneInput}
+                                                        onChange={e => setPhoneInput(e.target.value)}
+                                                        placeholder="e.g. 101"
+                                                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-hairline bg-surface-muted text-ink text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 font-semibold"
+                                                        autoFocus
+                                                        onKeyDown={async (e) => {
+                                                            if (e.key === 'Enter' && phoneInput.trim().length > 0 && !phoneSearching) {
+                                                                setPhoneSearching(true)
+                                                                setPhoneResult(null)
+                                                                const res = await findBookingByRoom(phoneInput, restaurantId)
+                                                                if (res.success) {
+                                                                    if (res.booking) {
+                                                                        setPhoneResult(res.booking)
+                                                                    } else {
+                                                                        setPhoneResult(undefined)
+                                                                    }
+                                                                } else {
+                                                                    toast.error(res.error || 'Search failed')
+                                                                }
+                                                                setPhoneSearching(false)
+                                                            }
+                                                        }}
+                                                    />
+                                                </div>
+                                                <Button
+                                                    block
+                                                    variant="primary"
+                                                    icon={phoneSearching ? Loader2 : Search}
+                                                    loading={phoneSearching}
+                                                    disabled={phoneInput.trim().length === 0}
+                                                    onClick={async () => {
+                                                        setPhoneSearching(true)
+                                                        setPhoneResult(null)
+                                                        const res = await findBookingByRoom(phoneInput, restaurantId)
+                                                        if (res.success) {
+                                                            if (res.booking) {
+                                                                setPhoneResult(res.booking)
+                                                            } else {
+                                                                setPhoneResult(undefined)
+                                                            }
+                                                        } else {
+                                                            toast.error(res.error || 'Search failed')
+                                                        }
+                                                        setPhoneSearching(false)
+                                                    }}
+                                                >
+                                                    Search Booking
+                                                </Button>
+
+                                                {phoneResult === null && !phoneSearching && phoneInput.trim().length > 0 && (
+                                                    <p className="text-caption text-ink-subtle text-center">Press Enter or Search to find guest</p>
+                                                )}
+
+                                                {phoneResult === undefined && (
+                                                    <div className="bg-warning/10 border border-warning/20 rounded-xl p-4 text-center">
+                                                        <p className="text-body font-semibold text-warning-fg">No active check-in found</p>
+                                                        <p className="text-caption text-ink-subtle mt-1">Please make sure the room number is correct.</p>
+                                                    </div>
+                                                )}
+
+                                                {phoneResult && (
+                                                    <div className="bg-success/10 border border-success/20 rounded-xl p-4">
+                                                        <div className="flex items-center gap-3 mb-3">
+                                                            <div className="w-10 h-10 rounded-full bg-success/20 flex items-center justify-center">
+                                                                <UserCheck size={20} className="text-success-fg" />
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <p className="text-body font-bold text-ink truncate">{phoneResult.guest_name}</p>
+                                                                <p className="text-caption text-ink-subtle truncate">
+                                                                    Room {phoneResult.rooms?.room_number || '?'} · {phoneResult.guest_phone}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <Button
+                                                            block
+                                                            variant="primary"
+                                                            icon={ShoppingCart}
+                                                            loading={isProcessing}
+                                                            onClick={() => handleSilentOpenSessionAndLink(selectedTable.id, phoneResult.id, phoneResult.rooms?.room_number || '?')}
+                                                        >
+                                                            Link to Room &amp; Order
+                                                        </Button>
+                                                    </div>
+                                                )}
+
+                                                <button
+                                                    onClick={() => setVacantStep('choose')}
+                                                    className="w-full text-center text-caption text-ink-subtle hover:text-ink mt-2"
+                                                >
+                                                    ← Back
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )
+                            ) : (
+                                // --- ORIGINAL NON-HOTEL FLOW ---
+                                (selectedTable.otherActiveSessions?.length ?? 0) > 0 || splitView ? (
+                                    activeSeat === null ? (
                                         <div className="space-y-4">
-                                            <div className="flex flex-col items-center py-4 text-warning-fg">
-                                                <Sparkles size={48} strokeWidth={1.5} />
-                                                <p className="text-center text-body font-semibold text-ink mt-3">Needs cleaning</p>
-                                                {byOther && (
-                                                    <p className="text-center text-caption text-ink-subtle mt-1 flex items-center gap-1.5">
-                                                        <Footprints size={13} /> {staffNames[claimedBy!] || 'A colleague'} is on it
-                                                    </p>
+                                            <p className="text-caption text-ink-subtle text-center">Tap a seat to open or manage its order. Each seat orders and pays separately.</p>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {Array.from({ length: selectedTable.capacity || 4 }, (_, i) => i + 1).map(seatNumber => {
+                                                    const session = getSeatSession(selectedTable, seatNumber)
+                                                    return (
+                                                        <button
+                                                            key={seatNumber}
+                                                            disabled={isProcessing}
+                                                            onClick={() => session ? setActiveSeat(seatNumber) : handleOpenSeatSession(selectedTable.id, seatNumber)}
+                                                            className={`rounded-2xl border p-4 flex flex-col items-center gap-1 transition-all disabled:opacity-50 ${
+                                                                session ? 'border-success/30 bg-success/5 hover:bg-success/10' : 'border-hairline bg-surface hover:bg-surface-muted'
+                                                            }`}
+                                                        >
+                                                            <span className="font-extrabold text-ink text-sm">{selectedTable.label}-{seatNumber}</span>
+                                                            <span className={`text-[10px] font-bold uppercase tracking-wide ${session ? 'text-success-fg' : 'text-ink-subtle'}`}>
+                                                                {session ? 'Occupied' : 'Tap to open'}
+                                                            </span>
+                                                        </button>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    ) : (() => {
+                                        const session = getSeatSession(selectedTable, activeSeat)
+                                        return (
+                                            <div className="space-y-4">
+                                                <button onClick={() => setActiveSeat(null)} className="text-caption font-bold text-ink-subtle hover:text-ink transition-colors">
+                                                    ← Back to seats
+                                                </button>
+                                                {!session ? (
+                                                    <p className="text-center text-caption text-ink-subtle py-6">This seat was closed.</p>
+                                                ) : (
+                                                    <>
+                                                        <div className="flex justify-center p-4 bg-surface-muted rounded-[var(--r-md)] border border-hairline">
+                                                            <QRCodeSVG
+                                                                value={`${baseUrl}/t/${selectedTable.qr_token}?s=${session.session_token}`}
+                                                                size={180}
+                                                                level="Q"
+                                                                marginSize={4}
+                                                            />
+                                                        </div>
+                                                        <p className="text-caption text-center text-ink-subtle">Scan to order · {selectedTable.label}-{activeSeat}</p>
+                                                        <div className="flex flex-col gap-3">
+                                                            <Button
+                                                                variant="primary"
+                                                                block
+                                                                icon={ShoppingCart}
+                                                                onClick={() => {
+                                                                    setQuickOrderSession({ sessionId: session.session_token, tableName: `${selectedTable.label}-${activeSeat}` })
+                                                                    setSelectedTable(null)
+                                                                }}
+                                                            >
+                                                                Order for {selectedTable.label}-{activeSeat}
+                                                            </Button>
+                                                            <Button
+                                                                variant="secondary"
+                                                                block
+                                                                icon={PowerOff}
+                                                                loading={isProcessing}
+                                                                onClick={() => handleCloseSession(session.id, { tableId: selectedTable.id, seatNumber: activeSeat })}
+                                                                className="text-danger-fg border-danger/30 hover:bg-danger-bg"
+                                                            >
+                                                                Close Seat &amp; Checkout
+                                                            </Button>
+                                                        </div>
+                                                    </>
                                                 )}
                                             </div>
-
-                                            {!claimedBy && (
-                                                <Button block variant="primary" icon={Footprints} loading={isProcessing} onClick={async () => {
-                                                    await handleClaimCleaning(selectedTable.id)
+                                        )
+                                    })()
+                                ) : selectedTable.activeSession ? (
+                                    <div className="space-y-4">
+                                        <div className="flex justify-center p-4 bg-surface-muted rounded-[var(--r-md)] border border-hairline">
+                                            <QRCodeSVG
+                                                value={`${baseUrl}/t/${selectedTable.qr_token}?s=${selectedTable.activeSession.session_token}`}
+                                                size={180}
+                                                level="Q"
+                                                marginSize={4}
+                                            />
+                                        </div>
+                                        <p className="text-caption text-center text-ink-subtle">Scan to order · Session valid for 4 hours</p>
+                                        <div className="flex flex-col gap-3">
+                                            <Button
+                                                variant="primary"
+                                                block
+                                                icon={ShoppingCart}
+                                                onClick={() => {
+                                                    if (isHotel) {
+                                                        setShowGuestPicker(true)
+                                                        setGuestPickerStep('choose')
+                                                        setPhoneInput('')
+                                                        setPhoneResult(null)
+                                                        setActiveBookingsList([])
+                                                    } else {
+                                                        setQuickOrderSession({
+                                                            sessionId: selectedTable.activeSession!.session_token,
+                                                            tableName: selectedTable.label
+                                                        })
+                                                        setSelectedTable(null)
+                                                    }
+                                                }}
+                                            >
+                                                Order for Table
+                                            </Button>
+                                            <Button
+                                                variant="secondary"
+                                                block
+                                                icon={PowerOff}
+                                                loading={isProcessing}
+                                                onClick={async () => {
+                                                    await handleCloseSession(selectedTable.activeSession!.id)
                                                     setSelectedTable(null)
-                                                }}>
-                                                    I&apos;m Going to Clean
-                                                </Button>
-                                            )}
+                                                }}
+                                                className="text-danger-fg border-danger/30 hover:bg-danger-bg"
+                                            >
+                                                Close Session &amp; Checkout
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ) : selectedTable.table_status === 'dirty' ? (
+                                    (() => {
+                                        const claimedBy = selectedTable.cleaning_claimed_by
+                                        const mine = claimedBy === userId
+                                        const byOther = !!claimedBy && !mine
+                                        return (
+                                            <div className="space-y-4">
+                                                <div className="flex flex-col items-center py-4 text-warning-fg">
+                                                    <Sparkles size={48} strokeWidth={1.5} />
+                                                    <p className="text-center text-body font-semibold text-ink mt-3">Needs cleaning</p>
+                                                    {byOther && (
+                                                        <p className="text-center text-caption text-ink-subtle mt-1 flex items-center gap-1.5">
+                                                            <Footprints size={13} /> {staffNames[claimedBy!] || 'A colleague'} is on it
+                                                        </p>
+                                                    )}
+                                                </div>
 
-                                            {mine && (
-                                                <div className="grid grid-cols-2 gap-3">
+                                                {!claimedBy && (
+                                                    <Button block variant="primary" icon={Footprints} loading={isProcessing} onClick={async () => {
+                                                        await handleClaimCleaning(selectedTable.id)
+                                                        setSelectedTable(null)
+                                                    }}>
+                                                        I&apos;m Going to Clean
+                                                    </Button>
+                                                )}
+
+                                                {mine && (
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <Button block variant="secondary" icon={X} loading={isProcessing} onClick={async () => {
+                                                            await handleReleaseCleaning(selectedTable.id)
+                                                            setSelectedTable(null)
+                                                        }}>
+                                                            Cancel
+                                                        </Button>
+                                                        <Button block variant="primary" icon={Check} loading={isProcessing} onClick={async () => {
+                                                            await handleMarkClean(selectedTable.id)
+                                                            setSelectedTable(null)
+                                                        }}>
+                                                            Mark Cleaned
+                                                        </Button>
+                                                    </div>
+                                                )}
+
+                                                {byOther && (
                                                     <Button block variant="secondary" icon={X} loading={isProcessing} onClick={async () => {
                                                         await handleReleaseCleaning(selectedTable.id)
                                                         setSelectedTable(null)
                                                     }}>
-                                                        Cancel
+                                                        Force Release Cleaning
                                                     </Button>
-                                                    <Button block variant="primary" icon={Check} loading={isProcessing} onClick={async () => {
-                                                        await handleMarkClean(selectedTable.id)
-                                                        setSelectedTable(null)
-                                                    }}>
-                                                        Mark Cleaned
-                                                    </Button>
+                                                )}
+                                            </div>
+                                        )
+                                    })()
+                                ) : (
+                                    <div className="space-y-4">
+                                        {waiterSessionEnabled === false ? (
+                                            <>
+                                                <div className="flex flex-col items-center py-4 text-[var(--color-primary)]">
+                                                    <UtensilsCrossed size={48} strokeWidth={1.5} />
+                                                    <p className="text-center text-body font-semibold text-ink mt-3">Select order type for Table {selectedTable.label}</p>
                                                 </div>
-                                            )}
 
-                                            {byOther && (
-                                                <Button block variant="secondary" icon={X} loading={isProcessing} onClick={async () => {
-                                                    await handleReleaseCleaning(selectedTable.id)
+                                                <Button
+                                                    block
+                                                    variant="primary"
+                                                    icon={ShoppingCart}
+                                                    loading={isProcessing}
+                                                    onClick={async () => {
+                                                        setIsProcessing(true)
+                                                        const res = await openSession(selectedTable.id, restaurantId, undefined, 1)
+                                                        if (res.error || !res.session) {
+                                                            toast.error(res.error || 'Failed to open session')
+                                                            setIsProcessing(false)
+                                                            return
+                                                        }
+                                                        const session = res.session as unknown as Session
+                                                        await setTableStatus(selectedTable.id, 'available')
+                                                        
+                                                        setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, activeSession: session } : t))
+                                                        
+                                                        if (isHotel) {
+                                                            setSelectedTable({ ...selectedTable, activeSession: session })
+                                                            setShowGuestPicker(true)
+                                                            setGuestPickerStep('choose')
+                                                            setPhoneInput('')
+                                                            setPhoneResult(null)
+                                                            setActiveBookingsList([])
+                                                        } else {
+                                                            setQuickOrderSession({
+                                                                sessionId: session.session_token,
+                                                                tableName: selectedTable.label
+                                                            })
+                                                            setSelectedTable(null)
+                                                        }
+                                                        setIsProcessing(false)
+                                                    }}
+                                                >
+                                                    Order for Whole Table
+                                                </Button>
+
+                                                <Button
+                                                    block
+                                                    variant="secondary"
+                                                    icon={Users}
+                                                    loading={isProcessing}
+                                                    onClick={() => {
+                                                        setSplitView(true)
+                                                    }}
+                                                >
+                                                    Split / Order by Seat
+                                                </Button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div className="flex flex-col items-center py-4 text-[var(--color-primary)]">
+                                                    <UtensilsCrossed size={48} strokeWidth={1.5} />
+                                                    <p className="text-center text-body font-semibold text-ink mt-3">Open a new guest session for this table</p>
+                                                </div>
+                                                
+                                                <Button block variant="primary" icon={Power} loading={isProcessing} onClick={async () => {
+                                                    await handleOpenSession(selectedTable.id)
                                                     setSelectedTable(null)
                                                 }}>
-                                                    Force Release Cleaning
+                                                    Open Session
                                                 </Button>
-                                            )}
-                                        </div>
-                                    )
-                                })()
-                            ) : (
-                                <div className="space-y-4">
-                                    <div className="flex flex-col items-center py-4 text-[var(--color-primary)]">
-                                        <UtensilsCrossed size={48} strokeWidth={1.5} />
-                                        <p className="text-center text-body font-semibold text-ink mt-3">Open a new guest session for this table</p>
-                                    </div>
-                                    
-                                    <Button block variant="primary" icon={Power} loading={isProcessing} onClick={async () => {
-                                        await handleOpenSession(selectedTable.id)
-                                        setSelectedTable(null)
-                                    }}>
-                                        Open Session
-                                    </Button>
 
-                                    <div className="pt-3 border-t border-hairline">
-                                        <p className="text-label text-ink-subtle mb-2">Table Status</p>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {selectedTable.table_status === 'reserved' ? (
-                                                <Button block variant="secondary" icon={X} loading={isProcessing} onClick={async () => {
-                                                    await handleSetStatus(selectedTable.id, 'available')
-                                                    setSelectedTable(null)
-                                                }} className="col-span-2">
-                                                    Release Reservation
-                                                </Button>
-                                            ) : (
-                                                <>
-                                                    <Button block variant="secondary" icon={Sparkles} loading={isProcessing} onClick={async () => {
-                                                        await handleSetStatus(selectedTable.id, 'dirty')
-                                                        setSelectedTable(null)
-                                                    }}>
-                                                        Mark Dirty
-                                                    </Button>
-                                                    <Button block variant="secondary" icon={CalendarClock} loading={isProcessing} onClick={async () => {
-                                                        await handleSetStatus(selectedTable.id, 'reserved')
-                                                        setSelectedTable(null)
-                                                    }}>
-                                                        Mark Reserved
-                                                    </Button>
-                                                </>
-                                            )}
-                                        </div>
+                                                <div className="pt-3 border-t border-hairline">
+                                                    <p className="text-label text-ink-subtle mb-2">Table Status</p>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {selectedTable.table_status === 'reserved' ? (
+                                                            <Button block variant="secondary" icon={X} loading={isProcessing} onClick={async () => {
+                                                                await handleSetStatus(selectedTable.id, 'available')
+                                                                setSelectedTable(null)
+                                                            }} className="col-span-2">
+                                                                Release Reservation
+                                                            </Button>
+                                                        ) : (
+                                                            <>
+                                                                <Button block variant="secondary" icon={Sparkles} loading={isProcessing} onClick={async () => {
+                                                                    await handleSetStatus(selectedTable.id, 'dirty')
+                                                                    setSelectedTable(null)
+                                                                }}>
+                                                                    Mark Dirty
+                                                                </Button>
+                                                                <Button block variant="secondary" icon={CalendarClock} loading={isProcessing} onClick={async () => {
+                                                                    await handleSetStatus(selectedTable.id, 'reserved')
+                                                                    setSelectedTable(null)
+                                                                }}>
+                                                                    Mark Reserved
+                                                                </Button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
-                                </div>
+                                )
                             )}
                         </div>
                     </div>
@@ -673,18 +1454,35 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                 </div>
                             )}
 
-                            {guestPickerStep === 'phone' && (
+                             {guestPickerStep === 'phone' && (
                                 <div className="space-y-4">
-                                    <p className="text-body text-ink-subtle text-center">Enter phone number to check if guest has a room booking</p>
+                                    <p className="text-body font-semibold text-ink-subtle text-center">Enter room number to link guest order</p>
                                     <div className="relative">
-                                        <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
+                                        <Bed size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
                                         <input
-                                            type="tel"
+                                            type="text"
                                             value={phoneInput}
                                             onChange={e => setPhoneInput(e.target.value)}
-                                            placeholder="e.g. 9841234567"
-                                            className="w-full pl-10 pr-4 py-3 rounded-xl border border-hairline bg-surface-muted text-ink text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+                                            placeholder="e.g. 101"
+                                            className="w-full pl-10 pr-4 py-3 rounded-xl border border-hairline bg-surface-muted text-ink text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 font-semibold"
                                             autoFocus
+                                            onKeyDown={async (e) => {
+                                                if (e.key === 'Enter' && phoneInput.trim().length > 0 && !phoneSearching) {
+                                                    setPhoneSearching(true)
+                                                    setPhoneResult(null)
+                                                    const res = await findBookingByRoom(phoneInput, restaurantId)
+                                                    if (res.success) {
+                                                        if (res.booking) {
+                                                            setPhoneResult(res.booking)
+                                                        } else {
+                                                            setPhoneResult(undefined)
+                                                        }
+                                                    } else {
+                                                        toast.error(res.error || 'Search failed')
+                                                    }
+                                                    setPhoneSearching(false)
+                                                }
+                                            }}
                                         />
                                     </div>
                                     <Button
@@ -692,13 +1490,17 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                         variant="primary"
                                         icon={phoneSearching ? Loader2 : Search}
                                         loading={phoneSearching}
-                                        disabled={phoneInput.trim().length < 4}
+                                        disabled={phoneInput.trim().length === 0}
                                         onClick={async () => {
                                             setPhoneSearching(true)
                                             setPhoneResult(null)
-                                            const res = await findBookingByPhone(phoneInput, restaurantId)
+                                            const res = await findBookingByRoom(phoneInput, restaurantId)
                                             if (res.success) {
-                                                setPhoneResult(res.booking)
+                                                if (res.booking) {
+                                                    setPhoneResult(res.booking)
+                                                } else {
+                                                    setPhoneResult(undefined)
+                                                }
                                             } else {
                                                 toast.error(res.error || 'Search failed')
                                             }
@@ -708,14 +1510,14 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                         Search Booking
                                     </Button>
 
-                                    {phoneResult === null && !phoneSearching && phoneInput.trim().length >= 4 && (
-                                        <p className="text-caption text-ink-subtle text-center">Press Search to find guest</p>
+                                    {phoneResult === null && !phoneSearching && phoneInput.trim().length > 0 && (
+                                        <p className="text-caption text-ink-subtle text-center">Press Enter or Search to find guest</p>
                                     )}
 
                                     {phoneResult === undefined && (
                                         <div className="bg-warning/10 border border-warning/20 rounded-xl p-4 text-center">
-                                            <p className="text-body font-semibold text-warning-fg">No booking found</p>
-                                            <p className="text-caption text-ink-subtle mt-1">Please make sure the phone number matches the one provided during room check-in.</p>
+                                            <p className="text-body font-semibold text-warning-fg">No active check-in found</p>
+                                            <p className="text-caption text-ink-subtle mt-1">Please make sure the room number is correct and has an active guest.</p>
                                         </div>
                                     )}
 
@@ -725,10 +1527,10 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                                 <div className="w-10 h-10 rounded-full bg-success/20 flex items-center justify-center">
                                                     <UserCheck size={20} className="text-success-fg" />
                                                 </div>
-                                                <div>
-                                                    <p className="text-body font-bold text-ink">{phoneResult.guest_name}</p>
-                                                    <p className="text-caption text-ink-subtle">
-                                                        Room {(phoneResult as any).rooms?.room_number || '?'} · {phoneResult.guest_phone}
+                                                <div className="min-w-0">
+                                                    <p className="text-body font-bold text-ink truncate">{phoneResult.guest_name}</p>
+                                                    <p className="text-caption text-ink-subtle truncate">
+                                                        Room {phoneResult.rooms?.room_number || '?'} · {phoneResult.guest_phone}
                                                     </p>
                                                 </div>
                                             </div>
@@ -739,22 +1541,20 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                                 loading={isProcessing}
                                                 onClick={async () => {
                                                     setIsProcessing(true)
-                                                    const linkRes = await linkSessionToBooking(selectedTable.activeSession!.id, phoneResult.id)
+                                                    const linkRes = await linkSessionToBooking(selectedTable.activeSession!.id, phoneResult.id, selectedTable.id)
+                                                    setIsProcessing(false)
                                                     if (linkRes.error) {
                                                         toast.error(linkRes.error)
                                                     } else {
-                                                        toast.success(`Linked to Room ${(phoneResult as any).rooms?.room_number}`)
+                                                        toast.success(`Orders transferred to Room ${phoneResult.rooms?.room_number || '?'} & Table ${selectedTable.label} freed!`)
+                                                        setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, activeSession: undefined, table_status: 'available' } : t))
+                                                        setSelectedTable(null)
+                                                        setShowGuestPicker(false)
+                                                        router.refresh()
                                                     }
-                                                    setIsProcessing(false)
-                                                    setQuickOrderSession({
-                                                        sessionId: selectedTable.activeSession!.session_token,
-                                                        tableName: selectedTable.label
-                                                    })
-                                                    setSelectedTable(null)
-                                                    setShowGuestPicker(false)
                                                 }}
                                             >
-                                                Link to Room &amp; Order
+                                                Transfer Orders to Room &amp; Free Table
                                             </Button>
                                         </div>
                                     )}
@@ -766,84 +1566,9 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                         >
                                             ← Back
                                         </button>
-                                        <button
-                                            onClick={async () => {
-                                                setGuestPickerStep('rooms')
-                                                setLoadingBookings(true)
-                                                const res = await getActiveBookings(restaurantId)
-                                                if (res.success && res.bookings) {
-                                                    setActiveBookingsList(res.bookings)
-                                                } else {
-                                                    toast.error(res.error || 'Failed to load bookings')
-                                                }
-                                                setLoadingBookings(false)
-                                            }}
-                                            className="w-full text-center text-[11px] text-brand-500 hover:underline font-semibold mt-1"
-                                        >
-                                            Or browse checked-in guests list
-                                        </button>
                                     </div>
                                 </div>
-                            )}
-
-                            {guestPickerStep === 'rooms' && (
-                                <div className="space-y-3">
-                                    {loadingBookings ? (
-                                        <div className="flex flex-col items-center py-8 gap-3">
-                                            <Loader2 size={32} className="animate-spin text-brand-500" />
-                                            <p className="text-caption text-ink-subtle">Loading checked-in guests…</p>
-                                        </div>
-                                    ) : activeBookingsList.length === 0 ? (
-                                        <div className="text-center py-8">
-                                            <Bed size={40} className="mx-auto text-ink-subtle mb-3" />
-                                            <p className="text-body font-semibold text-ink">No checked-in guests</p>
-                                            <p className="text-caption text-ink-subtle mt-1">There are no active room bookings right now</p>
-                                        </div>
-                                    ) : (
-                                        <div className="max-h-[50vh] overflow-y-auto space-y-2 -mx-2 px-2">
-                                            {activeBookingsList.map((booking: any) => (
-                                                <button
-                                                    key={booking.id}
-                                                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-hairline bg-surface hover:bg-surface-muted transition-all active:scale-[0.98]"
-                                                    onClick={async () => {
-                                                        setIsProcessing(true)
-                                                        const linkRes = await linkSessionToBooking(selectedTable.activeSession!.id, booking.id)
-                                                        if (linkRes.error) {
-                                                            toast.error(linkRes.error)
-                                                        } else {
-                                                            toast.success(`Linked to Room ${booking.rooms?.room_number || '?'}`)
-                                                        }
-                                                        setIsProcessing(false)
-                                                        setQuickOrderSession({
-                                                            sessionId: selectedTable.activeSession!.session_token,
-                                                            tableName: selectedTable.label
-                                                        })
-                                                        setSelectedTable(null)
-                                                        setShowGuestPicker(false)
-                                                    }}
-                                                >
-                                                    <div className="w-10 h-10 rounded-xl bg-brand-500/10 flex items-center justify-center shrink-0">
-                                                        <Bed size={18} className="text-brand-500" />
-                                                    </div>
-                                                    <div className="flex-1 text-left min-w-0">
-                                                        <p className="text-body font-bold text-ink truncate">{booking.guest_name}</p>
-                                                        <p className="text-caption text-ink-subtle">
-                                                            Room {booking.rooms?.room_number || '?'} · {booking.guest_phone}
-                                                        </p>
-                                                    </div>
-                                                    <ShoppingCart size={16} className="text-ink-subtle shrink-0" />
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                    <button
-                                        onClick={() => setGuestPickerStep('choose')}
-                                        className="w-full text-center text-caption text-ink-subtle hover:text-ink mt-2"
-                                    >
-                                        ← Back
-                                    </button>
-                                </div>
-                            )}
+                            )}   
                         </div>
                     </div>
                 </div>,
@@ -852,7 +1577,26 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
             {quickOrderSession && (
                 <QuickOrderModal
                     isOpen={true}
-                    onClose={() => setQuickOrderSession(null)}
+                    onClose={async () => {
+                        // If no order was placed and this was a transient session,
+                        // cancel it cleanly — reset table to 'available', not 'dirty'
+                        const snap = quickOrderSession
+                        setQuickOrderSession(null)
+                        if (!quickOrderPlacedRef.current && snap.sessionUuid) {
+                            await cancelTransientSession(snap.sessionUuid)
+                            if (snap.tableId) {
+                                setTables(prev => prev.map(t =>
+                                    t.id === snap.tableId
+                                        ? { ...t, activeSession: undefined, table_status: 'available' }
+                                        : t
+                                ))
+                            }
+                        }
+                    }}
+                    onSuccess={() => {
+                        quickOrderPlacedRef.current = true
+                        setQuickOrderSession(null)
+                    }}
                     sessionId={quickOrderSession.sessionId}
                     tableName={quickOrderSession.tableName}
                     restaurantId={restaurantId}

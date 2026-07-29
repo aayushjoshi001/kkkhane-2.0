@@ -10,6 +10,12 @@ export default async function OnboardingPage() {
         redirect('/login?redirect=/onboarding')
     }
 
+    // Platform super admin owns no restaurant and never onboards — send it to the
+    // super-admin console instead of showing the create-restaurant flow.
+    if (currentUser.role === 'super_admin') {
+        redirect('/admin/super-admin/dashboard')
+    }
+
     // If they already have a restaurant, they shouldn't be here
     if (currentUser.restaurantId) {
         redirect('/admin/dashboard')

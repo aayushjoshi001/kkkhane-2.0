@@ -60,17 +60,55 @@ export async function updateBankAccountAction(id: string, updates: Record<string
     return { success: true }
 }
 
-export async function deleteBankAccountAction(id: string) {
+export async function deleteBankAccountAction(id: string, reason: string): Promise<{ success?: boolean; error?: string; updatedBankName?: string }> {
     let user
     try { user = await requireFinanceManager() } catch { return { error: 'You are not authorized to manage bank accounts.' } }
+    const trimmedReason = reason?.trim()
+    if (!trimmedReason) return { error: 'A description/reason for deletion is required.' }
+
     const supabase = await createAdminClient()
-    const { error, count } = await supabase
+
+    // 1. Try to update using deactivation_reason first
+    const { error: primaryError, count } = await supabase
         .from('bank_accounts')
-        .delete({ count: 'exact' })
+        .update({
+            is_active: false,
+            deactivation_reason: trimmedReason
+        })
         .eq('id', id)
         .eq('restaurant_id', user.restaurantId)
-    if (error) return { error: error.message }
-    if (!count) return { error: 'Bank account not found.' }
+        .select()
+
+    // 2. If it fails because the column does not exist, fallback to appending reason to bank_name
+    if (primaryError) {
+        if (primaryError.message.includes('deactivation_reason') || primaryError.code === '42703') {
+            const { data: account } = await supabase
+                .from('bank_accounts')
+                .select('bank_name')
+                .eq('id', id)
+                .eq('restaurant_id', user.restaurantId)
+                .single()
+            
+            const currentBankName = account?.bank_name || ''
+            const fallbackBankName = currentBankName.includes(' (Deleted:')
+                ? currentBankName
+                : `${currentBankName} (Deleted: ${trimmedReason})`.trim()
+
+            const { error: fallbackError } = await supabase
+                .from('bank_accounts')
+                .update({
+                    is_active: false,
+                    bank_name: fallbackBankName
+                })
+                .eq('id', id)
+                .eq('restaurant_id', user.restaurantId)
+
+            if (fallbackError) return { error: fallbackError.message }
+        } else {
+            return { error: primaryError.message }
+        }
+    }
+
     revalidatePath(PATH)
     return { success: true }
 }

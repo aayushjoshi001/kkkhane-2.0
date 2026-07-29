@@ -8,11 +8,27 @@ import { rollUpOrderStatus } from '@/lib/orderRollup'
 
 // Shared SELECT shape for kitchen orders — mirrors what OrderQueue.tsx expects.
 const KITCHEN_ORDER_SELECT = `
-  id, status, order_type, needs_confirmation, total_amount, placed_at, customer_note,
-  sessions ( tables ( label ) ),
+  id, status, order_type, needs_confirmation, total_amount, placed_at, customer_note, booking_id, session_id,
+  bookings:booking_id (
+    id,
+    rooms:room_id ( id, room_number )
+  ),
+  sessions (
+    id,
+    seat_number,
+    booking_id,
+    tables:table_id (
+      id,
+      label,
+      room_id,
+      rooms:room_id ( id, room_number ),
+      sessions ( id, seat_number, status )
+    )
+  ),
   order_items (
-    id, menu_item_id, quantity, unit_price, special_request, status, station, claimed_by, claimed_at,
+    id, menu_item_id, quantity, unit_price, special_request, status, station, claimed_by, claimed_at, needs_confirmation, kot_printed_at,
     menu_items ( id, name, is_combo ),
+    menu_item_variations:menu_item_variation_id ( id, name ),
     order_item_modifiers ( modifier_name, price_adjustment )
   )
 ` as const
@@ -25,12 +41,15 @@ const KITCHEN_ORDER_SELECT = `
 export async function getKitchenOrders(restaurantId: string) {
     await requireRole('kitchen', 'bartender', 'manager', 'super_admin', 'cashier')
     const adminSupabase = await createAdminClient()
+    // Only load orders from the last 24 hours to keep the background print/display queue light
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     const { data, error } = await adminSupabase
         .from('orders')
         .select(KITCHEN_ORDER_SELECT)
         .eq('restaurant_id', restaurantId)
         .in('order_type', ['dine_in', 'takeout', 'delivery'])
         .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
+        .gt('placed_at', yesterday)
         .order('placed_at', { ascending: true })
 
     if (error) {
@@ -39,12 +58,22 @@ export async function getKitchenOrders(restaurantId: string) {
     }
 
     // Apply same filter as page.tsx:
-    //   dine_in  → exclude orders still awaiting waiter confirmation
+    //   dine_in  → item-granular: only items a cashier has confirmed are
+    //     visible (QR self-orders start with every item needs_confirmation:true;
+    //     the parent order can be partially confirmed, so this filters at the
+    //     item level rather than hiding/showing the whole order)
     //   takeout/delivery → exclude pending (not yet confirmed by cashier)
-    return (data || []).filter(o => {
-        if (o.order_type === 'dine_in') return !o.needs_confirmation
-        return o.status !== 'pending'
-    })
+    return (data || [])
+        .filter(o => {
+            if (o.order_type === 'dine_in') {
+                return (o.order_items || []).some(i => !i.needs_confirmation && i.status !== 'cancelled')
+            }
+            return o.status !== 'pending'
+        })
+        .map(o => o.order_type === 'dine_in'
+            ? { ...o, order_items: (o.order_items || []).filter(i => !i.needs_confirmation) }
+            : o
+        )
 }
 
 
@@ -84,15 +113,31 @@ export async function setOrderItemsStatus(
     //   • Mark Ready (→ready): only the owning chef (or an unclaimed dish) may
     //     advance it — enforced here so a non-owner's click changes nothing.
     //   • Anything else (e.g. served): plain prior-state guard.
-    const updateData: { status: OrderItemStatus; claimed_by?: string | null; claimed_at?: string | null } = {
+    // `claimed_by` is a lock, not a record: it exists so two cooks cannot start
+    // the same dish, and it is deliberately released when the dish is done. That
+    // left a finished dish remembering nobody, which is why the kitchen half of
+    // staff reporting had no data. `chef_id` is the durable counterpart — it is
+    // written alongside the lock and never cleared, so who cooked what survives
+    // the dish leaving the pass.
+    const updateData: {
+        status: OrderItemStatus
+        claimed_by?: string | null
+        claimed_at?: string | null
+        chef_id?: string | null
+    } = {
         status: nextStatus,
     }
     if (nextStatus === 'preparing') {
         updateData.claimed_by = actorUserId ?? null
         updateData.claimed_at = new Date().toISOString()
+        if (actorUserId) updateData.chef_id = actorUserId
     } else if (nextStatus === 'ready') {
         updateData.claimed_by = null
         updateData.claimed_at = null
+        // Safe to overwrite: only the owning chef may advance a claimed dish
+        // (guarded below), so the actor here either cooked it or picked up one
+        // nobody had claimed.
+        if (actorUserId) updateData.chef_id = actorUserId
     }
 
     let query = adminSupabase

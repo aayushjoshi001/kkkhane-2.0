@@ -2,10 +2,11 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Building2, ShoppingBag, Crown, Ban, CheckCircle, Loader2, ChevronDown, Plus, X, Store, UserRound, Mail, KeyRound, Phone, MapPin, Check, CreditCard, AlertTriangle, Search, Filter, Wallet } from 'lucide-react'
-import { createTenantWithOwner, suspendRestaurant, updateSubscriptionTier, sendPasswordResetEmail, updateOwnerContact, recordSubscriptionPayment, toggleRestaurantFinance } from './actions'
+import { Building2, ShoppingBag, Crown, Ban, CheckCircle, Loader2, ChevronDown, Plus, X, Store, UserRound, Mail, KeyRound, Phone, MapPin, Check, CreditCard, AlertTriangle, Search, Filter, Wallet, Settings, Printer, ChefHat } from 'lucide-react'
+import { createTenantWithOwner, suspendRestaurant, updateSubscriptionTier, sendPasswordResetEmail, updateOwnerContact, recordSubscriptionPayment, toggleRestaurantFinance, updateRestaurantFeatures } from './actions'
 import { TIER_LIMITS, TIERS, TIER_LABELS, FINANCE_TIERS, isUnlimited, type Tier } from '@/lib/tiers'
 import { toast } from 'react-hot-toast'
+import Select from '@/components/ui/Select'
 
 interface Restaurant {
     id: string
@@ -21,6 +22,7 @@ interface Restaurant {
     created_at: string
     users?: { email: string } | null
     financeEnabled?: boolean
+    features?: any
     business_type?: string | null
 }
 
@@ -204,18 +206,49 @@ export default function SuperAdminDashboard({
         setLoading(null)
     }
 
-    const handleFinanceToggle = async (id: string, enabled: boolean) => {
+    const handleIrdToggle = async (id: string, enabled: boolean) => {
         setLoading(id)
-        const res = await toggleRestaurantFinance(id, enabled)
+        const res = await updateRestaurantFeatures(id, { irdSyncEnabled: enabled })
         if (res.success) {
             setItems(prev =>
                 prev.map(r =>
                     r.id === id
-                        ? { ...r, financeEnabled: enabled }
+                        ? { 
+                            ...r, 
+                            features: { ...(r.features || {}), irdSyncEnabled: enabled }
+                          }
                         : r
                 )
             )
-            toast.success(enabled ? 'Finance feature activated' : 'Finance feature deactivated')
+            toast.success(enabled ? 'IRD Certification & Finance enabled' : 'IRD Certification & Finance disabled')
+        } else {
+            toast.error(res.error || 'Failed')
+        }
+        setLoading(null)
+    }
+
+    const handleFeatureToggle = async (id: string, key: 'kotEnabled' | 'kdsEnabled', enabled: boolean) => {
+        setLoading(id)
+        let updatePayload: any = { [key]: enabled }
+        if (key === 'kotEnabled' && enabled) {
+            updatePayload.kdsEnabled = false
+        } else if (key === 'kdsEnabled' && enabled) {
+            updatePayload.kotEnabled = false
+        }
+
+        const res = await updateRestaurantFeatures(id, updatePayload)
+        if (res.success) {
+            setItems(prev =>
+                prev.map(r =>
+                    r.id === id
+                        ? { 
+                            ...r, 
+                            features: { ...(r.features || {}), ...updatePayload }
+                          }
+                        : r
+                )
+            )
+            toast.success(`Features updated successfully`)
         } else {
             toast.error(res.error || 'Failed')
         }
@@ -344,7 +377,7 @@ export default function SuperAdminDashboard({
 
             {/* Restaurant List */}
             <div className="bg-surface rounded-[24px] shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-hairline overflow-hidden animate-fade-up" style={{ animationDelay: '0.3s' }}>
-                <div className="px-6 py-5 border-b border-gray-50 bg-surface-muted/50 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="px-6 py-5 border-b border-hairline bg-surface-muted/50 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div>
                         <h2 className="text-[1.15rem] font-bold text-ink">All Businesses</h2>
                         <p className="text-[13px] text-ink-subtle mt-0.5">Manage tenants, tiers, and suspension</p>
@@ -371,7 +404,7 @@ export default function SuperAdminDashboard({
                         />
                     </div>
                     <div className="flex gap-3">
-                        <select
+                        <Select
                             value={tierFilter}
                             onChange={(e) => setTierFilter(e.target.value as any)}
                             className="rounded-xl border border-hairline-strong bg-surface px-3 py-2 text-sm text-ink-muted outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 w-full sm:w-auto"
@@ -380,8 +413,8 @@ export default function SuperAdminDashboard({
                             {TIERS.map(t => (
                                 <option key={t} value={t}>{TIER_LABELS[t]}</option>
                             ))}
-                        </select>
-                        <select
+                        </Select>
+                        <Select
                             value={statusFilter}
                             onChange={(e) => setStatusFilter(e.target.value as any)}
                             className="rounded-xl border border-hairline-strong bg-surface px-3 py-2 text-sm text-ink-muted outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 w-full sm:w-auto"
@@ -389,11 +422,11 @@ export default function SuperAdminDashboard({
                             <option value="all">All Status</option>
                             <option value="active">Active</option>
                             <option value="suspended">Suspended</option>
-                        </select>
+                        </Select>
                     </div>
                 </div>
 
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-hairline">
                     {filteredItems.map((restaurant) => (
                         <div
                             key={restaurant.id}
@@ -461,7 +494,7 @@ export default function SuperAdminDashboard({
 
                                 {/* Tier Selector */}
                                 <div className="relative">
-                                    <select
+                                    <Select
                                         value={restaurant.subscription_tier || 'free'}
                                         onChange={(e) => handleTierChange(restaurant.id, e.target.value as Tier)}
                                         disabled={loading === restaurant.id}
@@ -470,34 +503,66 @@ export default function SuperAdminDashboard({
                                         {TIERS.map(t => (
                                             <option key={t} value={t}>{TIER_LABELS[t]}</option>
                                         ))}
-                                    </select>
+                                    </Select>
                                     <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" />
                                 </div>
+                                
+                                {/* IRD Sync Toggle */}
+                                 <div
+                                     className="flex items-center gap-2 px-3 py-2 border border-hairline-strong rounded-lg bg-surface transition-all select-none"
+                                     title="Toggle IRD Certification & Financial Suite"
+                                 >
+                                     <Crown size={14} className={restaurant.features?.irdSyncEnabled ? "text-brand-500" : "text-ink-subtle"} />
+                                     <span className="text-xs font-semibold text-ink-muted hidden sm:inline">IRD Sync</span>
+                                     <label className="relative inline-flex items-center cursor-pointer group">
+                                         <input
+                                             type="checkbox"
+                                             className="sr-only peer"
+                                             checked={!!restaurant.features?.irdSyncEnabled}
+                                             disabled={loading === restaurant.id}
+                                             onChange={(e) => handleIrdToggle(restaurant.id, e.target.checked)}
+                                         />
+                                         <div className="w-9 h-5 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-all peer-disabled:opacity-40"></div>
+                                     </label>
+                                 </div>
 
-                                {/* Finance Toggle */}
-                                <div
-                                    className={`flex items-center gap-2 px-3 py-2 border rounded-lg bg-surface transition-all ${
-                                        (FINANCE_TIERS as readonly string[]).includes(restaurant.subscription_tier)
-                                            ? 'border-hairline-strong'
-                                            : 'border-hairline opacity-50 bg-surface-muted/30'
-                                    }`}
-                                    title={!(FINANCE_TIERS as readonly string[]).includes(restaurant.subscription_tier) ? "Available on Premium tier and above" : "Toggle Finance Feature"}
-                                >
-                                    <Wallet size={14} className={restaurant.financeEnabled ? "text-amber-500" : "text-ink-subtle"} />
-                                    <span className="text-xs font-semibold text-ink-muted hidden sm:inline">Finance</span>
-                                    <label className={`relative inline-flex items-center group ${
-                                        (FINANCE_TIERS as readonly string[]).includes(restaurant.subscription_tier) ? 'cursor-pointer' : 'cursor-not-allowed'
-                                    }`}>
-                                        <input
-                                            type="checkbox"
-                                            className="sr-only peer"
-                                            checked={restaurant.financeEnabled || false}
-                                            disabled={loading === restaurant.id || !(FINANCE_TIERS as readonly string[]).includes(restaurant.subscription_tier)}
-                                            onChange={(e) => handleFinanceToggle(restaurant.id, e.target.checked)}
-                                        />
-                                        <div className="w-9 h-5 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500 peer-checked:border-amber-500 shadow-inner group-hover:shadow-md transition-all peer-disabled:opacity-40"></div>
-                                    </label>
-                                </div>
+                                 {/* KOT Toggle */}
+                                  <div
+                                      className="flex items-center gap-2 px-3 py-2 border border-hairline-strong rounded-lg bg-surface transition-all select-none"
+                                      title="Toggle KOT Physical Ticket Printing"
+                                  >
+                                      <Printer size={14} className={restaurant.features?.kotEnabled ? "text-brand-500" : "text-ink-subtle"} />
+                                      <span className="text-xs font-semibold text-ink-muted hidden sm:inline">KOT</span>
+                                      <label className="relative inline-flex items-center cursor-pointer group">
+                                          <input
+                                              type="checkbox"
+                                              className="sr-only peer"
+                                              checked={!!restaurant.features?.kotEnabled}
+                                              disabled={loading === restaurant.id}
+                                              onChange={(e) => handleFeatureToggle(restaurant.id, 'kotEnabled', e.target.checked)}
+                                          />
+                                          <div className="w-9 h-5 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-all peer-disabled:opacity-40"></div>
+                                      </label>
+                                  </div>
+
+                                 {/* KDS Toggle */}
+                                  <div
+                                      className="flex items-center gap-2 px-3 py-2 border border-hairline-strong rounded-lg bg-surface transition-all select-none"
+                                      title="Toggle Digital Kitchen Display System"
+                                  >
+                                      <ChefHat size={14} className={restaurant.features?.kdsEnabled !== false ? "text-brand-500" : "text-ink-subtle"} />
+                                      <span className="text-xs font-semibold text-ink-muted hidden sm:inline">KDS</span>
+                                      <label className="relative inline-flex items-center cursor-pointer group">
+                                          <input
+                                              type="checkbox"
+                                              className="sr-only peer"
+                                              checked={restaurant.features?.kdsEnabled !== false}
+                                              disabled={loading === restaurant.id}
+                                              onChange={(e) => handleFeatureToggle(restaurant.id, 'kdsEnabled', e.target.checked)}
+                                          />
+                                          <div className="w-9 h-5 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-all peer-disabled:opacity-40"></div>
+                                      </label>
+                                  </div>
 
                                 {/* Suspend/Reactivate */}
                                 <button
@@ -704,7 +769,7 @@ export default function SuperAdminDashboard({
                                 </Field>
 
                                 <Field label="Subscription tier" icon={<Crown size={16} />}>
-                                    <select
+                                    <Select
                                         value={createForm.subscriptionTier}
                                         onChange={(e) => handleCreateFormChange('subscriptionTier', e.target.value)}
                                         className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
@@ -712,11 +777,11 @@ export default function SuperAdminDashboard({
                                         {TIERS.map(t => (
                                             <option key={t} value={t}>{TIER_LABELS[t]}</option>
                                         ))}
-                                    </select>
+                                    </Select>
                                 </Field>
 
                                 <Field label="Business type *" icon={<Building2 size={16} />}>
-                                    <select
+                                    <Select
                                         value={createForm.businessType}
                                         onChange={(e) => handleCreateFormChange('businessType', e.target.value)}
                                         className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
@@ -729,7 +794,7 @@ export default function SuperAdminDashboard({
                                         <option value="Fine Dining">Fine Dining (Dine-in)</option>
                                         <option value="Bar">Bar (Bar Service)</option>
                                         <option value="Cloud Kitchen">Cloud Kitchen (Delivery Only)</option>
-                                    </select>
+                                    </Select>
                                 </Field>
                             </div>
 
@@ -831,7 +896,7 @@ export default function SuperAdminDashboard({
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-ink-muted mb-1.5">Payment Method</label>
-                                <select
+                                <Select
                                     value={paymentForm.method}
                                     onChange={e => setPaymentForm(p => ({ ...p, method: e.target.value }))}
                                     className="w-full rounded-xl border border-hairline-strong bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
@@ -841,7 +906,7 @@ export default function SuperAdminDashboard({
                                     <option value="khalti">Khalti</option>
                                     <option value="bank_transfer">Bank Transfer</option>
                                     <option value="fonepay">FonePay</option>
-                                </select>
+                                </Select>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-ink-muted mb-1.5">Reference / Transaction ID</label>

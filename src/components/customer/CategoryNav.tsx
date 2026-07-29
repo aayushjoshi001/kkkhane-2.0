@@ -20,7 +20,15 @@ export default function CategoryNav({
  
     useEffect(() => {
         const btn = btnRefs.current[activeCategory]
-        btn?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+        const container = scrollRef.current
+        if (btn && container) {
+            const containerWidth = container.offsetWidth
+            const btnWidth = btn.offsetWidth
+            const btnLeft = btn.offsetLeft
+            // Center the active category button horizontally in the scrollable container
+            const targetScrollLeft = btnLeft - (containerWidth / 2) + (btnWidth / 2)
+            container.scrollTo({ left: targetScrollLeft, behavior: 'smooth' })
+        }
     }, [activeCategory])
  
     const handleClick = (id: string) => {

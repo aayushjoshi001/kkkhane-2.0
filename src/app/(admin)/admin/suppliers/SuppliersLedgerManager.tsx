@@ -1,13 +1,34 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import {
-    Plus, X, Search, Loader2, Trash2, Edit2, FileText, Phone, DollarSign, Truck, Tag
+    Plus, X, Search, Loader2, Trash2, Edit2, FileText, Phone, DollarSign, Truck, Tag,
+    Download, Printer, Banknote, ShieldAlert, Receipt
 } from 'lucide-react'
-import { createSupplierAction, updateSupplierAction, deleteSupplierAction, createSupplierBillAction } from './actions'
+import { createSupplierAction, updateSupplierAction, deleteSupplierAction, createSupplierBillAction, approveChequeBillAction, rejectChequeBillAction, getSupplierSettlementsAction, saveSupplierOpeningBalanceAction } from './actions'
 import { createCategoryAction } from '../income-expenses/actions'
 import { toast } from 'react-hot-toast'
-import { formatCurrency } from '@/lib/utils'
+import Modal from '@/components/ui/Modal'
+import { formatCurrency, parseExpenseDescription, type SupplierBillDetails } from '@/lib/utils'
+import { downloadCsv } from '@/lib/exportCsv'
+import PrintableReport, { type PrintableReportHandle } from '@/components/admin/PrintableReport'
+import { useDateFormatter, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
+import SupplierPaymentFields, { EMPTY_SUPPLIER_PAYMENT, validateSupplierPayment, isUnderpaidSplit, underpaidSplitConfirmMessage, buildChequeDetailsFromSupplierPayment, type SupplierPaymentValue } from '@/components/admin/SupplierPaymentFields'
+import PayPartyModal, { type PayPartyResult } from '@/components/admin/PayPartyModal'
+import { useConfirmStore } from '@/lib/stores/confirm'
+import Select from '@/components/ui/Select'
+import DateCell from '@/components/ui/DateCell'
+
+function paymentTypeLabel(parsed: SupplierBillDetails, bankAccountName?: string): string {
+    const bank = bankAccountName || parsed.bank_name || 'Transfer'
+    switch (parsed.payment_type) {
+        case 'bank': return `Bank (${bank})` // legacy bills recorded before Cash/QR/Cheque/Cash+QR existed
+        case 'qr': return `QR (${bank})`
+        case 'cheque': return `Cheque (${bank})`
+        case 'cash_qr': return `Cash + QR (${bank})`
+        default: return 'Cash'
+    }
+}
 
 interface Supplier {
     id: string
@@ -33,17 +54,21 @@ interface SuppliersLedgerManagerProps {
     expenses: Expense[]
     expenseCategories: Array<{ id: string; name: string }>
     bankAccounts: Array<{ id: string; name: string; bank_name: string | null; account_number: string | null }>
+    ingredients?: Array<{ id: string; name: string; unit: string; cost_per_unit: number; category_id: string | null }>
 }
 
 export default function SuppliersLedgerManager({
     initialSuppliers,
     expenses,
     expenseCategories,
-    bankAccounts
+    bankAccounts,
+    ingredients = []
 }: SuppliersLedgerManagerProps) {
+    const { confirm } = useConfirmStore()
     const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers)
     const [expensesList, setExpensesList] = useState<Expense[]>(expenses)
     const [expenseCategoriesList, setExpenseCategoriesList] = useState(expenseCategories)
+    const formatDate = useDateFormatter()
     const [searchQuery, setSearchQuery] = useState('')
 
     // Form modals
@@ -60,24 +85,142 @@ export default function SuppliersLedgerManager({
 
     // View Ledger Statement state
     const [ledgerSupplier, setLedgerSupplier] = useState<Supplier | null>(null)
+    const [settlements, setSettlements] = useState<any[]>([])
+    const [loadingSettlements, setLoadingSettlements] = useState(false)
+    const [selectedSupplierBillDetails, setSelectedSupplierBillDetails] = useState<any | null>(null)
+
+    const loadSettlements = async (supplier: Supplier) => {
+        const sNameLower = supplier.name.toLowerCase().trim()
+        const supplierExpenseIds = expensesList
+            .filter(e => e.vendor_name?.toLowerCase().trim() === sNameLower)
+            .map(e => e.id)
+
+        if (supplierExpenseIds.length === 0) {
+            setSettlements([])
+            return
+        }
+
+        setLoadingSettlements(true)
+        try {
+            const res = await getSupplierSettlementsAction(supplierExpenseIds)
+            if (res.error) {
+                toast.error(res.error)
+            } else if (res.data) {
+                setSettlements(res.data)
+            }
+        } catch (err) {
+            toast.error('Failed to load payment history')
+        } finally {
+            setLoadingSettlements(false)
+        }
+    }
+
+    useEffect(() => {
+        if (ledgerSupplier) {
+            loadSettlements(ledgerSupplier)
+        } else {
+            setSettlements([])
+        }
+    }, [ledgerSupplier])
+
+    // Which row's Cash + QR breakdown is expanded — click the Payment Type
+    // badge to reveal the small-font split, click again to collapse it.
+    const [expandedSplitId, setExpandedSplitId] = useState<string | null>(null)
 
     // Record Bill Form fields
     const [billModalOpen, setBillModalOpen] = useState(false)
+    const [selectedIngredientId, setSelectedIngredientId] = useState('')
     const [billDesc, setBillDesc] = useState('')
     const [billQty, setBillQty] = useState('')
     const [billRate, setBillRate] = useState('')
     const [billUnit, setBillUnit] = useState('kg')
     const [billCategory, setBillCategory] = useState('')
     const [billPaidAmount, setBillPaidAmount] = useState('')
-    const [billPaymentSource, setBillPaymentSource] = useState<'cash' | 'bank'>('cash')
-    const [billBankName, setBillBankName] = useState('')
+    const [billPayment, setBillPayment] = useState<SupplierPaymentValue>(EMPTY_SUPPLIER_PAYMENT)
     const [submittingBill, setSubmittingBill] = useState(false)
+
+    const handleIngredientSelect = (ingId: string) => {
+        setSelectedIngredientId(ingId)
+        if (!ingId) return
+
+        const ing = ingredients.find(i => i.id === ingId)
+        if (ing) {
+            setBillDesc(ing.name)
+            setBillRate(ing.cost_per_unit.toString())
+            setBillUnit(ing.unit)
+            if (ing.category_id) {
+                setBillCategory(ing.category_id)
+            }
+        }
+    }
 
     // Inline Category Creator inside Record Bill
     const [showNewCatForm, setShowNewCatForm] = useState(false)
     const [newCatName, setNewCatName] = useState('')
     const [newCatDesc, setNewCatDesc] = useState('')
     const [submittingCat, setSubmittingCat] = useState(false)
+
+    // Pay modal — one action per supplier, settling however many outstanding
+    // bills the amount covers (oldest first), via a real Payment Voucher.
+    const [payModalOpen, setPayModalOpen] = useState(false)
+
+    // Opening balance modal state
+    const [obModalOpen, setObModalOpen] = useState(false)
+    const [obAmount, setObAmount] = useState('')
+    const [obReason, setObReason] = useState('')
+    const [isObEdit, setIsObEdit] = useState(false)
+    const [submittingOb, setSubmittingOb] = useState(false)
+
+    const handleOpenAddSupplierOb = () => {
+        setObAmount('')
+        setObReason('')
+        setIsObEdit(false)
+        setObModalOpen(true)
+    }
+
+    const handleOpenEditSupplierOb = (currentAmt: number) => {
+        setObAmount(String(currentAmt))
+        setObReason('')
+        setIsObEdit(true)
+        setObModalOpen(true)
+    }
+
+    const handleSaveSupplierOb = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!ledgerSupplier) return
+        const amt = parseFloat(obAmount)
+        if (isNaN(amt) || amt < 0) { toast.error('Opening balance amount must be non-negative'); return }
+        if (isObEdit && !obReason.trim()) {
+            toast.error('Reason for editing opening balance is required')
+            return
+        }
+
+        setSubmittingOb(true)
+        try {
+            const res = await saveSupplierOpeningBalanceAction({
+                supplier_id: ledgerSupplier.id,
+                supplier_name: ledgerSupplier.name,
+                amount: amt,
+                reason: obReason.trim(),
+                is_edit: isObEdit,
+            })
+            if (res.error) {
+                toast.error(res.error)
+            } else if (res.data) {
+                const newOrUpdated = res.data as Expense
+                setExpensesList(prev => {
+                    const filtered = prev.filter(e => e.id !== newOrUpdated.id)
+                    return [newOrUpdated, ...filtered]
+                })
+                setObModalOpen(false)
+                toast.success(isObEdit ? 'Opening balance updated' : 'Opening balance added')
+            }
+        } catch (err) {
+            toast.error('Failed to save opening balance')
+        } finally {
+            setSubmittingOb(false)
+        }
+    }
 
     // Open add modal
     const openAddModal = () => {
@@ -154,7 +297,8 @@ export default function SuppliersLedgerManager({
 
     // Handle delete supplier
     const handleDelete = async (id: string, sName: string) => {
-        if (!confirm(`Are you sure you want to delete the supplier "${sName}"?`)) return
+        const ok = await confirm({ title: `Delete the supplier "${sName}"?`, message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
 
         try {
             const res = await deleteSupplierAction(id)
@@ -215,9 +359,14 @@ export default function SuppliersLedgerManager({
             toast.error('Paid amount cannot exceed total bill amount')
             return
         }
-        if (billPaymentSource === 'bank' && !billBankName.trim()) {
-            toast.error('Bank Name is required for Bank payments')
+        const paymentError = validateSupplierPayment(billPayment, paid)
+        if (paymentError) {
+            toast.error(paymentError)
             return
+        }
+        if (isUnderpaidSplit(billPayment, paid, totalAmt)) {
+            const ok = await confirm({ title: 'Underpaid split', message: underpaidSplitConfirmMessage(paid, totalAmt), confirmText: 'Continue', isDestructive: false })
+            if (!ok) return
         }
 
         setSubmittingBill(true)
@@ -231,8 +380,12 @@ export default function SuppliersLedgerManager({
                 unit: billUnit,
                 amount: totalAmt,
                 paid_amount: paid,
-                payment_source: billPaymentSource,
-                bank_name: billPaymentSource === 'bank' ? billBankName.trim() : undefined
+                payment_source: billPayment.payment_source,
+                bank_name: billPayment.payment_source !== 'cash' ? billPayment.bank_name.trim() : undefined,
+                cash_portion: billPayment.payment_source === 'cash_qr' ? (parseFloat(billPayment.cash_portion) || 0) : undefined,
+                qr_portion: billPayment.payment_source === 'cash_qr' ? (parseFloat(billPayment.qr_portion) || 0) : undefined,
+                cheque_details: billPayment.payment_source === 'cheque' ? buildChequeDetailsFromSupplierPayment(billPayment) : undefined,
+                ingredient_id: selectedIngredientId || undefined,
             })
 
             if (res.error) {
@@ -245,21 +398,112 @@ export default function SuppliersLedgerManager({
                 }
                 setExpensesList(prev => [newEntry, ...prev])
                 setBillModalOpen(false)
+                setSelectedIngredientId('')
                 setBillDesc('')
                 setBillQty('')
                 setBillRate('')
                 setBillUnit('kg')
                 setBillCategory('')
                 setBillPaidAmount('')
-                setBillPaymentSource('cash')
-                setBillBankName('')
-                toast.success('Bill logged successfully!')
-                if ('warning' in res && res.warning) toast.error(res.warning)
+                setBillPayment(EMPTY_SUPPLIER_PAYMENT)
+                if ('pendingApproval' in res && res.pendingApproval) {
+                    toast.success('Bill logged. Cheque payment held pending manager approval.', { duration: 6000 })
+                } else {
+                    toast.success('Bill logged successfully!')
+                    if ('warning' in res && res.warning) toast.error(res.warning)
+                }
             }
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'Failed to record bill')
         } finally {
             setSubmittingBill(false)
+        }
+    }
+
+    // Called after PayPartyModal successfully records a voucher that settled
+    // some (or all) of this supplier's outstanding bills — patches the
+    // touched bills' paid_amount locally instead of a full page refetch.
+    const handlePaySettled = async (result: PayPartyResult) => {
+        if (!result.settledBills?.length) return
+        const updatedExpenses = expensesList.map(e => {
+            const settled = result.settledBills!.find(b => b.id === e.id)
+            if (!settled) return e
+            const parsed = parseExpenseDescription(e.description)
+            return { ...e, description: JSON.stringify({ ...parsed, paid_amount: settled.paid_amount }) }
+        })
+        setExpensesList(updatedExpenses)
+
+        if (ledgerSupplier) {
+            const sNameLower = ledgerSupplier.name.toLowerCase().trim()
+            const supplierExpenseIds = updatedExpenses
+                .filter(e => e.vendor_name?.toLowerCase().trim() === sNameLower)
+                .map(e => e.id)
+
+            if (supplierExpenseIds.length > 0) {
+                setLoadingSettlements(true)
+                try {
+                    const res = await getSupplierSettlementsAction(supplierExpenseIds)
+                    if (res.data) setSettlements(res.data)
+                } catch (e) {
+                    console.error(e)
+                } finally {
+                    setLoadingSettlements(false)
+                }
+            }
+        }
+    }
+
+    // Bills currently holding a cheque payment awaiting manager approval —
+    // derived straight from the already-loaded list, no separate fetch needed.
+    const pendingChequeBills = useMemo(
+        () => expensesList.filter(e => parseExpenseDescription(e.description).cheque_status === 'pending_approval'),
+        [expensesList],
+    )
+    const [processingChequeId, setProcessingChequeId] = useState<string | null>(null)
+
+    const handleApproveCheque = async (expenseId: string) => {
+        setProcessingChequeId(expenseId)
+        try {
+            const res = await approveChequeBillAction(expenseId)
+            if (res.error) {
+                toast.error(res.error)
+                return
+            }
+            toast.success('Cheque approved and posted to the Day Book!')
+            if (res.warning) toast.error(res.warning)
+            const bill = expensesList.find(e => e.id === expenseId)
+            if (bill) {
+                const parsed = parseExpenseDescription(bill.description)
+                const approvedAmount = parsed.pending_cheque?.amount ?? 0
+                setExpensesList(prev => prev.map(e => e.id === expenseId
+                    ? { ...e, description: JSON.stringify({ ...parsed, paid_amount: (parsed.paid_amount ?? 0) + approvedAmount, cheque_status: 'approved', pending_cheque: undefined }) }
+                    : e))
+            }
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Failed to approve cheque')
+        } finally {
+            setProcessingChequeId(null)
+        }
+    }
+
+    const handleRejectCheque = async (expenseId: string) => {
+        setProcessingChequeId(expenseId)
+        try {
+            const res = await rejectChequeBillAction(expenseId)
+            if (res.error) {
+                toast.error(res.error)
+                return
+            }
+            toast.success('Cheque rejected — bill remains due for that amount.')
+            setExpensesList(prev => prev.map(e => {
+                if (e.id !== expenseId) return e
+                const parsed = parseExpenseDescription(e.description)
+                return { ...e, description: JSON.stringify({ ...parsed, cheque_status: 'rejected', pending_cheque: undefined }) }
+            }))
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Failed to reject cheque')
+        } finally {
+            setProcessingChequeId(null)
         }
     }
 
@@ -290,40 +534,133 @@ export default function SuppliersLedgerManager({
         if (!ledgerSupplier) return []
         const sNameLower = ledgerSupplier.name.toLowerCase().trim()
 
-        // Filter and sort ascending (oldest first) to accumulate running balance correctly
-        const filtered = expensesList
-            .filter(e => e.vendor_name?.toLowerCase().trim() === sNameLower)
-            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        // 1. Get all bills for this supplier
+        const bills = expensesList.filter(e => e.vendor_name?.toLowerCase().trim() === sNameLower)
 
-        let cumulativeBalance = 0
-        const mapped = filtered.map(e => {
-            let parsed = { text_desc: e.description, quantity: null as number | null, rate: null as number | null, unit: '', paid_amount: e.amount, payment_type: 'cash', bank_name: '' }
+        // 2. Map settlements to bills to find out how much of the current paid_amount is from subsequent settlements
+        const settlementsMap: Record<string, number> = {}
+        settlements.forEach(s => {
+            settlementsMap[s.expense_id] = (settlementsMap[s.expense_id] || 0) + Number(s.amount)
+        })
+
+        // 3. Create statement rows
+        const statementRows: Array<{
+            id: string
+            created_at: string
+            description: string
+            totalAmt: number
+            paidAmt: number
+            owed: number
+            parsed: SupplierBillDetails
+            bank_accounts?: {
+                name: string
+            }
+            isPaymentRow?: boolean
+        }> = []
+
+        // Add bill rows
+        bills.forEach(b => {
+            const parsed = parseExpenseDescription(b.description)
+            const totalAmt = Number(b.amount)
+            const currentPaid = Number(parsed.paid_amount ?? totalAmt)
+            const settlementsPaid = settlementsMap[b.id] || 0
+            const initialPaid = Math.max(0, currentPaid - settlementsPaid)
+            const owed = totalAmt - initialPaid
+
+            statementRows.push({
+                id: b.id,
+                created_at: b.created_at,
+                description: b.description,
+                totalAmt: totalAmt,
+                paidAmt: initialPaid,
+                owed: owed,
+                parsed: {
+                    ...parsed,
+                    paid_amount: initialPaid,
+                    payment_type: initialPaid === 0 ? 'UNPAID' : parsed.payment_type || 'cash',
+                },
+                bank_accounts: b.bank_accounts ? { name: b.bank_accounts.name } : undefined
+            })
+        })
+
+        // Group settlements by day_book_entry_id so we present a single payment row for each voucher
+        const groupedSettlements: Record<string, {
+            dayBookEntryId: string
+            date: string
+            description: string
+            totalAmount: number
+            paymentMode: string
+            bankName: string
+        }> = {}
+
+        settlements.forEach(s => {
+            const dbEntry = s.day_book_entries
+            if (!dbEntry) return
+
+            let parsedDbDesc = { particulars: '', voucher_number: '', payment_mode: '', bank_name: '' }
             try {
-                if (e.description.startsWith('{') && e.description.endsWith('}')) {
-                    parsed = JSON.parse(e.description)
-                }
-            } catch {
-                // fallback
+                parsedDbDesc = JSON.parse(dbEntry.description)
+            } catch (e) {
+                parsedDbDesc.particulars = dbEntry.description
             }
 
-            const totalAmt = Number(e.amount)
-            const paidAmt = Number(parsed.paid_amount ?? totalAmt)
-            const owed = totalAmt - paidAmt
-            cumulativeBalance += owed
+            const entryId = dbEntry.id
+            if (!groupedSettlements[entryId]) {
+                const voucherNo = parsedDbDesc.voucher_number || 'Payment'
+                groupedSettlements[entryId] = {
+                    dayBookEntryId: entryId,
+                    date: s.created_at,
+                    description: `Payment Voucher (${voucherNo}) - ${parsedDbDesc.particulars || 'Supplier Payment'}`,
+                    totalAmount: 0,
+                    paymentMode: parsedDbDesc.payment_mode || (dbEntry.type?.includes('cash') ? 'cash' : 'bank'),
+                    bankName: parsedDbDesc.bank_name || dbEntry.bank_name || ''
+                }
+            }
+            groupedSettlements[entryId].totalAmount += Number(s.amount)
+        })
+
+        // Add payment rows
+        Object.values(groupedSettlements).forEach(gs => {
+            statementRows.push({
+                id: gs.dayBookEntryId,
+                created_at: gs.date,
+                description: gs.description,
+                totalAmt: 0,
+                paidAmt: gs.totalAmount,
+                owed: 0,
+                parsed: {
+                    text_desc: gs.description,
+                    quantity: null,
+                    rate: null,
+                    unit: '',
+                    paid_amount: gs.totalAmount,
+                    payment_type: gs.paymentMode,
+                    bank_name: gs.bankName || ''
+                },
+                isPaymentRow: true
+            })
+        })
+
+        // 4. Pin Opening Balance at Row #1 (Very Top), sort all other transactions chronologically
+        const obRows = statementRows.filter(r => (r.parsed?.text_desc || r.description || '').toLowerCase().includes('opening balance'))
+        const otherRows = statementRows.filter(r => !(r.parsed?.text_desc || r.description || '').toLowerCase().includes('opening balance'))
+            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+
+        const orderedRows = [...obRows, ...otherRows]
+
+        let cumulativeBalance = 0
+        const mapped = orderedRows.map(row => {
+            const netChange = row.totalAmt - row.paidAmt
+            cumulativeBalance += netChange
 
             return {
-                ...e,
-                parsed,
-                totalAmt,
-                paidAmt,
-                owed,
+                ...row,
                 runningBalance: cumulativeBalance
             }
         })
 
-        // Return descending (newest first) for visual rendering
-        return mapped.reverse()
-    }, [ledgerSupplier, expensesList])
+        return mapped
+    }, [ledgerSupplier, expensesList, settlements])
 
     const totalPurchased = useMemo(() => {
         return supplierLedgerEntries.reduce((sum, e) => sum + e.totalAmt, 0)
@@ -334,9 +671,44 @@ export default function SuppliersLedgerManager({
     }, [supplierLedgerEntries])
 
     const totalOwed = useMemo(() => {
-        // Outstanding amount is the final running balance (first item in reversed array)
-        return supplierLedgerEntries[0]?.runningBalance ?? 0
+        // Outstanding amount is the final running balance (last item in array)
+        return supplierLedgerEntries[supplierLedgerEntries.length - 1]?.runningBalance ?? 0
     }, [supplierLedgerEntries])
+
+    const existingObEntry = useMemo(() => {
+        return supplierLedgerEntries.find(e => (e.parsed?.text_desc || e.description || '').toLowerCase().includes('opening balance'))
+    }, [supplierLedgerEntries])
+
+    const printRef = useRef<PrintableReportHandle>(null)
+    const reportColumns = [
+        { key: 'date', label: 'Date', dateStacked: true },
+        { key: 'description', label: 'Description' },
+        { key: 'quantity', label: 'Qty', align: 'center' as const },
+        { key: 'rate', label: 'Rate', align: 'right' as const },
+        { key: 'unit', label: 'Unit', align: 'center' as const },
+        { key: 'amount', label: 'Amount', align: 'right' as const },
+        { key: 'paid_amount', label: 'Paid Amount', align: 'right' as const },
+        { key: 'payment_type', label: 'Payment Type' },
+        { key: 'running_balance', label: 'Running Balance', align: 'right' as const },
+    ]
+    const reportRows = supplierLedgerEntries.map(e => {
+        const isOb = (e.parsed.text_desc || e.description || '').toLowerCase().includes('opening balance')
+        return {
+            date: formatDate(e.created_at),
+            description: e.parsed.text_desc || e.description,
+            quantity: !isOb && e.parsed.quantity !== null && e.parsed.quantity !== undefined ? e.parsed.quantity : '',
+            rate: !isOb && e.parsed.rate !== null && e.parsed.rate !== undefined ? formatCurrency(e.parsed.rate) : '',
+            unit: !isOb ? (e.parsed.unit || '') : '',
+            amount: formatCurrency(e.totalAmt),
+            paid_amount: formatCurrency(e.paidAmt),
+            payment_type: e.paidAmt === 0
+                ? 'UNPAID'
+                : `${e.owed > 0 ? 'Partial - ' : ''}${paymentTypeLabel(e.parsed, e.bank_accounts?.name)}` +
+                  (e.parsed.payment_type === 'cash_qr' ? ` (Cash: ${formatCurrency(e.parsed.cash_portion ?? 0)}, QR: ${formatCurrency(e.parsed.qr_portion ?? 0)})` : ''),
+            running_balance: formatCurrency(e.runningBalance),
+        }
+    })
+    const handleExportCsv = () => downloadCsv(`supplier-statement-${ledgerSupplier?.name || 'supplier'}`, reportColumns, reportRows)
 
     return (
         <>
@@ -349,8 +721,8 @@ export default function SuppliersLedgerManager({
                                 <Truck size={20} className="text-brand-500" />
                             </div>
                             <div>
-                                <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Suppliers Ledger</h1>
-                                <p className="text-sm text-gray-500 mt-0.5">
+                                <h1 className="text-2xl font-extrabold text-ink tracking-tight">Suppliers Ledger</h1>
+                                <p className="text-sm text-ink-subtle mt-0.5">
                                     Manage supplier profiles, tax details (PAN/VAT), and track expense purchase ledgers.
                                 </p>
                             </div>
@@ -366,15 +738,63 @@ export default function SuppliersLedgerManager({
                     </div>
                 </div>
 
+                {/* Pending Cheque Approvals — hidden entirely when empty */}
+                {pendingChequeBills.length > 0 && (
+                    <div className="bg-purple-50 border border-purple-200 rounded-2xl shadow-sm overflow-hidden">
+                        <div className="p-4 border-b border-purple-200 bg-purple-100/50">
+                            <p className="text-xs font-black text-purple-800 uppercase tracking-wider">
+                                Pending Cheque Approvals ({pendingChequeBills.length})
+                            </p>
+                            <p className="text-[11px] text-purple-700 mt-0.5">
+                                These bills&apos; cheque payments aren&apos;t reflected in any balance until approved.
+                            </p>
+                        </div>
+                        <div className="divide-y divide-purple-100">
+                            {pendingChequeBills.map(bill => {
+                                const parsed = parseExpenseDescription(bill.description)
+                                const pending = parsed.pending_cheque
+                                const isProcessing = processingChequeId === bill.id
+                                return (
+                                    <div key={bill.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-bold text-ink truncate">{bill.vendor_name} — {parsed.text_desc}</p>
+                                            <p className="text-[11px] text-ink-subtle mt-0.5">
+                                                Rs. {formatCurrency(pending?.amount ?? 0)} · Cheque #{pending?.cheque_details.cheque_number} · {pending?.cheque_details.bank_cheque} · Dated {pending?.cheque_details.cheque_date} · Given by {pending?.cheque_details.written_name}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <button
+                                                onClick={() => handleRejectCheque(bill.id)}
+                                                disabled={isProcessing}
+                                                className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-hairline text-ink-subtle hover:bg-surface-muted transition disabled:opacity-50"
+                                            >
+                                                Reject
+                                            </button>
+                                            <button
+                                                onClick={() => handleApproveCheque(bill.id)}
+                                                disabled={isProcessing}
+                                                className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-purple-600 hover:bg-purple-700 text-white transition disabled:opacity-50 flex items-center gap-1.5"
+                                            >
+                                                {isProcessing ? <Loader2 size={12} className="animate-spin" /> : null}
+                                                Approve
+                                            </button>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </div>
+                )}
+
                 {/* Directory table is always full width for spacious listing */}
-                <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+                <div className="bg-surface border border-hairline rounded-2xl shadow-sm overflow-hidden">
                     {/* List Controls */}
-                    <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <p className="text-xs font-black text-gray-800 uppercase tracking-wider">Suppliers Directory ({filteredSuppliers.length})</p>
+                    <div className="p-4 border-b border-hairline bg-surface-muted/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <p className="text-xs font-black text-ink uppercase tracking-wider">Suppliers Directory ({filteredSuppliers.length})</p>
                         
                         {/* Search Bar */}
                         <div className="relative w-full sm:w-64">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle">
                                 <Search size={14} />
                             </span>
                             <input
@@ -382,7 +802,7 @@ export default function SuppliersLedgerManager({
                                 placeholder="Search suppliers..."
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                className="w-full pl-9 pr-4 py-2 bg-surface border border-hairline rounded-xl text-xs font-semibold text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                             />
                         </div>
                     </div>
@@ -391,20 +811,20 @@ export default function SuppliersLedgerManager({
                     <div className="overflow-x-auto">
                         {filteredSuppliers.length === 0 ? (
                             <div className="text-center py-16 px-4">
-                                <FileText size={40} className="text-gray-300 mx-auto mb-3" />
-                                <p className="text-xs font-bold text-gray-400">No suppliers found</p>
+                                <FileText size={40} className="text-ink-subtle mx-auto mb-3" />
+                                <p className="text-xs font-bold text-ink-subtle">No suppliers found</p>
                             </div>
                         ) : (
                             <table className="w-full text-left text-xs border-collapse">
                                 <thead>
-                                    <tr className="bg-gray-50 border-b border-gray-100">
-                                        <th className="px-6 py-4 font-bold text-gray-500">Supplier Details</th>
-                                        <th className="px-6 py-4 font-bold text-gray-500 w-40 text-center">PAN / VAT</th>
-                                        <th className="px-6 py-4 font-bold text-gray-500">Address</th>
-                                        <th className="px-6 py-4 font-bold text-gray-500 w-44 text-center">Actions</th>
+                                    <tr className="bg-surface-muted border-b border-hairline">
+                                        <th className="px-6 py-4 font-bold text-ink-subtle">Supplier Details</th>
+                                        <th className="px-6 py-4 font-bold text-ink-subtle w-40 text-center">PAN / VAT</th>
+                                        <th className="px-6 py-4 font-bold text-ink-subtle">Address</th>
+                                        <th className="px-6 py-4 font-bold text-ink-subtle w-44 text-center">Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-100">
+                                <tbody className="divide-y divide-hairline">
                                     {filteredSuppliers.map((s, idx) => {
                                         let parsed = { pan: '', vat: '' }
                                         try {
@@ -414,11 +834,11 @@ export default function SuppliersLedgerManager({
                                         }
 
                                         return (
-                                            <tr key={s.id} className={`transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/20'} hover:bg-gray-50/50`}>
+                                            <tr key={s.id} className={`transition-colors ${idx % 2 === 0 ? 'bg-surface' : 'bg-surface-muted/20'} hover:bg-surface-muted/50`}>
                                                 {/* Details (Name & Phone) */}
                                                 <td className="px-6 py-4">
-                                                    <p className="font-extrabold text-sm text-gray-900">{s.name}</p>
-                                                    <p className="text-[10px] text-gray-500 font-semibold flex items-center gap-1 mt-1">
+                                                    <p className="font-extrabold text-sm text-ink">{s.name}</p>
+                                                    <p className="text-[10px] text-ink-subtle font-semibold flex items-center gap-1 mt-1">
                                                         <Phone size={10} /> {s.phone || 'N/A'}
                                                     </p>
                                                 </td>
@@ -426,7 +846,7 @@ export default function SuppliersLedgerManager({
                                                 {/* PAN/VAT Badges */}
                                                 <td className="px-6 py-4 text-center whitespace-nowrap space-y-1">
                                                     {parsed.pan && (
-                                                        <span className="block text-[9px] font-black uppercase px-2 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200">
+                                                        <span className="block text-[9px] font-black uppercase px-2 py-0.5 rounded bg-surface-muted text-ink-subtle border border-hairline">
                                                             PAN: {parsed.pan}
                                                         </span>
                                                     )}
@@ -436,33 +856,33 @@ export default function SuppliersLedgerManager({
                                                         </span>
                                                     )}
                                                     {!parsed.pan && !parsed.vat && (
-                                                        <span className="text-[10px] text-gray-400 italic">None</span>
+                                                        <span className="text-[10px] text-ink-subtle italic">None</span>
                                                     )}
                                                 </td>
 
                                                 {/* Address */}
-                                                <td className="px-6 py-4 font-semibold text-gray-500">
-                                                    {s.address || <span className="text-gray-400 italic">None</span>}
+                                                <td className="px-6 py-4 font-semibold text-ink-subtle">
+                                                    {s.address || <span className="text-ink-subtle italic">None</span>}
                                                 </td>
 
                                                 {/* Actions */}
                                                 <td className="px-6 py-4 text-center space-x-2 whitespace-nowrap">
                                                     <button
                                                         onClick={() => setLedgerSupplier(s)}
-                                                        className="px-3 py-1.5 rounded-lg font-black text-[10px] uppercase border bg-white hover:bg-gray-50 border-gray-200 text-gray-500 hover:text-gray-800 transition-all shadow-sm"
+                                                        className="px-3 py-1.5 rounded-lg font-black text-[10px] uppercase border bg-surface hover:bg-surface-muted border-hairline text-ink-subtle hover:text-ink transition-all shadow-sm"
                                                     >
                                                         Ledger Statement
                                                     </button>
                                                     <button
                                                         onClick={() => openEditModal(s)}
-                                                        className="p-1.5 hover:bg-gray-50 hover:text-gray-800 border border-transparent rounded-lg text-gray-400 transition-all inline-flex align-middle"
+                                                        className="p-1.5 hover:bg-surface-muted hover:text-ink border border-transparent rounded-lg text-ink-subtle transition-all inline-flex align-middle"
                                                         title="Edit Supplier"
                                                     >
                                                         <Edit2 size={12} />
                                                     </button>
                                                     <button
                                                         onClick={() => handleDelete(s.id, s.name)}
-                                                        className="p-1.5 hover:bg-rose-50 hover:text-rose-600 border border-transparent rounded-lg text-gray-400 transition-all inline-flex align-middle"
+                                                        className="p-1.5 hover:bg-rose-50 hover:text-rose-600 border border-transparent rounded-lg text-ink-subtle transition-all inline-flex align-middle"
                                                         title="Delete Supplier"
                                                     >
                                                         <Trash2 size={12} />
@@ -480,14 +900,14 @@ export default function SuppliersLedgerManager({
 
             {/* ── SUPPLIER LEDGER STATEMENT MODAL (Fullscreen-like overlay) ── */}
             {ledgerSupplier && (
-                <div className="fixed inset-0 z-40 bg-gray-900/45 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+                <div className="fixed inset-0 z-40 bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-surface rounded-2xl border border-hairline shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
                         {/* Statement Header */}
-                        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-                            <div>
-                                <span className="text-[9px] font-black uppercase text-brand-600 tracking-wider">Supplier Account Statement</span>
-                                <h2 className="text-xl font-extrabold text-gray-900 mt-0.5">{ledgerSupplier.name}</h2>
-                                <p className="text-xs text-gray-500 mt-1">
+                        <div className="px-6 py-4 border-b border-hairline bg-surface-muted/50 flex flex-wrap items-center justify-between gap-3">
+                            <div className="min-w-0 pr-2">
+                                <span className="text-[9px] font-black uppercase text-brand-600 tracking-wider block">Supplier Account Statement</span>
+                                <h2 className="text-lg sm:text-xl font-extrabold text-ink mt-0.5 truncate">{ledgerSupplier.name}</h2>
+                                <p className="text-xs text-ink-subtle mt-0.5 truncate">
                                     {(() => {
                                         try {
                                             const p = JSON.parse(ledgerSupplier.contact_person || '{}')
@@ -498,19 +918,60 @@ export default function SuppliersLedgerManager({
                                     })()}
                                 </p>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex flex-wrap items-center gap-2 shrink-0">
+                                {supplierLedgerEntries.length > 0 && (
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        <button
+                                            onClick={handleExportCsv}
+                                            className="flex items-center gap-1 px-2.5 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[11px] border border-hairline transition-all whitespace-nowrap"
+                                        >
+                                            <Download size={13} /> Export
+                                        </button>
+                                        <button
+                                            onClick={() => printRef.current?.print()}
+                                            className="flex items-center gap-1 px-2.5 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[11px] border border-hairline transition-all whitespace-nowrap"
+                                        >
+                                            <Printer size={13} /> Print
+                                        </button>
+                                    </div>
+                                )}
+                                {existingObEntry ? (
+                                    <button
+                                        onClick={() => handleOpenEditSupplierOb(existingObEntry.totalAmt)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold border border-amber-200 rounded-xl text-[11px] transition-all whitespace-nowrap"
+                                        title="Edit Opening Balance (requires reason)"
+                                    >
+                                        <Edit2 size={13} /> Edit Opening Balance ({formatCurrency(existingObEntry.totalAmt)})
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={handleOpenAddSupplierOb}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold border border-emerald-200 rounded-xl text-[11px] transition-all whitespace-nowrap"
+                                    >
+                                        <Plus size={13} /> Add Opening Balance
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => {
                                         setShowNewCatForm(false)
+                                        setSelectedIngredientId('')
                                         setBillModalOpen(true)
                                     }}
-                                    className="flex items-center gap-1.5 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white font-extrabold rounded-xl text-xs shadow-sm transition-colors"
+                                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-brand-500 hover:bg-brand-600 text-white font-extrabold rounded-xl text-[11px] shadow-sm transition-colors whitespace-nowrap"
                                 >
-                                    <Plus size={14} /> Record Bill / Purchase
+                                    <Plus size={13} /> Record Bill / Purchase
                                 </button>
+                                {totalOwed > 0 && (
+                                    <button
+                                        onClick={() => setPayModalOpen(true)}
+                                        className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-[11px] shadow-sm transition-colors whitespace-nowrap"
+                                    >
+                                        <Banknote size={13} /> Pay
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => setLedgerSupplier(null)}
-                                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                    className="p-1.5 text-ink-subtle hover:text-ink-subtle hover:bg-surface-muted rounded-lg transition-colors"
                                 >
                                     <X size={20} />
                                 </button>
@@ -518,36 +979,41 @@ export default function SuppliersLedgerManager({
                         </div>
 
                         {/* Statement Totals Row */}
-                        <div className="grid grid-cols-3 border-b border-gray-100 divide-x divide-gray-100 bg-white">
+                        <div className="grid grid-cols-3 border-b border-hairline divide-x divide-hairline bg-surface">
                             <div className="p-4 text-center">
-                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Purchases</p>
-                                <p className="text-lg font-black text-gray-900 mt-1">{formatCurrency(totalPurchased)}</p>
+                                <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Total Purchases</p>
+                                <p className="text-lg font-black text-ink mt-1">{formatCurrency(totalPurchased)}</p>
                             </div>
                             <div className="p-4 text-center">
-                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Paid Amount</p>
+                                <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Total Paid Amount</p>
                                 <p className="text-lg font-black text-emerald-600 mt-1">{formatCurrency(totalPaid)}</p>
                             </div>
                             <div className="p-4 text-center">
-                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Outstanding (Owed)</p>
+                                <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Total Outstanding (Owed)</p>
                                 <p className="text-lg font-black text-rose-600 mt-1">{formatCurrency(totalOwed)}</p>
                             </div>
                         </div>
 
                         {/* Ledger Statement Transactions Table (9 columns) */}
-                        <div className="flex-1 overflow-auto p-6 bg-gray-50/30">
-                            {supplierLedgerEntries.length === 0 ? (
-                                <div className="text-center py-20 bg-white border border-dashed border-gray-200 rounded-2xl text-gray-400">
+                        <div className="flex-1 overflow-auto p-6 bg-surface-muted/30">
+                            {loadingSettlements ? (
+                                <div className="text-center py-20 bg-surface border border-dashed border-hairline rounded-2xl text-ink-subtle">
+                                    <Loader2 size={32} className="mx-auto mb-2 animate-spin text-brand-500" />
+                                    <p className="text-sm font-bold">Loading ledger statement history...</p>
+                                </div>
+                            ) : supplierLedgerEntries.length === 0 ? (
+                                <div className="text-center py-20 bg-surface border border-dashed border-hairline rounded-2xl text-ink-subtle">
                                     <DollarSign size={32} className="mx-auto mb-2 opacity-30" />
                                     <p className="text-sm font-bold">No registered transactions match this supplier name.</p>
-                                    <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto leading-relaxed">
+                                    <p className="text-xs text-ink-subtle mt-1 max-w-sm mx-auto leading-relaxed">
                                         Click &quot;Record Bill / Purchase&quot; above to log items, rates, paid values, and calculate the running balance.
                                     </p>
                                 </div>
                             ) : (
-                                <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
+                                <div className="bg-surface border border-hairline rounded-xl overflow-hidden shadow-sm">
                                     <table className="w-full text-left text-xs border-collapse">
                                         <thead>
-                                            <tr className="bg-gray-50 border-b border-gray-100 text-gray-500">
+                                            <tr className="bg-surface-muted border-b border-hairline text-ink-subtle">
                                                 <th className="px-4 py-3 font-bold">Date</th>
                                                 <th className="px-4 py-3 font-bold">Description</th>
                                                 <th className="px-4 py-3 font-bold text-center w-20">Qty</th>
@@ -556,34 +1022,51 @@ export default function SuppliersLedgerManager({
                                                 <th className="px-4 py-3 font-bold text-right w-28">Amount</th>
                                                 <th className="px-4 py-3 font-bold text-right w-28">Paid Amount</th>
                                                 <th className="px-4 py-3 font-bold text-center w-28">Payment Type</th>
-                                                <th className="px-4 py-3 font-bold text-right w-32 bg-gray-50/50">Running Balance</th>
+                                                <th className="px-4 py-3 font-bold text-right w-32 bg-surface-muted/50">Running Balance</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-gray-100">
+                                        <tbody className="divide-y divide-hairline">
                                             {supplierLedgerEntries.map(e => (
-                                                <tr key={e.id} className="hover:bg-gray-50/50 transition-colors">
+                                                <tr key={e.id} className="hover:bg-surface-muted/50 transition-colors">
                                                     {/* Date */}
-                                                    <td className="px-4 py-3 text-gray-500 font-semibold whitespace-nowrap">
-                                                        {new Date(e.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                    <td className="px-4 py-3 text-ink-subtle font-semibold">
+                                                        <DateCell value={e.created_at} />
                                                     </td>
                                                     {/* Description */}
-                                                    <td className="px-4 py-3 font-bold text-gray-800">
-                                                        {e.parsed.text_desc || e.description}
+                                                    <td className="px-4 py-3 font-bold text-ink max-w-xs sm:max-w-sm md:max-w-md break-words whitespace-normal">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSelectedSupplierBillDetails(e)}
+                                                            className="text-left font-bold text-brand-600 hover:text-brand-700 hover:underline inline-flex items-start gap-1.5 leading-snug break-words max-w-full focus:outline-none transition-colors"
+                                                            title="Click to view itemized inventory, kg/rate, and bill details"
+                                                        >
+                                                            <Receipt size={13} className="shrink-0 text-brand-500 mt-0.5" />
+                                                            <span className="break-words">{e.parsed.text_desc || e.description}</span>
+                                                        </button>
                                                     </td>
                                                     {/* Product Quantity */}
-                                                    <td className="px-4 py-3 text-center font-bold text-gray-700">
-                                                        {e.parsed.quantity !== null ? e.parsed.quantity : '-'}
+                                                    <td className="px-4 py-3 text-center font-bold text-ink">
+                                                        {(() => {
+                                                            const isOb = (e.parsed.text_desc || e.description || '').toLowerCase().includes('opening balance')
+                                                            return !isOb && e.parsed.quantity !== null && e.parsed.quantity !== undefined ? e.parsed.quantity : '-'
+                                                        })()}
                                                     </td>
                                                     {/* Rate */}
-                                                    <td className="px-4 py-3 text-right font-semibold text-gray-600">
-                                                        {e.parsed.rate !== null ? formatCurrency(e.parsed.rate) : '-'}
+                                                    <td className="px-4 py-3 text-right font-semibold text-ink-subtle">
+                                                        {(() => {
+                                                            const isOb = (e.parsed.text_desc || e.description || '').toLowerCase().includes('opening balance')
+                                                            return !isOb && e.parsed.rate !== null && e.parsed.rate !== undefined ? formatCurrency(e.parsed.rate) : '-'
+                                                        })()}
                                                     </td>
                                                     {/* Unit */}
-                                                    <td className="px-4 py-3 text-center text-gray-500 uppercase font-black text-[10px]">
-                                                        {e.parsed.unit || '-'}
+                                                    <td className="px-4 py-3 text-center text-ink-subtle uppercase font-black text-[10px]">
+                                                        {(() => {
+                                                            const isOb = (e.parsed.text_desc || e.description || '').toLowerCase().includes('opening balance')
+                                                            return !isOb && e.parsed.unit ? e.parsed.unit : '-'
+                                                        })()}
                                                     </td>
                                                     {/* Amount */}
-                                                    <td className="px-4 py-3 text-right font-black text-gray-900">
+                                                    <td className="px-4 py-3 text-right font-black text-ink">
                                                         {formatCurrency(e.totalAmt)}
                                                     </td>
                                                     {/* Paid Amount */}
@@ -592,18 +1075,42 @@ export default function SuppliersLedgerManager({
                                                     </td>
                                                     {/* Payment Type */}
                                                     <td className="px-4 py-3 text-center whitespace-nowrap">
-                                                        <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-black uppercase ${
-                                                            e.paidAmt === 0
-                                                                ? 'bg-rose-50 text-rose-700'
-                                                                : e.parsed.payment_type === 'bank'
-                                                                    ? 'bg-indigo-50 text-indigo-700'
-                                                                    : 'bg-amber-50 text-amber-700'
-                                                        }`}>
-                                                            {e.paidAmt === 0 ? 'UNPAID' : e.parsed.payment_type === 'bank' ? `BANK (${e.bank_accounts?.name || e.parsed.bank_name || 'Transfer'})` : 'CASH'}
-                                                        </span>
+                                                        {e.parsed.payment_type === 'cash_qr' && e.paidAmt > 0 ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setExpandedSplitId(prev => prev === e.id ? null : e.id)}
+                                                                className={`inline-flex px-2 py-0.5 rounded text-[9px] font-black uppercase cursor-pointer transition-colors ${
+                                                                    e.owed > 0 ? 'bg-orange-50 text-orange-700 hover:bg-orange-100' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                                                                }`}
+                                                                title="Click to see the Cash / QR split"
+                                                            >
+                                                                {`${e.owed > 0 ? 'PARTIAL · ' : ''}${paymentTypeLabel(e.parsed, e.bank_accounts?.name).toUpperCase()}`}
+                                                            </button>
+                                                        ) : (
+                                                            <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-black uppercase ${
+                                                                e.paidAmt === 0
+                                                                    ? 'bg-rose-50 text-rose-700'
+                                                                    : e.owed > 0
+                                                                        ? 'bg-orange-50 text-orange-700'
+                                                                        : e.parsed.payment_type !== 'cash'
+                                                                            ? 'bg-indigo-50 text-indigo-700'
+                                                                            : 'bg-amber-50 text-amber-700'
+                                                            }`}>
+                                                                {e.paidAmt === 0
+                                                                    ? 'UNPAID'
+                                                                    : `${e.owed > 0 ? 'PARTIAL · ' : ''}${paymentTypeLabel(e.parsed, e.bank_accounts?.name).toUpperCase()}`}
+                                                            </span>
+                                                        )}
+                                                        {expandedSplitId === e.id && e.parsed.payment_type === 'cash_qr' && e.paidAmt > 0 && (
+                                                            <div className="mt-1 text-[9px] font-bold text-ink-subtle leading-tight">
+                                                                Cash: {formatCurrency(e.parsed.cash_portion ?? 0)}
+                                                                <br />
+                                                                QR: {formatCurrency(e.parsed.qr_portion ?? 0)}
+                                                            </div>
+                                                        )}
                                                     </td>
                                                     {/* Running Balance */}
-                                                    <td className={`px-4 py-3 text-right font-black bg-gray-50/30 ${e.runningBalance > 0 ? 'text-rose-600' : 'text-gray-900'}`}>
+                                                    <td className={`px-4 py-3 text-right font-black bg-surface-muted/30 ${e.runningBalance > 0 ? 'text-rose-600' : 'text-ink'}`}>
                                                         {formatCurrency(e.runningBalance)}
                                                     </td>
                                                 </tr>
@@ -615,10 +1122,10 @@ export default function SuppliersLedgerManager({
                         </div>
 
                         {/* Statement Footer */}
-                        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end">
+                        <div className="px-6 py-4 border-t border-hairline bg-surface-muted/50 flex justify-end">
                             <button
                                 onClick={() => setLedgerSupplier(null)}
-                                className="px-5 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold text-xs rounded-xl transition-all"
+                                className="px-5 py-2 bg-surface-muted hover:opacity-80 text-ink font-bold text-xs rounded-xl transition-all"
                             >
                                 Close Statement
                             </button>
@@ -629,15 +1136,15 @@ export default function SuppliersLedgerManager({
 
             {/* ── CREATE/EDIT SUPPLIER MODAL ── */}
             {modalOpen && (
-                <div className="fixed inset-0 z-50 bg-gray-900/40 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
+                <div className="fixed inset-0 z-50 bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-surface rounded-2xl border border-hairline shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
                         {/* Modal Header */}
-                        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                            <h3 className="font-extrabold text-gray-900 flex items-center gap-2">
+                        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between">
+                            <h3 className="font-extrabold text-ink flex items-center gap-2">
                                 <FileText size={18} className="text-brand-500" />
                                 {modalOpen === 'create' ? 'Create Supplier profile' : 'Edit Supplier details'}
                             </h3>
-                            <button onClick={() => setModalOpen(null)} className="text-gray-400 hover:text-gray-600">
+                            <button onClick={() => setModalOpen(null)} className="text-ink-subtle hover:text-ink-subtle">
                                 <X size={20} />
                             </button>
                         </div>
@@ -647,73 +1154,73 @@ export default function SuppliersLedgerManager({
                             <div className="p-6 space-y-4">
                                 {/* Name */}
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Supplier Name *</label>
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Supplier Name *</label>
                                     <input
                                         type="text"
                                         placeholder="e.g. Kathmandu Vegetable Supplier"
                                         value={name}
                                         onChange={e => setName(e.target.value)}
                                         required
-                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                        className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                     />
                                 </div>
 
                                 {/* Phone */}
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Phone Number *</label>
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Phone Number *</label>
                                     <input
                                         type="text"
                                         placeholder="e.g. 9812345678"
                                         value={phone}
                                         onChange={e => setPhone(e.target.value)}
                                         required
-                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                        className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                     />
                                 </div>
 
                                 {/* PAN / VAT details */}
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">PAN Number (Optional)</label>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">PAN Number (Optional)</label>
                                         <input
                                             type="text"
                                             placeholder="9 digits"
                                             value={pan}
                                             onChange={e => setPan(e.target.value)}
-                                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                            className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">VAT Number (Optional)</label>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">VAT Number (Optional)</label>
                                         <input
                                             type="text"
                                             placeholder="VAT ID"
                                             value={vat}
                                             onChange={e => setVat(e.target.value)}
-                                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                            className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                         />
                                     </div>
                                 </div>
 
                                 {/* Address */}
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Address</label>
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Address</label>
                                     <input
                                         type="text"
                                         placeholder="e.g. Kalimati, Kathmandu"
                                         value={address}
                                         onChange={e => setAddress(e.target.value)}
-                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                        className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                     />
                                 </div>
                             </div>
 
                             {/* Modal Footer Actions */}
-                            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-end gap-3">
+                            <div className="px-6 py-4 border-t border-hairline bg-surface-muted flex items-center justify-end gap-3">
                                 <button
                                     type="button"
                                     onClick={() => setModalOpen(null)}
-                                    className="px-4 py-2 text-gray-400 hover:text-gray-600 font-bold text-sm"
+                                    className="px-4 py-2 text-ink-subtle hover:text-ink-subtle font-bold text-sm"
                                 >
                                     Cancel
                                 </button>
@@ -733,15 +1240,15 @@ export default function SuppliersLedgerManager({
 
             {/* ── RECORD BILL / PURCHASE MODAL ── */}
             {billModalOpen && ledgerSupplier && (
-                <div className="fixed inset-0 z-50 bg-gray-900/50 flex items-center justify-center p-4 animate-fade-in">
-                    <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
+                <div className="fixed inset-0 z-50 bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-surface rounded-2xl border border-hairline shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
                         {/* Modal Header */}
-                        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                            <h3 className="font-extrabold text-gray-900 flex items-center gap-2">
+                        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between">
+                            <h3 className="font-extrabold text-ink flex items-center gap-2">
                                 <Tag size={18} className="text-brand-500" />
                                 Record Bill for {ledgerSupplier.name}
                             </h3>
-                            <button onClick={() => setBillModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                            <button onClick={() => setBillModalOpen(false)} className="text-ink-subtle hover:text-ink-subtle">
                                 <X size={20} />
                             </button>
                         </div>
@@ -749,10 +1256,26 @@ export default function SuppliersLedgerManager({
                         {/* Modal Form Body */}
                         <form onSubmit={handleRecordBill}>
                             <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                                {/* Link to Stock Item */}
+                                <div>
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Link to Stock Item (Optional)</label>
+                                    <Select
+                                        value={selectedIngredientId}
+                                        onChange={e => handleIngredientSelect(e.target.value)}
+                                        className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                    >
+                                        <option value="">Do not link to stock</option>
+                                        {ingredients.map(ing => (
+                                            <option key={ing.id} value={ing.id}>{ing.name} ({ing.unit})</option>
+                                        ))}
+                                    </Select>
+                                    <p className="text-[10px] text-ink-subtle mt-1">If selected, recording this purchase will automatically add stock quantity to the ingredient.</p>
+                                </div>
+
                                 {/* Category select & Add Category */}
                                 <div>
                                     <div className="flex items-center justify-between mb-1.5">
-                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">Expense Category *</label>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Expense Category *</label>
                                         <button
                                             type="button"
                                             onClick={() => setShowNewCatForm(!showNewCatForm)}
@@ -764,25 +1287,25 @@ export default function SuppliersLedgerManager({
                                     </div>
 
                                     {showNewCatForm ? (
-                                        <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl space-y-3 mb-3 animate-in slide-in-from-top-1 duration-150">
+                                        <div className="p-4 bg-surface-muted border border-hairline rounded-xl space-y-3 mb-3 animate-in slide-in-from-top-1 duration-150">
                                             <div>
-                                                <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">New Category Name</label>
+                                                <label className="block text-[9px] font-bold text-ink-subtle uppercase tracking-wider mb-1">New Category Name</label>
                                                 <input
                                                     type="text"
                                                     placeholder="e.g. Vegetables, Ingredients"
                                                     value={newCatName}
                                                     onChange={e => setNewCatName(e.target.value)}
-                                                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+                                                    className="w-full px-3 py-2 bg-surface border border-hairline rounded-lg text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">Description (Optional)</label>
+                                                <label className="block text-[9px] font-bold text-ink-subtle uppercase tracking-wider mb-1">Description (Optional)</label>
                                                 <input
                                                     type="text"
                                                     placeholder="Brief description of purchases"
                                                     value={newCatDesc}
                                                     onChange={e => setNewCatDesc(e.target.value)}
-                                                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+                                                    className="w-full px-3 py-2 bg-surface border border-hairline rounded-lg text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
                                                 />
                                             </div>
                                             <button
@@ -796,37 +1319,37 @@ export default function SuppliersLedgerManager({
                                             </button>
                                         </div>
                                     ) : (
-                                        <select
+                                        <Select
                                             value={billCategory}
                                             onChange={e => setBillCategory(e.target.value)}
                                             required={!showNewCatForm}
-                                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                            className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                         >
                                             <option value="">Select Category</option>
                                             {expenseCategoriesList.map(cat => (
                                                 <option key={cat.id} value={cat.id}>{cat.name}</option>
                                             ))}
-                                        </select>
+                                        </Select>
                                     )}
                                 </div>
 
                                 {/* Description */}
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Description / Item Details *</label>
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Description / Item Details *</label>
                                     <input
                                         type="text"
                                         placeholder="e.g. Potato and Tomato purchase"
                                         value={billDesc}
                                         onChange={e => setBillDesc(e.target.value)}
                                         required
-                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                        className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                     />
                                 </div>
 
                                 {/* Qty & Rate & Unit */}
                                 <div className="grid grid-cols-3 gap-3">
                                     <div>
-                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Quantity *</label>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Quantity *</label>
                                         <input
                                             type="number"
                                             min="0.01"
@@ -835,11 +1358,11 @@ export default function SuppliersLedgerManager({
                                             value={billQty}
                                             onChange={e => setBillQty(e.target.value)}
                                             required
-                                            className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                            className="w-full px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Rate (Rs.) *</label>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Rate (Rs.) *</label>
                                         <input
                                             type="number"
                                             min="0.01"
@@ -848,32 +1371,33 @@ export default function SuppliersLedgerManager({
                                             value={billRate}
                                             onChange={e => setBillRate(e.target.value)}
                                             required
-                                            className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                            className="w-full px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Unit *</label>
-                                        <select
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Unit *</label>
+                                        <Select
                                             value={billUnit}
                                             onChange={e => setBillUnit(e.target.value)}
                                             required
-                                            className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                            className="w-full px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                         >
                                             <option value="kg">kg</option>
                                             <option value="pcs">pcs</option>
                                             <option value="ltr">ltr</option>
+                                            <option value="bottle">bottle</option>
                                             <option value="box">box</option>
                                             <option value="packet">packet</option>
                                             <option value="plate">plate</option>
                                             <option value="other">other</option>
-                                        </select>
+                                        </Select>
                                     </div>
                                 </div>
 
                                 {/* Calculated Total Bill Amount */}
-                                <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 flex justify-between items-center text-xs">
-                                    <span className="font-bold text-gray-500">Calculated Amount:</span>
-                                    <span className="font-extrabold text-sm text-gray-900">
+                                <div className="bg-surface-muted p-3 rounded-xl border border-hairline flex justify-between items-center text-xs">
+                                    <span className="font-bold text-ink-subtle">Calculated Amount:</span>
+                                    <span className="font-extrabold text-sm text-ink">
                                         {(() => {
                                             const q = parseFloat(billQty)
                                             const r = parseFloat(billRate)
@@ -884,7 +1408,7 @@ export default function SuppliersLedgerManager({
 
                                 {/* Paid Amount */}
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Paid Amount (Rs.) *</label>
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Paid Amount (Rs.) *</label>
                                     <input
                                         type="number"
                                         min="0"
@@ -893,9 +1417,9 @@ export default function SuppliersLedgerManager({
                                         value={billPaidAmount}
                                         onChange={e => setBillPaidAmount(e.target.value)}
                                         required
-                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                        className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                     />
-                                    <span className="text-[10px] text-gray-400 mt-1 block">Owed outstanding: {(() => {
+                                    <span className="text-[10px] text-ink-subtle mt-1 block">Owed outstanding: {(() => {
                                         const q = parseFloat(billQty)
                                         const r = parseFloat(billRate)
                                         const p = parseFloat(billPaidAmount || '0')
@@ -905,55 +1429,21 @@ export default function SuppliersLedgerManager({
                                     })()}</span>
                                 </div>
 
-                                {/* Payment Source */}
-                                <div>
-                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Payment Source (For Paid Amount)</label>
-                                    <div className="flex gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setBillPaymentSource('cash')}
-                                            className={`flex-1 py-2 text-xs font-black uppercase tracking-wider border rounded-lg transition-all focus-ring ${billPaymentSource === 'cash' ? 'bg-amber-50 border-amber-200 text-amber-700 shadow-sm' : 'bg-white border-gray-200 text-gray-400 hover:text-gray-600'}`}
-                                        >
-                                            Cash Book
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setBillPaymentSource('bank')}
-                                            className={`flex-1 py-2 text-xs font-black uppercase tracking-wider border rounded-lg transition-all focus-ring ${billPaymentSource === 'bank' ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm' : 'bg-white border-gray-200 text-gray-400 hover:text-gray-600'}`}
-                                        >
-                                            Bank Book
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Bank name if source is bank */}
-                                {billPaymentSource === 'bank' && (
-                                    <div className="animate-in slide-in-from-top-1 duration-150">
-                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Bank Name</label>
-                                        <select
-                                            value={billBankName}
-                                            onChange={e => setBillBankName(e.target.value)}
-                                            required
-                                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
-                                        >
-                                            <option value="">Select Bank Account</option>
-                                            {bankAccounts.map(b => (
-                                                <option key={b.id} value={b.name}>{b.name} ({b.account_number})</option>
-                                            ))}
-                                            {bankAccounts.length === 0 && (
-                                                <option value="General Bank">General Bank</option>
-                                            )}
-                                        </select>
-                                    </div>
-                                )}
+                                {/* Payment Source (for Paid Amount) */}
+                                <SupplierPaymentFields
+                                    value={billPayment}
+                                    onChange={setBillPayment}
+                                    bankAccounts={bankAccounts}
+                                    paidAmount={parseFloat(billPaidAmount || '0') || 0}
+                                />
                             </div>
 
                             {/* Modal Footer Actions */}
-                            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-end gap-3">
+                            <div className="px-6 py-4 border-t border-hairline bg-surface-muted flex items-center justify-end gap-3">
                                 <button
                                     type="button"
                                     onClick={() => setBillModalOpen(false)}
-                                    className="px-4 py-2 text-gray-400 hover:text-gray-600 font-bold text-sm"
+                                    className="px-4 py-2 text-ink-subtle hover:text-ink-subtle font-bold text-sm"
                                 >
                                     Cancel
                                 </button>
@@ -969,6 +1459,255 @@ export default function SuppliersLedgerManager({
                         </form>
                     </div>
                 </div>
+            )}
+
+            {ledgerSupplier && (
+                <PayPartyModal
+                    isOpen={payModalOpen}
+                    onClose={() => setPayModalOpen(false)}
+                    category="suppliers"
+                    partyId={ledgerSupplier.id}
+                    partyName={ledgerSupplier.name}
+                    currentDue={totalOwed}
+                    bankAccounts={bankAccounts}
+                    onSettled={handlePaySettled}
+                />
+            )}
+
+            {/* ── SUPPLIER OPENING BALANCE MODAL ── */}
+            {obModalOpen && ledgerSupplier && (
+                <Modal open onClose={() => setObModalOpen(false)} size="md" ariaLabel={isObEdit ? "Edit Opening Balance" : "Add Opening Balance"} className="bg-surface overflow-hidden">
+                    <div className="p-5 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
+                        <div>
+                            <h3 className="font-extrabold text-ink text-sm flex items-center gap-2">
+                                {isObEdit ? <Edit2 size={16} className="text-amber-500" /> : <Plus size={16} className="text-emerald-500" />}
+                                {isObEdit ? `Edit Opening Balance for ${ledgerSupplier.name}` : `Add Opening Balance for ${ledgerSupplier.name}`}
+                            </h3>
+                            <p className="text-[10px] text-ink-subtle mt-0.5">
+                                {isObEdit ? 'A reason is required before editing an existing opening balance.' : 'Set the initial purchase / opening balance owed to this supplier.'}
+                            </p>
+                        </div>
+                        <button 
+                            onClick={() => setObModalOpen(false)}
+                            className="p-1.5 hover:bg-surface-muted rounded-xl text-ink-subtle hover:text-ink-subtle transition-colors"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                    
+                    <form onSubmit={handleSaveSupplierOb} className="p-5 space-y-4">
+                        <div>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Opening Balance Amount (Rs.) *</label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                value={obAmount}
+                                onChange={e => setObAmount(e.target.value)}
+                                required
+                                className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-sm"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">
+                                {isObEdit ? 'Reason for Editing *' : 'Note / Reference (Optional)'}
+                            </label>
+                            <textarea
+                                placeholder={isObEdit ? 'State the reason for modifying the opening balance...' : 'e.g. Opening balance from previous supplier ledger'}
+                                value={obReason}
+                                onChange={e => setObReason(e.target.value)}
+                                required={isObEdit}
+                                rows={3}
+                                className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-semibold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-sm"
+                            />
+                            {isObEdit && (
+                                <p className="text-[10px] text-amber-600 font-semibold flex items-center gap-1 mt-1">
+                                    <ShieldAlert size={12} /> This reason will be permanently recorded in the Manager Activities Log.
+                                </p>
+                            )}
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={submittingOb}
+                            className={`w-full mt-2 py-3 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition-colors shadow-md flex items-center justify-center gap-2 focus-ring disabled:opacity-50 ${
+                                isObEdit ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/15' : 'bg-brand-500 hover:bg-brand-600 shadow-brand-500/15'
+                            }`}
+                        >
+                            {submittingOb ? <Loader2 size={16} className="animate-spin" /> : isObEdit ? <Edit2 size={16} /> : <Plus size={16} />}
+                            {isObEdit ? 'Save Changes with Reason' : 'Save Opening Balance'}
+                        </button>
+                    </form>
+                </Modal>
+            )}
+
+            {/* ── FAIR SUPPLIER BILL & INVENTORY BREAKDOWN MODAL ── */}
+            {selectedSupplierBillDetails && (
+                <Modal
+                    open
+                    onClose={() => setSelectedSupplierBillDetails(null)}
+                    size="lg"
+                    ariaLabel="Supplier Bill & Inventory Purchase Details"
+                    className="bg-surface overflow-hidden"
+                >
+                    <div className="p-6 border-b border-hairline bg-surface-muted/50 flex items-center justify-between">
+                        <div className="flex items-center gap-3 min-w-0 pr-2">
+                            <div className="w-10 h-10 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center shrink-0">
+                                <Receipt size={20} className="text-brand-500" />
+                            </div>
+                            <div className="min-w-0">
+                                <span className="text-[10px] font-black uppercase text-brand-600 tracking-wider block">Fair Supplier Bill & Inventory Breakdown</span>
+                                <h3 className="text-lg font-extrabold text-ink truncate">
+                                    {selectedSupplierBillDetails.parsed.text_desc || selectedSupplierBillDetails.description}
+                                </h3>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setSelectedSupplierBillDetails(null)}
+                            className="p-1.5 hover:bg-surface-muted rounded-xl text-ink-subtle hover:text-ink transition-colors shrink-0"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
+
+                    <div className="p-6 max-h-[75vh] overflow-y-auto space-y-6">
+                        {(() => {
+                            const row = selectedSupplierBillDetails
+                            const parsed = row.parsed || {}
+                            const isOb = (parsed.text_desc || row.description || '').toLowerCase().includes('opening balance')
+
+                            // Extract item lines
+                            const items: Array<{ name: string; quantity: number | null; unit: string; rate: number | null; total: number }> = []
+                            
+                            if (Array.isArray(parsed.items) && parsed.items.length > 0) {
+                                parsed.items.forEach((it: any) => {
+                                    items.push({
+                                        name: it.name || 'Inventory Item',
+                                        quantity: it.quantity ? Number(it.quantity) : null,
+                                        unit: it.unit || 'unit',
+                                        rate: it.rate ? Number(it.rate) : null,
+                                        total: (it.quantity && it.rate) ? Number(it.quantity) * Number(it.rate) : (it.total ? Number(it.total) : row.totalAmt)
+                                    })
+                                })
+                            } else {
+                                items.push({
+                                    name: parsed.text_desc || row.description || 'Inventory Bill Purchase',
+                                    quantity: isOb ? null : (parsed.quantity ?? null),
+                                    unit: isOb ? '' : (parsed.unit || 'unit'),
+                                    rate: isOb ? null : (parsed.rate ?? null),
+                                    total: row.totalAmt
+                                })
+                            }
+
+                            return (
+                                <div className="space-y-5">
+                                    {/* Stat Cards */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                        <div className="p-3 bg-surface-muted/50 border border-hairline rounded-xl min-w-0 overflow-hidden flex flex-col justify-between">
+                                            <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Entry Type</span>
+                                            <span className="text-xs font-extrabold text-ink uppercase block mt-1 truncate">
+                                                {row.isPaymentRow ? 'Payment Voucher' : isOb ? 'Opening Balance' : 'Bill / Purchase'}
+                                            </span>
+                                        </div>
+
+                                        <div className="p-3 bg-surface-muted/50 border border-hairline rounded-xl min-w-0 overflow-hidden flex flex-col justify-between">
+                                            <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Bill Date</span>
+                                            <div className="mt-1 min-w-0 overflow-hidden">
+                                                <DateCell value={row.created_at} className="text-xs font-bold leading-tight block text-ink overflow-hidden" />
+                                            </div>
+                                        </div>
+
+                                        <div className="p-3 bg-surface-muted/50 border border-hairline rounded-xl min-w-0 overflow-hidden flex flex-col justify-between">
+                                            <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Paid Amount</span>
+                                            <span className="text-xs font-extrabold text-emerald-600 block mt-1 truncate">
+                                                {formatCurrency(row.paidAmt)}
+                                            </span>
+                                        </div>
+
+                                        <div className="p-3 bg-surface-muted/50 border border-hairline rounded-xl min-w-0 overflow-hidden flex flex-col justify-between">
+                                            <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Bill Total Amount</span>
+                                            <span className="text-xs font-black text-brand-600 block mt-1 truncate">
+                                                {formatCurrency(row.totalAmt)}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Itemized Inventory & Stock Purchase Table */}
+                                    <div className="border border-hairline rounded-xl overflow-hidden">
+                                        <div className="px-4 py-2.5 bg-surface-muted border-b border-hairline flex items-center justify-between">
+                                            <span className="text-xs font-extrabold text-ink flex items-center gap-1.5">
+                                                <Tag size={14} className="text-brand-500" /> Itemized Inventory & Stock Purchase Breakdown
+                                            </span>
+                                            <span className="text-[10px] font-bold text-ink-subtle">
+                                                {items.length} Item(s)
+                                            </span>
+                                        </div>
+                                        <table className="w-full text-left text-xs">
+                                            <thead>
+                                                <tr className="bg-surface-muted/30 border-b border-hairline text-ink-subtle font-bold">
+                                                    <th className="px-4 py-2">Inventory Item Description</th>
+                                                    <th className="px-4 py-2 text-center w-24">Qty / Kg</th>
+                                                    <th className="px-4 py-2 text-center w-20">Unit</th>
+                                                    <th className="px-4 py-2 text-right w-24">Rate (Rs.)</th>
+                                                    <th className="px-4 py-2 text-right w-28">Total Amount</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-hairline">
+                                                {items.map((it, idx) => (
+                                                    <tr key={idx} className="hover:bg-surface-muted/30">
+                                                        <td className="px-4 py-2.5 font-semibold text-ink break-words max-w-xs">
+                                                            {it.name}
+                                                        </td>
+                                                        <td className="px-4 py-2.5 text-center font-bold text-ink">
+                                                            {it.quantity !== null && it.quantity !== undefined ? it.quantity : '—'}
+                                                        </td>
+                                                        <td className="px-4 py-2.5 text-center font-black uppercase text-[10px] text-ink-subtle">
+                                                            {it.unit || '—'}
+                                                        </td>
+                                                        <td className="px-4 py-2.5 text-right font-medium text-ink-subtle">
+                                                            {it.rate !== null && it.rate !== undefined ? formatCurrency(it.rate) : '—'}
+                                                        </td>
+                                                        <td className="px-4 py-2.5 text-right font-extrabold text-ink">
+                                                            {formatCurrency(it.total)}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* Payment & Supplier Owed Summary Card */}
+                                    <div className="p-4 bg-surface-muted/40 border border-hairline rounded-xl flex items-center justify-between text-xs">
+                                        <div>
+                                            <span className="text-[10px] font-bold text-ink-subtle uppercase block">Payment Mode & Account</span>
+                                            <span className="font-extrabold text-ink uppercase mt-0.5 block">
+                                                {parsed.payment_type || 'Cash'} {row.bank_accounts?.name ? `(${row.bank_accounts.name})` : ''}
+                                            </span>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-[10px] font-bold text-ink-subtle uppercase block">Supplier Owed Balance</span>
+                                            <span className="font-black text-rose-600 text-sm block">
+                                                {formatCurrency(row.owed)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )
+                        })()}
+                    </div>
+                </Modal>
+            )}
+
+            {ledgerSupplier && (
+                <PrintableReport
+                    ref={printRef}
+                    title={`Supplier Statement — ${ledgerSupplier.name}`}
+                    subtitle={`Total Purchases: ${formatCurrency(totalPurchased)} | Paid: ${formatCurrency(totalPaid)} | Outstanding: ${formatCurrency(totalOwed)}`}
+                    columns={reportColumns}
+                    rows={reportRows}
+                />
             )}
         </>
     )

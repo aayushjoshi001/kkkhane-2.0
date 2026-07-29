@@ -122,6 +122,9 @@ export const RATE_LIMIT_RULES = {
   // Service requests
   SERVICE_REQUEST: { requests: 5, windowSeconds: 60 } as const, // 1 minute
 
+  // In-room guest phone verification (guards against brute-forcing the booking phone)
+  ROOM_VERIFY: { requests: 10, windowSeconds: 300 } as const, // 5 minutes
+
   // Admin operations
   ADMIN_CREATE_TENANT: { requests: 5, windowSeconds: 3600 } as const, // 1 hour
   ADMIN_UPDATE: { requests: 30, windowSeconds: 60 } as const, // 1 minute

@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { NextRequest } from 'next/server'
 import { generateEodReport } from '@/lib/reports'
 import { verifyCronRequest, getActiveRestaurants } from '@/lib/cron'
+import { getNstDateString, addDays } from '@/lib/timezone'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -24,10 +25,8 @@ export async function POST(request: NextRequest) {
         return Response.json({ message: 'No active restaurants', generated: 0 })
     }
 
-    // Yesterday in NST (UTC+5:45) — subtract 15min to land safely in "yesterday NST"
-    const yesterday = new Date()
-    yesterday.setDate(yesterday.getDate() - 1)
-    const reportDate = yesterday.toISOString().slice(0, 10) // YYYY-MM-DD
+    // Yesterday in NST (UTC+5:45)
+    const reportDate = addDays(getNstDateString(), -1) // YYYY-MM-DD
     const results = await Promise.allSettled(
         restaurants.map(async (restaurant) => {
             try {
@@ -56,3 +55,8 @@ export async function POST(request: NextRequest) {
         failures,
     })
 }
+
+// Vercel Cron invokes its schedules with GET. The handler stays POST so a
+// manual run reads as the write it is, with GET aliased onto it — without this
+// every scheduled run answers 405 and the job silently never happens.
+export const GET = POST

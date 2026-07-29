@@ -13,10 +13,22 @@ export interface QrCardOptions {
     sourceCanvas: HTMLCanvasElement
     /** Path to the footer logo image. */
     logoSrc: string
+    /**
+     * Output image format. Defaults to 'png' (transparent rounded corners) for
+     * the single-download button. The bulk-PDF export passes 'jpeg' because
+     * jsPDF concatenates every embedded image into a single string, and PNG
+     * data is large enough that many cards overflow V8's max string length
+     * ("Invalid string length"). JPEG is far smaller and prints identically on
+     * white paper. When 'jpeg', the whole canvas is filled white first (JPEG
+     * has no alpha, so the transparent corners would otherwise turn black).
+     */
+    format?: 'png' | 'jpeg'
+    /** JPEG quality (0–1). Only used when format is 'jpeg'. Defaults to 0.92 — high enough to keep QR codes crisp. */
+    quality?: number
 }
 
-/** Renders the branded QR card and returns a PNG data URL. */
-export async function renderQrCardPng({ label, restaurantName, sourceCanvas, logoSrc }: QrCardOptions): Promise<string> {
+/** Renders the branded QR card and returns a PNG (or JPEG) data URL. */
+export async function renderQrCardPng({ label, restaurantName, sourceCanvas, logoSrc, format = 'png', quality = 0.92 }: QrCardOptions): Promise<string> {
     // Preload logo image
     const logoImg = new Image()
     logoImg.src = logoSrc
@@ -36,9 +48,45 @@ export async function renderQrCardPng({ label, restaurantName, sourceCanvas, log
     const ctx = exportCanvas.getContext('2d')
     if (!ctx) throw new Error('Failed to get 2d canvas context')
 
-    // 1. Draw white background
+    // 1. Draw the rounded white card with a hairline boundary, matching the
+    // on-screen preview (rounded-xl + border-hairline-strong). Everything after
+    // this is clipped to the rounded shape so the orange banners follow the
+    // corners instead of poking out as square edges.
+    const inset = 8 * scale
+    const radius = 26 * scale
+    const cardX = inset
+    const cardY = inset
+    const cardW = exportCanvas.width - inset * 2
+    const cardH = exportCanvas.height - inset * 2
+
+    const traceCardPath = () => {
+        ctx.beginPath()
+        if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(cardX, cardY, cardW, cardH, radius)
+        } else {
+            // Fallback for older canvas engines without roundRect.
+            ctx.moveTo(cardX + radius, cardY)
+            ctx.arcTo(cardX + cardW, cardY, cardX + cardW, cardY + cardH, radius)
+            ctx.arcTo(cardX + cardW, cardY + cardH, cardX, cardY + cardH, radius)
+            ctx.arcTo(cardX, cardY + cardH, cardX, cardY, radius)
+            ctx.arcTo(cardX, cardY, cardX + cardW, cardY, radius)
+            ctx.closePath()
+        }
+    }
+
+    // Transparent outside the card so the rounded corners stay clean. For JPEG
+    // (no alpha) fill white instead, otherwise the corners render black.
+    if (format === 'jpeg') {
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height)
+    } else {
+        ctx.clearRect(0, 0, exportCanvas.width, exportCanvas.height)
+    }
+    traceCardPath()
+    ctx.save()
     ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height)
+    ctx.fill()
+    ctx.clip()
 
     // Extract hashed font names from CSS variables created by next/font
     const outfitFont = typeof window !== 'undefined' ? window.getComputedStyle(document.body).getPropertyValue('--font-outfit').trim() || '"Outfit"' : '"Outfit"'
@@ -171,7 +219,16 @@ export async function renderQrCardPng({ label, restaurantName, sourceCanvas, log
         ctx.fillText('K', logoCenterX, logoCenterY + 0.5 * scale)
     }
 
-    return exportCanvas.toDataURL('image/png')
+    // Release the rounded clip and stroke the hairline boundary on top.
+    ctx.restore()
+    traceCardPath()
+    ctx.strokeStyle = '#DED8CF' // --border-strong (hairline-strong)
+    ctx.lineWidth = 2 * scale
+    ctx.stroke()
+
+    return format === 'jpeg'
+        ? exportCanvas.toDataURL('image/jpeg', quality)
+        : exportCanvas.toDataURL('image/png')
 }
 
 /** Triggers a browser download of a data URL under the given filename. */

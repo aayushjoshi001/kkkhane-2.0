@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useState } from 'react'
 import { LogOut, LogIn, Loader2, PartyPopper } from 'lucide-react'
 import Logo from '@/components/shared/Logo'
 import SoundEnableButton from '@/components/shared/SoundEnableButton'
+import CalendarToggle from '@/components/shared/CalendarToggle'
 import PrinterSettingsButton from '@/components/shared/PrinterSettingsButton'
 import { signOutAndRedirect } from '@/lib/auth/signOut'
 import { setCustomNotificationSound } from '@/lib/audio'
@@ -96,6 +97,11 @@ export default function KitchenLayoutClient({ children, staffName, userId, resta
 
                 <div className="flex items-center gap-1.5 shrink-0">
                     <PrinterSettingsButton role={meta.printerRole} />
+                    {/* Not `hidden sm:*`: a kitchen display is as often a tablet
+                        held sideways as a mounted screen, and hiding this left no
+                        way to switch dates to BS on exactly those devices. The
+                        toggle drops to a bare BS/AD label below `sm` so it fits. */}
+                    <CalendarToggle />
                     <SoundEnableButton />
                     {shiftsEnabled && !shift && (
                         <button

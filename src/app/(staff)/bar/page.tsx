@@ -1,7 +1,8 @@
+import RealtimeCatchUp from '@/components/shared/RealtimeCatchUp'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import OrderQueue, { type KitchenOrder, type ComboItemRow } from '@/components/kitchen/OrderQueue'
-import { getRestaurantFeatures } from '@/lib/features'
+import { getRestaurantFeatures, getRestaurantName } from '@/lib/features'
 
 export const revalidate = 0
 
@@ -16,9 +17,11 @@ export default async function BarPage() {
 
     const [
         features,
+        restaurantName,
         { data: activeOrders },
     ] = await Promise.all([
         getRestaurantFeatures(restaurantId),
+        getRestaurantName(restaurantId),
         adminSupabase
             .from('orders')
             .select(`
@@ -29,7 +32,23 @@ export default async function BarPage() {
                 total_amount,
                 placed_at,
                 customer_note,
-                sessions ( tables ( label ) ),
+                booking_id,
+                bookings:booking_id (
+                  id,
+                  rooms:room_id ( id, room_number )
+                ),
+                sessions (
+                  id,
+                  seat_number,
+                  booking_id,
+                  tables:table_id (
+                    id,
+                    label,
+                    room_id,
+                    rooms:room_id ( id, room_number ),
+                    sessions ( id, seat_number, status )
+                  )
+                ),
                 order_items (
                     id,
                     menu_item_id,
@@ -40,6 +59,7 @@ export default async function BarPage() {
                     station,
                     claimed_by, claimed_at,
                     menu_items ( name, is_combo ),
+                    menu_item_variations:menu_item_variation_id ( id, name ),
                     order_item_modifiers ( modifier_name, price_adjustment )
                 )
             `)
@@ -81,6 +101,7 @@ export default async function BarPage() {
 
     return (
         <div className="h-full flex flex-col overflow-hidden bg-[#FBF7F3]">
+            <RealtimeCatchUp restaurantId={restaurantId} />
             <div className="flex-1 overflow-hidden">
                 <OrderQueue
                     station="bar"
@@ -89,6 +110,7 @@ export default async function BarPage() {
                     comboItems={comboItems}
                     userId={userId}
                     staffNames={staffNames}
+                    restaurantName={restaurantName}
                 />
             </div>
         </div>

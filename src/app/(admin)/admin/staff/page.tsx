@@ -4,10 +4,18 @@ import StaffManager from '@/components/admin/StaffManager'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import { Users } from 'lucide-react'
 
+import { redirect } from 'next/navigation'
+import { getRestaurantFeatures } from '@/lib/features'
+
 export const dynamic = 'force-dynamic'
 
 export default async function StaffManagementPage() {
     const { id: userId, restaurantId } = await getCurrentUser()
+    const features = await getRestaurantFeatures(restaurantId)
+    if (!features?.staffManagementEnabled) {
+        redirect('/admin/dashboard')
+    }
+
     const adminSupabase = await createAdminClient()
 
     // Get current user's role
@@ -51,6 +59,7 @@ export default async function StaffManagementPage() {
         `)
         .eq('restaurant_id', restaurantId)
         .neq('role_id', 5) // Exclude standard customers from the staff dashboard
+        .is('deleted_at', null) // Soft-deleted accounts keep their payroll history but leave the roster
         .order('created_at', { ascending: false })
 
     // 4. Fetch departments

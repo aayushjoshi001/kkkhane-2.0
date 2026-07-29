@@ -4,12 +4,25 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { createClient } from '@/lib/supabase/client'
-import { Users, X, Check, Bed, ClipboardList, Loader2, CreditCard, RefreshCw, Calendar, FileText, Plus, Landmark } from 'lucide-react'
+import { Users, X, Check, Bed, ClipboardList, Loader2, CreditCard, RefreshCw, Calendar, FileText, Plus, Landmark, Utensils, ArrowLeftRight, History, RotateCcw, Car } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
-import { useCurrency } from '@/lib/contexts/FeatureContext'
+import { useCurrency, useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { type TableWithSession } from './CashierTableManager'
-import { formatDateTime, calculateNights } from '@/lib/utils'
+import { type GroupBill } from '@/lib/bookingGroup'
+import { calculateNights, advanceMethodLabel, getItemDisplayName, defaultStayWindowInputs } from '@/lib/utils'
+import { describeGuestMix, totalGuests } from '@/lib/guests'
+import QuickOrderModal from './QuickOrderModal'
+import { openSession } from '@/app/(staff)/waiter/actions'
+import { useQrCodes } from '@/lib/hooks/useQrCodes'
+import { useGuestLookup, type GuestSuggestion } from '@/lib/hooks/useGuestLookup'
+import GuestSuggestionList from './GuestSuggestionList'
+import { getRoomStatusConfig } from '@/lib/roomStatus'
+import { autoRoomServiceCharge, resolveRoomServiceCharge, roomServiceChargeApplies, ROOM_SERVICE_CHARGE_RATE } from '@/lib/roomServiceCharge'
+import Select from '@/components/ui/Select'
+import { NepaliDateInput, NepaliDateTimeInput } from '@/components/ui/NepaliDateInput'
+import { useDates } from '@/lib/contexts/CalendarContext'
+import AdvancePaymentHistoryModal from '@/components/admin/AdvancePaymentHistoryModal'
 
 export interface RoomWithTypes {
     id: string
@@ -24,43 +37,53 @@ export interface RoomWithTypes {
     } | null
 }
 
-const STATUS_CONFIG = {
-    available: { dot: 'bg-emerald-500', card: 'border-emerald-100 bg-emerald-50/10', text: 'text-emerald-700 bg-emerald-50 border-emerald-100', label: 'Available' },
-    occupied:  { dot: 'bg-blue-500 animate-pulse', card: 'border-blue-200 bg-blue-50/10', text: 'text-blue-700 bg-blue-50 border-blue-100', label: 'Booked' },
-    dirty:     { dot: 'bg-amber-500', card: 'border-amber-200 bg-amber-50/10', text: 'text-amber-700 bg-amber-50 border-amber-100', label: 'Cleaning' },
-    maintenance: { dot: 'bg-rose-500', card: 'border-rose-200 bg-rose-50/10', text: 'text-rose-700 bg-rose-50 border-rose-100', label: 'Closed' },
-}
-
 export default function CashierRoomManager({
     rooms,
     setRooms,
     bookings,
     setBookings,
     restaurantId,
+    partnerRestaurantId,
     roomsFilter,
+    roomTypeFilter = 'all',
     tables,
     activeOrders,
     unpaidOrders,
     onGoToBilling,
+    onOrderPlaced,
 }: {
     rooms: RoomWithTypes[]
     setRooms: React.Dispatch<React.SetStateAction<any[]>>
     bookings: any[]
     setBookings: React.Dispatch<React.SetStateAction<any[]>>
     restaurantId: string
+    partnerRestaurantId?: string | null
     roomsFilter: 'all' | 'available' | 'reserve' | 'occupied' | 'dirty' | 'closed'
+    roomTypeFilter?: string
     tables: TableWithSession[]
     activeOrders: any[]
     unpaidOrders: any[]
-    onGoToBilling?: (room: any) => void
+    // The service charge the cashier settled on here rides along, so the
+    // billing panel opens on the same figure instead of resetting to auto.
+    onGoToBilling?: (room: any, serviceChargeOverride?: number) => void
+    onOrderPlaced?: (orderId: string) => void
 }) {
     const [selectedRoom, setSelectedRoom] = useState<RoomWithTypes | null>(null)
     const [activeBooking, setActiveBooking] = useState<any | null>(null)
     const [loadingBooking, setLoadingBooking] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
     const [mounted, setMounted] = useState(false)
+    // Both service-charge edits are stamped with the room they were made on, so
+    // opening the next folio starts from auto again without an effect having to
+    // chase selectedRoom and clear them.
+    const [serviceChargeEdit, setServiceChargeEdit] = useState<{ roomId: string; value: string } | null>(null)
+    const [serviceChargeOffRoomId, setServiceChargeOffRoomId] = useState<string | null>(null)
+    const features = useFeatures()
+    const irdSyncEnabled = features?.irdSyncEnabled ?? false
     const money = useCurrency()
     const supabaseRef = useRef(createClient())
+    const manualEntryEnabled = useFeatureEnabled('manualEntryEnabled')
+    const { formatDateTime } = useDates()
 
     // Sub-modal and drawer states
     const [bookingFormOpen, setBookingFormOpen] = useState(false)
@@ -70,6 +93,14 @@ export default function CashierRoomManager({
     // Manual charge addition states
     const [manualCharges, setManualCharges] = useState<any[]>([])
     const [linkedDiningOrders, setLinkedDiningOrders] = useState<any[]>([])
+    // The rest of the reservation when this room is one of several booked
+    // together (see /api/bookings/group). They settle on one bill, so the room
+    // cost and advance shown in this drawer have to be the reservation's, not
+    // just this room's share. Null for an ordinary single-room stay.
+    const [stayGroup, setStayGroup] = useState<GroupBill | null>(null)
+    const filteredLinkedDiningOrders = (() => {
+        return linkedDiningOrders.filter(o => !o.is_room_order && o.status !== 'cancelled')
+    })()
     const [loadingCharges, setLoadingCharges] = useState(false)
     const [showAddChargeForm, setShowAddChargeForm] = useState(false)
     const [newCharge, setNewCharge] = useState({
@@ -77,6 +108,35 @@ export default function CashierRoomManager({
         description: '',
         amount: ''
     })
+    // Room move ("the guest is in 201 but wants 305")
+    const [moveOpen, setMoveOpen] = useState(false)
+    const [moveTargetId, setMoveTargetId] = useState<string>('')
+    const [moveReason, setMoveReason] = useState('')
+    const [moving, setMoving] = useState(false)
+
+    const [foodOrderModalOpen, setFoodOrderModalOpen] = useState(false)
+    const [createdSessionId, setCreatedSessionId] = useState<string | null>(null)
+    const [refreshTrigger, setRefreshTrigger] = useState(0)
+
+    // Helper to reset booking form + sub-views when opening/closing a room modal
+    const resetRoomModal = () => {
+        setBookingFormOpen(false)
+        setConfirmCloseOpen(false)
+        setConfirmDirtyOpen(false)
+        setShowAddChargeForm(false)
+        setMoveOpen(false)
+        setMoveTargetId('')
+        setMoveReason('')
+        setBookingForm({ guest_name: '', guest_phone: '', kyc: '', check_in: '', check_out: '', adult_male: '1', adult_female: '1', children: '0', parking_required: false, parking_vehicle_no: '', parking_fee: '' })
+        setExtraRooms({})
+        setLookupField(null)
+        setGuestPicked(false)
+        setAdvanceType('none')
+        setAdvanceAmount('')
+        setAdvanceNote('')
+        setAdvanceSplitCash('')
+        setAdvanceSplitQr('')
+    }
 
     // Booking form inputs
     const [bookingForm, setBookingForm] = useState({
@@ -85,11 +145,160 @@ export default function CashierRoomManager({
         kyc: '',
         check_in: '',
         check_out: '',
-        guest_count: '2'
+        adult_male: '1',
+        adult_female: '1',
+        children: '0',
+        parking_required: false,
+        parking_vehicle_no: '',
+        parking_fee: '',
     })
+    // Which field is driving the returning-guest lookup. The desk may know the
+    // number or the name, so both search — but only the one being typed in,
+    // otherwise a filled-in name would keep querying while they type the phone.
+    const [lookupField, setLookupField] = useState<'guest_phone' | 'guest_name' | null>(null)
+    // Suppressed right after a suggestion is applied: the fields now hold that
+    // guest's own details, which would otherwise match themselves and leave the
+    // list hanging open under the form.
+    const [guestPicked, setGuestPicked] = useState(false)
+
+    const { suggestions: guestSuggestions, loading: guestLookupLoading } = useGuestLookup(
+        lookupField ? bookingForm[lookupField] : '',
+        { enabled: bookingFormOpen && !guestPicked && lookupField !== null },
+    )
+
+    /** Fill the form from a past stay, so a returning guest is not retyped. */
+    const applyGuestSuggestion = (guest: GuestSuggestion) => {
+        setBookingForm(b => ({
+            ...b,
+            guest_name: guest.name || b.guest_name,
+            guest_phone: guest.phone || b.guest_phone,
+            // Only overwrite KYC when we actually have one on file — a blank
+            // from an old stay must not wipe what the cashier just typed.
+            kyc: guest.kyc || b.kyc,
+        }))
+        setGuestPicked(true)
+        setLookupField(null)
+    }
+
+    // Extra rooms this same guest is taking, keyed by room id. The room the
+    // front desk clicked is always the first room of the reservation and isn't
+    // in here; anything added makes this a multi-room booking, which the API
+    // turns into one reservation group billing onto a single folio.
+    const [extraRooms, setExtraRooms] = useState<Record<string, { adult_male: string; adult_female: string; children: string }>>({})
+
     const [advanceType, setAdvanceType] = useState<'none' | 'full' | 'partial'>('none')
     const [advanceAmount, setAdvanceAmount] = useState<string>('')
-    const [advancePayMethod, setAdvancePayMethod] = useState<'cash' | 'qr_digital'>('cash')
+    const [advanceNote, setAdvanceNote] = useState<string>('')
+    const [advancePayMethod, setAdvancePayMethod] = useState<'cash' | 'qr_digital' | 'split'>('cash')
+    const [advanceSplitCash, setAdvanceSplitCash] = useState<string>('')
+    const [advanceSplitQr, setAdvanceSplitQr] = useState<string>('')
+    const [advanceQrCodeId, setAdvanceQrCodeId] = useState<string>('')
+    const qrCodes = useQrCodes()
+
+    const [addPaymentOpen, setAddPaymentOpen] = useState(false)
+    const [addPaymentAmount, setAddPaymentAmount] = useState('')
+    const [addPaymentNote, setAddPaymentNote] = useState('')
+    const [addPaymentMethod, setAddPaymentMethod] = useState<'cash' | 'qr_digital' | 'split'>('cash')
+    const [addPaymentSplitCash, setAddPaymentSplitCash] = useState('')
+    const [addPaymentSplitQr, setAddPaymentSplitQr] = useState('')
+    const [addPaymentQrId, setAddPaymentQrId] = useState('')
+    const [submittingPayment, setSubmittingPayment] = useState(false)
+
+    const [advanceHistoryOpen, setAdvanceHistoryOpen] = useState(false)
+
+
+    const handleAddMidStayPayment = async () => {
+        if (!activeBooking) return
+        
+        let resolvedAmount = 0
+        if (addPaymentMethod === 'split') {
+            const splitCash = parseFloat(addPaymentSplitCash) || 0
+            const splitQr = parseFloat(addPaymentSplitQr) || 0
+            resolvedAmount = splitCash + splitQr
+        } else {
+            resolvedAmount = parseFloat(addPaymentAmount) || 0
+        }
+
+        if (resolvedAmount <= 0) {
+            toast.error('Please enter a valid amount greater than 0')
+            return
+        }
+
+        setSubmittingPayment(true)
+        try {
+            const res = await fetch('/api/bookings/advance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    bookingId: activeBooking.id,
+                    amount: resolvedAmount,
+                    paymentMethod: addPaymentMethod,
+                    cashAmount: addPaymentSplitCash,
+                    qrAmount: addPaymentSplitQr,
+                    qrCodeId: addPaymentQrId || (qrCodes.length === 1 ? qrCodes[0].id : null),
+                    note: addPaymentNote
+                })
+            })
+
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Failed to add payment')
+
+            toast.success(`Payment of Rs. ${resolvedAmount.toLocaleString()} recorded successfully!`)
+            setAddPaymentOpen(false)
+            setRefreshTrigger(prev => prev + 1)
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to record payment')
+        } finally {
+            setSubmittingPayment(false)
+        }
+    }
+
+    // Parsed once so the header count, the capacity hint and the submit guard
+    // all read the same numbers rather than each re-parsing the inputs.
+    const guestTotals = useMemo(() => {
+        const n = (v: string) => Math.max(0, Math.trunc(Number(v) || 0))
+        const male = n(bookingForm.adult_male)
+        const female = n(bookingForm.adult_female)
+        return { male, female, adults: male + female, children: n(bookingForm.children) }
+    }, [bookingForm.adult_male, bookingForm.adult_female, bookingForm.children])
+
+    /** Rooms the front desk can add to this booking: free, not the one already
+     * selected, and not held by a live stay. Same availability rule as a room
+     * move, so the two can't disagree about what "free" means. */
+    const addableRooms = useMemo(() => {
+        const heldRoomIds = new Set(
+            (bookings || [])
+                .filter(b => b.status === 'checked_in' || b.status === 'pending')
+                .map(b => b.room_id),
+        )
+        return rooms
+            .filter(r => r.id !== selectedRoom?.id && !heldRoomIds.has(r.id) && r.status === 'available')
+            .sort((a, b) => a.room_number.localeCompare(b.room_number, undefined, { numeric: true }))
+    }, [rooms, bookings, selectedRoom?.id])
+
+    const selectedExtraIds = useMemo(() => Object.keys(extraRooms), [extraRooms])
+
+    /** room id → how many rooms its reservation holds. 0/1 for a normal stay. */
+    const groupSizeByRoomId = useMemo(() => {
+        const countByGroup = new Map<string, number>()
+        const live = (bookings || []).filter(b =>
+            b.group_id && (b.status === 'checked_in' || b.status === 'pending')
+        )
+        for (const b of live) {
+            countByGroup.set(b.group_id, (countByGroup.get(b.group_id) ?? 0) + 1)
+        }
+        return new Map(live.map(b => [b.room_id as string, countByGroup.get(b.group_id) ?? 1]))
+    }, [bookings])
+
+    /** Nightly rate across every room on the reservation — what a "full"
+     * advance has to cover once more than one room is involved. */
+    const combinedNightlyRate = useMemo(() => {
+        const base = selectedRoom?.room_types?.base_price || 0
+        return selectedExtraIds.reduce((sum, id) => {
+            const room = rooms.find(r => r.id === id)
+            return sum + (room?.room_types?.base_price || 0)
+        }, base)
+    }, [selectedRoom, selectedExtraIds, rooms])
 
     useEffect(() => {
         setMounted(true)
@@ -114,7 +323,7 @@ export default function CashierRoomManager({
     })
 
     // Realtime subscription for orders to refresh linked table dining orders instantly
-    useRestaurantTable(restaurantId, 'orders', (payload) => {
+    useRestaurantTable(partnerRestaurantId || restaurantId, 'orders', (payload) => {
         const currentBooking = activeBookingRef.current
         if (!currentBooking) return
         
@@ -128,33 +337,80 @@ export default function CashierRoomManager({
             .catch(err => console.error("Error refreshing linked dining orders in real-time:", err))
     })
 
+    // Rooms the guest could move into: in service, not the one they are in, and
+    // with nobody else booked into them. Occupancy is judged by whether a stay
+    // holds the room, not by the status flag — a room left 'dirty' after a
+    // checkout is perfectly movable-into once housekeeping is done, and blocking
+    // on the flag alone would hide it.
+    const moveCandidates = useMemo(() => {
+        const heldRoomIds = new Set(
+            (bookings || [])
+                .filter(b => b.status === 'checked_in' || b.status === 'pending')
+                .map(b => b.room_id),
+        )
+        return rooms
+            .filter(r => r.id !== selectedRoom?.id && !heldRoomIds.has(r.id) && r.status !== 'maintenance')
+            .sort((a, b) => a.room_number.localeCompare(b.room_number, undefined, { numeric: true }))
+    }, [rooms, bookings, selectedRoom?.id])
+
+    const handleMoveRoom = async () => {
+        if (!activeBooking || !moveTargetId) return
+        setMoving(true)
+        try {
+            const res = await fetch('/api/bookings/move-room', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    booking_id: activeBooking.id,
+                    to_room_id: moveTargetId,
+                    reason: moveReason,
+                }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Could not move the guest')
+
+            toast.success(`${activeBooking.guest_name} moved to Room ${data.to_room}`)
+            // Patch what this component owns; the rooms/bookings realtime
+            // subscriptions carry the same change to every other open till.
+            setRooms(prev => prev.map(r =>
+                r.id === moveTargetId ? { ...r, status: 'occupied' }
+                : r.id === selectedRoom?.id ? { ...r, status: 'dirty' }
+                : r))
+            setBookings(prev => prev.map(b => b.id === activeBooking.id ? { ...b, room_id: moveTargetId } : b))
+            setMoveOpen(false)
+            setSelectedRoom(null)
+            resetRoomModal()
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not move the guest')
+        } finally {
+            setMoving(false)
+        }
+    }
+
     // Prepopulate booking form check-in/out default values
     const prepopulateBookingForm = () => {
-        const checkIn = new Date()
-        const checkOut = new Date()
-        checkOut.setDate(checkOut.getDate() + 1) // default 1 night stay
-
-        // Format to YYYY-MM-DDTHH:MM for datetime-local inputs
-        const formatLocalTime = (d: Date) => {
-            const pad = (n: number) => (n < 10 ? '0' : '') + n
-            return d.getFullYear() + '-' +
-                pad(d.getMonth() + 1) + '-' +
-                pad(d.getDate()) + 'T' +
-                pad(d.getHours()) + ':' +
-                pad(d.getMinutes())
-        }
+        // Default to a 1-night stay: in now, out at noon tomorrow (Kathmandu).
+        const { checkIn, checkOut } = defaultStayWindowInputs()
 
         setBookingForm({
             guest_name: '',
             guest_phone: '',
             kyc: '',
-            check_in: formatLocalTime(checkIn),
-            check_out: formatLocalTime(checkOut),
-            guest_count: '1'
+            check_in: checkIn,
+            check_out: checkOut,
+            adult_male: '1',
+            adult_female: '0',
+            children: '0',
+            parking_required: false,
+            parking_vehicle_no: '',
+            parking_fee: '',
         })
         setAdvanceType('none')
         setAdvanceAmount('')
         setAdvancePayMethod('cash')
+        setAdvanceSplitCash('')
+        setAdvanceSplitQr('')
+        setAdvanceQrCodeId('')
     }
 
     // Fetch active booking details, manual charges, and linked dining orders concurrently when selected room is occupied
@@ -168,12 +424,15 @@ export default function CashierRoomManager({
                         const booking = data.data
                         try {
                             setLoadingCharges(true)
-                            // Concurrently fetch charges and linked dining orders
-                            const [chargesRes, linkedRes] = await Promise.all([
+                            // Concurrently fetch charges, linked dining orders,
+                            // and the rest of the reservation if this room is
+                            // part of a multi-room one.
+                            const [chargesRes, linkedRes, groupRes] = await Promise.all([
                                 fetch(`/api/rooms/charges?bookingId=${booking.id}`).then(r => r.json()),
-                                fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`).then(r => r.json())
+                                fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`).then(r => r.json()),
+                                fetch(`/api/bookings/group?bookingId=${booking.id}`).then(r => r.json())
                             ])
-                            
+
                             // Set all states simultaneously
                             setActiveBooking(booking)
                             if (chargesRes.success) {
@@ -182,12 +441,14 @@ export default function CashierRoomManager({
                             if (linkedRes.success) {
                                 setLinkedDiningOrders(linkedRes.items || [])
                             }
+                            setStayGroup(groupRes?.success && groupRes.isGroup ? groupRes : null)
                         } catch (err) {
                             console.error("Error fetching secondary stay details:", err)
                             // Set basic stay booking at least
                             setActiveBooking(booking)
                             setManualCharges([])
                             setLinkedDiningOrders([])
+                            setStayGroup(null)
                         } finally {
                             setLoadingCharges(false)
                         }
@@ -195,6 +456,7 @@ export default function CashierRoomManager({
                         setActiveBooking(null)
                         setManualCharges([])
                         setLinkedDiningOrders([])
+                        setStayGroup(null)
                     }
                 })
                 .catch(err => {
@@ -202,6 +464,7 @@ export default function CashierRoomManager({
                     setActiveBooking(null)
                     setManualCharges([])
                     setLinkedDiningOrders([])
+                    setStayGroup(null)
                 })
                 .finally(() => {
                     setLoadingBooking(false)
@@ -210,14 +473,21 @@ export default function CashierRoomManager({
             setActiveBooking(null)
             setManualCharges([])
             setLinkedDiningOrders([])
+            setStayGroup(null)
             setShowAddChargeForm(false)
+            setCreatedSessionId(null)
         }
-    }, [selectedRoom, rooms])
+    }, [selectedRoom, rooms, refreshTrigger])
 
     // Filter rooms
     const filteredRooms = useMemo(() => {
-        if (roomsFilter === 'all') return rooms
         return rooms.filter(r => {
+            // Category filter
+            if (roomTypeFilter && roomTypeFilter !== 'all' && r.type_id !== roomTypeFilter) {
+                return false
+            }
+            // Status filter
+            if (roomsFilter === 'all') return true
             if (roomsFilter === 'available') return r.status === 'available'
             if (roomsFilter === 'occupied') return r.status === 'occupied'
             if (roomsFilter === 'dirty') return r.status === 'dirty'
@@ -225,59 +495,81 @@ export default function CashierRoomManager({
             if (roomsFilter === 'reserve') return false // dummy reserved status
             return true
         })
-    }, [rooms, roomsFilter])
+    }, [rooms, roomsFilter, roomTypeFilter])
 
-    // Match table QR session orders
+    // Room-service orders bucket (the room's own QR table + manual "direct to
+    // room" orders placed from the cashier/manager). We derive it from the SAME
+    // linked-orders source as the dining bucket below (`filteredLinkedDiningOrders`),
+    // splitting on the `is_room_order` flag the API sets. That keeps this total in
+    // lock-step with the manager's RoomBillingModal, which sums every linked item.
+    //
+    // The previous implementation read session-based orders and required a room
+    // session (sessions.tables.room_id). A manual placeRoomOrderDirect order has
+    // session_id NULL, so it was silently dropped here AND excluded from the dining
+    // bucket (is_room_order === true) — vanishing from the cashier bill while still
+    // appearing on the manager's, so the two panels showed different totals. Reading
+    // both buckets from the one linked-orders array closes that gap.
     const qrOrdersDetails = useMemo(() => {
-        if (!selectedRoom || selectedRoom.status !== 'occupied') return null
+        if (!selectedRoom || selectedRoom.status !== 'occupied' || !activeBooking) return null
 
-        // Keyed on tables.room_id — a relabelled or duplicate table can no longer
-        // detach a guest's orders from their folio.
-        const matchingTable = tables.find(t => t.room_id === selectedRoom.id)
-        if (!matchingTable?.activeSession) return null
+        const roomItems = linkedDiningOrders.filter(o => o.is_room_order && o.status !== 'cancelled')
+        const items = roomItems.map(it => ({
+            name: getItemDisplayName(it),
+            quantity: it.quantity || 0,
+            unitPrice: Number(it.unit_price ?? 0),
+        }))
+        const total = items.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0)
 
-        const sessionId = matchingTable.activeSession.id
-        const allActive = activeOrders.filter(o => o.session_id === sessionId)
-        const allUnpaid = unpaidOrders.filter(o => o.session_id === sessionId)
-        const combinedOrders = [...allActive, ...allUnpaid]
+        return { items, total }
+    }, [selectedRoom, activeBooking, linkedDiningOrders])
 
-        const items: { name: string; quantity: number; unitPrice: number; status: string }[] = []
-        let total = 0
-
-        for (const order of combinedOrders) {
-            const orderItems = order.order_items || []
-            for (const item of orderItems) {
-                const name = item.menu_items?.name || 'Item'
-                const qty = item.quantity || 0
-                const price = Number(item.unit_price ?? 0)
-                const status = item.status || order.status || 'unknown'
-                items.push({ name, quantity: qty, unitPrice: price, status })
-                total += price * qty
-            }
-        }
-
-        return { items, total, sessionId }
-    }, [selectedRoom, activeOrders, unpaidOrders, tables])
-
-    // Stay night and price calculations
+    // Stay night and price calculations. A multi-room reservation bills as one
+    // folio, so the room charge here is every room's — priced server-side,
+    // since the rooms can be of different types.
     const stayPriceDetails = useMemo(() => {
+        if (stayGroup) return { nights: stayGroup.nights, cost: stayGroup.stayCost }
         if (!selectedRoom || !activeBooking) return { nights: 0, cost: 0 }
-        
+
         const price = selectedRoom.room_types?.base_price || 0
         const nights = calculateNights(activeBooking.check_in, activeBooking.check_out)
         const cost = price * nights
 
         return { nights, cost }
-    }, [selectedRoom, activeBooking])
+    }, [selectedRoom, activeBooking, stayGroup])
 
-    // Grand total
-    const grandTotal = useMemo(() => {
+    // What the charge works out to before the cashier touches it. Gated on the
+    // same two settings the server folio checks, so this preview can't promise
+    // a charge the settlement won't make (or hide one it will).
+    const autoServiceCharge = useMemo(
+        () => autoRoomServiceCharge(linkedDiningOrders, features, selectedRoom?.id),
+        [linkedDiningOrders, features, selectedRoom?.id],
+    )
+    // Whether the room is charged one automatically. A room that isn't can
+    // still have one added by hand — the settlement bills any override as a
+    // difference from the auto figure, and for these rooms that figure is 0.
+    const serviceChargeIsAutomatic = roomServiceChargeApplies(features, selectedRoom?.id)
+
+    // Empty means "leave it on auto"; an explicit '0' waives the charge, which
+    // is why the override is held as a string rather than a number.
+    const roomServiceChargeInput = serviceChargeEdit?.roomId === selectedRoom?.id ? serviceChargeEdit?.value ?? '' : ''
+    const applyRoomServiceCharge = serviceChargeOffRoomId !== selectedRoom?.id
+    const serviceCharge = resolveRoomServiceCharge(autoServiceCharge, roomServiceChargeInput)
+    const serviceChargeOverridden = serviceCharge.isOverridden
+    const roomServiceChargeAmount = applyRoomServiceCharge ? serviceCharge.charged : 0
+    // What the settlement should bill, carried to the billing panel below. A
+    // waive via the toggle is an override to zero as far as the API cares.
+    const serviceChargeOverrideValue = !applyRoomServiceCharge ? 0 : serviceChargeOverridden ? serviceCharge.charged : undefined
+
+    // Grand total. Plain arithmetic rather than a useMemo — the service charge
+    // it now depends on is itself derived each render, so a manual memo here
+    // could not be preserved anyway.
+    const grandTotal = (() => {
         const roomStayCost = stayPriceDetails.cost
         const qrOrdersTotal = qrOrdersDetails?.total || 0
         const manualChargesTotal = manualCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
-        const linkedDiningTotal = linkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
-        return roomStayCost + qrOrdersTotal + manualChargesTotal + linkedDiningTotal
-    }, [stayPriceDetails, qrOrdersDetails, manualCharges, linkedDiningOrders])
+        const linkedDiningTotal = filteredLinkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+        return roomStayCost + qrOrdersTotal + manualChargesTotal + linkedDiningTotal + roomServiceChargeAmount
+    })()
 
     // Change room status helper
     const handleStatusChange = async (roomId: string, newStatus: 'available' | 'dirty' | 'maintenance') => {
@@ -305,26 +597,74 @@ export default function CashierRoomManager({
         }
     }
 
+    const handleOpenFoodOrder = async () => {
+        if (!selectedRoom) return
+        
+        const matchingTable = tables.find(t => t.room_id === selectedRoom.id)
+        if (!matchingTable) {
+            // Open directly using bookingId (no table session needed)
+            setFoodOrderModalOpen(true)
+            return
+        }
+
+        const existingSessionId = matchingTable.activeSession?.id || createdSessionId
+        if (existingSessionId) {
+            setFoodOrderModalOpen(true)
+            return
+        }
+
+        // Create a new session dynamically
+        setIsProcessing(true)
+        try {
+            const res = await openSession(matchingTable.id, restaurantId)
+            if (res.error) {
+                toast.error(`Could not start food order session: ${res.error}`)
+                return
+            }
+            if (res.session?.id) {
+                setCreatedSessionId(res.session.id)
+                setFoodOrderModalOpen(true)
+            } else {
+                toast.error("Could not start food order session.")
+            }
+        } catch (err) {
+            console.error("Error creating session for room order:", err)
+            toast.error("Failed to start session.")
+        } finally {
+            setIsProcessing(false)
+        }
+    }
+
     // Submit booking handler
     const handleCreateBooking = async () => {
         if (!selectedRoom) return
         if (!bookingForm.guest_name.trim()) { toast.error('Guest name is required'); return }
         if (!bookingForm.guest_phone.trim()) { toast.error('Phone number is required'); return }
         if (!bookingForm.check_in || !bookingForm.check_out) { toast.error('Check-in and Check-out dates are required'); return }
+        // Children can stay on their own booking line, but somebody has to be
+        // the adult the room is registered to.
+        if (guestTotals.adults < 1) { toast.error('Enter at least one adult guest'); return }
 
-        const maxCapacity = selectedRoom.room_types?.capacity || 2
-        if (Number(bookingForm.guest_count) > maxCapacity) {
-            toast.error(`Guests exceed room capacity of ${maxCapacity}`);
-            return
+        // Every extra room needs an adult on it too — the same rule the API
+        // enforces, checked here so the front desk gets a pointed message
+        // instead of a generic rejection.
+        for (const roomId of selectedExtraIds) {
+            const g = extraRooms[roomId]
+            const adults = Math.max(0, Math.trunc(Number(g.adult_male) || 0)) + Math.max(0, Math.trunc(Number(g.adult_female) || 0))
+            if (adults < 1) {
+                const number = rooms.find(r => r.id === roomId)?.room_number ?? ''
+                toast.error(`Room ${number} needs at least one adult guest`)
+                return
+            }
         }
 
-        // Calculate advance amount to send
-        const basePrice = selectedRoom.room_types?.base_price || 0
+        // Calculate advance amount to send. A "full" advance covers every room
+        // on the reservation, not just the one that was clicked.
         const inDate = new Date(bookingForm.check_in)
         const outDate = new Date(bookingForm.check_out)
         const diffMs = outDate.getTime() - inDate.getTime()
         const nights = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)))
-        const fullCost = basePrice * nights
+        const fullCost = combinedNightlyRate * nights
 
         let resolvedAdvance = 0
         if (advanceType === 'full') {
@@ -332,7 +672,14 @@ export default function CashierRoomManager({
         } else if (advanceType === 'partial') {
             resolvedAdvance = Math.max(0, parseFloat(advanceAmount) || 0)
             if (resolvedAdvance <= 0) { toast.error('Please enter a valid advance amount'); return }
-            if (resolvedAdvance >= fullCost) { toast.error('Partial advance must be less than total room cost'); return }
+        }
+
+        const isSplit = advanceType !== 'none' && advancePayMethod === 'split'
+        const splitCash = Math.max(0, parseFloat(advanceSplitCash) || 0)
+        const splitQr = Math.max(0, parseFloat(advanceSplitQr) || 0)
+        if (isSplit && Math.round((splitCash + splitQr) * 100) !== Math.round(resolvedAdvance * 100)) {
+            toast.error(`Cash + QR must add up to the advance amount (Rs. ${resolvedAdvance.toLocaleString()})`)
+            return
         }
 
         setIsProcessing(true)
@@ -341,25 +688,62 @@ export default function CashierRoomManager({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    room_id: selectedRoom.id,
+                    // The clicked room first, then any extras. The API creates a
+                    // reservation group whenever this is longer than one.
+                    rooms: [
+                        {
+                            room_id: selectedRoom.id,
+                            adult_male: bookingForm.adult_male,
+                            adult_female: bookingForm.adult_female,
+                            children: bookingForm.children,
+                        },
+                        ...selectedExtraIds.map(roomId => ({
+                            room_id: roomId,
+                            adult_male: extraRooms[roomId].adult_male,
+                            adult_female: extraRooms[roomId].adult_female,
+                            children: extraRooms[roomId].children,
+                        })),
+                    ],
                     guest_name: bookingForm.guest_name,
                     guest_phone: bookingForm.guest_phone,
                     kyc: bookingForm.kyc,
                     check_in: bookingForm.check_in,
                     check_out: bookingForm.check_out,
-                    guest_count: bookingForm.guest_count,
                     advance_amount: resolvedAdvance,
-                    advance_payment_method: resolvedAdvance > 0 ? advancePayMethod : 'none',
+                    advance_payment_method: resolvedAdvance > 0 ? (irdSyncEnabled ? advancePayMethod : 'cash') : 'none',
+                    advance_cash_amount: (irdSyncEnabled && isSplit) ? splitCash : undefined,
+                    advance_qr_amount: (irdSyncEnabled && isSplit) ? splitQr : undefined,
+                    advance_qr_code_id: (irdSyncEnabled && resolvedAdvance > 0 && (advancePayMethod === 'qr_digital' || isSplit))
+                        ? (advanceQrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined))
+                        : undefined,
+                    advance_note: advanceNote,
+                    parking_required: bookingForm.parking_required,
+                    // The plate is worth keeping even if no space was reserved,
+                    // but a fee only makes sense against a space actually given.
+                    parking_vehicle_no: bookingForm.parking_vehicle_no.trim() || undefined,
+                    parking_fee: bookingForm.parking_required ? (parseFloat(bookingForm.parking_fee) || 0) : 0,
                 }),
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error)
 
-            toast.success(`Room ${selectedRoom.room_number} booked!${resolvedAdvance > 0 ? ` Advance: Rs. ${resolvedAdvance.toLocaleString()}` : ''}`)
-            setRooms(prev => prev.map(r => r.id === selectedRoom.id ? { ...r, status: 'occupied' } : r))
-            setBookings(prev => [...prev, data.data])
+            const bookedIds = new Set<string>([selectedRoom.id, ...selectedExtraIds])
+            const roomLabel = [selectedRoom.room_number, ...selectedExtraIds.map(id => rooms.find(r => r.id === id)?.room_number).filter(Boolean)].join(', ')
+            toast.success(
+                `${bookedIds.size > 1 ? `${bookedIds.size} rooms (${roomLabel})` : `Room ${selectedRoom.room_number}`} booked!` +
+                (resolvedAdvance > 0 ? ` Advance: Rs. ${resolvedAdvance.toLocaleString()}` : '')
+            )
+            setRooms(prev => prev.map(r => bookedIds.has(r.id) ? { ...r, status: 'occupied' } : r))
+            setBookings(prev => {
+                const newB = data.bookings || [data.data]
+                return [...prev, ...newB.filter((nb: any) => !prev.some(p => p.id === nb.id))]
+            })
+            setExtraRooms({})
             setBookingFormOpen(false)
             setSelectedRoom(null)
+            setAdvanceSplitCash('')
+            setAdvanceSplitQr('')
+            setAdvanceQrCodeId('')
         } catch (e: any) {
             toast.error(e.message || 'Failed to book room')
         } finally {
@@ -411,13 +795,17 @@ export default function CashierRoomManager({
                     </div>
                 ) : (
                     filteredRooms.map(room => {
-                        const status = room.status
-                        const cfg = STATUS_CONFIG[status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.available
-                        
+                        const cfg = getRoomStatusConfig(room.status)
+                        // Rooms held by the same reservation are marked so the
+                        // front desk can see at a glance that checking one out
+                        // will settle and release the others with it.
+                        const groupSize = groupSizeByRoomId.get(room.id) ?? 0
+
                         return (
                             <button
                                 key={room.id}
                                 onClick={() => {
+                                    resetRoomModal()
                                     setSelectedRoom(room)
                                 }}
                                 className={`relative aspect-square rounded-[20px] border flex flex-col items-center justify-center transition-all duration-300 ${cfg.card} hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95`}
@@ -425,15 +813,28 @@ export default function CashierRoomManager({
                                 <span className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-ink leading-tight text-center">
                                     {room.room_number}
                                 </span>
+                                {/* Wraps instead of truncating: the room type is how staff tell
+                                    a Deluxe from a Deluxe Twin at a glance, so an ellipsis can
+                                    hide the one word that distinguishes them. The card is square
+                                    with room to spare under the number, so a second line costs
+                                    nothing. */}
                                 {room.room_types && (
-                                    <span className="text-[10px] font-bold text-ink-subtle mt-0.5 truncate max-w-full px-1.5">
+                                    <span className="text-[10px] font-bold text-ink-subtle mt-0.5 px-1 w-full text-center leading-tight break-words">
                                         {room.room_types.name}
                                     </span>
                                 )}
-                                <span className={`uppercase tracking-wide mt-1.5 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border ${cfg.text}`}>
+                                <span className={`uppercase tracking-wide mt-1.5 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border ${cfg.badge} ${cfg.badgeBorder}`}>
                                     {cfg.label}
                                 </span>
-                                <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${cfg.dot}`} />
+                                <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${cfg.dot} ${cfg.pulse ? 'animate-pulse' : ''}`} />
+                                {groupSize > 1 && (
+                                    <span
+                                        className="absolute top-1.5 left-1.5 text-[8px] font-black px-1.5 py-0.5 rounded-md bg-brand-500 text-white"
+                                        title={`Part of a ${groupSize}-room booking — these rooms bill and check out together`}
+                                    >
+                                        {groupSize} ROOMS
+                                    </span>
+                                )}
                             </button>
                         )
                     })
@@ -484,17 +885,41 @@ export default function CashierRoomManager({
                                                 type="text"
                                                 placeholder="e.g. John Doe"
                                                 value={bookingForm.guest_name}
-                                                onChange={e => setBookingForm(b => ({ ...b, guest_name: e.target.value }))}
+                                                onChange={e => {
+                                                    setBookingForm(b => ({ ...b, guest_name: e.target.value }))
+                                                    setLookupField('guest_name')
+                                                    // Typing again means the desk is looking for someone
+                                                    // else, so start offering matches once more.
+                                                    setGuestPicked(false)
+                                                }}
+                                                onFocus={() => setLookupField('guest_name')}
                                                 className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                            />
+                                        </div>
+                                        <div className="col-span-2 -mt-1">
+                                            {/* Returning-guest suggestions sit under the pair of fields
+                                                they draw from, so whichever the cashier is typing in the
+                                                list appears in the same place. */}
+                                            <GuestSuggestionList
+                                                suggestions={guestSuggestions}
+                                                loading={guestLookupLoading}
+                                                onPick={applyGuestSuggestion}
+                                                formatDate={formatDateTime}
                                             />
                                         </div>
                                         <div>
                                             <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Phone *</label>
                                             <input
                                                 type="text"
+                                                inputMode="tel"
                                                 placeholder="9841234567"
                                                 value={bookingForm.guest_phone}
-                                                onChange={e => setBookingForm(b => ({ ...b, guest_phone: e.target.value }))}
+                                                onChange={e => {
+                                                    setBookingForm(b => ({ ...b, guest_phone: e.target.value }))
+                                                    setLookupField('guest_phone')
+                                                    setGuestPicked(false)
+                                                }}
+                                                onFocus={() => setLookupField('guest_phone')}
                                                 className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
                                             />
                                         </div>
@@ -510,42 +935,203 @@ export default function CashierRoomManager({
                                         </div>
                                         <div>
                                             <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Check-in *</label>
-                                            <input
-                                                type="datetime-local"
+                                            <NepaliDateTimeInput
+                                                aria-label="Check-in date and time"
                                                 value={bookingForm.check_in}
-                                                onChange={e => setBookingForm(b => ({ ...b, check_in: e.target.value }))}
-                                                className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                                onChange={check_in => setBookingForm(b => ({ ...b, check_in }))}
+                                                className="px-3 py-1.5 rounded-xl text-xs font-semibold"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Check-out *</label>
-                                            <input
-                                                type="datetime-local"
-                                                value={bookingForm.check_out}
-                                                onChange={e => setBookingForm(b => ({ ...b, check_out: e.target.value }))}
-                                                className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Check-out * <span className="text-ink-subtle/70 normal-case font-semibold">(12:00 PM)</span></label>
+                                            {/* Checkout has always been pinned to noon here — so this asks for
+                                                the day only, rather than offering a time it would overwrite. */}
+                                            <NepaliDateInput
+                                                aria-label="Check-out date"
+                                                value={bookingForm.check_out.slice(0, 10)}
+                                                onChange={iso => setBookingForm(b => ({ ...b, check_out: iso ? `${iso}T12:00` : '' }))}
+                                                className="px-3 py-1.5 rounded-xl text-xs font-semibold"
                                             />
                                         </div>
                                         <div className="col-span-2">
-                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Number of Guests * (Max {selectedRoom.room_types?.capacity || 2})</label>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                max={selectedRoom.room_types?.capacity || 2}
-                                                value={bookingForm.guest_count}
-                                                onChange={e => setBookingForm(b => ({ ...b, guest_count: e.target.value }))}
-                                                className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
-                                            />
+                                            <div className="flex items-baseline justify-between mb-1">
+                                                <label className="block text-[10px] font-bold text-ink-subtle uppercase">Guests *</label>
+                                                {(() => {
+                                                    const total = guestTotals.adults + guestTotals.children
+                                                    const capacity = selectedRoom.room_types?.capacity ?? null
+                                                    // Warn, never block — a front desk routinely puts an
+                                                    // extra mattress in a room and needs to record it.
+                                                    const over = capacity !== null && total > capacity
+                                                    return (
+                                                        <span className={`text-[10px] font-bold ${over ? 'text-amber-600' : 'text-ink-subtle'}`}>
+                                                            {total} guest{total === 1 ? '' : 's'}
+                                                            {capacity !== null && ` · room sleeps ${capacity}`}
+                                                        </span>
+                                                    )
+                                                })()}
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {([
+                                                    ['adult_male', 'Male'],
+                                                    ['adult_female', 'Female'],
+                                                    ['children', 'Children'],
+                                                ] as const).map(([key, label]) => (
+                                                    <div key={key}>
+                                                        <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-0.5">{label}</label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            inputMode="numeric"
+                                                            aria-label={`Number of ${label.toLowerCase()} guests`}
+                                                            value={bookingForm[key]}
+                                                            onChange={e => setBookingForm(b => ({ ...b, [key]: e.target.value }))}
+                                                            className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold tabular-nums"
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
+
+                                        {/* Parking. One question for the whole reservation — the guest
+                                            arrives in one vehicle however many rooms they take — and any
+                                            fee posts to the folio as a single 'parking' charge. */}
+                                        <div className="col-span-2 border border-hairline rounded-2xl p-3 space-y-2.5 bg-surface-muted/30">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <p className="text-[10px] font-black text-ink-subtle uppercase tracking-wider">Parking required?</p>
+                                                <div className="flex gap-1.5 shrink-0">
+                                                    {([['No', false], ['Yes', true]] as const).map(([label, value]) => (
+                                                        <button
+                                                            key={label}
+                                                            type="button"
+                                                            aria-pressed={bookingForm.parking_required === value}
+                                                            onClick={() => setBookingForm(b => ({ ...b, parking_required: value }))}
+                                                            className={`px-3.5 py-1.5 rounded-xl border text-[11px] font-bold transition-colors ${
+                                                                bookingForm.parking_required === value
+                                                                    ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                                    : 'border-hairline bg-surface text-ink-subtle hover:border-brand-300'
+                                                            }`}
+                                                        >
+                                                            {label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-0.5">Vehicle No.</label>
+                                                    <input
+                                                        type="text"
+                                                        maxLength={32}
+                                                        value={bookingForm.parking_vehicle_no}
+                                                        onChange={e => setBookingForm(b => ({ ...b, parking_vehicle_no: e.target.value }))}
+                                                        placeholder="BA 2 CHA 1234"
+                                                        className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-0.5">Fee (Rs.)</label>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        placeholder="0.00"
+                                                        disabled={!bookingForm.parking_required}
+                                                        value={bookingForm.parking_fee}
+                                                        onChange={e => setBookingForm(b => ({ ...b, parking_fee: e.target.value }))}
+                                                        className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold tabular-nums disabled:opacity-60"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Extra rooms for the same guest. Adding any turns this into
+                                            one reservation: the rooms share a stay window, bill onto a
+                                            single folio, and check out together. */}
+                                        {addableRooms.length > 0 && (
+                                            <div className="col-span-2 border border-hairline rounded-2xl p-3 space-y-2 bg-surface-muted/30">
+                                                <div className="flex items-baseline justify-between">
+                                                    <p className="text-[10px] font-black text-ink-subtle uppercase tracking-wider">More rooms for this guest</p>
+                                                    <span className="text-[10px] font-bold text-ink-subtle">
+                                                        {selectedExtraIds.length + 1} room{selectedExtraIds.length ? 's' : ''} total
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {addableRooms.map(room => {
+                                                        const picked = !!extraRooms[room.id]
+                                                        return (
+                                                            <button
+                                                                key={room.id}
+                                                                type="button"
+                                                                aria-pressed={picked}
+                                                                onClick={() => setExtraRooms(prev => {
+                                                                    const next = { ...prev }
+                                                                    if (picked) delete next[room.id]
+                                                                    else next[room.id] = { adult_male: '1', adult_female: '0', children: '0' }
+                                                                    return next
+                                                                })}
+                                                                className={`px-2.5 py-1.5 rounded-xl border-2 text-[10px] font-bold transition-all ${
+                                                                    picked
+                                                                        ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                                        : 'border-hairline bg-surface text-ink-subtle hover:border-brand-300'
+                                                                }`}
+                                                            >
+                                                                {room.room_number}
+                                                                {room.room_types?.base_price ? (
+                                                                    <span className="ml-1 font-semibold opacity-70">{money(room.room_types.base_price)}</span>
+                                                                ) : null}
+                                                            </button>
+                                                        )
+                                                    })}
+                                                </div>
+
+                                                {/* Per-room guest mix — a family taking three rooms rarely
+                                                    splits evenly across them. */}
+                                                {selectedExtraIds.map(roomId => {
+                                                    const room = rooms.find(r => r.id === roomId)
+                                                    const guests = extraRooms[roomId]
+                                                    return (
+                                                        <div key={roomId} className="border-t border-hairline pt-2">
+                                                            <p className="text-[10px] font-bold text-ink mb-1">
+                                                                Room {room?.room_number}
+                                                                {room?.room_types?.capacity != null && (
+                                                                    <span className="ml-1 font-semibold text-ink-subtle">· sleeps {room.room_types.capacity}</span>
+                                                                )}
+                                                            </p>
+                                                            <div className="grid grid-cols-3 gap-2">
+                                                                {([
+                                                                    ['adult_male', 'Male'],
+                                                                    ['adult_female', 'Female'],
+                                                                    ['children', 'Children'],
+                                                                ] as const).map(([key, label]) => (
+                                                                    <div key={key}>
+                                                                        <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-0.5">{label}</label>
+                                                                        <input
+                                                                            type="number"
+                                                                            min="0"
+                                                                            inputMode="numeric"
+                                                                            aria-label={`Number of ${label.toLowerCase()} guests in room ${room?.room_number ?? ''}`}
+                                                                            value={guests[key]}
+                                                                            onChange={e => setExtraRooms(prev => ({
+                                                                                ...prev,
+                                                                                [roomId]: { ...prev[roomId], [key]: e.target.value },
+                                                                            }))}
+                                                                            className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold tabular-nums"
+                                                                        />
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                        )}
 
                                         {/* Advance Payment Section */}
                                         {(() => {
-                                            const basePrice = selectedRoom.room_types?.base_price || 0
                                             const inDate = new Date(bookingForm.check_in)
                                             const outDate = new Date(bookingForm.check_out)
                                             const diffMs = outDate.getTime() - inDate.getTime()
                                             const nights = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)))
-                                            const fullCost = basePrice * nights
+                                            const fullCost = combinedNightlyRate * nights
                                             return (
                                                 <div className="col-span-2 border border-hairline rounded-2xl p-3 space-y-2 bg-surface-muted/30">
                                                     <p className="text-[10px] font-black text-ink-subtle uppercase tracking-wider">Advance Payment</p>
@@ -577,26 +1163,47 @@ export default function CashierRoomManager({
                                                                 <input
                                                                     type="number"
                                                                     min="1"
-                                                                    max={fullCost - 1}
                                                                     placeholder="e.g. 500"
                                                                     value={advanceAmount}
                                                                     onChange={e => setAdvanceAmount(e.target.value)}
                                                                     className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
                                                                 />
                                                             </div>
-                                                            {advanceAmount && fullCost > 0 && (
-                                                                <p className="text-[9px] text-amber-600 font-bold mt-1">
-                                                                    Balance due at checkout: Rs. {Math.max(0, fullCost - (parseFloat(advanceAmount) || 0)).toLocaleString()}
-                                                                </p>
-                                                            )}
+                                                            {advanceAmount && fullCost > 0 && (() => {
+                                                                const amt = parseFloat(advanceAmount) || 0
+                                                                const diff = amt - fullCost
+                                                                if (diff > 0) return (
+                                                                    <p className="text-[9px] text-emerald-600 font-bold mt-1">
+                                                                        Return to guest at checkout: Rs. {diff.toLocaleString()}
+                                                                    </p>
+                                                                )
+                                                                return (
+                                                                    <p className="text-[9px] text-amber-600 font-bold mt-1">
+                                                                        Balance due at checkout: Rs. {Math.max(0, fullCost - amt).toLocaleString()}
+                                                                    </p>
+                                                                )
+                                                            })()}
                                                         </div>
                                                     )}
 
                                                     {advanceType !== 'none' && (
                                                         <div>
+                                                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Payment Note / Remarks</label>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="e.g. Advance, Dine in, Deposit..."
+                                                                value={advanceNote}
+                                                                onChange={e => setAdvanceNote(e.target.value)}
+                                                                className="w-full px-2.5 py-1.5 border border-hairline rounded-xl text-xs font-medium bg-surface focus:outline-none focus:border-brand-500"
+                                                            />
+                                                        </div>
+                                                    )}
+
+                                                    {irdSyncEnabled && advanceType !== 'none' && (
+                                                        <div>
                                                             <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Payment Method</label>
-                                                            <div className="grid grid-cols-2 gap-2">
-                                                                {(['cash', 'qr_digital'] as const).map(m => (
+                                                            <div className="grid grid-cols-3 gap-2">
+                                                                {(['cash', 'qr_digital', 'split'] as const).map(m => (
                                                                     <button
                                                                         key={m}
                                                                         type="button"
@@ -607,10 +1214,59 @@ export default function CashierRoomManager({
                                                                                 : 'border-hairline bg-surface text-ink-muted hover:border-brand-300'
                                                                         }`}
                                                                     >
-                                                                        {m === 'cash' ? 'Cash' : 'QR / Digital'}
+                                                                        {m === 'cash' ? 'Cash' : m === 'qr_digital' ? 'QR / Digital' : 'Split'}
                                                                     </button>
                                                                 ))}
                                                             </div>
+                                                        </div>
+                                                    )}
+
+                                                    {irdSyncEnabled && advanceType !== 'none' && advancePayMethod === 'split' && (
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div>
+                                                                <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Cash</label>
+                                                                <div className="relative">
+                                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        placeholder="0"
+                                                                        value={advanceSplitCash}
+                                                                        onChange={e => setAdvanceSplitCash(e.target.value)}
+                                                                        className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">QR / Digital</label>
+                                                                <div className="relative">
+                                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        placeholder="0"
+                                                                        value={advanceSplitQr}
+                                                                        onChange={e => setAdvanceSplitQr(e.target.value)}
+                                                                        className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {irdSyncEnabled && advanceType !== 'none' && (advancePayMethod === 'qr_digital' || advancePayMethod === 'split') && qrCodes.length > 1 && (
+                                                        <div>
+                                                            <label className="block text-[9px] font-bold text-ink-subtle uppercase mb-1">Which QR did the guest scan?</label>
+                                                            <Select
+                                                                value={advanceQrCodeId}
+                                                                onChange={e => setAdvanceQrCodeId(e.target.value)}
+                                                                className="w-full px-2 py-1.5 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                            >
+                                                                <option value="">Select QR code…</option>
+                                                                {qrCodes.map(qr => (
+                                                                    <option key={qr.id} value={qr.id}>{qr.label}</option>
+                                                                ))}
+                                                            </Select>
                                                         </div>
                                                     )}
                                                 </div>
@@ -730,7 +1386,88 @@ export default function CashierRoomManager({
                                         <Button variant="secondary" block loading={isProcessing} onClick={() => handleStatusChange(selectedRoom.id, 'dirty')} className="bg-brand-500 text-white hover:bg-brand-600 hover:border-brand-600">Confirm Dirty</Button>
                                     </div>
                                 )}
-                                {selectedRoom.status !== 'available' && !bookingFormOpen && !confirmCloseOpen && !confirmDirtyOpen && (
+                                {moveOpen && activeBooking && (() => {
+                                    const target = moveCandidates.find(r => r.id === moveTargetId) || null
+                                    const currentRate = selectedRoom.room_types?.base_price ?? 0
+                                    const newRate = target?.room_types?.base_price ?? 0
+                                    const rateChanged = !!target && newRate !== currentRate
+                                    const heads = totalGuests(activeBooking)
+                                    const capacity = target?.room_types?.capacity ?? null
+                                    const tooSmall = capacity !== null && heads > capacity
+
+                                    return (
+                                        <div className="space-y-3 border border-hairline rounded-2xl p-4 bg-surface-muted/30">
+                                            <div>
+                                                <p className="text-xs font-extrabold text-ink">Move {activeBooking.guest_name} out of Room {selectedRoom.room_number}</p>
+                                                <p className="text-[11px] text-ink-subtle mt-0.5">
+                                                    The folio moves with the guest — orders, charges and the advance already taken all stay on this stay.
+                                                </p>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Move to *</label>
+                                                <Select
+                                                    value={moveTargetId}
+                                                    onChange={e => setMoveTargetId(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-hairline rounded-xl text-xs bg-surface font-semibold"
+                                                    aria-label="Destination room"
+                                                >
+                                                    <option value="">Select a room…</option>
+                                                    {moveCandidates.map(r => (
+                                                        <option key={r.id} value={r.id}>
+                                                            Room {r.room_number}
+                                                            {r.room_types?.name ? ` · ${r.room_types.name}` : ''}
+                                                            {r.room_types ? ` · ${money(r.room_types.base_price)}/night` : ''}
+                                                            {r.status === 'dirty' ? ' · needs cleaning' : ''}
+                                                        </option>
+                                                    ))}
+                                                </Select>
+                                                {moveCandidates.length === 0 && (
+                                                    <p className="text-[11px] text-amber-600 font-semibold mt-1">
+                                                        No other room is free right now.
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            {rateChanged && (
+                                                <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                                                    {money(currentRate)} → {money(newRate)} per night. Nights already spent in Room {selectedRoom.room_number} stay at {money(currentRate)}; the new rate applies from tonight.
+                                                </p>
+                                            )}
+                                            {tooSmall && (
+                                                <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                                                    {heads} guests but Room {target?.room_number} sleeps {capacity}.
+                                                </p>
+                                            )}
+
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Reason</label>
+                                                <input
+                                                    type="text"
+                                                    value={moveReason}
+                                                    onChange={e => setMoveReason(e.target.value)}
+                                                    placeholder="Guest request, maintenance, upgrade…"
+                                                    className="w-full px-3 py-2 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                                />
+                                            </div>
+
+                                            <div className="flex gap-3">
+                                                <Button variant="secondary" block onClick={() => setMoveOpen(false)}>Cancel</Button>
+                                                <Button
+                                                    variant="primary"
+                                                    block
+                                                    icon={ArrowLeftRight}
+                                                    loading={moving}
+                                                    disabled={!moveTargetId || moving}
+                                                    onClick={handleMoveRoom}
+                                                >
+                                                    Move Guest
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    )
+                                })()}
+                                {selectedRoom.status !== 'available' && !bookingFormOpen && !confirmCloseOpen && !confirmDirtyOpen && !moveOpen && (
                                     <Button
                                         variant="success"
                                         icon={Check}
@@ -797,12 +1534,28 @@ export default function CashierRoomManager({
                                                 {activeBooking.notes}
                                             </p>
                                         )}
+                                        {/* Only worth a line when there is a car — a stay with
+                                            neither a space nor a plate has nothing to say here. */}
+                                        {(activeBooking.parking_required || activeBooking.parking_vehicle_no) && (
+                                            <p className="text-[10px] font-bold text-ink-muted flex items-center gap-1">
+                                                <Car size={11} className="text-ink-subtle" />
+                                                {activeBooking.parking_required ? 'Parking reserved' : 'No parking space'}
+                                                {activeBooking.parking_vehicle_no && ` · ${activeBooking.parking_vehicle_no}`}
+                                            </p>
+                                        )}
                                     </div>
                                     <div className="space-y-2 text-right border-l border-hairline pl-4">
                                         <p className="text-[10px] font-bold text-ink-subtle uppercase text-right">Stay Schedule</p>
                                         <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">In:</span> {formatDateTime(activeBooking.check_in)}</p>
                                         <p className="font-semibold text-ink-muted"><span className="text-ink-subtle">Out:</span> {formatDateTime(activeBooking.check_out)}</p>
-                                        <p className="text-[10px] text-brand-500 font-extrabold">{activeBooking.adults} Guest(s)</p>
+                                        <p className="text-[10px] text-brand-500 font-extrabold">{describeGuestMix(activeBooking)}</p>
+                                        {/* Paid up but still in the room — what's left to do is
+                                            release it, not charge for it. */}
+                                        {activeBooking.bill_settled_at && activeBooking.status !== 'checked_out' && (
+                                            <p className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md inline-block">
+                                                Bill settled {formatDateTime(activeBooking.bill_settled_at)}
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
 
@@ -813,15 +1566,45 @@ export default function CashierRoomManager({
                                         <span className="text-brand-500 normal-case tabular-nums">{stayPriceDetails.nights} Night(s)</span>
                                     </h4>
 
+                                    {/* Several rooms booked together settle on one bill, so
+                                        this drawer is showing the whole reservation, not this
+                                        room's share of it. */}
+                                    {stayGroup && (
+                                        <div className="border border-brand-200 bg-brand-50/60 rounded-2xl p-4 text-xs">
+                                            <p className="font-black text-brand-700 uppercase text-[10px] tracking-wider">
+                                                Combined bill · {stayGroup.rooms.length} rooms
+                                            </p>
+                                            <p className="text-[10px] text-ink-muted font-semibold mt-1">
+                                                Rooms {stayGroup.rooms.map(r => r.roomNumber).filter(Boolean).join(', ')} are on one
+                                                reservation and check out together on a single payment.
+                                            </p>
+                                        </div>
+                                    )}
+
                                     <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-gray-100 bg-surface">
                                         {/* Room Stay Row */}
                                         <div className="flex justify-between items-center p-4 text-xs">
                                             <div>
                                                 <p className="font-extrabold text-ink">Room Stay Charge</p>
-                                                <p className="text-[10px] text-ink-subtle">{money(selectedRoom.room_types?.base_price || 0)} / Night</p>
+                                                <p className="text-[10px] text-ink-subtle">
+                                                    {stayGroup
+                                                        ? `${stayGroup.rooms.length} rooms on this reservation`
+                                                        : `${money(selectedRoom.room_types?.base_price || 0)} / Night`}
+                                                </p>
                                             </div>
                                             <span className="font-extrabold text-ink-muted tabular-nums">{money(stayPriceDetails.cost)}</span>
                                         </div>
+
+                                        {stayGroup && (
+                                            <div className="p-4 space-y-1.5">
+                                                {stayGroup.rooms.map(r => (
+                                                    <div key={r.bookingId} className="flex justify-between text-[10px] text-ink-muted">
+                                                        <span className="font-semibold">Room {r.roomNumber} · {r.nights}n</span>
+                                                        <span className="tabular-nums font-semibold">{money(r.stayCost)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
 
                                         {/* QR Orders Row */}
                                         {qrOrdersDetails && qrOrdersDetails.items.length > 0 && (
@@ -842,22 +1625,89 @@ export default function CashierRoomManager({
                                         )}
 
                                         {/* Waiter Linked Restaurant Dining Row */}
-                                        {linkedDiningOrders.length > 0 && (
+                                        {filteredLinkedDiningOrders.length > 0 && (
                                             <div className="p-4 space-y-3">
                                                 <div className="flex justify-between items-center text-xs">
                                                     <p className="font-extrabold text-emerald-600">Restaurant Dining (Table Orders)</p>
                                                     <span className="font-extrabold text-emerald-600 tabular-nums">
-                                                        {money(linkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0))}
+                                                        {money(filteredLinkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0))}
                                                     </span>
                                                 </div>
                                                 <div className="space-y-1.5 pl-3 border-l-2 border-emerald-100 max-h-28 overflow-y-auto">
-                                                    {linkedDiningOrders.map((item, idx) => (
+                                                    {filteredLinkedDiningOrders.map((item, idx) => (
                                                         <div key={idx} className="flex justify-between text-[10px] text-ink-muted">
-                                                            <span>{item.menu_items?.name || 'Item'} <span className="text-[9px] text-brand-500">({item.quantity}×)</span></span>
+                                                            <span>{getItemDisplayName(item)} <span className="text-[9px] text-brand-500">({item.quantity}×)</span></span>
                                                             <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
                                                         </div>
                                                     ))}
                                                 </div>
+                                            </div>
+                                        )}
+
+                                        {/* Room Service Charge — the auto figure for rooms
+                                            that carry one, and an empty field to add one by
+                                            hand for rooms that don't. */}
+                                        {activeBooking && (
+                                            <div className="p-4 space-y-2">
+                                                <div className="flex justify-between items-center gap-3">
+                                                    <div className="min-w-0">
+                                                        <p className="text-xs font-extrabold text-sky-600 flex items-center gap-1.5">
+                                                            Room Service Charge
+                                                            {serviceChargeOverridden && applyRoomServiceCharge && (
+                                                                <span className="text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5">
+                                                                    {serviceChargeIsAutomatic ? 'EDITED' : 'MANUAL'}
+                                                                </span>
+                                                            )}
+                                                        </p>
+                                                        <p className="text-[10px] text-ink-subtle font-semibold">
+                                                            {serviceChargeIsAutomatic
+                                                                ? `${ROOM_SERVICE_CHARGE_RATE * 100}% on room food · auto ${money(autoServiceCharge)}`
+                                                                : 'Not charged automatically for this room — type an amount to add one'}
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 shrink-0">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setServiceChargeOffRoomId(applyRoomServiceCharge ? selectedRoom.id : null)}
+                                                            className={`px-2 py-1 rounded-lg text-[9px] font-black border transition ${
+                                                                applyRoomServiceCharge
+                                                                    ? 'bg-sky-50 text-sky-700 border-sky-200'
+                                                                    : 'bg-surface-muted text-ink-subtle border-hairline'
+                                                            }`}
+                                                        >
+                                                            {applyRoomServiceCharge ? 'ON' : 'OFF'}
+                                                        </button>
+                                                        {serviceChargeOverridden && applyRoomServiceCharge && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setServiceChargeEdit(null)}
+                                                                title={serviceChargeIsAutomatic ? `Reset to the auto-calculated ${money(autoServiceCharge)}` : 'Clear the manual charge'}
+                                                                className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
+                                                            >
+                                                                <RotateCcw size={12} />
+                                                            </button>
+                                                        )}
+                                                        <div className="relative w-28">
+                                                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                step="0.01"
+                                                                disabled={!applyRoomServiceCharge}
+                                                                value={serviceChargeOverridden ? roomServiceChargeInput : (autoServiceCharge ? String(autoServiceCharge) : '')}
+                                                                placeholder={autoServiceCharge ? String(autoServiceCharge) : '0.00'}
+                                                                onChange={e => setServiceChargeEdit({ roomId: selectedRoom.id, value: e.target.value })}
+                                                                aria-label="Room service charge"
+                                                                className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-lg text-xs font-bold text-right tabular-nums bg-surface focus:outline-none focus:border-brand-500 disabled:opacity-50 disabled:bg-surface-muted"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                {serviceChargeOverridden && applyRoomServiceCharge && serviceChargeIsAutomatic && (
+                                                    <p className="text-[9px] text-amber-700 font-bold text-right">
+                                                        Edited — auto was {money(autoServiceCharge)}
+                                                    </p>
+                                                )}
                                             </div>
                                         )}
 
@@ -883,70 +1733,14 @@ export default function CashierRoomManager({
                                     </div>
                                 </div>
 
-                                {/* Add Manual Charge Form / Toggle */}
-                                <div className="border border-dashed border-hairline-strong rounded-2xl p-4 bg-surface-muted/10">
-                                    {!showAddChargeForm ? (
-                                        <button 
-                                            onClick={() => setShowAddChargeForm(true)}
-                                            className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-brand-500 font-extrabold hover:text-brand-600 hover:scale-[1.01] transition-all"
-                                        >
-                                            <Plus size={14} /> Add Manual Purchase (Minibar, Laundry, etc.)
-                                        </button>
-                                    ) : (
-                                        <div className="space-y-3.5 animate-in slide-in-from-top duration-200">
-                                            <div className="flex items-center justify-between border-b border-hairline pb-2">
-                                                <span className="text-xs font-extrabold text-ink-muted">Add purchase detail</span>
-                                                <button onClick={() => setShowAddChargeForm(false)} className="text-[10px] text-rose-500 font-bold hover:underline">Cancel</button>
-                                            </div>
-                                            <div className="grid grid-cols-3 gap-2.5">
-                                                <div>
-                                                    <label className="block text-[8px] font-bold text-ink-subtle uppercase mb-1">Type</label>
-                                                    <select
-                                                        value={newCharge.charge_type}
-                                                        onChange={e => setNewCharge(c => ({ ...c, charge_type: e.target.value }))}
-                                                        className="w-full px-2.5 py-2 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
-                                                    >
-                                                        <option value="minibar">Minibar</option>
-                                                        <option value="laundry">Laundry</option>
-                                                        <option value="spa">Spa</option>
-                                                        <option value="parking">Parking</option>
-                                                        <option value="room_service">Room Service</option>
-                                                        <option value="other">Other</option>
-                                                    </select>
-                                                </div>
-                                                <div className="col-span-2">
-                                                    <label className="block text-[8px] font-bold text-ink-subtle uppercase mb-1">Description</label>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="e.g. 2 Beers, Ironing Service"
-                                                        value={newCharge.description}
-                                                        onChange={e => setNewCharge(c => ({ ...c, description: e.target.value }))}
-                                                        className="w-full px-2.5 py-2 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div className="flex items-end gap-3">
-                                                <div className="flex-1">
-                                                    <label className="block text-[8px] font-bold text-ink-subtle uppercase mb-1">Amount (Rs.)</label>
-                                                    <input
-                                                        type="number"
-                                                        placeholder="0.00"
-                                                        value={newCharge.amount}
-                                                        onChange={e => setNewCharge(c => ({ ...c, amount: e.target.value }))}
-                                                        className="w-full px-2.5 py-2 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
-                                                    />
-                                                </div>
-                                                <Button
-                                                    variant="secondary"
-                                                    loading={isProcessing}
-                                                    onClick={handleAddManualCharge}
-                                                    className="font-bold shrink-0 text-xs py-2 bg-brand-500 text-white hover:bg-brand-600 hover:border-brand-600"
-                                                >
-                                                    Add Item
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    )}
+                                {/* Add Food/Restaurant Order Button */}
+                                <div className="sticky bottom-0 z-10 border border-dashed border-hairline-strong rounded-2xl p-4 bg-surface shadow-lg">
+                                    <button 
+                                        onClick={handleOpenFoodOrder}
+                                        className="w-full flex items-center justify-center gap-1.5 py-2.5 text-xs text-emerald-600 font-extrabold hover:text-emerald-700 hover:scale-[1.01] transition-all border border-emerald-500/10 hover:border-emerald-500/30 rounded-xl bg-surface"
+                                    >
+                                        <Utensils size={15} /> Add Food/Restaurant Order
+                                    </button>
                                 </div>
                             </div>
                         ) : (
@@ -956,11 +1750,103 @@ export default function CashierRoomManager({
                         )}
                         </div>
 
+                        {/* Change Room Panel — shown when "Change Room" button is pressed, outside the scrollable area so it's always visible */}
+                        {moveOpen && (() => {
+                            const target = moveCandidates.find(r => r.id === moveTargetId) || null
+                            const currentRate = selectedRoom.room_types?.base_price ?? 0
+                            const newRate = target?.room_types?.base_price ?? 0
+                            const rateChanged = !!target && newRate !== currentRate
+                            const heads = activeBooking ? totalGuests(activeBooking) : 0
+                            const capacity = target?.room_types?.capacity ?? null
+                            const tooSmall = capacity !== null && heads > capacity
+
+                            return (
+                                <div className="border-t border-hairline flex-shrink-0 bg-surface-muted/30 px-6 py-4">
+                                    <div className="space-y-3 border border-hairline rounded-2xl p-4 bg-surface">
+                                        <div>
+                                            <p className="text-xs font-extrabold text-ink">
+                                                Move {activeBooking?.guest_name ?? 'Guest'} out of Room {selectedRoom.room_number}
+                                            </p>
+                                            <p className="text-[11px] text-ink-subtle mt-0.5">
+                                                The folio moves with the guest — orders, charges and the advance already taken all stay on this stay.
+                                            </p>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Move to *</label>
+                                            <Select
+                                                value={moveTargetId}
+                                                onChange={e => setMoveTargetId(e.target.value)}
+                                                className="w-full px-3 py-2 border border-hairline rounded-xl text-xs bg-surface font-semibold"
+                                                aria-label="Destination room"
+                                            >
+                                                <option value="">Select a room…</option>
+                                                {moveCandidates.map(r => (
+                                                    <option key={r.id} value={r.id}>
+                                                        Room {r.room_number}
+                                                        {r.room_types?.name ? ` · ${r.room_types.name}` : ''}
+                                                        {r.room_types ? ` · ${money(r.room_types.base_price)}/night` : ''}
+                                                        {r.status === 'dirty' ? ' · needs cleaning' : ''}
+                                                    </option>
+                                                ))}
+                                            </Select>
+                                            {moveCandidates.length === 0 && (
+                                                <p className="text-[11px] text-amber-600 font-semibold mt-1">
+                                                    No other room is free right now.
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {rateChanged && (
+                                            <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                                                {money(currentRate)} → {money(newRate)} per night.
+                                            </p>
+                                        )}
+                                        {tooSmall && (
+                                            <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                                                {heads} guests but Room {target?.room_number} sleeps {capacity}.
+                                            </p>
+                                        )}
+
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Reason</label>
+                                            <input
+                                                type="text"
+                                                value={moveReason}
+                                                onChange={e => setMoveReason(e.target.value)}
+                                                placeholder="Guest request, maintenance, upgrade…"
+                                                className="w-full px-3 py-2 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                            />
+                                        </div>
+
+                                        <div className="flex gap-3">
+                                            <Button variant="secondary" block onClick={() => setMoveOpen(false)}>Cancel</Button>
+                                            <Button
+                                                variant="primary"
+                                                block
+                                                icon={ArrowLeftRight}
+                                                loading={moving}
+                                                disabled={!moveTargetId || moving || !activeBooking}
+                                                onClick={handleMoveRoom}
+                                            >
+                                                Move Guest
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )
+                        })()}
+
                         {/* Drawer Footer (Checkout and Total Billing) - sticky */}
                         <div className="border-t border-hairline px-6 py-4 flex flex-col gap-2.5 flex-shrink-0 bg-surface">
                             {(() => {
-                                const advancePaid = Number(activeBooking?.paid_amount) || 0
-                                const balanceDue = Math.max(0, grandTotal - advancePaid)
+                                // On a reservation the advance was split across its
+                                // rooms at booking time, so what the guest has already
+                                // paid on this one bill is their sum.
+                                const advancePaid = stayGroup ? stayGroup.advancePaid : (Number(activeBooking?.paid_amount) || 0)
+                                const netBalance = grandTotal - advancePaid
+                                const balanceDue = Math.max(0, netBalance)
+                                const returnAmount = netBalance < 0 ? Math.abs(netBalance) : 0
                                 return (
                                     <>
                                         {advancePaid > 0 && (
@@ -969,43 +1855,71 @@ export default function CashierRoomManager({
                                                     <span>Total Bill Amount:</span>
                                                     <span className="tabular-nums">{money(grandTotal)}</span>
                                                 </div>
-                                                <div className="flex justify-between text-emerald-600 font-bold">
-                                                    <span className="flex items-center gap-1">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                                        Advance Paid ({activeBooking?.advance_payment_method === 'qr_digital' ? 'QR/Digital' : 'Cash'}):
-                                                    </span>
-                                                    <span className="tabular-nums">- {money(advancePaid)}</span>
-                                                </div>
+                                                <button
+                                                     type="button"
+                                                     onClick={() => setAdvanceHistoryOpen(true)}
+                                                     className="flex justify-between text-emerald-600 font-bold hover:underline cursor-pointer text-left w-full transition-all group"
+                                                 >
+                                                     <span className="flex items-center gap-1">
+                                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                         Advance Paid ({advanceMethodLabel(activeBooking?.advance_payment_method)}):
+                                                         <History className="w-3.5 h-3.5 inline ml-1 opacity-70 group-hover:opacity-100" />
+                                                     </span>
+                                                     <span className="tabular-nums">- {money(advancePaid)}</span>
+                                                 </button>
                                             </div>
                                         )}
-                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                            <div>
-                                                <span className="text-[10px] font-bold text-ink-subtle uppercase">
-                                                    {advancePaid > 0 ? 'Balance due at checkout' : 'Total bill amount'}
-                                                </span>
-                                                <p className="text-2xl font-black text-brand-600 tabular-nums">{money(balanceDue)}</p>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <Button
-                                                    variant="secondary"
-                                                    onClick={() => setSelectedRoom(null)}
-                                                    className="px-5 font-bold"
-                                                >
-                                                    Close
-                                                </Button>
-                                                <Button
-                                                    variant="danger"
-                                                    icon={CreditCard}
-                                                    onClick={() => {
-                                                        if (onGoToBilling) onGoToBilling(selectedRoom)
-                                                        setSelectedRoom(null)
-                                                    }}
-                                                    className="px-6 font-bold"
-                                                >
-                                                    Go to Billing
-                                                </Button>
-                                            </div>
-                                        </div>
+                                        <div className="flex justify-between items-center border-b border-dashed border-hairline pb-3 mb-1">
+                                             <span className={`text-xs font-bold uppercase ${returnAmount > 0 ? 'text-emerald-600' : 'text-ink-subtle'}`}>
+                                                 {returnAmount > 0 ? 'Return to guest' : advancePaid > 0 ? 'Balance due at checkout' : 'Total bill amount'}
+                                             </span>
+                                             <p className={`text-2xl font-black tabular-nums ${returnAmount > 0 ? 'text-emerald-600' : 'text-brand-600'}`}>
+                                                 {returnAmount > 0 ? money(returnAmount) : money(balanceDue)}
+                                             </p>
+                                         </div>
+                                         <div className="flex flex-wrap gap-2 justify-end">
+                                              <Button
+                                                  variant="secondary"
+                                                  onClick={() => setSelectedRoom(null)}
+                                                  className="px-5 font-bold"
+                                              >
+                                                  Close
+                                              </Button>
+                                              <Button
+                                                  variant="secondary"
+                                                  icon={Landmark}
+                                                  onClick={() => {
+                                                      setAddPaymentAmount('')
+                                                      setAddPaymentMethod('cash')
+                                                      setAddPaymentSplitCash('')
+                                                      setAddPaymentSplitQr('')
+                                                      setAddPaymentQrId('')
+                                                      setAddPaymentOpen(true)
+                                                  }}
+                                                  className="px-5 font-bold !text-emerald-600 !border-emerald-200 hover:bg-emerald-50"
+                                              >
+                                                  Add Payment
+                                              </Button>
+                                              <Button
+                                                  variant="secondary"
+                                                  icon={ArrowLeftRight}
+                                                  onClick={() => { setMoveTargetId(''); setMoveReason(''); setMoveOpen(true) }}
+                                                  className="px-5 font-bold"
+                                              >
+                                                  Change Room
+                                              </Button>
+                                              <Button
+                                                  variant="danger"
+                                                  icon={CreditCard}
+                                                  onClick={() => {
+                                                      if (onGoToBilling) onGoToBilling(selectedRoom, serviceChargeOverrideValue)
+                                                      setSelectedRoom(null)
+                                                  }}
+                                                  className="px-6 font-bold"
+                                              >
+                                                  Go to Billing
+                                              </Button>
+                                         </div>
                                     </>
                                 )
                             })()}
@@ -1014,6 +1928,248 @@ export default function CashierRoomManager({
                 </div>,
                 document.body
             )}
+
+            {addPaymentOpen && activeBooking && createPortal(
+                <div 
+                    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-all duration-300"
+                    onClick={() => setAddPaymentOpen(false)}
+                >
+                    <div 
+                        className="bg-surface rounded-[24px] border border-hairline shadow-2xl w-full max-w-md flex flex-col overflow-hidden transform transition-all animate-in zoom-in-95 duration-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
+                            <div>
+                                <h3 className="text-body font-black text-ink">Record Mid-Stay Payment</h3>
+                                <p className="text-[10px] text-ink-subtle mt-0.5">Add payments to Guest {activeBooking.guest_name}&apos;s billing folio</p>
+                            </div>
+                            <button 
+                                onClick={() => setAddPaymentOpen(false)}
+                                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink-muted"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            {/* Current paid & due summary */}
+                            {(() => {
+                                const currentAdvance = stayGroup ? stayGroup.advancePaid : (Number(activeBooking.paid_amount) || 0)
+                                const currentDue = Math.max(0, grandTotal - currentAdvance)
+                                return (
+                                    <div className="grid grid-cols-2 gap-2.5">
+                                        <div className="bg-emerald-50/80 border border-emerald-100 p-3 rounded-2xl flex flex-col justify-between text-xs">
+                                            <span className="font-bold text-emerald-800 text-[10px] uppercase tracking-wide">Advance Paid</span>
+                                            <span className="font-black text-emerald-700 text-base tabular-nums mt-0.5">{money(currentAdvance)}</span>
+                                        </div>
+                                        <div className="bg-amber-50/80 border border-amber-100 p-3 rounded-2xl flex flex-col justify-between text-xs">
+                                            <span className="font-bold text-amber-800 text-[10px] uppercase tracking-wide">Current Due Amount</span>
+                                            <span className="font-black text-amber-700 text-base tabular-nums mt-0.5">{money(currentDue)}</span>
+                                        </div>
+                                    </div>
+                                )
+                            })()}
+
+                            {/* Payment Method Selector */}
+                            <div className="space-y-1.5">
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase">Payment Method</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setAddPaymentMethod('cash')}
+                                        className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition ${
+                                            addPaymentMethod === 'cash'
+                                                ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                : 'border-hairline bg-surface text-ink-muted hover:border-brand-200'
+                                        }`}
+                                    >
+                                        Cash
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAddPaymentMethod('qr_digital')}
+                                        className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition ${
+                                            addPaymentMethod === 'qr_digital'
+                                                ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                : 'border-hairline bg-surface text-ink-muted hover:border-brand-200'
+                                        }`}
+                                    >
+                                        QR / Digital
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAddPaymentMethod('split')}
+                                        className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition ${
+                                            addPaymentMethod === 'split'
+                                                ? 'border-brand-500 bg-brand-50 text-brand-600'
+                                                : 'border-hairline bg-surface text-ink-muted hover:border-brand-200'
+                                        }`}
+                                    >
+                                        Split (Both)
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Amount inputs */}
+                            {addPaymentMethod !== 'split' ? (
+                                <div className="space-y-1">
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase">Amount (Rs.)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-ink-subtle">Rs.</span>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            placeholder="0.00"
+                                            value={addPaymentAmount === '0' ? '' : addPaymentAmount}
+                                            onChange={e => {
+                                                const valStr = e.target.value
+                                                if (valStr === '') {
+                                                    setAddPaymentAmount('')
+                                                    return
+                                                }
+                                                const val = parseFloat(valStr)
+                                                setAddPaymentAmount(isNaN(val) ? '0' : val.toString())
+                                            }}
+                                            className="w-full pl-9 pr-3 py-2.5 border border-hairline focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white font-extrabold text-ink focus:outline-none"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-3 p-3.5 bg-surface-muted/40 border border-hairline rounded-2xl">
+                                    <div className="space-y-1">
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase">Cash Amount</label>
+                                        <div className="relative">
+                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                placeholder="0.00"
+                                                value={addPaymentSplitCash === '0' ? '' : addPaymentSplitCash}
+                                                onChange={e => {
+                                                    const valStr = e.target.value
+                                                    if (valStr === '') {
+                                                        setAddPaymentSplitCash('')
+                                                        return
+                                                    }
+                                                    const val = parseFloat(valStr)
+                                                    setAddPaymentSplitCash(isNaN(val) ? '0' : val.toString())
+                                                }}
+                                                className="w-full pl-8 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-white focus:outline-none"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase">QR Amount</label>
+                                        <div className="relative">
+                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                placeholder="0.00"
+                                                value={addPaymentSplitQr === '0' ? '' : addPaymentSplitQr}
+                                                onChange={e => {
+                                                    const valStr = e.target.value
+                                                    if (valStr === '') {
+                                                        setAddPaymentSplitQr('')
+                                                        return
+                                                    }
+                                                    const val = parseFloat(valStr)
+                                                    setAddPaymentSplitQr(isNaN(val) ? '0' : val.toString())
+                                                }}
+                                                className="w-full pl-8 pr-2 py-2 border border-hairline rounded-xl text-xs font-bold bg-white focus:outline-none"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* QR Code Selector if QR is chosen */}
+                            {(addPaymentMethod === 'qr_digital' || addPaymentMethod === 'split') && qrCodes.length > 1 && (
+                                <div className="space-y-1">
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase">Select QR Account / Gateway</label>
+                                    <select
+                                        value={addPaymentQrId}
+                                        onChange={e => setAddPaymentQrId(e.target.value)}
+                                        className="w-full px-3 py-2 border border-hairline focus:border-brand-500 rounded-xl text-xs bg-white text-ink focus:outline-none"
+                                    >
+                                        <option value="">-- Choose Account --</option>
+                                        {qrCodes.map(qr => (
+                                            <option key={qr.id} value={qr.id}>{qr.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
+                            {/* Payment Note / Remarks */}
+                            <div className="space-y-1">
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase">Payment Note / Remarks</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Dine in, Advance, Deposit..."
+                                    value={addPaymentNote}
+                                    onChange={e => setAddPaymentNote(e.target.value)}
+                                    className="w-full px-3 py-2 border border-hairline focus:border-brand-500 rounded-xl text-xs bg-white text-ink font-medium focus:outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="p-4 border-t border-hairline bg-surface-muted/20 flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setAddPaymentOpen(false)}
+                                className="flex-1 py-2.5 rounded-xl border border-hairline bg-surface hover:bg-surface-muted text-ink text-label font-bold transition"
+                                disabled={submittingPayment}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleAddMidStayPayment}
+                                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-label font-bold transition shadow-sm flex items-center justify-center gap-1.5"
+                                disabled={submittingPayment}
+                            >
+                                {submittingPayment ? (
+                                    <>
+                                        <Loader2 className="animate-spin" size={14} />
+                                        Saving...
+                                    </>
+                                ) : (
+                                    'Record Payment'
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {foodOrderModalOpen && (() => {
+                const matchingTable = tables.find(t => t.room_id === selectedRoom?.id)
+                const resolvedSessionId = matchingTable?.activeSession?.id || createdSessionId
+                return (
+                    <QuickOrderModal
+                        isOpen={foodOrderModalOpen}
+                        onClose={() => setFoodOrderModalOpen(false)}
+                        sessionId={resolvedSessionId || undefined}
+                        tableName={selectedRoom ? `Room ${selectedRoom.room_number}` : undefined}
+                        restaurantId={restaurantId}
+                        bookingId={activeBooking?.id}
+                        onSuccess={(orderId: string) => {
+                            setRefreshTrigger(prev => prev + 1)
+                            if (onOrderPlaced) onOrderPlaced(orderId)
+                        }}
+                    />
+                )
+            })()}
+
+            <AdvancePaymentHistoryModal
+                isOpen={advanceHistoryOpen}
+                onClose={() => setAdvanceHistoryOpen(false)}
+                bookingId={activeBooking?.id || null}
+                guestName={activeBooking?.guest_name}
+                roomNumber={selectedRoom?.room_number}
+            />
         </div>
     )
 }

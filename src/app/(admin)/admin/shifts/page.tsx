@@ -2,10 +2,17 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import ShiftsManager from './ShiftsManager'
 
+import { redirect } from 'next/navigation'
+import { getRestaurantFeatures } from '@/lib/features'
+
 export const revalidate = 0
 
 export default async function AdminShiftsPage() {
     const { restaurantId: rid } = await getCurrentUser()
+    const features = await getRestaurantFeatures(rid)
+    if (!features?.staffShiftsEnabled) {
+        redirect('/admin/dashboard')
+    }
     const adminSupabase = await createAdminClient()
 
     const [{ data: active }, { data: recent }] = await Promise.all([

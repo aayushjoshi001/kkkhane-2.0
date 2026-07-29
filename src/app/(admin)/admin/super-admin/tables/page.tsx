@@ -70,7 +70,7 @@ export default async function TablesPage() {
                                     <th className="px-5 py-3 text-center">Session</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-100">
+                            <tbody className="divide-y divide-hairline">
                                 {restaurantTables.map(t => (
                                     <tr key={t.id} className={`hover:bg-surface-muted/50 ${t.hasActiveSession ? 'bg-emerald-50/30' : ''}`}>
                                         <td className="px-5 py-3 font-semibold text-ink">{t.label}</td>

@@ -92,7 +92,7 @@ export default async function IngredientsPage() {
                                         <th className="px-5 py-3 text-center">Alert</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-100">
+                                <tbody className="divide-y divide-hairline">
                                     {items.map(i => {
                                         const isLow = i.reorder_level !== null && i.stock_quantity <= i.reorder_level
                                         return (

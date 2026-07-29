@@ -5,23 +5,27 @@ import { revalidatePath } from 'next/cache'
 import { logAudit } from '@/lib/audit'
 import { markTableDirtyForSession } from '@/lib/tableLifecycle'
 import { getCachedMenuData } from '@/lib/menu-cache'
+import { getRoomContextForTable } from '@/lib/rooms'
+import { getCurrentUser } from '@/lib/auth'
 
-export async function openSession(tableId: string, restaurantId: string, guestCount?: number) {
-    const supabase = await createServerClient()
+export async function openSession(tableId: string, restaurantId: string, guestCount?: number, seatNumber: number = 1) {
     const adminSupabase = await createAdminClient()
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    const currentUser = await getCurrentUser().catch(() => null)
+    if (!currentUser?.id) {
         console.error('[openSession] No authenticated user found')
         return { error: 'Unauthorized' }
     }
+    const user = { id: currentUser.id }
 
-    // Expire any stale sessions for this table that passed their expires_at but
-    // were never cleaned up — otherwise the unique-active-per-table index blocks the insert.
+    // Expire any stale sessions for this table+seat that passed their expires_at
+    // but were never cleaned up — otherwise the unique-active-per-table-per-seat
+    // index blocks the insert.
     await adminSupabase
         .from('sessions')
         .update({ status: 'expired', closed_at: new Date().toISOString() })
         .eq('table_id', tableId)
+        .eq('seat_number', seatNumber)
         .eq('status', 'active')
         .lt('expires_at', new Date().toISOString())
 
@@ -37,13 +41,14 @@ export async function openSession(tableId: string, restaurantId: string, guestCo
             opened_by: user.id,
             guest_count: guestCount || null,
             session_token: sessionToken,
+            seat_number: seatNumber,
         })
         .select('*')
         .single()
 
     if (error) {
         console.error('[openSession] Insert failed:', error)
-        if (error.code === '23505') return { error: 'Table already has an active session' }
+        if (error.code === '23505') return { error: seatNumber > 1 ? `Seat ${seatNumber} already has an active session` : 'Table already has an active session' }
         return { error: error.message }
     }
 
@@ -53,18 +58,51 @@ export async function openSession(tableId: string, restaurantId: string, guestCo
         action: 'session_opened',
         entityType: 'session',
         entityId: data?.id,
-        newValue: { table_id: tableId, guest_count: guestCount ?? null },
+        newValue: { table_id: tableId, guest_count: guestCount ?? null, seat_number: seatNumber },
     })
 
     revalidatePath('/waiter')
     return { success: true, session: data }
 }
 
-export async function closeSession(sessionId: string) {
-    const supabase = await createServerClient()
+/**
+ * Cancel a transient session that had no orders placed.
+ * Unlike closeSession, this does NOT mark the table dirty — it resets it
+ * straight to 'available' since there is nothing to clean up.
+ */
+export async function cancelTransientSession(sessionId: string): Promise<{ error?: string; success?: boolean }> {
     const adminSupabase = await createAdminClient()
 
-    const { data: { user } } = await supabase.auth.getUser()
+    // Close the session row
+    const { error } = await adminSupabase
+        .from('sessions')
+        .update({ status: 'closed', closed_at: new Date().toISOString() })
+        .eq('id', sessionId)
+        .eq('status', 'active')
+
+    if (error) return { error: error.message }
+
+    // Look up the table so we can reset its status to available
+    const { data: session } = await adminSupabase
+        .from('sessions')
+        .select('table_id')
+        .eq('id', sessionId)
+        .maybeSingle()
+
+    if (session?.table_id) {
+        await adminSupabase
+            .from('tables')
+            .update({ table_status: 'available', cleaning_claimed_by: null, cleaning_claimed_at: null })
+            .eq('id', session.table_id)
+    }
+
+    revalidatePath('/waiter')
+    return { success: true }
+}
+
+export async function closeSession(sessionId: string) {
+    const adminSupabase = await createAdminClient()
+    const currentUser = await getCurrentUser().catch(() => null)
 
     const { data: session, error } = await adminSupabase
         .from('sessions')
@@ -84,7 +122,7 @@ export async function closeSession(sessionId: string) {
 
     void logAudit({
         restaurantId: session.restaurant_id,
-        userId: user?.id ?? null,
+        userId: currentUser?.id ?? null,
         action: 'session_closed',
         entityType: 'session',
         entityId: sessionId,
@@ -146,10 +184,10 @@ export async function setTableStatus(
 export async function claimTableCleaning(
     tableId: string
 ): Promise<{ error?: string; success?: boolean; conflict?: boolean }> {
-    const supabase = await createServerClient()
     const admin = await createAdminClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: 'Unauthorized' }
+    const currentUser = await getCurrentUser().catch(() => null)
+    if (!currentUser?.id) return { error: 'Unauthorized' }
+    const user = { id: currentUser.id }
 
     const { data, error } = await admin
         .from('tables')
@@ -168,10 +206,10 @@ export async function claimTableCleaning(
 export async function releaseTableCleaning(
     tableId: string
 ): Promise<{ error?: string; success?: boolean }> {
-    const supabase = await createServerClient()
     const admin = await createAdminClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: 'Unauthorized' }
+    const currentUser = await getCurrentUser().catch(() => null)
+    if (!currentUser?.id) return { error: 'Unauthorized' }
+    const user = { id: currentUser.id }
 
     await admin
         .from('tables')
@@ -186,18 +224,34 @@ export async function releaseTableCleaning(
 export async function markTableClean(
     tableId: string
 ): Promise<{ error?: string; success?: boolean; conflict?: boolean }> {
-    const supabase = await createServerClient()
     const admin = await createAdminClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: 'Unauthorized' }
+    const currentUser = await getCurrentUser().catch(() => null)
+    if (!currentUser?.id) return { error: 'Unauthorized' }
+    const user = { id: currentUser.id }
+
+    // PostgREST throws a spurious "column does not exist" error when an .or()
+    // filter is combined with .update() on this table, so the owner-or-unclaimed
+    // check is done as a separate read instead of folding it into the update's
+    // WHERE clause.
+    const { data: current, error: readError } = await admin
+        .from('tables')
+        .select('table_status, cleaning_claimed_by')
+        .eq('id', tableId)
+        .maybeSingle()
+
+    if (readError) return { error: readError.message }
+    if (!current || current.table_status !== 'dirty') {
+        return { conflict: true, error: 'Table is not marked dirty' }
+    }
+    if (current.cleaning_claimed_by && current.cleaning_claimed_by !== user.id) {
+        return { conflict: true, error: 'Only the waiter who took this table can mark it clean' }
+    }
 
     const { data, error } = await admin
         .from('tables')
         .update({ table_status: 'available', cleaning_claimed_by: null, cleaning_claimed_at: null })
         .eq('id', tableId)
         .eq('table_status', 'dirty')
-        // Owner-only, or anyone if it was never claimed.
-        .or(`cleaning_claimed_by.eq.${user.id},cleaning_claimed_by.is.null`)
         .select('id')
 
     if (error) return { error: error.message }
@@ -209,10 +263,20 @@ export async function markTableClean(
 export async function findBookingByPhone(phone: string, restaurantId: string) {
     const adminSupabase = await createAdminClient()
     const cleanPhone = phone.trim()
+
+    // Resolve linked hotel if any
+    const { data: restLink } = await adminSupabase
+        .from('restaurants')
+        .select('linked_hotel_id')
+        .eq('id', restaurantId)
+        .maybeSingle()
+
+    const targetRestaurantId = restLink?.linked_hotel_id || restaurantId
+
     const { data: booking, error } = await adminSupabase
         .from('bookings')
         .select('id, guest_name, guest_phone, status, room_id, rooms(room_number)')
-        .eq('restaurant_id', restaurantId)
+        .eq('restaurant_id', targetRestaurantId)
         .eq('status', 'checked_in')
         .eq('guest_phone', cleanPhone)
         .maybeSingle()
@@ -224,12 +288,50 @@ export async function findBookingByPhone(phone: string, restaurantId: string) {
     return { success: true, booking }
 }
 
+export async function findBookingByRoom(roomNumber: string, restaurantId: string) {
+    const adminSupabase = await createAdminClient()
+    const cleanRoom = roomNumber.trim()
+
+    // Resolve linked hotel if any
+    const { data: restLink } = await adminSupabase
+        .from('restaurants')
+        .select('linked_hotel_id')
+        .eq('id', restaurantId)
+        .maybeSingle()
+
+    const targetRestaurantId = restLink?.linked_hotel_id || restaurantId
+
+    const { data: booking, error } = await adminSupabase
+        .from('bookings')
+        .select('id, guest_name, guest_phone, status, room_id, rooms!inner(room_number)')
+        .eq('restaurant_id', targetRestaurantId)
+        .eq('status', 'checked_in')
+        .eq('rooms.room_number', cleanRoom)
+        .maybeSingle()
+
+    if (error) {
+        console.error('[findBookingByRoom] Error:', error)
+        return { error: 'Failed to search booking' }
+    }
+    return { success: true, booking }
+}
+
 export async function getActiveBookings(restaurantId: string) {
     const adminSupabase = await createAdminClient()
+
+    // Resolve linked hotel if any
+    const { data: restLink } = await adminSupabase
+        .from('restaurants')
+        .select('linked_hotel_id')
+        .eq('id', restaurantId)
+        .maybeSingle()
+
+    const targetRestaurantId = restLink?.linked_hotel_id || restaurantId
+
     const { data: bookings, error } = await adminSupabase
         .from('bookings')
         .select('id, guest_name, guest_phone, status, room_id, rooms(room_number)')
-        .eq('restaurant_id', restaurantId)
+        .eq('restaurant_id', targetRestaurantId)
         .eq('status', 'checked_in')
         .order('check_in', { ascending: false })
 
@@ -240,28 +342,85 @@ export async function getActiveBookings(restaurantId: string) {
     return { success: true, bookings }
 }
 
-export async function linkSessionToBooking(sessionId: string, bookingId: string) {
+export async function linkSessionToBooking(sessionId: string, bookingId: string, tableId?: string) {
     const adminSupabase = await createAdminClient()
-    const { error } = await adminSupabase
+    const now = new Date().toISOString()
+
+    // 1. Update session: set booking_id and keep status active so orders can be placed
+    const { data: session, error } = await adminSupabase
         .from('sessions')
-        .update({ booking_id: bookingId })
+        .update({
+            booking_id: bookingId,
+            status: 'active',
+        })
         .eq('id', sessionId)
+        .select('table_id')
+        .maybeSingle()
 
     if (error) {
         console.error('[linkSessionToBooking] Error:', error)
         return { error: error.message }
     }
+
+    // 2. Also update existing orders for this session so queries on orders.booking_id catch them
+    await adminSupabase
+        .from('orders')
+        .update({ booking_id: bookingId })
+        .eq('session_id', sessionId)
+
+    // 3. Free the table (set table_status = 'available')
+    const targetTableId = tableId || session?.table_id
+    if (targetTableId) {
+        await adminSupabase
+            .from('tables')
+            .update({ table_status: 'available' })
+            .eq('id', targetTableId)
+    }
+
     revalidatePath('/waiter')
+    revalidatePath('/cashier')
+    revalidatePath('/kitchen')
+    revalidatePath('/admin')
+    return { success: true }
+}
+
+export async function moveSessionToTable(sessionId: string, targetTableId: string, currentTableId: string) {
+    const adminSupabase = await createAdminClient()
+
+    const { error: sessionError } = await adminSupabase
+        .from('sessions')
+        .update({ table_id: targetTableId })
+        .eq('id', sessionId)
+
+    if (sessionError) {
+        console.error('[moveSessionToTable] Error:', sessionError)
+        return { error: sessionError.message }
+    }
+
+    if (currentTableId && currentTableId !== targetTableId) {
+        // Free the old table
+        await adminSupabase
+            .from('tables')
+            .update({ table_status: 'available' })
+            .eq('id', currentTableId)
+
+        // Mark the new table as occupied
+        await adminSupabase
+            .from('tables')
+            .update({ table_status: 'occupied' })
+            .eq('id', targetTableId)
+    }
+
+    revalidatePath('/waiter')
+    revalidatePath('/cashier')
+    revalidatePath('/kitchen')
     return { success: true }
 }
 
 export async function getStaffMenu(restaurantId: string) {
-    const supabase = await createServerClient()
-    const adminSupabase = await createAdminClient()
-    
-    // Check if staff user
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: 'Unauthorized' }
+    // Check if staff user (works for all roles including super_admin)
+    const currentUser = await getCurrentUser().catch(() => null)
+    if (!currentUser?.id) return { error: 'Unauthorized' }
 
     try {
         const data = await getCachedMenuData(restaurantId)
@@ -279,20 +438,20 @@ export async function getStaffMenu(restaurantId: string) {
 export async function placeStaffOrder(
     sessionId: string,
     items: any[],
-    customerNote?: string
+    customerNote?: string,
+    /** Sold across the counter — skip the station queue and the ticket. */
+    noKot = false,
 ) {
-    const supabase = await createServerClient()
     const adminSupabase = await createAdminClient()
-    
-    // Check if staff user
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: 'Unauthorized' }
+
+    // Check if staff user (works for all roles including super_admin)
+    const currentUser = await getCurrentUser().catch(() => null)
+    if (!currentUser?.id) return { error: 'Unauthorized' }
 
     // Resolve session (UUID vs token) safely to avoid UUID casting errors in Postgres
     let query = adminSupabase
         .from('sessions')
-        .select('id, restaurant_id, status')
-        .eq('status', 'active')
+        .select('id, restaurant_id, status, table_id, booking_id')
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)
     if (isUuid) {
@@ -308,8 +467,21 @@ export async function placeStaffOrder(
         return { error: 'Table session is invalid or closed.' }
     }
 
+    // Ensure session status is active so place_order RPC succeeds
+    if (session.status !== 'active') {
+        await adminSupabase
+            .from('sessions')
+            .update({ status: 'active', closed_at: null })
+            .eq('id', session.id)
+        session.status = 'active'
+    }
+
+    // Split items into regular and outside items
+    const outsideItems = items.filter((i) => i.isOutsideFood)
+    const regularItems = items.filter((i) => !i.isOutsideFood)
+
     // Format items for RPC
-    const payload = items.map((i) => {
+    const payload = regularItems.map((i) => {
         let specialRequest = i.specialRequest || ''
         if (i.variationName) {
             specialRequest = specialRequest
@@ -328,15 +500,29 @@ export async function placeStaffOrder(
     })
 
     try {
-        // Place the order
-        const { data, error } = await adminSupabase.rpc('place_order', {
-            p_session_id: session.id,
-            p_items: payload,
-            p_customer_note: customerNote || null,
-            p_promo_code: null,
-            p_loyalty_member_id: null,
-            p_client_request_id: null,
-        })
+        // Place the order.
+        //
+        // A counter sale goes through place_counter_order, which wraps the same
+        // RPC and marks the lines served-and-printed inside the SAME
+        // transaction. That matters: realtime publishes at commit, so a station
+        // board sees the order the instant place_order returns and starts its
+        // print timer — stamping the lines in a second round-trip here would
+        // lose that race often enough to print tickets for cigarettes.
+        const { data, error } = noKot
+            ? await adminSupabase.rpc('place_counter_order', {
+                p_session_id: session.id,
+                p_items: payload,
+                p_customer_note: customerNote || null,
+                p_client_request_id: null,
+            })
+            : await adminSupabase.rpc('place_order', {
+                p_session_id: session.id,
+                p_items: payload,
+                p_customer_note: customerNote || null,
+                p_promo_code: null,
+                p_loyalty_member_id: null,
+                p_client_request_id: null,
+            })
 
         if (error) {
             console.error('[placeStaffOrder] RPC Error:', error)
@@ -348,11 +534,85 @@ export async function placeStaffOrder(
             return { error: 'Failed to place order.' }
         }
 
-        // Update status to confirmed immediately (since it is placed by staff)
+        // Insert outside items directly if present
+        if (outsideItems.length > 0) {
+            const outsideFoodId = await getOrCreateOutsideFoodItem(adminSupabase, session.restaurant_id)
+            for (const item of outsideItems) {
+                const specialRequest = `[Outside: ${item.name}]${item.specialRequest ? ' ' + item.specialRequest : ''}`
+                await adminSupabase
+                    .from('order_items')
+                    .insert({
+                        order_id: result.order_id,
+                        menu_item_id: outsideFoodId,
+                        quantity: item.quantity,
+                        unit_price: Number(item.price ?? 0),
+                        special_request: specialRequest,
+                        status: 'pending'
+                    })
+            }
+        }
+
+        // If this session is for a hotel room, bind the order to the active booking
+        const roomContext = session.table_id
+            ? await getRoomContextForTable(adminSupabase, session.table_id)
+            : null
+
+        const updateFields: any = {
+            status: 'confirmed',
+            needs_confirmation: false,
+            // Who took the order. The column has existed since the baseline and
+            // was never written, so "which waiter sold what" had no data behind
+            // it; recorded here it is a fact rather than the guess the history
+            // backfill had to settle for (see waiter_id_inferred).
+            waiter_id: currentUser.id,
+            waiter_id_inferred: false,
+        }
+        if (roomContext?.bookingId) {
+            updateFields.booking_id = roomContext.bookingId
+        }
+        if (noKot) {
+            // place_counter_order already closed this out; repeated here only so
+            // this blanket update cannot walk the order back to 'confirmed' and
+            // drop it onto a station board after the fact.
+            updateFields.status = 'delivered'
+            updateFields.no_kot = true
+        }
+
         await adminSupabase
             .from('orders')
-            .update({ status: 'confirmed', needs_confirmation: false })
+            .update(updateFields)
             .eq('id', result.order_id)
+
+        // Always recalculate totals after all items and the booking_id are set.
+        // This stamps service_charge_amount on every order — both general dine-in
+        // SC (serviceChargeEnabled) and room SC (roomServiceChargeEnabled) — so
+        // the receipt and CashierClient always show the correct breakdown.
+        // Called here (after booking_id is written) so recalculate reads the
+        // correct booking context to decide which SC rule applies.
+        await recalculateAndUpdateOrderTotals(adminSupabase, result.order_id, session.restaurant_id)
+
+        // Automatically close the table session if linked to a room bill (either on session or table-linked)
+        const bookingIdToLink = session.booking_id || roomContext?.bookingId
+        if (bookingIdToLink) {
+            await adminSupabase
+                .from('sessions')
+                .update({
+                    status: 'closed',
+                    closed_at: new Date().toISOString()
+                })
+                .eq('id', session.id)
+
+            await markTableDirtyForSession(adminSupabase, session.id)
+
+            void logAudit({
+                restaurantId: session.restaurant_id,
+                userId: currentUser.id,
+                action: 'session_closed',
+                entityType: 'session',
+                entityId: session.id,
+                newValue: { reason: 'auto_room_linked_order' },
+            })
+        }
 
         // place_order() already deducted stock/ingredients inline for every item —
         // do not call deduct_ingredients_for_order here, it would double-deduct.
@@ -364,6 +624,407 @@ export async function placeStaffOrder(
     } catch (e: any) {
         console.error('[placeStaffOrder] Exception:', e)
         return { error: e.message || 'Server error' }
+    }
+}
+
+export async function placeRoomOrderDirect(
+    bookingId: string,
+    items: any[],
+    customerNote?: string,
+    /** Sold across the counter — skip the station queue and the ticket. */
+    noKot = false,
+) {
+    const supabase = await createServerClient()
+    const adminSupabase = await createAdminClient()
+    
+    // 1. Fetch booking to make sure it's active
+    const { data: booking, error: bookingErr } = await adminSupabase
+        .from('bookings')
+        .select('id, status, restaurant_id, room_id')
+        .eq('id', bookingId)
+        .single()
+
+    if (bookingErr || !booking || booking.status !== 'checked_in') {
+        return { error: 'Room stay booking is invalid or checked out.' }
+    }
+
+    // Check if staff user
+    const currentUser = await getCurrentUser().catch(() => null)
+    const restaurantId = currentUser?.restaurantId || booking.restaurant_id
+    if (!restaurantId) return { error: 'Unauthorized' }
+
+    // 2. Create pending order row with needs_confirmation: true and status: 'pending'
+    // so Realtime does not broadcast an unconfirmed/empty order to kitchen/cashier.
+    const { data: orderRow, error: orderInsertError } = await adminSupabase
+        .from('orders')
+        .insert({
+            restaurant_id: restaurantId,
+            booking_id: bookingId,
+            customer_note: customerNote || null,
+            status: 'pending',
+            needs_confirmation: true,
+            payment_status: 'unpaid',
+            order_type: 'takeout',
+            placed_at: new Date().toISOString(),
+            // A room order is placed by whoever is at the desk; recorded so it
+            // counts towards their day like any other order they took.
+            waiter_id: currentUser?.id ?? null,
+            subtotal_amount: 0,
+            total_amount: 0
+        })
+        .select('id')
+        .single()
+
+    if (orderInsertError || !orderRow?.id) {
+        console.error('[placeRoomOrderDirect] Order insert failed:', orderInsertError)
+        return { error: orderInsertError?.message || 'Failed to create order.' }
+    }
+
+    const orderId = orderRow.id
+    let subtotal = 0
+    let foodSubtotal = 0
+
+    // 3. Insert order items with needs_confirmation: true
+    for (const item of items) {
+        let unitPrice = 0
+        let menuItemId = item.menuItemId
+        let specialRequest = item.specialRequest || null
+        let variationId = null
+        let itemStation = 'kitchen'
+
+        if (item.isOutsideFood) {
+            const outsideFoodId = await getOrCreateOutsideFoodItem(adminSupabase, restaurantId)
+            menuItemId = outsideFoodId
+            unitPrice = Number(item.price ?? 0)
+            specialRequest = `[Outside: ${item.name}]${item.specialRequest ? ' ' + item.specialRequest : ''}`
+        } else {
+            const { data: menuItem } = await adminSupabase
+                .from('menu_items')
+                .select('id, price, is_available, station')
+                .eq('id', item.menuItemId)
+                .single()
+
+            if (!menuItem?.id || menuItem.is_available === false) continue
+            menuItemId = menuItem.id
+            unitPrice = Number(menuItem.price ?? 0)
+            itemStation = menuItem.station || 'kitchen'
+
+            if (item.variationId) {
+                const { data: variation } = await adminSupabase
+                    .from('menu_item_variations')
+                    .select('id, price')
+                    .eq('id', item.variationId)
+                    .single()
+                if (variation) {
+                    unitPrice = Number(variation.price)
+                    variationId = variation.id
+                }
+            }
+        }
+
+        const { data: orderItemRow, error: orderItemInsertError } = await adminSupabase
+            .from('order_items')
+            .insert({
+                order_id: orderId,
+                menu_item_id: menuItemId,
+                menu_item_variation_id: variationId,
+                quantity: item.quantity,
+                unit_price: unitPrice,
+                special_request: specialRequest,
+                // A counter sale is born finished and unprintable. Stamping
+                // kot_printed_at on the insert itself is what makes it
+                // impossible to print rather than merely unlikely:
+                // claim_order_items_for_printing only ever claims lines where
+                // it is NULL, so no station can take these however the board
+                // races to them.
+                status: noKot ? 'served' : 'pending',
+                kot_printed_at: noKot ? new Date().toISOString() : null,
+                needs_confirmation: true
+            })
+            .select('id')
+            .single()
+
+        if (orderItemInsertError || !orderItemRow?.id) {
+            console.error('[placeRoomOrderDirect] Item insert failed:', orderItemInsertError)
+            continue
+        }
+
+        let itemTotal = unitPrice * item.quantity
+
+        // Handle modifiers if any
+        if (item.modifiers?.length) {
+            for (const mod of item.modifiers) {
+                const { data: modRow } = await adminSupabase
+                    .from('menu_item_modifiers')
+                    .select('id, name, price_adjustment')
+                    .eq('id', mod.modifierId || mod.id)
+                    .single()
+
+                if (!modRow?.id) continue
+
+                await adminSupabase.from('order_item_modifiers').insert({
+                    order_item_id: orderItemRow.id,
+                    modifier_id: modRow.id,
+                    modifier_name: modRow.name,
+                    price_adjustment: modRow.price_adjustment,
+                })
+
+                itemTotal += Number(modRow.price_adjustment ?? 0) * item.quantity
+            }
+        }
+
+        subtotal += itemTotal
+        if (itemStation === 'kitchen') {
+            foodSubtotal += itemTotal
+        }
+    }
+
+    // 4. Calculate Taxes and Service Charge
+    const { data: settings } = await adminSupabase
+        .from('settings')
+        .select('features_v2')
+        .eq('restaurant_id', restaurantId)
+        .single()
+    
+    const featuresV2 = settings?.features_v2 as any
+    const taxRate = Number(featuresV2?.defaultTaxRate ?? 0)
+
+    const roomScEnabled = featuresV2?.roomServiceChargeEnabled === true
+    const roomScRooms = Array.isArray(featuresV2?.roomServiceChargeRooms) ? featuresV2.roomServiceChargeRooms : []
+    const isRoomScApplicable = roomScEnabled && booking.room_id && roomScRooms.includes(booking.room_id)
+
+    // Direct room orders have a 10% service charge on food items only, if enabled for this room
+    const serviceCharge = isRoomScApplicable ? (Math.round(foodSubtotal * 0.10 * 100) / 100) : 0
+
+    const tax = Math.round((subtotal + serviceCharge) * (taxRate / 100) * 100) / 100
+    const total = Math.max(0, subtotal + serviceCharge + tax)
+
+    // 5. Unmark needs_confirmation on order_items now that all items and modifiers are written
+    await adminSupabase
+        .from('order_items')
+        .update({ needs_confirmation: false })
+        .eq('order_id', orderId)
+
+    // 6. Update order status to 'confirmed' and needs_confirmation: false along with totals
+    try {
+        const { error: updateError } = await adminSupabase
+            .from('orders')
+            .update({
+                status: 'confirmed',
+                needs_confirmation: false,
+                subtotal_amount: subtotal,
+                service_charge_amount: serviceCharge,
+                tax_amount: tax,
+                total_amount: total
+            })
+            .eq('id', orderId)
+        
+        if (updateError) {
+            if (updateError.message.includes('service_charge_amount') || updateError.code === 'PGRST204') {
+                await adminSupabase
+                    .from('orders')
+                    .update({
+                        status: 'confirmed',
+                        needs_confirmation: false,
+                        subtotal_amount: subtotal,
+                        tax_amount: tax,
+                        total_amount: total
+                    })
+                    .eq('id', orderId)
+            } else {
+                console.error('[placeRoomOrderDirect] Update totals error:', updateError)
+            }
+        }
+    } catch (err) {
+        console.error('[placeRoomOrderDirect] Catch block update totals:', err)
+        await adminSupabase
+            .from('orders')
+            .update({
+                status: 'confirmed',
+                needs_confirmation: false,
+                subtotal_amount: subtotal,
+                tax_amount: tax,
+                total_amount: total
+            })
+            .eq('id', orderId)
+    }
+
+    // Apply pricing rules & deduct ingredients
+    await Promise.allSettled([
+        adminSupabase.rpc('apply_pricing_rules_to_order', { p_order_id: orderId }),
+        adminSupabase.rpc('deduct_ingredients_for_order',  { p_order_id: orderId }),
+    ])
+
+    // Handed over at the counter: finished on placement. The lines were already
+    // written served and stamped unprintable at insert, so no ticket was ever
+    // possible; this closes the order itself, and has to run after the totals
+    // writes above because every one of them sets status back to 'confirmed'.
+    if (noKot) {
+        await adminSupabase
+            .from('orders')
+            .update({ status: 'delivered', no_kot: true })
+            .eq('id', orderId)
+    }
+
+    revalidatePath('/cashier')
+    return { success: true, orderId }
+}
+
+export async function getOrCreateOutsideFoodItem(adminSupabase: any, restaurantId: string): Promise<string> {
+    // Check if there is already a menu item named 'Outside Food' for this restaurant
+    const { data, error } = await adminSupabase
+        .from('menu_items')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .eq('name', 'Outside Food')
+        .limit(1)
+        .maybeSingle()
+
+    if (data?.id) {
+        return data.id
+    }
+
+    // If not, create it
+    const { data: newItem, error: createError } = await adminSupabase
+        .from('menu_items')
+        .insert({
+            restaurant_id: restaurantId,
+            name: 'Outside Food',
+            description: 'Temporary outside food item',
+            price: 0,
+            is_available: true,
+            is_combo: false
+        })
+        .select('id')
+        .single()
+
+    if (createError || !newItem) {
+        console.error('Failed to create Outside Food menu item:', createError)
+        throw new Error('Failed to configure outside food')
+    }
+
+    return newItem.id
+}
+
+export async function recalculateAndUpdateOrderTotals(
+    adminSupabase: any,
+    orderId: string,
+    restaurantId: string
+) {
+    // Fetch order to check session_id and booking_id
+    const { data: orderData } = await adminSupabase
+        .from('orders')
+        .select('session_id, booking_id, discount_amount, booking:booking_id(room_id)')
+        .eq('id', orderId)
+        .single()
+
+    // Fetch all order items and modifiers to recalculate subtotal
+    const { data: allOrderItems } = await adminSupabase
+        .from('order_items')
+        .select('id, quantity, unit_price, station, order_item_modifiers(price_adjustment)')
+        .eq('order_id', orderId)
+
+    let subtotal = 0
+    let foodSubtotal = 0
+    for (const oi of allOrderItems || []) {
+        const itemTotal = Number(oi.unit_price ?? 0) * oi.quantity
+        const modifiersTotal = (oi.order_item_modifiers || []).reduce((sum: number, m: any) => sum + (Number(m.price_adjustment ?? 0) * oi.quantity), 0)
+        const totalLinePrice = itemTotal + modifiersTotal
+        subtotal += totalLinePrice
+        
+        if (oi.station === 'kitchen') {
+            foodSubtotal += totalLinePrice
+        }
+    }
+
+    // Get settings for tax
+    const { data: settings } = await adminSupabase
+        .from('settings')
+        .select('features_v2')
+        .eq('restaurant_id', restaurantId)
+        .single()
+    
+    const featuresV2 = settings?.features_v2 as any
+    const taxRate = Number(featuresV2?.defaultTaxRate ?? 0)
+    const scEnabled = featuresV2?.serviceChargeEnabled === true
+    const scRate = Number(featuresV2?.serviceChargeRate ?? 10)
+
+    const roomScEnabled = featuresV2?.roomServiceChargeEnabled === true
+    const roomScRooms = Array.isArray(featuresV2?.roomServiceChargeRooms) ? featuresV2.roomServiceChargeRooms : []
+
+    const discountAmount = Number(orderData?.discount_amount ?? 0)
+
+    // Determine if it is a room stay order, and if so, what kind
+    let serviceCharge = 0
+    if (orderData?.booking_id) {
+        const orderRoomId = (orderData.booking as any)?.room_id
+        const isRoomScApplicable = roomScEnabled && orderRoomId && roomScRooms.includes(orderRoomId)
+
+        if (!orderData.session_id) {
+            // Direct room order: 10% service charge on food items only (if enabled for room)
+            if (isRoomScApplicable) {
+                const foodRatio = subtotal > 0 ? (foodSubtotal / subtotal) : 0
+                const discountedFoodSubtotal = Math.max(0, foodSubtotal - (discountAmount * foodRatio))
+                serviceCharge = Math.round(discountedFoodSubtotal * 0.10 * 100) / 100
+            } else {
+                serviceCharge = 0
+            }
+        } else {
+            // Check if the session belongs to a room table
+            const { data: sessionTable } = await adminSupabase
+                .from('sessions')
+                .select('tables(room_id)')
+                .eq('id', orderData.session_id)
+                .single()
+            
+            if (sessionTable?.tables?.room_id) {
+                // Room QR order: 10% service charge on food items only (if enabled for room)
+                if (isRoomScApplicable) {
+                    const foodRatio = subtotal > 0 ? (foodSubtotal / subtotal) : 0
+                    const discountedFoodSubtotal = Math.max(0, foodSubtotal - (discountAmount * foodRatio))
+                    serviceCharge = Math.round(discountedFoodSubtotal * 0.10 * 100) / 100
+                } else {
+                    serviceCharge = 0
+                }
+            } else {
+                // Dine-in order merely linked/billed to a room stay: not a room
+                // order, so no service charge — matches folio.ts's live recompute.
+                serviceCharge = 0
+            }
+        }
+    } else {
+        // Standard dine-in / takeout order (no booking_id): no service charge.
+        // SC applies only to in-room food orders (booking_id is set above).
+        serviceCharge = 0
+    }
+
+    const tax = Math.round((subtotal - discountAmount + serviceCharge) * (taxRate / 100) * 100) / 100
+    const total = Math.max(0, subtotal - discountAmount + serviceCharge + tax)
+
+    // Update totals
+    try {
+        const { error: updateError } = await adminSupabase
+            .from('orders')
+            .update({
+                subtotal_amount: subtotal,
+                service_charge_amount: serviceCharge,
+                tax_amount: tax,
+                total_amount: total
+            })
+            .eq('id', orderId)
+        
+        if (updateError) {
+            await adminSupabase
+                .from('orders')
+                .update({
+                    subtotal_amount: subtotal,
+                    tax_amount: tax,
+                    total_amount: total
+                })
+                .eq('id', orderId)
+        }
+    } catch (err) {
+        console.error('[recalculateAndUpdateOrderTotals] Error updating totals:', err)
     }
 }
 

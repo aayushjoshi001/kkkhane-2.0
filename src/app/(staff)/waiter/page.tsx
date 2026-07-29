@@ -1,6 +1,8 @@
+import RealtimeCatchUp from '@/components/shared/RealtimeCatchUp'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import TableManager, { type TableWithSession } from '@/components/waiter/TableManager'
+import WaiterRoomManager from '@/components/waiter/WaiterRoomManager'
 import WaiterCustomerTabs, { type ServiceRequestWithTable } from '@/components/waiter/WaiterCustomerTabs'
 import PaymentVerificationFeed, { type PaymentClaim } from '@/components/waiter/PaymentVerificationFeed'
 import WaiterOrderFeed, { type WaiterOrder } from '@/components/waiter/WaiterOrderFeed'
@@ -61,6 +63,14 @@ export default async function WaiterPage() {
 
     const now = new Date().toISOString()
 
+    // Auto-cleanup any legacy room-linked sessions that were left marked as active before the fix
+    await adminSupabase
+        .from('sessions')
+        .update({ status: 'closed', closed_at: now })
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'active')
+        .not('booking_id', 'is', null)
+
     // Fetch tables and active sessions separately — more reliable than a nested join
     const [{ data: tables }, { data: activeSessions }] = await Promise.all([
         adminSupabase
@@ -71,20 +81,48 @@ export default async function WaiterPage() {
             .order('label', { ascending: true }),
         adminSupabase
             .from('sessions')
-            .select('id, table_id, restaurant_id, opened_by, session_token, status, opened_at, closed_at, expires_at, guest_count, max_seats, notes')
+            .select('id, table_id, restaurant_id, opened_by, session_token, status, opened_at, closed_at, expires_at, guest_count, max_seats, seat_number, notes')
             .eq('restaurant_id', restaurantId)
             .eq('status', 'active')
-            .gt('expires_at', now),
+            .is('booking_id', null)
+            .order('seat_number', { ascending: true }),
     ])
 
-    const activeSessionByTable = Object.fromEntries(
-        (activeSessions || []).map(s => [s.table_id, s])
-    )
+    // A table can now carry more than one concurrent session — one per "seat" —
+    // when a waiter splits it for a shared table where each party pays separately.
+    // Seat 1 stays the table's primary session (what QR self-ordering targets and
+    // what every pre-existing call site that expects a single `activeSession`
+    // continues to see); seats 2+ surface as `otherActiveSessions`.
+    const sessionsByTable: Record<string, typeof activeSessions extends (infer T)[] | null ? T[] : never> = {}
+    for (const s of activeSessions || []) {
+        (sessionsByTable[s.table_id] ??= []).push(s)
+    }
 
-    const mappedTables = (tables || []).map(table => ({
-        ...table,
-        activeSession: activeSessionByTable[table.id] || null,
-    }))
+    // Auto-cleanup any tables marked 'occupied' or 'active' in DB that have no active non-room sessions
+    const activeTableIds = new Set((activeSessions || []).map(s => s.table_id))
+    const stuckTableIds = (tables || [])
+        .filter(t => (t.table_status === 'occupied' || t.table_status === 'active') && !activeTableIds.has(t.id))
+        .map(t => t.id)
+
+    if (stuckTableIds.length > 0) {
+        await adminSupabase
+            .from('tables')
+            .update({ table_status: 'available' })
+            .in('id', stuckTableIds)
+    }
+
+    const mappedTables = (tables || []).map(table => {
+        const sessions = sessionsByTable[table.id] || []
+        const primary = sessions.find(s => s.seat_number === 1) || sessions[0] || null
+        const others = sessions.filter(s => s.id !== primary?.id)
+        const isStuck = stuckTableIds.includes(table.id)
+        return {
+            ...table,
+            table_status: isStuck ? 'available' : table.table_status,
+            activeSession: primary,
+            otherActiveSessions: others,
+        }
+    })
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
@@ -96,6 +134,8 @@ export default async function WaiterPage() {
         { data: activeOrders },
         { data: readyTakeouts },
         { data: unpaidDelivered },
+        { data: rooms },
+        { data: bookings },
     ] = await Promise.all([
         getRestaurantFeatures(restaurantId),
         getRestaurantMode(restaurantId),
@@ -146,6 +186,17 @@ export default async function WaiterPage() {
             .eq('payment_status', 'unpaid')
             .order('delivered_at', { ascending: true })
             .limit(30),
+        adminSupabase
+            .from('rooms')
+            .select('*, room_types:type_id(*)')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
+            .order('room_number', { ascending: true }),
+        adminSupabase
+            .from('bookings')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('status', 'checked_in'),
     ])
 
     // Ready online-delivery orders awaiting a delivery person.
@@ -199,11 +250,28 @@ export default async function WaiterPage() {
                 userId={userId}
                 staffNames={staffNames}
                 isHotel={businessMode === 'hotel'}
+                waiterSessionEnabled={features?.waiterSessionEnabled}
             />
         </div>
     )
 
-    const dineInCount = (activeOrders || []).filter(o => o.status === 'ready').length + (ordersToConfirm?.length || 0)
+    const roomsContent = businessMode === 'hotel' ? (
+        <div className="space-y-6 pt-1">
+            <WaiterRoomManager
+                rooms={rooms || []}
+                bookings={bookings || []}
+                restaurantId={restaurantId}
+                tables={mappedTables as unknown as TableWithSession[]}
+            />
+        </div>
+    ) : undefined
+
+    const tablesContent = spaceContent
+
+    // ordersToConfirm (Mode 2) intentionally excluded — QR order confirmation
+    // is handled exclusively in the Cashier panel's Order Confirmation card,
+    // not surfaced here.
+    const dineInCount = (activeOrders || []).filter(o => o.status === 'ready').length
     const takeawayCount = (readyTakeouts || []).length + readyDeliveries.length
 
     const ordersContent = (
@@ -267,13 +335,19 @@ export default async function WaiterPage() {
 
     return (
         <div className="flex flex-col min-h-[calc(100vh-4rem)] md:min-h-[calc(100vh-5rem)]">
+            <RealtimeCatchUp restaurantId={restaurantId} />
             <div className="flex-1 px-3 md:px-6 pb-3 md:pb-6">
                 <WaiterTabs
                     spaceContent={spaceContent}
+                    roomsContent={roomsContent}
+                    tablesContent={tablesContent}
                     ordersContent={ordersContent}
                     customerContent={customerContent}
+                    isHotel={businessMode === 'hotel'}
                     counts={{
                         space: spaceCount,
+                        rooms: (rooms || []).filter(r => r.status === 'occupied').length,
+                        tables: mappedTables.filter(t => t.table_status === 'occupied').length,
                         orders: ordersCount,
                         customer: customerCount,
                     }}

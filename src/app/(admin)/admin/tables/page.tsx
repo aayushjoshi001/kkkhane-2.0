@@ -4,10 +4,18 @@ import TableManager from '@/components/admin/TableManager'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import { QrCode } from 'lucide-react'
 
+import { redirect } from 'next/navigation'
+import { getRestaurantFeatures } from '@/lib/features'
+import RealtimeRefresh from '@/components/shared/RealtimeRefresh'
+
 export const dynamic = 'force-dynamic'
 
 export default async function TablesManagementPage() {
     const { restaurantId } = await getCurrentUser()
+    const features = await getRestaurantFeatures(restaurantId)
+    if (!features?.tableManagementEnabled) {
+        redirect('/admin/dashboard')
+    }
     const adminSupabase = await createAdminClient()
 
     const [{ data: tables }, { data: restaurant }] = await Promise.all([
@@ -30,6 +38,7 @@ export default async function TablesManagementPage() {
 
     return (
         <div className="space-y-6">
+            <RealtimeRefresh restaurantId={restaurantId} tables={['tables', 'sessions']} />
             <PremiumPageHeader 
                 title="Table Management" 
                 description="Configure restaurant tables and generate QR ordering codes" 

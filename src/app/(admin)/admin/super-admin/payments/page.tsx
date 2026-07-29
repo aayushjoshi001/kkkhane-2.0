@@ -109,7 +109,7 @@ export default async function PaymentsPage() {
 
             {/* Payment History */}
             <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                <div className="px-6 py-5 border-b border-gray-50 bg-surface-muted/50">
+                <div className="px-6 py-5 border-b border-hairline bg-surface-muted/50">
                     <h2 className="text-[1.15rem] font-bold text-ink">Payment History</h2>
                     <p className="text-[13px] text-ink-subtle mt-0.5">All recorded subscription payments</p>
                 </div>
@@ -125,7 +125,7 @@ export default async function PaymentsPage() {
                                 <th className="px-5 py-3 text-left">Date</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-hairline">
                             {payments.map(p => (
                                 <tr key={p.id} className="group hover:bg-surface-muted/50 transition-colors">
                                     <td className="px-5 py-3 font-medium text-ink">{p.restaurants?.name || '—'}</td>
@@ -150,7 +150,7 @@ export default async function PaymentsPage() {
 
             {/* Subscription Status */}
             <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.3s' }}>
-                <div className="px-6 py-5 border-b border-gray-50 bg-surface-muted/50">
+                <div className="px-6 py-5 border-b border-hairline bg-surface-muted/50">
                     <h2 className="text-[1.15rem] font-bold text-ink">Subscription Status</h2>
                     <p className="text-[13px] text-ink-subtle mt-0.5">Current billing status for all tenants</p>
                 </div>
@@ -165,7 +165,7 @@ export default async function PaymentsPage() {
                                 <th className="px-5 py-3 text-left">Days Left</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-hairline">
                             {restaurants.map(r => {
                                 const daysLeft = r.subscription_expires_at
                                     ? Math.ceil((new Date(r.subscription_expires_at).getTime() - now) / (1000 * 60 * 60 * 24))

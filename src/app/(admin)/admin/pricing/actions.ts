@@ -2,8 +2,10 @@
 
 import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { requireRole } from '@/lib/auth'
 
 export async function getPricingRulesAction(restaurantId: string) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
     const { data } = await supabase
         .from('pricing_rules')
@@ -30,6 +32,7 @@ export async function createPricingRuleAction(input: {
     priority?: number
     is_active?: boolean
 }) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
     const { data, error } = await supabase
         .from('pricing_rules')
@@ -42,6 +45,7 @@ export async function createPricingRuleAction(input: {
 }
 
 export async function updatePricingRuleAction(id: string, updates: Record<string, unknown>) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
     const { error } = await supabase.from('pricing_rules').update(updates).eq('id', id)
     if (error) return { error: error.message }
@@ -50,6 +54,7 @@ export async function updatePricingRuleAction(id: string, updates: Record<string
 }
 
 export async function deletePricingRuleAction(id: string) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
     const { error } = await supabase.from('pricing_rules').delete().eq('id', id)
     if (error) return { error: error.message }

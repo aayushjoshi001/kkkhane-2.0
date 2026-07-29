@@ -4,6 +4,7 @@ import { ReactNode, useState, useEffect } from 'react'
 import { LogOut, LogIn, Loader2 } from 'lucide-react'
 import Logo from '@/components/shared/Logo'
 import SoundEnableButton from '@/components/shared/SoundEnableButton'
+import CalendarToggle from '@/components/shared/CalendarToggle'
 import PrinterSettingsButton from '@/components/shared/PrinterSettingsButton'
 import { signOutAndRedirect } from '@/lib/auth/signOut'
 import { setCustomNotificationSound } from '@/lib/audio'
@@ -112,6 +113,11 @@ export default function WaiterLayoutClient({
                     <div className="flex items-center gap-1.5 md:gap-2.5 shrink-0">
                         <CommandHint />
                         {commandRole === 'cashier' && <PrinterSettingsButton role="invoice" variant="light" />}
+                        {/* Not `hidden sm:*`: the cashier works the desk on a phone
+                            as often as a monitor, and hiding this was hiding the only
+                            way to switch the check-in/check-out pickers between BS and
+                            AD — the toggle read as broken because it wasn't on screen. */}
+                        <CalendarToggle />
                         <SoundEnableButton variant="light" />
                         {staffName && (
                             <div className="hidden md:flex items-center gap-2">

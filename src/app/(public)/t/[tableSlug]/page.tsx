@@ -126,6 +126,12 @@ async function MenuDataLoader({
 
     const waiterSessionEnabled = features?.waiterSessionEnabled === true
 
+    // Room-service call button: only on a room's QR, only when the manager has
+    // enabled it and set a reception number.
+    const roomCallPhone = tableData.room_id && features?.roomServiceCallEnabled && features?.receptionPhone
+        ? features.receptionPhone
+        : null
+
     const { categories, menuItems, translations, supportedLanguages, comboItems, pairings } = menuData
 
     const langs = supportedLanguages.length > 0
@@ -133,6 +139,7 @@ async function MenuDataLoader({
         : []
 
     return (
+        <>
         <TablePageClient
             tableData={{
                 id: tableData.id,
@@ -162,6 +169,7 @@ async function MenuDataLoader({
             isIpRestricted={false}
             initialHomepageConfig={homepageConfig}
         />
+        </>
     )
 }
 

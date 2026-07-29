@@ -14,27 +14,31 @@ import { fetchWithCache } from '@/lib/redis'
  * per-user rows, so bypassing RLS is safe here.
  */
 export async function getHomepageConfig(restaurantId: string): Promise<HomepageConfig | null> {
-    return fetchWithCache(`homepage-config:${restaurantId}`, async () => {
-        const supabase = await createAdminClient()
-        const [{ data: config, error }, { data: restaurant }] = await Promise.all([
-            supabase.from('homepage_configs').select('*').eq('restaurant_id', restaurantId).single(),
-            supabase.from('restaurants').select('name, logo_url').eq('id', restaurantId).single(),
-        ])
+    if (!restaurantId) return null
+    try {
+        return await fetchWithCache(`homepage-config:${restaurantId}`, async () => {
+            const supabase = await createAdminClient()
+            const [{ data: config }, { data: restaurant }] = await Promise.all([
+                supabase.from('homepage_configs').select('*').eq('restaurant_id', restaurantId).maybeSingle(),
+                supabase.from('restaurants').select('name, logo_url').eq('id', restaurantId).maybeSingle(),
+            ])
 
-        if (error || !config) return null
+            if (!config) return null
 
-        // Defensive: features/gallery must be arrays for the templates & manager.
-        // Tolerates legacy rows where features was stored as { enabled, items: [] }.
-        const row = config as Record<string, unknown>
-        if (!Array.isArray(row.features)) {
-            const f = row.features as { items?: unknown } | null
-            row.features = Array.isArray(f?.items) ? f!.items : []
-        }
-        if (!Array.isArray(row.gallery)) row.gallery = []
+            const row = config as Record<string, unknown>
+            if (!Array.isArray(row.features)) {
+                const f = row.features as { items?: unknown } | null
+                row.features = Array.isArray(f?.items) ? f!.items : []
+            }
+            if (!Array.isArray(row.gallery)) row.gallery = []
 
-        row.restaurant_name = restaurant?.name
-        if (!row.logo_url) row.logo_url = restaurant?.logo_url ?? null
+            row.restaurant_name = restaurant?.name
+            if (!row.logo_url) row.logo_url = restaurant?.logo_url ?? null
 
-        return row as unknown as HomepageConfig
-    }, 300) // 5 minutes TTL
+            return row as unknown as HomepageConfig
+        }, 300)
+    } catch (e) {
+        console.error('getHomepageConfig error:', e)
+        return null
+    }
 }

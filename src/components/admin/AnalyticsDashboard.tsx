@@ -2,10 +2,12 @@
 
 import { useState } from 'react'
 import StatCard from '@/components/ui/StatCard'
-import { TrendingUp, ShoppingBag, BarChart3, Star, XCircle, Trophy, Clock, ArrowUp, ArrowDown, Minus, Truck } from 'lucide-react'
+import { TrendingUp, ShoppingBag, BarChart3, Star, XCircle, Trophy, Clock, ArrowUp, ArrowDown, Minus, Truck, Percent, PercentSquare, Bed } from 'lucide-react'
+import { useBusinessMode, useFeatures } from '@/lib/contexts/FeatureContext'
+import { useDates } from '@/lib/contexts/CalendarContext'
 
 interface DayBucket {
-    date: string; label: string; dayNum: number; monthStr: string; revenue: number; orders: number
+    date: string; label: string; dayNum: number; monthStr: string; revenue: number; orders: number; bargainDiscount?: number; cancellationCost?: number; occupiedRoomsCount?: number
 }
 interface TopItem { name: string; count: number; revenue: number }
 interface CancelledOrder { id: string; note: string | null; placed_at: string; total: number }
@@ -26,6 +28,12 @@ interface Props {
     ratingCounts: { star: number; count: number }[]
     topComments: { comment: string; rating: number; created_at: string }[]
     topSuppliers: TopSupplier[]
+    hotelMetrics?: {
+        totalRooms: number
+        totalRoomRev30d: number
+        totalDiscount30d: number
+        bargainLeakage30d: number
+    }
 }
 
 function fmt(n: number) {
@@ -119,9 +127,16 @@ const HOUR_LABELS: Record<number, string> = {
     18: '6pm', 19: '7pm', 20: '8pm', 21: '9pm', 22: '10pm', 23: '11pm',
 }
 
-export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled, kpis, ratingCounts, topComments, topSuppliers }: Props) {
+export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled, kpis, ratingCounts, topComments, topSuppliers, hotelMetrics }: Props) {
     const [period, setPeriod] = useState<'7d' | '30d'>('7d')
     const [chartMetric, setChartMetric] = useState<'revenue' | 'orders'>('revenue')
+    const [hotelChartMetric, setHotelChartMetric] = useState<'occupancy' | 'leakage'>('occupancy')
+
+    const businessMode = useBusinessMode()
+    const isHotel = businessMode === 'hotel'
+    const features = useFeatures()
+    const irdSyncEnabled = !!features?.irdSyncEnabled
+    const { formatDate, formatDateTime } = useDates()
 
     const days = period === '7d' ? daily.slice(-7) : daily
     const rev = period === '7d' ? kpis.rev7d : kpis.rev30d
@@ -135,12 +150,30 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
     const ordTrend = trendInfo(ord, prevOrd)
     const aovTrend = trendInfo(aov, prevAov)
 
+    // Hotel period calculations
+    const totalRooms = hotelMetrics?.totalRooms || 1
+    const daysCount = period === '7d' ? 7 : 30
+    const periodOccupiedCount = days.reduce((s, d) => s + (d.occupiedRoomsCount || 0), 0)
+    const periodBargainLeakage = days.reduce((s, d) => s + (d.bargainDiscount || 0), 0)
+    const periodCancellationCost = days.reduce((s, d) => s + (d.cancellationCost || 0), 0)
+    const occupancyRate = (periodOccupiedCount / (totalRooms * daysCount)) * 100
+
     const chartData = days.map(d => ({
         date: d.date,
         label: d.label,
         dayNum: d.dayNum,
         monthStr: d.monthStr,
         value: chartMetric === 'revenue' ? d.revenue : d.orders,
+    }))
+
+    const hotelChartData = days.map(d => ({
+        date: d.date,
+        label: d.label,
+        dayNum: d.dayNum,
+        monthStr: d.monthStr,
+        value: hotelChartMetric === 'occupancy' 
+            ? (totalRooms > 0 ? ((d.occupiedRoomsCount || 0) / totalRooms) * 100 : 0)
+            : (d.bargainDiscount || 0),
     }))
 
     const peakHours = hourly.filter(h => h.hour >= 6 && h.hour <= 23)
@@ -170,14 +203,16 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
             </div>
 
             {/* KPI cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard
-                    label="Revenue"
-                    value={fmt(rev)}
-                    delta={revTrend.txt !== '—' && revTrend.txt !== 'New' ? parseFloat(revTrend.txt) : undefined}
-                    icon={TrendingUp}
-                    tone="brand"
-                />
+            <div className={irdSyncEnabled ? "grid grid-cols-2 lg:grid-cols-4 gap-4" : "grid grid-cols-1 max-w-sm gap-4"}>
+                {irdSyncEnabled && (
+                    <StatCard
+                        label="Revenue"
+                        value={fmt(rev)}
+                        delta={revTrend.txt !== '—' && revTrend.txt !== 'New' ? parseFloat(revTrend.txt) : undefined}
+                        icon={TrendingUp}
+                        tone="brand"
+                    />
+                )}
                 <StatCard
                     label="Orders"
                     value={String(ord)}
@@ -185,49 +220,123 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
                     icon={ShoppingBag}
                     tone="success"
                 />
+                {irdSyncEnabled && (
+                    <>
+                        <StatCard
+                            label="Avg Order Value"
+                            value={fmt(aov)}
+                            delta={aovTrend.txt !== '—' && aovTrend.txt !== 'New' ? parseFloat(aovTrend.txt) : undefined}
+                            icon={BarChart3}
+                            tone="info"
+                        />
+                        <StatCard
+                            label="Avg Rating"
+                            value={kpis.avgRating !== null ? `★ ${kpis.avgRating.toFixed(1)}` : '—'}
+                            hint={`${kpis.ratingCount} reviews`}
+                            icon={Star}
+                            tone="warning"
+                        />
+                    </>
+                )}
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard
-                    label="Avg Order Value"
-                    value={fmt(aov)}
-                    delta={aovTrend.txt !== '—' && aovTrend.txt !== 'New' ? parseFloat(aovTrend.txt) : undefined}
-                    icon={BarChart3}
-                    tone="info"
-                />
-                <StatCard
-                    label="Avg Rating"
-                    value={kpis.avgRating !== null ? `★ ${kpis.avgRating.toFixed(1)}` : '—'}
-                    hint={`${kpis.ratingCount} reviews`}
-                    icon={Star}
-                    tone="warning"
+                    label="Order Cancellation Cost"
+                    value={fmt(periodCancellationCost)}
+                    hint={`${period === '7d' ? 'Last 7 days' : 'Last 30 days'} — cancelled orders`}
+                    icon={XCircle}
+                    tone="danger"
                 />
             </div>
 
-            {/* Main chart */}
-            <div className="bg-surface rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)] p-6">
-                <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
-                    <h2 className="font-extrabold text-ink text-base">
-                        {chartMetric === 'revenue' ? 'Revenue' : 'Order Count'}
-                        <span className="text-ink-subtle font-medium ml-2 text-xs">
-                            {period === '7d' ? 'last 7 days' : 'last 30 days'}
-                        </span>
-                    </h2>
-                    <div className="flex items-center bg-surface-muted rounded-[var(--r-md)] p-1 gap-1 border border-hairline shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
-                        {(['revenue', 'orders'] as const).map(m => (
-                            <button
-                                key={m}
-                                onClick={() => setChartMetric(m)}
-                                className={`px-4 py-1.5 rounded-md text-[11px] font-bold tracking-wider transition-all capitalize focus-ring ${chartMetric === m ? 'bg-surface text-ink shadow-sm' : 'text-ink-subtle hover:text-ink hover:bg-surface/50'}`}
-                            >
-                                {m}
-                            </button>
-                        ))}
-                    </div>
+            {isHotel && irdSyncEnabled && (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <StatCard
+                        label="Occupancy Rate"
+                        value={`${occupancyRate.toFixed(1)}%`}
+                        icon={Percent}
+                        tone="brand"
+                    />
+                    <StatCard
+                        label="Bargain Leakage"
+                        value={fmt(periodBargainLeakage)}
+                        icon={TrendingUp}
+                        tone="warning"
+                    />
+                    <StatCard
+                        label="Total Rooms"
+                        value={String(totalRooms)}
+                        icon={Bed}
+                        tone="info"
+                    />
+                    <StatCard
+                        label="Room Sales (30d)"
+                        value={fmt(hotelMetrics?.totalRoomRev30d || 0)}
+                        icon={BarChart3}
+                        tone="success"
+                    />
                 </div>
-                <BarChart
-                    data={chartData}
-                    color={chartMetric === 'revenue' ? '#FB6303' : '#10b981'}
-                    fmtVal={chartMetric === 'revenue' ? fmt : (n) => String(n)}
-                />
-            </div>
+            )}
+
+            {/* Main chart */}
+            {irdSyncEnabled && (
+                <div className="bg-surface rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)] p-6">
+                    <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
+                        <h2 className="font-extrabold text-ink text-base">
+                            {chartMetric === 'revenue' ? 'Revenue' : 'Order Count'}
+                            <span className="text-ink-subtle font-medium ml-2 text-xs">
+                                {period === '7d' ? 'last 7 days' : 'last 30 days'}
+                            </span>
+                        </h2>
+                        <div className="flex items-center bg-surface-muted rounded-[var(--r-md)] p-1 gap-1 border border-hairline shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
+                            {(['revenue', 'orders'] as const).map(m => (
+                                <button
+                                    key={m}
+                                    onClick={() => setChartMetric(m)}
+                                    className={`px-4 py-1.5 rounded-md text-[11px] font-bold tracking-wider transition-all capitalize focus-ring ${chartMetric === m ? 'bg-surface text-ink shadow-sm' : 'text-ink-subtle hover:text-ink hover:bg-surface/50'}`}
+                                >
+                                    {m}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    <BarChart
+                        data={chartData}
+                        color={chartMetric === 'revenue' ? '#FB6303' : '#10b981'}
+                        fmtVal={chartMetric === 'revenue' ? fmt : (n) => String(n)}
+                    />
+                </div>
+            )}
+
+            {isHotel && irdSyncEnabled && (
+                <div className="bg-surface rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)] p-6">
+                    <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
+                        <h2 className="font-extrabold text-ink text-base">
+                            {hotelChartMetric === 'occupancy' ? 'Occupancy Rate' : 'Bargain Leakage'}
+                            <span className="text-ink-subtle font-medium ml-2 text-xs">
+                                {period === '7d' ? 'last 7 days' : 'last 30 days'}
+                            </span>
+                        </h2>
+                        <div className="flex items-center bg-surface-muted rounded-[var(--r-md)] p-1 gap-1 border border-hairline shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
+                            {(['occupancy', 'leakage'] as const).map(m => (
+                                <button
+                                    key={m}
+                                    onClick={() => setHotelChartMetric(m)}
+                                    className={`px-4 py-1.5 rounded-md text-[11px] font-bold tracking-wider transition-all capitalize focus-ring ${hotelChartMetric === m ? 'bg-surface text-ink shadow-sm' : 'text-ink-subtle hover:text-ink hover:bg-surface/50'}`}
+                                >
+                                    {m}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    <BarChart
+                        data={hotelChartData}
+                        color={hotelChartMetric === 'occupancy' ? '#8b5cf6' : '#f59e0b'}
+                        fmtVal={hotelChartMetric === 'occupancy' ? (n) => `${n.toFixed(1)}%` : fmt}
+                    />
+                </div>
+            )}
 
             {/* Rush hour + Top items */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -324,90 +433,92 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
             </div>
 
             {/* Top suppliers by spend */}
-            <div className="bg-surface rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)] p-6">
-                <div className="flex items-center gap-2 mb-6 border-b border-hairline pb-4">
-                    <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center">
-                        <Truck size={16} className="text-indigo-600" />
+            {irdSyncEnabled && (
+                <div className="bg-surface rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)] p-6">
+                    <div className="flex items-center gap-2 mb-6 border-b border-hairline pb-4">
+                        <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center">
+                            <Truck size={16} className="text-indigo-600" />
+                        </div>
+                        <h2 className="font-extrabold text-ink text-base">Top Suppliers by Spend</h2>
+                        <span className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider ml-auto">last 30 days</span>
                     </div>
-                    <h2 className="font-extrabold text-ink text-base">Top Suppliers by Spend</h2>
-                    <span className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider ml-auto">last 30 days</span>
-                </div>
-                {topSuppliers.length === 0 ? (
-                    <p className="text-sm text-ink-subtle text-center py-6">No supplier spend recorded yet.</p>
-                ) : (
-                    <div className="space-y-3">
-                        {topSuppliers.map((s, i) => (
-                            <div key={s.name}>
-                                <div className="flex items-center justify-between mb-1.5">
-                                    <div className="flex items-center gap-2 min-w-0">
-                                        <span className="text-[10px] font-bold text-ink-subtle w-4 text-center inline-block shrink-0">{i + 1}</span>
-                                        <span className="text-sm text-ink font-medium truncate">{s.name}</span>
+                    {topSuppliers.length === 0 ? (
+                        <p className="text-sm text-ink-subtle text-center py-6">No supplier spend recorded yet.</p>
+                    ) : (
+                        <div className="space-y-3">
+                            {topSuppliers.map((s, i) => (
+                                <div key={s.name}>
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <span className="text-[10px] font-bold text-ink-subtle w-4 text-center inline-block shrink-0">{i + 1}</span>
+                                            <span className="text-sm text-ink font-medium truncate">{s.name}</span>
+                                        </div>
+                                        <span className="text-xs text-ink-muted shrink-0 ml-2 tabular-nums">{fmt(s.amount)}</span>
                                     </div>
-                                    <span className="text-xs text-ink-muted shrink-0 ml-2 tabular-nums">{fmt(s.amount)}</span>
+                                    <div className="h-1.5 bg-surface-muted rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full rounded-full bg-indigo-400 transition-all duration-500"
+                                            style={{ width: `${(s.amount / maxSupplierAmount) * 100}%` }}
+                                        />
+                                    </div>
                                 </div>
-                                <div className="h-1.5 bg-surface-muted rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full rounded-full bg-indigo-400 transition-all duration-500"
-                                        style={{ width: `${(s.amount / maxSupplierAmount) * 100}%` }}
-                                    />
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Cancelled orders */}
-            <div className="bg-surface rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)] overflow-hidden">
-                <div className="px-6 py-5 border-b border-hairline flex items-center gap-2 bg-surface-muted/30">
-                    <div className="w-8 h-8 rounded-full bg-danger-bg/20 border border-danger-bg flex items-center justify-center">
-                        <XCircle size={16} className="text-danger-fg" />
+            {irdSyncEnabled && (
+                <div className="bg-surface rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)] overflow-hidden">
+                    <div className="px-6 py-5 border-b border-hairline flex items-center gap-2 bg-surface-muted/30">
+                        <div className="w-8 h-8 rounded-full bg-danger-bg/20 border border-danger-bg flex items-center justify-center">
+                            <XCircle size={16} className="text-danger-fg" />
+                        </div>
+                        <h2 className="font-extrabold text-ink text-base">Cancelled Orders</h2>
+                        <span className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider ml-auto">{cancelled.length} in last 30 days</span>
                     </div>
-                    <h2 className="font-extrabold text-ink text-base">Cancelled Orders</h2>
-                    <span className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider ml-auto">{cancelled.length} in last 30 days</span>
-                </div>
-                {cancelled.length === 0 ? (
-                    <div className="px-5 py-10 text-center text-sm text-ink-subtle">
-                        No cancellations in the last 30 days — great work!
-                    </div>
-                ) : (
-                    <div className="divide-y divide-gray-50">
-                        {cancelled.slice(0, 10).map(c => (
-                            <div key={c.id} className="px-5 py-3 flex items-start gap-3">
-                                <div className="w-8 h-8 rounded-full bg-red-50 border border-red-100 flex items-center justify-center shrink-0 mt-0.5">
-                                    <XCircle size={13} className="text-red-400" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-mono text-ink-muted uppercase">
-                                            #{c.id.substring(0, 8)}
-                                        </span>
-                                        <span className="text-[10px] text-ink-subtle">
-                                            {new Date(c.placed_at).toLocaleDateString('en-IN', {
-                                                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-                                            })}
-                                        </span>
+                    {cancelled.length === 0 ? (
+                        <div className="px-5 py-10 text-center text-sm text-ink-subtle">
+                            No cancellations in the last 30 days — great work!
+                        </div>
+                    ) : (
+                        <div className="divide-y divide-hairline">
+                            {cancelled.slice(0, 10).map(c => (
+                                <div key={c.id} className="px-5 py-3 flex items-start gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-red-50 border border-red-100 flex items-center justify-center shrink-0 mt-0.5">
+                                        <XCircle size={13} className="text-red-400" />
                                     </div>
-                                    {c.note ? (
-                                        <p className="text-sm text-ink mt-0.5">&quot;{c.note}&quot;</p>
-                                    ) : (
-                                        <p className="text-xs text-ink-subtle mt-0.5 italic">No reason provided</p>
-                                    )}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-mono text-ink-muted uppercase">
+                                                #{c.id.substring(0, 8)}
+                                            </span>
+                                            <span className="text-[10px] text-ink-subtle">
+                                                {formatDateTime(c.placed_at)}
+                                            </span>
+                                        </div>
+                                        {c.note ? (
+                                            <p className="text-sm text-ink mt-0.5">&quot;{c.note}&quot;</p>
+                                        ) : (
+                                            <p className="text-xs text-ink-subtle mt-0.5 italic">No reason provided</p>
+                                        )}
+                                    </div>
+                                    <span className="text-sm font-semibold text-ink shrink-0 tabular-nums">{fmt(c.total)}</span>
                                 </div>
-                                <span className="text-sm font-semibold text-ink shrink-0 tabular-nums">{fmt(c.total)}</span>
-                            </div>
-                        ))}
-                        {cancelled.length > 10 && (
-                            <div className="px-5 py-2.5 text-xs text-ink-subtle text-center">
-                                +{cancelled.length - 10} more cancellations
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
+                            ))}
+                            {cancelled.length > 10 && (
+                                <div className="px-5 py-2.5 text-xs text-ink-subtle text-center">
+                                    +{cancelled.length - 10} more cancellations
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Customer feedback */}
-            {kpis.ratingCount > 0 && (
+            {irdSyncEnabled && kpis.ratingCount > 0 && (
                 <div className="bg-surface rounded-card border border-hairline shadow-[0_8px_24px_rgba(0,0,0,0.04)] overflow-hidden">
                     <div className="px-6 py-5 border-b border-hairline flex items-center justify-between bg-surface-muted/30">
                         <div className="flex items-center gap-2">
@@ -455,7 +566,7 @@ export default function AnalyticsDashboard({ daily, hourly, topItems, cancelled,
                                             <p className="text-sm text-ink">&quot;{f.comment}&quot;</p>
                                             <p className="text-[10px] text-ink-subtle mt-0.5">
                                                 {'★'.repeat(f.rating)}{'☆'.repeat(5 - f.rating)}
-                                                {' · '}{new Date(f.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                                {' · '}{formatDate(f.created_at)}
                                             </p>
                                         </li>
                                     ))}

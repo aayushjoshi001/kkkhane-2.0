@@ -5,6 +5,7 @@ import { BookOpen } from 'lucide-react'
 import { DataTable, PlaceholderChart, SectionTabs, type SectionTab } from '@/components/finance'
 import { formatCurrency } from '@/lib/utils'
 import type { DayBookEntry } from '@/types/database'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 
 function formatDescription(desc: string): string {
     if (!desc) return ''
@@ -26,6 +27,7 @@ function formatDescription(desc: string): string {
 
 export default function BooksManager({ entries }: { entries: DayBookEntry[] }) {
     const [tab, setTab] = useState('daybook')
+    const formatDate = useDateFormatter()
 
     const cashEntries = entries.filter((e) => e.type === 'cash_in' || e.type === 'cash_out')
     const bankEntries = entries.filter((e) => e.type === 'bank_in' || e.type === 'bank_out')
@@ -48,7 +50,7 @@ export default function BooksManager({ entries }: { entries: DayBookEntry[] }) {
             {(tab === 'daybook' || tab === 'cashbook' || tab === 'bankbook') && (
                 <DataTable
                     columns={[
-                        { key: 'created_at', header: 'Date', render: (e) => new Date(e.created_at).toLocaleString(), sortValue: (e) => e.created_at },
+                        { key: 'created_at', header: 'Date', render: (e) => formatDate(e.created_at), sortValue: (e) => e.created_at },
                         { key: 'type', header: 'Type', render: (e) => e.type },
                         { key: 'category', header: 'Category', render: (e) => e.category },
                         { key: 'description', header: 'Description', render: (e) => formatDescription(e.description) },

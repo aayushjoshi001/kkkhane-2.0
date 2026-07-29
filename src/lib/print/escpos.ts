@@ -38,6 +38,53 @@ function truncateToByteWidth(str: string, maxBytes: number): string {
     return result
 }
 
+/** Split a string into array of lines where each line's UTF-8 byte length <= maxBytes. */
+export function wrapTextToByteWidth(str: string, maxBytes: number): string[] {
+    if (!str || maxBytes <= 0) return ['']
+    if (byteLength(str) <= maxBytes) return [str]
+
+    const words = str.split(' ')
+    const lines: string[] = []
+    let current = ''
+
+    for (const word of words) {
+        if (!word) continue
+        if (!current) {
+            if (byteLength(word) <= maxBytes) {
+                current = word
+            } else {
+                let remaining = word
+                while (byteLength(remaining) > maxBytes) {
+                    const chunk = truncateToByteWidth(remaining, maxBytes)
+                    lines.push(chunk)
+                    remaining = remaining.slice(chunk.length)
+                }
+                current = remaining
+            }
+        } else {
+            const candidate = `${current} ${word}`
+            if (byteLength(candidate) <= maxBytes) {
+                current = candidate
+            } else {
+                lines.push(current)
+                if (byteLength(word) <= maxBytes) {
+                    current = word
+                } else {
+                    let remaining = word
+                    while (byteLength(remaining) > maxBytes) {
+                        const chunk = truncateToByteWidth(remaining, maxBytes)
+                        lines.push(chunk)
+                        remaining = remaining.slice(chunk.length)
+                    }
+                    current = remaining
+                }
+            }
+        }
+    }
+    if (current) lines.push(current)
+    return lines.length > 0 ? lines : ['']
+}
+
 export class EscPosBuilder {
     private bytes: number[] = []
 
@@ -113,6 +160,51 @@ export class EscPosBuilder {
             return text + ' '.repeat(pad)
         })
         return this.line(parts.join(''))
+    }
+
+    /**
+     * Prints a multi-column row where the first column (e.g. description/dish name)
+     * wraps across multiple lines if it exceeds its width, while subsequent
+     * columns (QTY, RATE, AMT) are printed on the first line and padded on wrapped lines.
+     */
+    wrappedColumns(cols: { text: string; width: number; align?: Align }[]): this {
+        if (cols.length === 0) return this
+        const descCol = cols[0]
+        const descLines = wrapTextToByteWidth(descCol.text, descCol.width)
+
+        // First line: descLines[0] + all remaining columns
+        const firstLineCols = [
+            { text: descLines[0] || '', width: descCol.width, align: descCol.align },
+            ...cols.slice(1)
+        ]
+        this.columns(firstLineCols)
+
+        // Subsequent lines: remaining descLines + blank columns
+        for (let i = 1; i < descLines.length; i++) {
+            const subLineCols = [
+                { text: descLines[i], width: descCol.width, align: descCol.align },
+                ...cols.slice(1).map(c => ({ text: '', width: c.width, align: c.align }))
+            ]
+            this.columns(subLineCols)
+        }
+
+        return this
+    }
+
+    /**
+     * Print a monochrome raster image via GS v 0 — the standard Epson raster
+     * command, with the broadest support across generic 80mm clone printers.
+     * `data` must be row-major, MSB-first packed 1bpp bits (1 = ink), with
+     * `data.length === widthBytes * heightDots`.
+     */
+    image({ widthBytes, heightDots, data }: { widthBytes: number; heightDots: number; data: Uint8Array }): this {
+        this.bytes.push(
+            GS, 0x76, 0x30, 0x00,
+            widthBytes & 0xff, (widthBytes >> 8) & 0xff,
+            heightDots & 0xff, (heightDots >> 8) & 0xff,
+        )
+        for (let i = 0; i < data.length; i++) this.bytes.push(data[i])
+        return this
     }
 
     /** Feed a few lines then cut the paper. Call last. */

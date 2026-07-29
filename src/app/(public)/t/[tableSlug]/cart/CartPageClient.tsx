@@ -193,7 +193,7 @@ export default function CartPageClient({ params }: { params: { tableSlug: string
     const editTargetItem = activeEditCartKey ? items.find(i => getCartItemKey(i) === activeEditCartKey) : null
 
     return (
-        <div className="min-h-screen bg-surface-muted pb-36 text-ink font-sans flex flex-col justify-between">
+        <div className="min-h-screen bg-surface-muted pb-64 text-ink font-sans flex flex-col justify-between">
             <div>
                 {/* Header */}
                 <header className="bg-surface border-b border-hairline sticky top-0 z-20 px-4 py-3">
@@ -333,8 +333,7 @@ export default function CartPageClient({ params }: { params: { tableSlug: string
 
             {/* Sticky Footer PLACE ORDER Bar — shows the amount inline */}
             <div
-                className="fixed bottom-0 left-0 right-0 z-40 bg-surface/95 backdrop-blur-md shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-4 pt-3 border-t border-hairline"
-                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 16px) + 12px)' }}
+                className="fixed bottom-[88px] left-0 right-0 z-30 bg-surface/95 backdrop-blur-md shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-4 py-4 border-t border-hairline"
             >
                 <div className="max-w-2xl mx-auto">
                     <button

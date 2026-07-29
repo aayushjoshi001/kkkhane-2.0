@@ -1,18 +1,18 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Image from 'next/image'
-import Logo from '@/components/shared/Logo'
 import TakeoutForm from '@/components/customer/TakeoutForm'
 import ActiveOrderPill from '@/components/customer/ActiveOrderPill'
 import { useCartStore } from '@/lib/stores/cart'
-import { ShoppingBag, UserCircle, Search, X, UtensilsCrossed } from 'lucide-react'
+import { ShoppingBag } from 'lucide-react'
 import { TranslationProvider, useTranslation } from '@/lib/contexts/TranslationContext'
 import { FeatureProvider, useCurrency } from '@/lib/contexts/FeatureContext'
 import type { Settings, MenuItem } from '@/types/database'
-import LanguageSwitcher from '@/components/customer/LanguageSwitcher'
 import MenuItemCard from '@/components/customer/MenuItemCard'
 import CustomerProfileSheet from '@/components/customer/CustomerProfileSheet'
+import CustomerMenuHeader from '@/components/customer/CustomerMenuHeader'
+import StickyBottomBar from '@/components/customer/StickyBottomBar'
+import { matchesMenuSearch } from '@/lib/utils'
 
 interface Category { id: string; name: string; sort_order: number }
 interface Restaurant { id: string; name: string; slug: string; description: string | null; logo_url: string | null }
@@ -26,42 +26,6 @@ interface Props {
     translations: TranslationRow[]
     supportedLanguages: { code: string; name: string }[]
     features: Settings['features_v2'] | null
-}
-
-const PROMOS = [
-    { id: 1, text: "🔥 Flat 10% off on all items! Use code: FLAT10", bg: "from-orange-500 to-amber-500", textCol: "text-white" },
-    { id: 2, text: "🎉 Free drink on orders above Rs. 1,000!", bg: "from-red-500 to-rose-500", textCol: "text-white" },
-    { id: 3, text: "✨ Happy hour combo deals live now!", bg: "from-indigo-600 to-purple-600", textCol: "text-white" }
-]
-
-function PromoBanner() {
-    const [current, setCurrent] = useState(0)
-    useEffect(() => {
-        const timer = setInterval(() => {
-            setCurrent(c => (c + 1) % PROMOS.length)
-        }, 4000)
-        return () => clearInterval(timer)
-    }, [])
-
-    return (
-        <div className="h-16 relative w-full overflow-hidden flex items-center justify-center">
-            {PROMOS.map((p, idx) => (
-                <div
-                    key={p.id}
-                    className={`absolute inset-0 flex flex-col items-center justify-center px-6 text-center transition-all duration-700 ${
-                        idx === current
-                            ? 'opacity-100 translate-y-0 scale-100'
-                            : 'opacity-0 -translate-y-4 scale-95 pointer-events-none'
-                    }`}
-                >
-                    <span className="text-[10px] text-orange-300 uppercase tracking-widest font-black mb-1 drop-shadow-sm">Featured Offer</span>
-                    <p className="text-white text-xs font-black drop-shadow-md leading-snug max-w-[280px] uppercase tracking-wide">
-                        {p.text}
-                    </p>
-                </div>
-            ))}
-        </div>
-    )
 }
 
 export default function TakeoutPageClient({ restaurant, categories, menuItems, comboItems, translations, supportedLanguages, features }: Props) {
@@ -85,9 +49,19 @@ function TakeoutMenu({ restaurant, categories, menuItems, comboItems }: {
     const [searchQuery, setSearchQuery] = useState('')
     const items = useCartStore(s => s.items)
     const totalAmount = useCartStore(s => s.totalAmount)
+    const setSession = useCartStore(s => s.setSession)
+    const clearCart = useCartStore(s => s.clearCart)
+
+    // Scope the cart to THIS restaurant's takeout. The cart store is shared with
+    // dine-in and other restaurants; setSession clears it when the scope key
+    // changes (so a leftover dine-in cart can't bleed into a staff takeaway) and
+    // preserves it when re-entering the same takeout page.
+    useEffect(() => {
+        setSession(`takeout:${restaurant.id}`, restaurant.slug, restaurant.id)
+    }, [restaurant.id, restaurant.slug, setSession])
 
     const filteredItems = (activeCategory ? menuItems.filter(i => i.category_id === activeCategory) : menuItems)
-        .filter(i => !searchQuery || i.name.toLowerCase().includes(searchQuery.toLowerCase()))
+        .filter(i => matchesMenuSearch(i, searchQuery))
 
     if (showCheckout) {
         return (
@@ -104,77 +78,15 @@ function TakeoutMenu({ restaurant, categories, menuItems, comboItems }: {
     return (
         <div className="min-h-screen bg-surface-muted">
             <ActiveOrderPill />
-            {/* Sticky header — branded and curved bottom matching Dine-in wireframe */}
-            <header className="relative bg-brand-500 text-white rounded-b-[36px] sticky top-0 z-40 pb-6 pt-2 shadow-md flex flex-col gap-2">
-                <div className="absolute inset-x-0 bottom-0 top-[48px] rounded-b-[36px] overflow-hidden z-0">
-                    <div 
-                        className="absolute inset-0 bg-cover bg-center filter brightness-[0.55] scale-105"
-                        style={{ backgroundImage: `url('https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=600&auto=format&fit=crop')` }}
-                    />
-                    <div className="absolute inset-0 bg-brand-500/15 mix-blend-multiply" />
-                    <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/20 to-black/60" />
-                </div>
-
-                <div className="max-w-2xl mx-auto w-full px-4 flex items-center justify-between gap-3 h-10 relative z-10">
-                    <div className="flex items-center gap-2 shrink-0">
-                        {restaurant.logo_url ? (
-                            <div className="relative w-8 h-8 rounded-full overflow-hidden bg-surface shrink-0 border border-white/25 shadow-sm">
-                                <Image src={restaurant.logo_url} alt={restaurant.name} fill className="object-cover" sizes="32px" />
-                            </div>
-                        ) : (
-                            <div className="w-8 h-8 rounded-full bg-surface/10 flex items-center justify-center shrink-0 border border-white/25 shadow-sm">
-                                <UtensilsCrossed size={14} className="text-white" />
-                            </div>
-                        )}
-                        <div className="flex flex-col">
-                            <span className="text-[8px] text-white/70 uppercase font-black tracking-wide leading-none">Takeout</span>
-                            <span className="text-xs font-black tracking-tight truncate max-w-[120px] leading-tight">
-                                {restaurant.name}
-                            </span>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-3 shrink-0 pr-1">
-                        <LanguageSwitcher />
-                        <button 
-                            onClick={() => setShowProfile(true)}
-                            className="w-8 h-8 rounded-full bg-surface/10 hover:bg-surface/20 flex items-center justify-center shrink-0 border border-white/25 shadow-sm transition-colors"
-                        >
-                            <UserCircle size={18} className="text-white" />
-                        </button>
-                        <div className="w-8 h-8 rounded-full bg-surface flex items-center justify-center shrink-0 border-2 border-white overflow-hidden relative shadow-sm">
-                            <Image src="/brand/kkkhane-k-logo.jpg" alt="kkkhane" fill className="object-cover scale-[1.45]" sizes="32px" />
-                        </div>
-                    </div>
-                </div>
-                
-                <div className="w-full text-center pb-1 relative z-10">
-                    <PromoBanner />
-                </div>
-
-                <div className="absolute left-1/2 -translate-x-1/2 bottom-0 translate-y-1/2 w-[85%] max-w-md z-30">
-                    <div className="relative shadow-md rounded-full overflow-hidden">
-                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <Search className="h-3.5 w-3.5 text-brand-500" />
-                        </div>
-                        <input
-                            type="text"
-                            placeholder="SEARCH FOR ITEM..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="block w-full pl-10 pr-10 py-2.5 text-[11px] border-0 rounded-full bg-brand-50 text-brand-900 placeholder-[#D68E65] font-extrabold focus:outline-none focus:ring-2 focus:ring-orange-300 focus:bg-surface transition-all text-center uppercase tracking-wider"
-                        />
-                        {searchQuery && (
-                            <button
-                                onClick={() => setSearchQuery('')}
-                                className="absolute inset-y-0 right-0 pr-4 flex items-center text-brand-500 hover:text-orange-700"
-                            >
-                                <X className="h-4 w-4 stroke-[3px]" />
-                            </button>
-                        )}
-                    </div>
-                </div>
-            </header>
+            <CustomerMenuHeader
+                logoUrl={restaurant.logo_url}
+                restaurantName={restaurant.name}
+                eyebrow="Takeout"
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                onProfileClick={() => setShowProfile(true)}
+                showLanguageSwitcher
+            />
 
             <CustomerProfileSheet 
                 isOpen={showProfile} 
@@ -215,15 +127,24 @@ function TakeoutMenu({ restaurant, categories, menuItems, comboItems }: {
                 </div>
             </div>
 
-            {/* Floating Cart Bar */}
+            {/* Floating Cart Bar — shown on every breakpoint. It used to be
+                md:hidden, which left desktop/tablet users (staff opening
+                "Manual Takeaway/Delivery", plus any desktop customer) with no way
+                to open the cart and place the order after adding items. On wider
+                screens it centers to a comfortable width instead of stretching. */}
             {items.length > 0 && (
-                <div className="fixed bottom-0 inset-x-0 bg-surface border-t border-hairline-strong p-4 md:hidden z-20">
+                <StickyBottomBar className="z-20" innerClassName="w-full md:max-w-md flex items-center gap-2">
+                    <button onClick={clearCart}
+                        title="Clear cart"
+                        className="shrink-0 border border-hairline-strong text-ink-muted py-3 px-4 rounded-xl font-medium hover:bg-surface-muted transition-colors">
+                        Clear
+                    </button>
                     <button onClick={() => setShowCheckout(true)}
-                        className="w-full bg-ink text-white py-3 rounded-xl font-medium flex items-center justify-center gap-2">
+                        className="flex-1 bg-ink text-white py-3 rounded-xl font-medium flex items-center justify-center gap-2">
                         <ShoppingBag size={18} />
                         Checkout ({items.reduce((s, i) => s + i.quantity, 0)} items) — {money(totalAmount())}
                     </button>
-                </div>
+                </StickyBottomBar>
             )}
         </div>
     )

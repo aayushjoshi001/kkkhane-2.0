@@ -6,6 +6,9 @@
 import { EscPosBuilder } from '../escpos'
 import type { KitchenOrder, KitchenOrderItem } from '@/components/kitchen/OrderQueue'
 import { STATION_META, itemsForStation, type StationKind } from '@/lib/stations'
+import { getKOTSourceLabel, getItemKOTDisplay } from '@/lib/utils'
+import { appendBrandFooter } from './brandFooter'
+import { formatTime } from '@/lib/calendar'
 
 export function buildStationTicket(
     order: KitchenOrder,
@@ -19,10 +22,7 @@ export function buildStationTicket(
     b.line(meta.ticketTitle)
     b.divider()
 
-    const table = order.sessions?.tables?.label
-    const isTakeout = order.order_type === 'takeout'
-    const isDelivery = order.order_type === 'delivery'
-    const sourceLabel = isTakeout ? 'TAKEAWAY' : isDelivery ? 'DELIVERY' : table ? `TABLE ${table}` : 'ORDER'
+    const sourceLabel = getKOTSourceLabel(order).toUpperCase()
 
     b.size({ doubleHeight: true, doubleWidth: true }).bold(true)
     b.line(sourceLabel)
@@ -30,15 +30,16 @@ export function buildStationTicket(
 
     b.align('left')
     b.line(`Order: #${order.id.slice(0, 8).toUpperCase()}`)
-    b.line(`Time: ${new Date(order.placed_at).toLocaleTimeString()}`)
+    b.line(`Time: ${formatTime(order.placed_at)}`)
     b.divider()
 
     const items = itemsForStation<KitchenOrderItem>(order.order_items, station)
     for (const item of items) {
+        const { name, note } = getItemKOTDisplay(item, order.order_type === 'takeout' && !order.bookings)
         b.bold(true)
-        b.line(`${item.quantity} x ${item.menu_items?.name || 'Item'}`)
+        b.line(`${item.quantity} x ${name}`)
         b.bold(false)
-        if (item.special_request) b.line(`   Note: ${item.special_request}`)
+        if (note) b.line(`   Note: ${note}`)
         for (const mod of item.order_item_modifiers || []) {
             if (mod.modifier_name) b.line(`   + ${mod.modifier_name}`)
         }
@@ -51,6 +52,8 @@ export function buildStationTicket(
 
     b.divider()
     b.line(station === 'bar' ? 'Bartender: __________' : 'Chef: ______________')
+
+    appendBrandFooter(b)
 
     return b.cut().build()
 }

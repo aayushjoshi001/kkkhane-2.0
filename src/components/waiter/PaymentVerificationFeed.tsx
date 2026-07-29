@@ -11,6 +11,7 @@ import FeedSection from '@/components/ui/FeedSection'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
+import { useServerState } from '@/lib/hooks/useServerState'
 
 export interface PaymentClaim {
     id: string
@@ -45,7 +46,7 @@ export default function PaymentVerificationFeed({
     /** Reports the live count of pending claims so a parent can adjust its own empty state. */
     onPendingCountChange?: (count: number) => void
 }) {
-    const [claims, setClaims] = useState<PaymentClaim[]>(initialClaims)
+    const [claims, setClaims] = useServerState<PaymentClaim[]>(initialClaims)
     const money = useCurrency()
     const [loading, setLoading] = useState<string | null>(null)
 
@@ -107,19 +108,19 @@ export default function PaymentVerificationFeed({
                         <span className="text-caption text-ink-subtle">{timeAgo(claim.created_at)}</span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-small">
-                        <div className="flex items-baseline gap-1.5">
-                            <span className="text-caption text-ink-subtle">Amount</span>
-                            <span className="font-bold text-ink tabular">{money(claim.amount)}</span>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-small min-w-0">
+                        <div className="flex items-baseline gap-1.5 min-w-0">
+                            <span className="text-caption text-ink-subtle shrink-0">Amount</span>
+                            <span className="font-bold text-ink tabular truncate">{money(claim.amount)}</span>
                         </div>
-                        <div className="flex items-baseline gap-1.5">
-                            <span className="text-caption text-ink-subtle">Via</span>
-                            <span className="font-medium text-ink capitalize">{claim.payment_method}</span>
+                        <div className="flex items-baseline gap-1.5 min-w-0">
+                            <span className="text-caption text-ink-subtle shrink-0">Via</span>
+                            <span className="font-medium text-ink capitalize truncate">{claim.payment_method}</span>
                         </div>
                         {claim.reference_code && (
-                            <div className="flex items-baseline gap-1.5 col-span-2">
-                                <span className="text-caption text-ink-subtle">Ref</span>
-                                <span className="font-mono text-caption font-medium text-ink">{claim.reference_code}</span>
+                            <div className="flex items-baseline gap-1.5 col-span-2 min-w-0">
+                                <span className="text-caption text-ink-subtle shrink-0">Ref</span>
+                                <span className="font-mono text-caption font-medium text-ink truncate">{claim.reference_code}</span>
                             </div>
                         )}
                     </div>
@@ -169,9 +170,9 @@ export default function PaymentVerificationFeed({
                             const status = claimStatus(claim)
                             return (
                                 <div key={claim.id} className="rounded-[var(--r-md)] border border-hairline bg-surface-muted/50 px-3 py-2.5 flex items-center justify-between text-small">
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-semibold text-ink tabular">{money(claim.amount)}</span>
-                                        {claim.reference_code && <span className="text-caption text-ink-subtle">· {claim.reference_code}</span>}
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <span className="font-semibold text-ink tabular truncate">{money(claim.amount)}</span>
+                                        {claim.reference_code && <span className="text-caption text-ink-subtle truncate">· {claim.reference_code}</span>}
                                     </div>
                                     <StatusBadge status={status} dot={false} />
                                 </div>

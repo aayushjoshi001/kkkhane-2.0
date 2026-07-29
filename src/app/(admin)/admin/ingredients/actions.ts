@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { sendLowStockAlertEmail } from '@/lib/email'
+import { requireRole } from '@/lib/auth'
 
 /**
  * Checks for low-stock ingredients and emails the manager.
@@ -59,6 +60,7 @@ export async function checkAndAlertLowStock(restaurantId: string): Promise<void>
 }
 
 export async function getIngredientsAction(restaurantId: string) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
     const { data } = await supabase
         .from('ingredients')
@@ -78,6 +80,7 @@ export async function createIngredientAction(input: {
     supplier?: string | null
     category_id?: string | null
 }) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
     const { data, error } = await supabase
         .from('ingredients')
@@ -90,6 +93,7 @@ export async function createIngredientAction(input: {
 }
 
 export async function updateIngredientAction(id: string, updates: Record<string, unknown>) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
     const { error } = await supabase.from('ingredients').update(updates).eq('id', id)
     if (error) return { error: error.message }
@@ -101,7 +105,9 @@ export async function createIngredientCategoryAction(input: {
     restaurant_id: string
     name: string
     description?: string
+    parent_id?: string | null
 }) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
     const { data, error } = await supabase
         .from('expense_categories')
@@ -109,6 +115,7 @@ export async function createIngredientCategoryAction(input: {
             restaurant_id: input.restaurant_id,
             name: input.name.trim(),
             description: input.description?.trim() || null,
+            parent_id: input.parent_id || null,
             is_active: true,
             is_stock_category: true
         })
@@ -125,6 +132,7 @@ export async function createIngredientSupplierAction(input: {
     address?: string
     category_id?: string | null
 }) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
     const { data, error } = await supabase
         .from('suppliers')
@@ -149,6 +157,7 @@ export async function addStockMovementAction(input: {
     notes?: string
     performed_by?: string | null
 }) {
+    await requireRole('manager', 'super_admin', 'cashier')
     const supabase = await createAdminClient()
 
     // Insert movement record
@@ -173,6 +182,7 @@ export async function addStockMovementAction(input: {
 }
 
 export async function deleteIngredientAction(id: string) {
+    await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
     const { error } = await supabase.from('ingredients').delete().eq('id', id)
     if (error) return { error: error.message }

@@ -7,6 +7,7 @@ import type { Settings } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import { updateThemeAction, updateBrandingAction } from '@/app/(admin)/admin/theme/actions'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import Select from '@/components/ui/Select'
 
 // Mirror the font/radius mapping used by the root layout (src/app/layout.tsx)
 // so the live preview matches exactly what customers will see once published.
@@ -158,7 +159,7 @@ export default function ThemeCustomizer({
                     <button
                         onClick={handleSave}
                         disabled={isSaving}
-                        className="bg-white text-black hover:bg-white/90 px-6 py-3 rounded-full font-bold flex items-center gap-2 hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50"
+                        className="bg-surface text-black hover:bg-surface/90 px-6 py-3 rounded-full font-bold flex items-center gap-2 hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50"
                     >
                         <Save size={18} />
                         {isSaving ? 'Saving...' : 'Publish Changes'}
@@ -267,7 +268,7 @@ export default function ThemeCustomizer({
                     <div className="space-y-5">
                         <div>
                             <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Heading Font Family</label>
-                            <select
+                            <Select
                                 value={settings.theme?.fontFamily || "Inter"}
                                 onChange={(e) => updateTheme('fontFamily', e.target.value)}
                                 className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink p-3 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all cursor-pointer"
@@ -277,7 +278,7 @@ export default function ThemeCustomizer({
                                 <option value="Roboto">Roboto (Geometric)</option>
                                 <option value="Lato">Lato (Tech)</option>
                                 <option value="Outfit">Outfit (Contemporary)</option>
-                            </select>
+                            </Select>
                         </div>
 
                         <div>
@@ -296,14 +297,14 @@ export default function ThemeCustomizer({
 
                         <div>
                             <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Menu Layout</label>
-                            <select
+                            <Select
                                 value={settings.theme?.menuLayout || 'grid'}
                                 onChange={(e) => updateTheme('menuLayout', e.target.value)}
                                 className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink p-3 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all cursor-pointer"
                             >
                                 <option value="grid">Grid (cards side by side)</option>
                                 <option value="list">List (full-width rows)</option>
-                            </select>
+                            </Select>
                         </div>
                     </div>
                 </div>

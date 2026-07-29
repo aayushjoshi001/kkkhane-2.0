@@ -3,6 +3,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import type { Settings } from '@/types/database'
 import { formatCurrency } from '@/lib/utils'
+import { useDates } from '@/lib/contexts/CalendarContext'
 import type { BusinessMode } from '@/lib/businessMode'
 
 type Features = Settings['features_v2']
@@ -27,13 +28,31 @@ const defaultFeatures: Features = {
     bsDateEnabled: false,
     feedbackEnabled: true,
     financeEnabled: false,
+    printInvoiceEnabled: true,
+    generateInvoiceEnabled: true,
+    staffManagementEnabled: true,
+    tableManagementEnabled: true,
+    irdSyncEnabled: false,
+    kotEnabled: false,
+    kdsEnabled: true,
 }
 
 const FeatureContext = createContext<Features>(defaultFeatures)
 
 export function FeatureProvider({ features, children }: { features: Features | null; children: ReactNode }) {
+    const rawFeatures = features ?? defaultFeatures
+    const isIrd = !!rawFeatures.irdSyncEnabled
+    const resolvedFeatures: Features = {
+        ...rawFeatures,
+        financeEnabled: isIrd ? true : (rawFeatures.financeEnabled ?? false),
+        generateInvoiceEnabled: isIrd ? true : (rawFeatures.generateInvoiceEnabled ?? true),
+        printInvoiceEnabled: isIrd ? true : (rawFeatures.printInvoiceEnabled ?? true),
+        vatEnabled: isIrd ? rawFeatures.vatEnabled : false,
+        kdsEnabled: rawFeatures.kotEnabled ? false : (rawFeatures.kdsEnabled ?? true),
+    }
+
     return (
-        <FeatureContext.Provider value={features ?? defaultFeatures}>
+        <FeatureContext.Provider value={resolvedFeatures}>
             {children}
         </FeatureContext.Provider>
     )
@@ -49,7 +68,25 @@ export function useFeatures(): Features {
  */
 export function useFeatureEnabled(key: keyof Omit<Features, 'defaultTaxRate' | 'currency' | 'currencySymbol'>): boolean {
     const features = useFeatures()
-    return !!features[key]
+    const val = features[key]
+    if (val === undefined) {
+        const defaultTrueKeys: string[] = [
+            'promosEnabled',
+            'feedbackEnabled',
+            'dineInEnabled',
+            'serviceRequestsEnabled',
+            'splitBillingEnabled',
+            'printInvoiceEnabled',
+            'generateInvoiceEnabled',
+            'staffManagementEnabled',
+            'tableManagementEnabled',
+            'manualEntryEnabled',
+            'printBillEnabled',
+            'showInvoiceEnabled'
+        ]
+        return defaultTrueKeys.includes(key)
+    }
+    return !!val
 }
 
 /**
@@ -67,6 +104,19 @@ export function useCurrency(): (amount: number) => string {
         () => (amount: number) => formatCurrency(amount, currency, currencySymbol),
         [currency, currencySymbol],
     )
+}
+
+/**
+ * @deprecated Prefer `useDates()` from `@/lib/contexts/CalendarContext`, which
+ * also gives you `formatDateTime` and `formatDateShort` in the same calendar.
+ *
+ * Kept as a thin alias so the call sites that already use it keep working. It
+ * used to hang off the per-restaurant "Bikram Sambat Date" flag and appended BS
+ * in brackets after AD; dates now lead with Bikram Sambat by default and follow
+ * each user's own calendar toggle instead.
+ */
+export function useDateFormatter(): (date: string | Date) => string {
+    return useDates().formatDate
 }
 
 /**

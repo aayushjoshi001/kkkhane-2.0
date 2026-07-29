@@ -7,12 +7,14 @@ import { DataTable, FormModal, FormInput, FormSelect, SectionTabs, type SectionT
 import Button from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
 import { formatCurrency } from '@/lib/utils'
+import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 import type { BankAccount, BankTransaction, BankReconciliation, BankAccountType, WalletProvider, BankTransactionType } from '@/types/database'
 import {
     createBankAccountAction, updateBankAccountAction, deleteBankAccountAction,
     createBankTransactionAction, deleteBankTransactionAction,
     createBankReconciliationAction, deleteBankReconciliationAction,
 } from './actions'
+import { useConfirmStore } from '@/lib/stores/confirm'
 
 const WALLET_PROVIDERS: { value: WalletProvider; label: string }[] = [
     { value: 'esewa', label: 'eSewa' },
@@ -37,7 +39,9 @@ export default function BankManager({
     initialTransactions: BankTransaction[]
     initialReconciliations: BankReconciliation[]
 }) {
+    const { confirm } = useConfirmStore()
     const [tab, setTab] = useState('accounts')
+    const formatDate = useDateFormatter()
     const [accounts, setAccounts] = useState(initialAccounts)
     const [transactions, setTransactions] = useState(initialTransactions)
     const [reconciliations, setReconciliations] = useState(initialReconciliations)
@@ -59,6 +63,7 @@ export default function BankManager({
 }
 
 function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAccounts: (fn: (prev: BankAccount[]) => BankAccount[]) => void }) {
+    const { confirm } = useConfirmStore()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ name: '', account_type: 'bank' as BankAccountType, wallet_provider: '', bank_name: '', account_number: '', opening_balance: '0', ownership_type: '' as 'company' | 'personal' | '' })
@@ -95,13 +100,9 @@ function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAc
         setAccounts((prev) => prev.map((a) => (a.id === account.id ? { ...a, is_active: !a.is_active } : a)))
     }
 
-    async function handleDelete(id: string) {
-        if (!confirm('Delete this bank account?')) return
-        const result = await deleteBankAccountAction(id)
-        if (result.error) { toast.error(result.error); return }
-        setAccounts((prev) => prev.filter((a) => a.id !== id))
-        toast.success('Bank account deleted')
-    }
+    const [deactivateId, setDeactivateId] = useState<string | null>(null)
+    const [deactivateReason, setDeactivateReason] = useState('')
+    const [deactivating, setDeactivating] = useState(false)
 
     return (
         <div className="space-y-3">
@@ -141,7 +142,7 @@ function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAc
                 renderActions={(a) => (
                     <div className="flex items-center justify-end gap-1.5">
                         <Button size="sm" variant="ghost" onClick={() => toggleActive(a)}>{a.is_active ? 'Deactivate' : 'Activate'}</Button>
-                        <Button size="sm" variant="ghost" icon={Trash2} onClick={() => handleDelete(a.id)} />
+                        <Button size="sm" variant="ghost" icon={Trash2} onClick={() => setDeactivateId(a.id)} />
                     </div>
                 )}
             />
@@ -169,6 +170,51 @@ function AccountsTab({ accounts, setAccounts }: { accounts: BankAccount[]; setAc
                 )}
                 <FormInput label="Opening Balance" type="number" min="0" step="0.01" value={form.opening_balance} onChange={(e) => setForm((f) => ({ ...f, opening_balance: e.target.value }))} />
             </FormModal>
+
+            <FormModal 
+                open={!!deactivateId} 
+                onClose={() => { setDeactivateId(null); setDeactivateReason(''); }} 
+                title="Delete Bank Account" 
+                onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!deactivateReason.trim()) {
+                        toast.error('Please enter a reason/description for deletion.');
+                        return;
+                    }
+                    setDeactivating(true);
+                    const result = await deleteBankAccountAction(deactivateId!, deactivateReason);
+                    setDeactivating(false);
+                    if (result.error) {
+                        toast.error(result.error);
+                        return;
+                    }
+                    setAccounts((prev) => prev.map((a) => {
+                        if (a.id === deactivateId) {
+                            const newBankName = result.updatedBankName || a.bank_name;
+                            return { ...a, is_active: false, deactivation_reason: deactivateReason, bank_name: newBankName };
+                        }
+                        return a;
+                    }));
+                    toast.success('Bank account deleted and marked as inactive');
+                    setDeactivateId(null);
+                    setDeactivateReason('');
+                }}
+                submitting={deactivating}
+            >
+                <div className="space-y-4">
+                    <p className="text-sm text-ink-subtle leading-relaxed">
+                        Are you sure you want to delete this bank account? 
+                        Historical transactions will remain saved in the system, but no further transactions can be made.
+                    </p>
+                    <FormInput 
+                        label="Reason / Description for Deactivation" 
+                        required 
+                        value={deactivateReason} 
+                        onChange={(e) => setDeactivateReason(e.target.value)} 
+                        placeholder="e.g. Account closed at the bank branch / switched to a new QR provider" 
+                    />
+                </div>
+            </FormModal>
         </div>
     )
 }
@@ -182,6 +228,8 @@ function TransactionsTab({
     transactions: BankTransaction[]
     setTransactions: (fn: (prev: BankTransaction[]) => BankTransaction[]) => void
 }) {
+    const { confirm } = useConfirmStore()
+    const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ bank_account_id: '', type: 'deposit' as BankTransactionType, amount: '', description: '', counterparty_account_id: '' })
@@ -205,7 +253,8 @@ function TransactionsTab({
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this transaction?')) return
+        const ok = await confirm({ title: 'Delete this transaction?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteBankTransactionAction(id)
         if (result.error) { toast.error(result.error); return }
         setTransactions((prev) => prev.filter((t) => t.id !== id))
@@ -219,7 +268,7 @@ function TransactionsTab({
             </div>
             <DataTable
                 columns={[
-                    { key: 'created_at', header: 'Date', render: (t) => new Date(t.created_at).toLocaleString(), sortValue: (t) => t.created_at },
+                    { key: 'created_at', header: 'Date', render: (t) => formatDate(t.created_at), sortValue: (t) => t.created_at },
                     { key: 'account', header: 'Account', render: (t) => t.bank_accounts?.name || '—' },
                     { key: 'type', header: 'Type', render: (t) => TXN_TYPES.find((x) => x.value === t.type)?.label ?? t.type },
                     { key: 'description', header: 'Description', render: (t) => t.description },
@@ -265,6 +314,8 @@ function ReconciliationTab({
     reconciliations: BankReconciliation[]
     setReconciliations: (fn: (prev: BankReconciliation[]) => BankReconciliation[]) => void
 }) {
+    const { confirm } = useConfirmStore()
+    const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState({ bank_account_id: '', statement_date: '', statement_balance: '', book_balance: '', notes: '' })
@@ -288,7 +339,8 @@ function ReconciliationTab({
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this reconciliation?')) return
+        const ok = await confirm({ title: 'Delete this reconciliation?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
+        if (!ok) return
         const result = await deleteBankReconciliationAction(id)
         if (result.error) { toast.error(result.error); return }
         setReconciliations((prev) => prev.filter((r) => r.id !== id))
@@ -302,7 +354,7 @@ function ReconciliationTab({
             </div>
             <DataTable
                 columns={[
-                    { key: 'statement_date', header: 'Statement Date', render: (r) => new Date(r.statement_date).toLocaleDateString(), sortValue: (r) => r.statement_date },
+                    { key: 'statement_date', header: 'Statement Date', render: (r) => formatDate(r.statement_date), sortValue: (r) => r.statement_date },
                     { key: 'account', header: 'Account', render: (r) => r.bank_accounts?.name || '—' },
                     { key: 'statement_balance', header: 'Statement Balance', align: 'right', render: (r) => formatCurrency(r.statement_balance) },
                     { key: 'book_balance', header: 'Book Balance', align: 'right', render: (r) => (r.book_balance != null ? formatCurrency(r.book_balance) : '—') },

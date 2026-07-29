@@ -75,6 +75,7 @@ export async function createInvitationAction(input: { email: string; roleId: num
         .select('id')
         .eq('restaurant_id', currentUser.restaurantId)
         .eq('email', email)
+        .is('deleted_at', null) // A soft-deleted ex-staff member's email can be re-invited
         .maybeSingle()
 
     if (existingUser) {
@@ -97,6 +98,7 @@ export async function createInvitationAction(input: { email: string; roleId: num
         .select('id', { count: 'exact', head: true })
         .eq('restaurant_id', currentUser.restaurantId)
         .neq('role_id', 5)
+        .is('deleted_at', null)
 
     if ((staffCount || 0) >= maxStaff) {
         return { error: `Staff limit reached. Your ${tier} plan allows ${maxStaff} staff members.` }

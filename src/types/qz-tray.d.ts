@@ -36,12 +36,14 @@ declare module 'qz-tray' {
             getDefault(): Promise<string>
         }
         configs: {
-            create(printer: string, options?: PrintConfigOptions): PrintConfig
+            // A printer name (USB/OS queue) or a raw network socket target.
+            create(printer: string | { host: string; port: number }, options?: PrintConfigOptions): PrintConfig
         }
         print(config: PrintConfig | PrintConfig[], data: (PrintData | string)[]): Promise<void>
         security: {
             setCertificatePromise(handler: (resolve: (cert: string) => void, reject: (err: unknown) => void) => void): void
             setSignaturePromise(handler: (toSign: string) => (resolve: (sig: string) => void, reject: (err: unknown) => void) => void): void
+            setSignatureAlgorithm?(algorithm: 'SHA1' | 'SHA256' | 'SHA512'): void
         }
         api: {
             setPromiseType(factory: (resolver: (resolve: (v?: unknown) => void, reject: (err: unknown) => void) => void) => Promise<unknown>): void

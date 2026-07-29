@@ -1,5 +1,6 @@
 'use client'
 
+import { catchUpOnResubscribe } from '@/lib/realtime/channelCatchUp'
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -53,7 +54,39 @@ export default function SessionSync({ userId }: { userId: string }) {
                     router.replace('/login')
                 }
             )
-            .subscribe()
+            .subscribe(catchUpOnResubscribe(`user-sync-${userId}`, async () => {
+                // A deactivation or role change that landed while the socket was
+                // down would otherwise never be noticed — the account stays
+                // signed in with stale claims until the tab is closed.
+                const { data, error } = await supabase
+                    .from('users')
+                    .select('is_active')
+                    .eq('id', userId)
+                    .maybeSingle()
+
+                // Only ever sign out on a definite "this account is disabled".
+                // A failed query and a missing row both leave the session alone:
+                // this runs right after a reconnect, when a transient failure is
+                // most likely, and forcing a sign-out on one would kick every
+                // logged-in member of staff out over a momentary blip. A row
+                // that has genuinely been deleted is still caught by the DELETE
+                // handler above and by server-side auth on the next request.
+                if (error) {
+                    console.error(`[realtime] user-sync-${userId} catch-up failed`, error)
+                    return
+                }
+                if (data?.is_active === false) {
+                    await supabase.auth.signOut()
+                    router.replace('/login?deactivated=1')
+                    return
+                }
+                if (!data) return
+
+                // Role/restaurant may have moved; re-mint the claims and let the
+                // server decide where this user now belongs.
+                await supabase.auth.refreshSession()
+                router.refresh()
+            }))
 
         return () => {
             supabase.removeChannel(channel)

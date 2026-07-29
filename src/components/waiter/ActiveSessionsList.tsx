@@ -1,12 +1,12 @@
 'use client'
 
-import { useState } from 'react'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { Clock, ShoppingBag, UtensilsCrossed } from 'lucide-react'
 import OrderCard from '@/components/ui/OrderCard'
 import FeedSection from '@/components/ui/FeedSection'
 import { timeAgo } from '@/lib/utils'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
+import { useServerState } from '@/lib/hooks/useServerState'
 
 export interface ActiveTableEntry {
     tableId: string
@@ -24,7 +24,7 @@ interface Props {
 }
 
 export default function ActiveSessionsList({ initialEntries, tablesMap, restaurantId }: Props) {
-    const [entries, setEntries] = useState<ActiveTableEntry[]>(initialEntries)
+    const [entries, setEntries] = useServerState<ActiveTableEntry[]>(initialEntries)
     const money = useCurrency()
 
     useRestaurantTable(restaurantId, 'sessions', (payload) => {

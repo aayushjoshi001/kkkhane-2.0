@@ -25,8 +25,7 @@ export default function CartSummary({ sessionId, tableSlug }: { sessionId?: stri
     const lastImageUrl = lastItem?.imageUrl || null
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 z-40 pointer-events-none pb-4 animate-fade-in"
-             style={{ paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
+        <div className="fixed bottom-[96px] left-0 right-0 z-40 pointer-events-none animate-fade-in">
             <div className="max-w-md mx-auto px-4 pointer-events-auto">
                 <div 
                     className="flex items-center justify-between w-full px-4 py-3 rounded-2xl text-white shadow-lg shadow-orange-950/20"

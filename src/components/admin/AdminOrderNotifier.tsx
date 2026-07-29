@@ -32,7 +32,7 @@ export default function AdminOrderNotifier({ restaurantId }: { restaurantId: str
         toast.custom((t) => (
             <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-xs w-full bg-surface shadow-2xl rounded-xl px-4 py-3 flex items-start gap-3 border border-brand-200`}>
                 <span className="text-xl mt-0.5">🛎️</span>
-                <div className="min-w-0">
+                <div className="flex-1 min-w-0">
                     <p className="font-bold text-sm text-orange-700">New Order!</p>
                     <p className="text-xs text-ink-subtle mt-0.5 truncate">
                         {tableLabel ? `Table ${tableLabel}` : 'Takeout'} · {money(amount)}

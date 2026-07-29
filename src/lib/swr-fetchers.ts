@@ -58,6 +58,7 @@ export const fetchStaffData = async (restaurantId: string) => {
             `)
             .eq('restaurant_id', restaurantId)
             .neq('role_id', 5) // Exclude standard customers from the staff dashboard
+            .is('deleted_at', null)
             .order('created_at', { ascending: false }),
         supabase.from('departments').select('*').eq('restaurant_id', restaurantId).order('name', { ascending: true }),
         // Invitations, not `staff_invitations` — matches app/(admin)/admin/staff/page.tsx.
@@ -114,6 +115,6 @@ export const fetchPromoCodes = async (restaurantId: string) => {
 
 export const fetchReportsData = async (restaurantId: string) => {
     const supabase = createClient()
-    const { data } = await supabase.from('reports').select('*').eq('restaurant_id', restaurantId).order('created_at', { ascending: false })
+    const { data } = await supabase.from('eod_reports').select('*').eq('restaurant_id', restaurantId).order('report_date', { ascending: false }).limit(30)
     return data || []
 }

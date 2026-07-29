@@ -11,6 +11,8 @@ export type AuditAction =
     | 'order_cancelled'
     | 'order_confirmed'
     | 'order_rejected'
+    | 'order_items_confirmed'
+    | 'order_item_removed'
     | 'session_opened'
     | 'session_closed'
     | 'menu_item_toggled'
@@ -21,9 +23,19 @@ export type AuditAction =
     | 'shift_corrected'
     | 'report_generated'
     | 'booking_checked_out'
+    | 'booking_room_changed'
+    | 'booking_bill_combined'
+    | 'booking_bill_separated'
+    | 'booking_bill_settled'
+    | 'booking_room_departed'
+    | 'table_session_checked_out'
+    | 'order_checked_out'
     | 'financial_event_created'
     | 'financial_event_status_changed'
     | 'financial_event_retried'
+    | 'voucher_deleted'
+    | 'opening_balance_added'
+    | 'opening_balance_edited'
 
 async function getIp(): Promise<string | null> {
     try {

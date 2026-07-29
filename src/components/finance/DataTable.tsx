@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Search, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import EmptyState from '@/components/ui/EmptyState'
+import Select from '@/components/ui/Select'
 
 export interface DataTableColumn<T> {
     key: string
@@ -108,7 +109,7 @@ export default function DataTable<T>({
                         </div>
                     )}
                     {filters?.map((f) => (
-                        <select
+                        <Select
                             key={f.key}
                             value={activeFilters[f.key] ?? ''}
                             onChange={(e) => {
@@ -121,7 +122,7 @@ export default function DataTable<T>({
                             {f.options.map((o) => (
                                 <option key={o.value} value={o.value}>{o.label}</option>
                             ))}
-                        </select>
+                        </Select>
                     ))}
                 </div>
             )}

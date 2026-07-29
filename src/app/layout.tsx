@@ -5,8 +5,11 @@ import type { Viewport, Metadata } from 'next'
 import { createAdminClient } from '@/lib/supabase/server'
 import { unstable_cache } from 'next/cache'
 import { SerwistProvider } from '@serwist/turbopack/react'
+import { cookies } from 'next/headers'
+import { CalendarProvider } from '@/lib/contexts/CalendarContext'
+import { CALENDAR_COOKIE, parseCalendar } from '@/lib/calendar'
 import PwaInstallPrompt from '@/components/shared/PwaInstallPrompt'
-import PwaUpdatePrompt from '@/components/shared/PwaUpdatePrompt'
+import NumberInputWheelGuard from '@/components/shared/NumberInputWheelGuard'
 import Script from 'next/script'
 import './globals.css'
 
@@ -133,6 +136,10 @@ export default async function RootLayout({
   children: React.ReactNode
 }) {
   const theme = await getThemeConfig()
+  // Read here, in the server render, so server-rendered dates (dashboard,
+  // reports, ledgers) already use the right calendar and the client hydrates
+  // to identical text.
+  const calendar = parseCalendar((await cookies()).get(CALENDAR_COOKIE)?.value)
 
   return (
     <html lang="en" className="scroll-smooth" suppressHydrationWarning>
@@ -147,6 +154,7 @@ export default async function RootLayout({
         bg-canvas text-ink
         antialiased min-h-screen flex flex-col
       `}>
+        <CalendarProvider initial={calendar}>
         <SerwistProvider
           swUrl="/serwist/sw.js"
           disable={process.env.NODE_ENV === 'development'}
@@ -182,10 +190,12 @@ export default async function RootLayout({
           </div>
         </SerwistProvider>
         <PwaInstallPrompt />
-        <PwaUpdatePrompt />
+        {/* Keeps a stray scroll from stepping a focused amount field up or down */}
+        <NumberInputWheelGuard />
         {/* Global Overlays */}
         <Toaster
           position="top-center"
+          containerStyle={{ zIndex: 99999999 }}
           toastOptions={{
             duration: 3000,
             style: {
@@ -207,6 +217,7 @@ export default async function RootLayout({
           }}
         />
         <ConfirmModal />
+        </CalendarProvider>
       </body>
     </html>
   )

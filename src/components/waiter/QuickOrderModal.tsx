@@ -1,10 +1,14 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { createPortal } from 'react-dom'
-import { X, Search, Plus, Minus, Trash2, Loader2, ShoppingCart, Utensils, MessageSquare } from 'lucide-react'
-import { getStaffMenu, placeStaffOrder } from '@/app/(staff)/waiter/actions'
+import { X, Search, Plus, Minus, Trash2, Loader2, ShoppingCart, Utensils, MessageSquare, CheckCircle2, ArrowLeft } from 'lucide-react'
+import Modal from '@/components/ui/Modal'
+import { getStaffMenu, placeStaffOrder, placeRoomOrderDirect } from '@/app/(staff)/waiter/actions'
+import { createTakeoutOrder, createDeliveryOrder } from '@/app/api/takeout/actions'
 import { toast } from 'react-hot-toast'
+import Select from '@/components/ui/Select'
+
+import { matchesMenuSearch } from '@/lib/utils'
 
 interface Modifier {
     id: string
@@ -48,6 +52,9 @@ interface QuickOrderModalProps {
     tableName?: string
     restaurantId: string
     activeTables?: any[]
+    bookingId?: string
+    onSuccess?: (orderId: string) => void
+    isManualTakeoutDelivery?: boolean
 }
 
 interface CartItem {
@@ -59,6 +66,7 @@ interface CartItem {
     specialRequest: string
     variationId?: string
     variationName?: string
+    isPacking?: boolean
     modifiers: {
         modifierId: string
         name: string
@@ -72,20 +80,52 @@ export default function QuickOrderModal({
     sessionId,
     tableName,
     restaurantId,
-    activeTables
+    activeTables,
+    bookingId,
+    onSuccess,
+    isManualTakeoutDelivery = false
 }: QuickOrderModalProps) {
     const [mounted, setMounted] = useState(false)
     const [loading, setLoading] = useState(true)
     const [submitting, setSubmitting] = useState(false)
-    
+    // Goods handed straight over the counter — cigarettes, a bottle off the
+    // shelf. Nobody has to make them, so they must not queue to a station or
+    // print a ticket; the order is written finished. Billing is unaffected.
+    const [noKot, setNoKot] = useState(false)
+
     const [categories, setCategories] = useState<Category[]>([])
     const [menuItems, setMenuItems] = useState<any[]>([])
     
     const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all')
     const [searchQuery, setSearchQuery] = useState('')
     const [cart, setCart] = useState<CartItem[]>([])
+    const [showOutsideFoodModal, setShowOutsideFoodModal] = useState(false)
+    const [outsideFoodRows, setOutsideFoodRows] = useState<{ name: string; quantity: number; price: number; note: string }[]>([
+        { name: '', quantity: 1, price: 0, note: '' }
+    ])
     const [customerNote, setCustomerNote] = useState('')
     const [selectedSession, setSelectedSession] = useState<{ id: string; token: string; label: string } | null>(null)
+    const [showMobileCart, setShowMobileCart] = useState(false)
+    const [orderType, setOrderType] = useState<'dine_in' | 'takeout' | 'delivery'>(
+        isManualTakeoutDelivery ? 'takeout' : 'dine_in'
+    )
+
+    // Manual Takeaway/Delivery states
+    const [takeoutCustomerName, setTakeoutCustomerName] = useState('')
+    const [takeoutCustomerPhone, setTakeoutCustomerPhone] = useState('')
+    const [deliveryAddress, setDeliveryAddress] = useState('')
+
+    // Reset customer info on modal close or open
+    useEffect(() => {
+        if (!isOpen) {
+            setTakeoutCustomerName('')
+            setTakeoutCustomerPhone('')
+            setDeliveryAddress('')
+            setCart([])
+        } else {
+            setOrderType(isManualTakeoutDelivery ? 'takeout' : 'dine_in')
+        }
+    }, [isOpen, isManualTakeoutDelivery])
 
     // Modifier/Variation Configuration State
     const [configuringItem, setConfiguringItem] = useState<MenuItem | null>(null)
@@ -93,13 +133,27 @@ export default function QuickOrderModal({
     const [selectedModifiers, setSelectedModifiers] = useState<Record<string, Modifier[]>>({}) // groupId -> selected modifiers
     const [specialRequestInput, setSpecialRequestInput] = useState('')
 
+    // Shown after a successful placement so the cashier gets a clear, explicit
+    // confirmation instead of relying on a toast that disappears with the modal.
+    const [orderConfirmation, setOrderConfirmation] = useState<{
+        itemCount: number
+        total: number
+        label: string
+    } | null>(null)
+
+    // Shown BEFORE submission — an explicit "are you sure" step so a misclick
+    // on "Place Order" can't send a wrong order straight to the kitchen.
+    const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+
     useEffect(() => {
         setMounted(true)
     }, [])
 
     useEffect(() => {
         if (!isOpen) return
-        if (sessionId && tableName) {
+        if (bookingId) {
+            setSelectedSession(null)
+        } else if (sessionId && tableName) {
             setSelectedSession({ id: sessionId, token: sessionId, label: tableName })
         } else if (activeTables && activeTables.length > 0) {
             const firstActive = activeTables.find(t => t.activeSession)
@@ -115,7 +169,7 @@ export default function QuickOrderModal({
         } else {
             setSelectedSession(null)
         }
-    }, [isOpen, sessionId, tableName, activeTables])
+    }, [isOpen, sessionId, tableName, activeTables, bookingId])
 
     useEffect(() => {
         if (!isOpen || !restaurantId) return
@@ -138,7 +192,7 @@ export default function QuickOrderModal({
     const filteredItems = useMemo(() => {
         return menuItems.filter(item => {
             const matchesCategory = selectedCategoryId === 'all' || item.category_id === selectedCategoryId
-            const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase())
+            const matchesSearch = matchesMenuSearch(item, searchQuery)
             return matchesCategory && matchesSearch
         })
     }, [menuItems, selectedCategoryId, searchQuery])
@@ -177,7 +231,9 @@ export default function QuickOrderModal({
 
         // Unique key for matching same items in cart
         const modifierIds = modifiers.map(m => m.id).sort().join(',')
-        const cartItemId = `${item.id}-${variationId || 'none'}-${modifierIds}-${note}`
+        const cartItemId = isManualTakeoutDelivery
+            ? `${item.id}-${variationId || 'none'}-${modifierIds}-${note}`
+            : `${item.id}-${variationId || 'none'}-${modifierIds}-${note}-${orderType}`
 
         setCart(prev => {
             const existingIndex = prev.findIndex(i => i.id === cartItemId)
@@ -196,6 +252,7 @@ export default function QuickOrderModal({
                 specialRequest: note,
                 variationId,
                 variationName,
+                isPacking: isManualTakeoutDelivery ? false : orderType === 'takeout',
                 modifiers: modifiers.map(m => ({
                     modifierId: m.id,
                     name: m.name,
@@ -256,14 +313,33 @@ export default function QuickOrderModal({
 
     const updateQuantity = (cartItemId: string, amount: number) => {
         setCart(prev => {
-            return prev.map(item => {
+            const updated = prev.map(item => {
                 if (item.id === cartItemId) {
                     const newQty = item.quantity + amount
                     return newQty > 0 ? { ...item, quantity: newQty } : null
                 }
                 return item
             }).filter(Boolean) as CartItem[]
+            if (updated.length === 0) {
+                setShowMobileCart(false)
+            }
+            return updated
         })
+    }
+
+    const getCartItemQuantity = (menuItemId: string, variationId?: string) => {
+        const match = cart.find(ci => ci.menuItemId === menuItemId && ci.variationId === variationId && (isManualTakeoutDelivery ? true : ((orderType === 'takeout') === !!ci.isPacking)))
+        return match ? match.quantity : 0
+    }
+
+    const handleQuantityChange = (menuItem: MenuItem, variation?: Variation | null, change: number = 1) => {
+        const variationId = variation ? variation.id : undefined
+        const existing = cart.find(ci => ci.menuItemId === menuItem.id && ci.variationId === variationId && (isManualTakeoutDelivery ? true : ((orderType === 'takeout') === !!ci.isPacking)))
+        if (existing) {
+            updateQuantity(existing.id, change)
+        } else if (change > 0) {
+            addToCartDirectly(menuItem, variation)
+        }
     }
 
     const handlePlaceOrder = async () => {
@@ -272,19 +348,104 @@ export default function QuickOrderModal({
             return
         }
 
-        if (!selectedSession) {
-            toast.error('No table session selected')
-            return
+        if (!isManualTakeoutDelivery) {
+            if (!selectedSession && !bookingId) {
+                toast.error('No table session or room stay selected')
+                return
+            }
         }
 
+        setShowConfirmDialog(false)
         setSubmitting(true)
         try {
-            const res = await placeStaffOrder(selectedSession.token, cart, customerNote)
+            let res: { success?: boolean; orderId?: string; total?: number; error?: string } = { error: 'Invalid state' }
+
+            if (isManualTakeoutDelivery) {
+                const payloadItems = cart.map(item => ({
+                    menuItemId: item.menuItemId,
+                    name: item.name,
+                    price: item.price,
+                    quantity: item.quantity,
+                    specialRequest: item.specialRequest,
+                    variationId: item.variationId,
+                    variationName: item.variationName,
+                    modifiers: item.modifiers.map(m => ({
+                        modifierId: m.modifierId,
+                        name: m.name,
+                        priceAdjustment: m.priceAdjustment
+                    }))
+                }))
+
+                if (orderType === 'takeout') {
+                    const takeoutRes = await createTakeoutOrder({
+                        restaurantId,
+                        customerName: takeoutCustomerName.trim() || 'Walk-in Customer',
+                        customerPhone: takeoutCustomerPhone.trim(),
+                        pickupTime: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+                        items: payloadItems,
+                        customerNote
+                    })
+                    res = {
+                        success: !takeoutRes.error,
+                        orderId: takeoutRes.orderId,
+                        total: takeoutRes.total,
+                        error: takeoutRes.error
+                    }
+                } else if (orderType === 'delivery') {
+                    const deliveryRes = await createDeliveryOrder({
+                        restaurantId,
+                        customerName: takeoutCustomerName.trim() || 'Walk-in Customer',
+                        customerPhone: takeoutCustomerPhone.trim(),
+                        deliveryAddress: deliveryAddress.trim() || 'N/A',
+                        items: payloadItems,
+                        customerNote
+                    })
+                    res = {
+                        success: !deliveryRes.error,
+                        orderId: deliveryRes.orderId,
+                        total: deliveryRes.total,
+                        error: deliveryRes.error
+                    }
+                }
+            } else {
+                const cartWithPacking = cart.map(item => {
+                    if (item.isPacking) {
+                        const cleanRequest = item.specialRequest ? item.specialRequest.replace('(Packing)', '').replace('[Packing]', '').trim() : ''
+                        return {
+                            ...item,
+                            specialRequest: cleanRequest ? `${cleanRequest} (Packing)` : '(Packing)'
+                        }
+                    }
+                    return item
+                })
+
+                if (bookingId) {
+                    res = await placeRoomOrderDirect(bookingId, cartWithPacking, customerNote, noKot)
+                } else if (selectedSession) {
+                    res = await placeStaffOrder(selectedSession.token, cartWithPacking, customerNote, noKot)
+                } else {
+                    res = { error: 'No active table session or room stay selected.' }
+                }
+            }
+
             if (res && res.success) {
-                toast.success('Order placed successfully & sent to kitchen!')
+                if (res.orderId) {
+                    onSuccess?.(res.orderId)
+                }
+                setOrderConfirmation({
+                    itemCount: cart.reduce((sum, item) => sum + item.quantity, 0),
+                    total: cartTotal,
+                    label: isManualTakeoutDelivery
+                        ? (orderType === 'delivery' ? 'Delivery Queue' : 'Takeaway Queue')
+                        : (bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`)
+                })
                 setCart([])
                 setCustomerNote('')
-                onClose()
+                setNoKot(false)
+                setTakeoutCustomerName('')
+                setTakeoutCustomerPhone('')
+                setDeliveryAddress('')
+                setShowMobileCart(false)
             } else {
                 const errMsg = res?.error || 'Failed to place order'
                 if (errMsg === 'Unauthorized') {
@@ -312,15 +473,46 @@ export default function QuickOrderModal({
         }
     }
 
-    return createPortal(
-        <div 
-            className="fixed inset-0 z-[10000] flex items-center justify-center p-0 md:p-4 bg-black/60 backdrop-blur-sm"
-            onClick={onClose}
+    const handleConfirmationDone = () => {
+        setOrderConfirmation(null)
+        onClose()
+    }
+
+    return (
+        <>
+        {/* Success confirmation — an explicit post-placement acknowledgement so the
+            cashier gets clear feedback instead of a toast that vanishes with the modal. */}
+        <Modal
+            open={!!orderConfirmation}
+            onClose={handleConfirmationDone}
+            size="sm"
+            layer="top"
+            ariaLabel="Order placed"
+            className="p-8 flex flex-col items-center text-center gap-4"
         >
-            <div 
-                className="bg-surface rounded-none md:rounded-[24px] border border-hairline shadow-2xl w-full max-w-5xl h-full md:h-[85vh] flex flex-col overflow-hidden"
-                onClick={e => e.stopPropagation()}
-            >
+            {orderConfirmation && (
+                <>
+                    <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                        <CheckCircle2 size={36} />
+                    </div>
+                    <div>
+                        <h3 className="text-h3 font-black text-ink">Order Placed!</h3>
+                        <p className="text-body text-ink-subtle mt-1">
+                            {orderConfirmation.itemCount} item{orderConfirmation.itemCount !== 1 ? 's' : ''} sent to the kitchen and added to {orderConfirmation.label}.
+                        </p>
+                    </div>
+                    <div className="w-full py-3 rounded-xl bg-surface-muted text-center">
+                        <span className="text-caption font-bold text-ink-subtle uppercase">Order Total</span>
+                        <p className="text-h2 font-black text-ink">Rs. {orderConfirmation.total}</p>
+                    </div>
+                    <Button block variant="primary" onClick={handleConfirmationDone} className="py-3 font-bold">
+                        Done
+                    </Button>
+                </>
+            )}
+        </Modal>
+        {/* Main POS workspace — hidden while the success card is showing. */}
+        <Modal open={isOpen && !orderConfirmation} onClose={onClose} size="full" ariaLabel="Quick POS Order" className="flex flex-col overflow-hidden" layer="top" backdropClassName="!z-[99999]">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
                     <div className="flex items-center gap-3">
@@ -329,10 +521,12 @@ export default function QuickOrderModal({
                         </div>
                         <div>
                             <h3 className="text-h3 font-black text-ink">Quick POS Order</h3>
-                            {activeTables && activeTables.length > 0 ? (
+                            {bookingId ? (
+                                <p className="text-caption text-brand-500 font-bold mt-0.5">🛎 {tableName || 'Room Stay'} · Room Order</p>
+                            ) : activeTables && activeTables.length > 0 ? (
                                 <div className="mt-1 flex items-center gap-1.5">
                                     <span className="text-[10px] font-bold text-ink-subtle uppercase">Table:</span>
-                                    <select
+                                    <Select
                                         value={selectedSession?.id || ''}
                                         onChange={e => {
                                             const table = activeTables.find(t => t.activeSession?.id === e.target.value)
@@ -354,21 +548,36 @@ export default function QuickOrderModal({
                                                     Table {t.label}
                                                 </option>
                                             ))}
-                                    </select>
+                                    </Select>
                                 </div>
                             ) : selectedSession ? (
                                 <p className="text-caption text-ink-subtle mt-0.5">Table {selectedSession.label} · Active Session</p>
                             ) : (
-                                <p className="text-caption text-ink-subtle mt-0.5">No active table sessions found</p>
+                                <p className="text-caption text-amber-500 font-semibold mt-0.5">No active table sessions found</p>
                             )}
                         </div>
                     </div>
-                    <button 
-                        onClick={onClose}
-                        className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink-muted"
-                    >
-                        <X size={18} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {!showMobileCart && (
+                            <button
+                                onClick={() => setShowMobileCart(true)}
+                                className="md:hidden w-10 h-10 rounded-xl flex items-center justify-center bg-brand-500/10 text-brand-500 hover:bg-brand-500/20 transition relative"
+                            >
+                                <ShoppingCart size={18} />
+                                {cart.length > 0 && (
+                                    <span className="absolute -top-1.5 -right-1.5 bg-brand-500 text-white rounded-full text-[9px] font-black w-5 h-5 flex items-center justify-center shadow-md">
+                                        {cart.length}
+                                    </span>
+                                )}
+                            </button>
+                        )}
+                        <button 
+                            onClick={onClose}
+                            className="w-10 h-10 md:w-8 md:h-8 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle hover:text-ink"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Main Content Area */}
@@ -380,7 +589,7 @@ export default function QuickOrderModal({
                 ) : (
                     <div className="flex-1 flex overflow-hidden">
                         {/* Categories Left Panel */}
-                        <div className="w-48 bg-surface-muted border-r border-hairline overflow-y-auto flex flex-col p-2 gap-1 select-none">
+                        <div className="w-48 bg-surface-muted border-r border-hairline overflow-y-auto hidden md:flex flex-col p-2 gap-1 select-none">
                             <button
                                 onClick={() => setSelectedCategoryId('all')}
                                 className={`px-4 py-3 text-left text-label font-bold rounded-xl transition-all ${
@@ -407,26 +616,132 @@ export default function QuickOrderModal({
                         </div>
 
                         {/* Items Middle Panel */}
-                        <div className="flex-1 flex flex-col bg-surface overflow-hidden">
+                        <div className={`flex-1 flex flex-col bg-surface overflow-hidden ${showMobileCart ? 'hidden md:flex' : ''}`}>
                             {/* Search Bar */}
-                            <div className="p-4 border-b border-hairline bg-surface-muted/20">
-                                <div className="relative">
-                                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
-                                    <input
-                                        type="text"
-                                        value={searchQuery}
-                                        onChange={e => setSearchQuery(e.target.value)}
-                                        placeholder="Search dish by name..."
-                                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-hairline bg-surface text-ink text-body focus:outline-none focus:ring-2 focus:ring-brand-500"
-                                    />
-                                    {searchQuery && (
-                                        <button 
-                                            onClick={() => setSearchQuery('')}
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-ink"
-                                        >
-                                            <X size={14} />
-                                        </button>
+                            <div className="p-4 border-b border-hairline bg-surface-muted/20 flex flex-col gap-3 shrink-0">
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                    <div className="relative flex-1">
+                                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
+                                        <input
+                                            type="text"
+                                            value={searchQuery}
+                                            onChange={e => setSearchQuery(e.target.value)}
+                                            placeholder="Search dish by name..."
+                                            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-hairline bg-surface text-ink text-body focus:outline-none focus:ring-2 focus:ring-brand-500"
+                                        />
+                                        {searchQuery && (
+                                            <button 
+                                                onClick={() => setSearchQuery('')}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-ink"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setOutsideFoodRows([{ name: '', quantity: 1, price: 0, note: '' }])
+                                            setShowOutsideFoodModal(true)
+                                        }}
+                                        className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2 px-4 rounded-xl flex items-center justify-center gap-1.5 transition text-caption sm:text-xs select-none h-11 shrink-0 shadow-sm"
+                                    >
+                                        <Plus size={16} />
+                                        Add Outside Food
+                                    </button>
+                                </div>
+
+                                <div className="flex bg-surface-muted p-1 rounded-xl border border-hairline select-none">
+                                    {isManualTakeoutDelivery ? (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (cart.length > 0 && orderType !== 'takeout') {
+                                                        toast.error('Clear the cart before changing order type')
+                                                        return
+                                                    }
+                                                    setOrderType('takeout')
+                                                }}
+                                                className={`flex-1 py-1.5 text-center text-caption font-bold rounded-lg transition-all ${
+                                                    orderType === 'takeout'
+                                                        ? 'bg-surface text-brand-500 shadow-sm border border-hairline font-extrabold font-mono'
+                                                        : 'text-ink-subtle hover:text-ink'
+                                                } ${cart.length > 0 && orderType !== 'takeout' ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                            >
+                                                Takeaway
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (cart.length > 0 && orderType !== 'delivery') {
+                                                        toast.error('Clear the cart before changing order type')
+                                                        return
+                                                    }
+                                                    setOrderType('delivery')
+                                                }}
+                                                className={`flex-1 py-1.5 text-center text-caption font-bold rounded-lg transition-all ${
+                                                    orderType === 'delivery'
+                                                        ? 'bg-surface text-brand-500 shadow-sm border border-hairline font-extrabold font-mono'
+                                                        : 'text-ink-subtle hover:text-ink'
+                                                } ${cart.length > 0 && orderType !== 'delivery' ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                            >
+                                                Delivery
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => setOrderType('dine_in')}
+                                                className={`flex-1 py-1.5 text-center text-caption font-bold rounded-lg transition-all ${
+                                                    orderType === 'dine_in'
+                                                        ? 'bg-surface text-brand-500 shadow-sm border border-hairline font-extrabold font-mono'
+                                                        : 'text-ink-subtle hover:text-ink'
+                                                }`}
+                                            >
+                                                Dine In
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setOrderType('takeout')}
+                                                className={`flex-1 py-1.5 text-center text-caption font-bold rounded-lg transition-all ${
+                                                    orderType === 'takeout'
+                                                        ? 'bg-surface text-brand-500 shadow-sm border border-hairline font-extrabold font-mono'
+                                                        : 'text-ink-subtle hover:text-ink'
+                                                }`}
+                                            >
+                                                Packing
+                                            </button>
+                                        </>
                                     )}
+                                </div>
+
+                                {/* Horizontal Categories Selector (Mobile Only) */}
+                                <div className="md:hidden flex gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-0.5 select-none shrink-0">
+                                    <button
+                                        onClick={() => setSelectedCategoryId('all')}
+                                        className={`px-3 py-1.5 text-[11px] font-bold rounded-lg whitespace-nowrap transition-all ${
+                                            selectedCategoryId === 'all' 
+                                                ? 'bg-brand-500 text-white shadow-sm' 
+                                                : 'bg-surface text-ink-subtle border border-hairline'
+                                        }`}
+                                    >
+                                        All
+                                    </button>
+                                    {categories.map(cat => (
+                                        <button
+                                            key={cat.id}
+                                            onClick={() => setSelectedCategoryId(cat.id)}
+                                            className={`px-3 py-1.5 text-[11px] font-bold rounded-lg whitespace-nowrap transition-all ${
+                                                selectedCategoryId === cat.id 
+                                                    ? 'bg-brand-500 text-white shadow-sm' 
+                                                    : 'bg-surface text-ink-subtle border border-hairline'
+                                            }`}
+                                        >
+                                            {cat.name}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
 
@@ -438,39 +753,136 @@ export default function QuickOrderModal({
                                         <p className="text-body font-semibold">No items found</p>
                                     </div>
                                 ) : (
-                                    filteredItems.map(item => (
-                                        <div 
-                                            key={item.id}
-                                            className="flex items-center justify-between p-3 rounded-xl border border-transparent hover:border-hairline hover:bg-surface-muted/30 transition-all select-none"
-                                        >
-                                            <div className="flex-1 pr-4">
-                                                <h4 className="text-body font-bold text-ink">{item.name}</h4>
-                                                {(item.variations && item.variations.length > 0) ? (
-                                                    <span className="text-[10px] bg-brand-500/10 text-brand-500 font-bold px-1.5 py-0.5 rounded-md mt-1 inline-block">
-                                                        Multiple Sizes
-                                                    </span>
-                                                ) : null}
+                                    filteredItems.map(item => {
+                                        const hasVariations = item.variations && item.variations.length > 0
+                                        const hasModifiers = item.modifier_groups && item.modifier_groups.length > 0
+
+                                        return (
+                                            <div 
+                                                key={item.id}
+                                                className="p-4 md:p-3 rounded-xl border border-transparent hover:border-hairline hover:bg-surface-muted/30 transition-all select-none flex flex-col gap-1.5"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex-1 pr-4">
+                                                        <h4 className="text-body font-bold text-ink">{item.name}</h4>
+                                                    </div>
+                                                    {!hasVariations && (
+                                                        <div className="flex items-center gap-4">
+                                                            <span className="text-body font-extrabold text-ink-muted">
+                                                                Rs. {item.price}
+                                                            </span>
+                                                            {hasModifiers ? (
+                                                                <button
+                                                                    onClick={() => handleAddToCartClick(item)}
+                                                                    className="w-11 h-11 md:w-8 md:h-8 rounded-lg bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition-all active:scale-95 shadow-sm cursor-pointer"
+                                                                >
+                                                                    <Plus className="w-5 h-5 md:w-4 md:h-4" />
+                                                                </button>
+                                                            ) : (() => {
+                                                                const qty = getCartItemQuantity(item.id)
+                                                                if (qty > 0) {
+                                                                    return (
+                                                                        <div className="flex items-center gap-2">
+                                                                            <button
+                                                                                onClick={() => handleQuantityChange(item, null, -1)}
+                                                                                className="w-8 h-8 md:w-7 md:h-7 rounded-lg bg-surface border border-hairline flex items-center justify-center hover:bg-surface-muted transition"
+                                                                            >
+                                                                                <Minus size={14} className="text-ink-subtle" />
+                                                                            </button>
+                                                                            <span className="text-body font-black text-ink w-4 text-center">{qty}</span>
+                                                                            <button
+                                                                                onClick={() => handleQuantityChange(item, null, 1)}
+                                                                                className="w-8 h-8 md:w-7 md:h-7 rounded-lg bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition"
+                                                                            >
+                                                                                <Plus size={14} />
+                                                                            </button>
+                                                                        </div>
+                                                                    )
+                                                                }
+                                                                return (
+                                                                    <button
+                                                                        onClick={() => handleQuantityChange(item, null, 1)}
+                                                                        className="w-11 h-11 md:w-8 md:h-8 rounded-lg bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition-all active:scale-95 shadow-sm cursor-pointer"
+                                                                    >
+                                                                        <Plus className="w-5 h-5 md:w-4 md:h-4" />
+                                                                    </button>
+                                                                )
+                                                            })()}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {hasVariations && (
+                                                    <div className="pl-3 border-l-2 border-brand-500/20 space-y-2 mt-1">
+                                                        {item.variations.map((v: Variation) => {
+                                                            const qty = getCartItemQuantity(item.id, v.id)
+                                                            return (
+                                                                <div key={v.id} className="flex items-center justify-between py-1 border-b border-hairline last:border-0">
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <p className="text-caption font-bold text-ink-muted truncate">{v.name}</p>
+                                                                        <p className="text-[10px] text-ink-subtle font-semibold">Rs. {v.price}</p>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-3">
+                                                                        {hasModifiers ? (
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setConfiguringItem(item)
+                                                                                    setSelectedVariation(v)
+                                                                                    setSelectedModifiers({})
+                                                                                    setSpecialRequestInput('')
+                                                                                }}
+                                                                                className="w-8 h-8 rounded-lg bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition active:scale-95 cursor-pointer"
+                                                                            >
+                                                                                <Plus size={14} />
+                                                                            </button>
+                                                                        ) : qty > 0 ? (
+                                                                            <div className="flex items-center gap-2">
+                                                                                <button
+                                                                                    onClick={() => handleQuantityChange(item, v, -1)}
+                                                                                    className="w-7 h-7 rounded-lg bg-surface border border-hairline flex items-center justify-center hover:bg-surface-muted transition"
+                                                                                >
+                                                                                    <Minus size={12} className="text-ink-subtle" />
+                                                                                </button>
+                                                                                <span className="text-caption font-black text-ink w-4 text-center">{qty}</span>
+                                                                                <button
+                                                                                    onClick={() => handleQuantityChange(item, v, 1)}
+                                                                                    className="w-7 h-7 rounded-lg bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition"
+                                                                                >
+                                                                                    <Plus size={12} />
+                                                                                </button>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <button
+                                                                                onClick={() => handleQuantityChange(item, v, 1)}
+                                                                                className="w-8 h-8 rounded-lg bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition active:scale-95 cursor-pointer"
+                                                                            >
+                                                                                <Plus size={14} />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                )}
                                             </div>
-                                            <div className="flex items-center gap-4">
-                                                <span className="text-body font-extrabold text-ink-muted">
-                                                    Rs. {item.price}
-                                                </span>
-                                                <button
-                                                    onClick={() => handleAddToCartClick(item)}
-                                                    className="w-8 h-8 rounded-lg bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition-all active:scale-95 shadow-sm"
-                                                >
-                                                    <Plus size={16} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))
+                                        )
+                                    })
                                 )}
                             </div>
                         </div>
 
                         {/* Cart Right Panel */}
-                        <div className="w-80 border-l border-hairline bg-surface-muted/40 flex flex-col overflow-hidden">
-                            <div className="p-4 border-b border-hairline bg-surface-muted/65 flex items-center gap-2 text-ink font-bold">
+                        <div className={`w-full md:w-80 border-l border-hairline bg-surface-muted/40 flex flex-col overflow-hidden ${!showMobileCart ? 'hidden md:flex' : ''}`}>
+                            <div className="p-4 border-b border-hairline bg-surface-muted/65 flex items-center gap-2 text-ink font-bold shrink-0">
+                                {showMobileCart && (
+                                    <button
+                                        onClick={() => setShowMobileCart(false)}
+                                        className="md:hidden mr-1.5 p-1 rounded-lg hover:bg-surface-muted text-ink-subtle hover:text-ink transition active:scale-95"
+                                    >
+                                        <ArrowLeft size={18} />
+                                    </button>
+                                )}
                                 <ShoppingCart size={16} />
                                 <span>Order Basket</span>
                                 <span className="ml-auto bg-brand-500/10 text-brand-500 rounded-full px-2 py-0.5 text-xs font-black">
@@ -481,17 +893,27 @@ export default function QuickOrderModal({
                             {/* Cart Items List */}
                             <div className="flex-1 overflow-y-auto p-4 space-y-3">
                                 {cart.length === 0 ? (
-                                    <div className="h-full flex flex-col items-center justify-center text-center text-ink-subtle opacity-55">
-                                        <ShoppingCart size={32} className="mb-2" />
+                                    <div className="h-full flex flex-col items-center justify-center text-center text-ink-subtle opacity-75 px-4 py-8">
+                                        <ShoppingCart size={32} className="mb-2 text-ink-subtle/50" />
                                         <p className="text-caption font-bold">Cart is empty</p>
                                         <p className="text-[10px] mt-0.5">Click + next to a dish to add it</p>
+                                        {showMobileCart && (
+                                            <button
+                                                onClick={() => setShowMobileCart(false)}
+                                                className="md:hidden mt-4 px-4 py-2 rounded-xl bg-surface border border-hairline text-ink text-caption font-bold hover:bg-surface-muted transition active:scale-95 cursor-pointer"
+                                            >
+                                                Back to Menu
+                                            </button>
+                                        )}
                                     </div>
                                 ) : (
                                     cart.map(item => (
                                         <div key={item.id} className="bg-surface rounded-xl border border-hairline p-3 shadow-sm flex flex-col gap-2">
                                             <div className="flex justify-between items-start gap-1">
                                                 <div className="min-w-0">
-                                                    <p className="text-body font-bold text-ink truncate">{item.name}</p>
+                                                    <p className="text-body font-bold text-ink truncate">
+                                                         {item.name}{item.isPacking && !isManualTakeoutDelivery && ' (Packing)'}
+                                                    </p>
                                                     {item.variationName && (
                                                         <p className="text-[10px] text-brand-500 font-extrabold mt-0.5">Size: {item.variationName}</p>
                                                     )}
@@ -527,7 +949,13 @@ export default function QuickOrderModal({
                                                 </button>
                                                 <button 
                                                     onClick={() => {
-                                                        setCart(prev => prev.filter(i => i.id !== item.id))
+                                                        setCart(prev => {
+                                                            const updated = prev.filter(i => i.id !== item.id)
+                                                            if (updated.length === 0) {
+                                                                setShowMobileCart(false)
+                                                            }
+                                                            return updated
+                                                        })
                                                         toast.success('Removed item')
                                                     }}
                                                     className="w-6 h-6 rounded bg-danger/10 hover:bg-danger-bg text-danger-fg flex items-center justify-center transition"
@@ -542,7 +970,7 @@ export default function QuickOrderModal({
 
                             {/* Cart Summary & Action */}
                             {cart.length > 0 && (
-                                <div className="p-4 border-t border-hairline bg-surface shadow-md space-y-3">
+                                <div className="p-4 border-t border-hairline bg-surface shadow-md space-y-3 shrink-0">
                                     <div className="space-y-2">
                                         <div className="relative">
                                             <MessageSquare size={13} className="absolute left-2.5 top-3 text-ink-subtle" />
@@ -559,33 +987,97 @@ export default function QuickOrderModal({
                                             <span className="text-h3 font-black text-ink">Rs. {cartTotal}</span>
                                         </div>
                                     </div>
+
+                                    {/* Counter sales — cigarettes, a bottle off the
+                                        shelf. Nothing to make, so nothing to queue or
+                                        print. Not offered on takeaway/delivery, which
+                                        always go through the kitchen. */}
+                                    {!isManualTakeoutDelivery && (
+                                        <button
+                                            type="button"
+                                            aria-pressed={noKot}
+                                            onClick={() => setNoKot(v => !v)}
+                                            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 text-left transition-all ${
+                                                noKot
+                                                    ? 'border-amber-400 bg-amber-50'
+                                                    : 'border-hairline bg-surface hover:border-amber-300'
+                                            }`}
+                                        >
+                                            <span className={`w-8 h-5 rounded-full shrink-0 relative transition-colors ${noKot ? 'bg-amber-500' : 'bg-ink-subtle/30'}`}>
+                                                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${noKot ? 'left-3.5' : 'left-0.5'}`} />
+                                            </span>
+                                            <span className="min-w-0">
+                                                <span className={`block text-[11px] font-black ${noKot ? 'text-amber-800' : 'text-ink'}`}>
+                                                    No KOT — handed over at the counter
+                                                </span>
+                                                <span className="block text-[10px] font-semibold text-ink-subtle">
+                                                    {noKot
+                                                        ? 'Skips the kitchen/bar queue and the ticket. Still on the bill.'
+                                                        : 'For cigarettes, shelf drinks — nothing to cook.'}
+                                                </span>
+                                            </span>
+                                        </button>
+                                    )}
+
                                     <Button
                                         block
                                         variant="primary"
                                         icon={submitting ? Loader2 : ShoppingCart}
                                         loading={submitting}
-                                        onClick={handlePlaceOrder}
+                                        onClick={() => setShowConfirmDialog(true)}
                                         className="py-3 font-bold"
                                     >
-                                        Place Order &amp; Print
+                                        {noKot && !isManualTakeoutDelivery ? 'Place Order (No KOT)' : 'Place Order & Print'}
                                     </Button>
                                 </div>
                             )}
                         </div>
                     </div>
                 )}
-            </div>
+
+                {/* Mobile Floating Cart Summary Bar */}
+                {!loading && !orderConfirmation && cart.length > 0 && (
+                    <div className="md:hidden p-4 border-t border-hairline bg-surface shadow-[0_-4px_12px_rgba(0,0,0,0.05)] flex items-center justify-between gap-4 shrink-0">
+                        <button
+                            onClick={() => setShowMobileCart(true)}
+                            className="flex items-center gap-2.5 text-ink hover:opacity-90 active:scale-[0.98] transition text-left cursor-pointer"
+                        >
+                            <div className="relative w-11 h-11 rounded-xl bg-brand-500/10 flex items-center justify-center text-brand-500 shrink-0">
+                                <ShoppingCart size={20} />
+                                <span className="absolute -top-1.5 -right-1.5 bg-brand-500 text-white rounded-full text-[10px] font-black w-5 h-5 flex items-center justify-center shadow-md animate-scale-in">
+                                    {cart.reduce((sum, item) => sum + item.quantity, 0)}
+                                </span>
+                            </div>
+                            <div>
+                                <span className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider block">Basket Total</span>
+                                <span className="text-body font-black text-ink">Rs. {cartTotal}</span>
+                            </div>
+                        </button>
+                        <Button
+                            variant="primary"
+                            icon={submitting ? Loader2 : ShoppingCart}
+                            loading={submitting}
+                            onClick={() => setShowConfirmDialog(true)}
+                            className="py-3 px-6 font-bold flex-1 max-w-[160px]"
+                        >
+                            Place Order
+                        </Button>
+                    </div>
+                )}
+        </Modal>
 
             {/* Customization Sub-Modal (Variation & Modifiers Selection) */}
-            {configuringItem && (
-                <div 
-                    className="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-black/40"
-                    onClick={() => setConfiguringItem(null)}
-                >
-                    <div 
-                        className="bg-surface rounded-[20px] border border-hairline shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[80vh]"
-                        onClick={e => e.stopPropagation()}
-                    >
+            <Modal
+                open={!!configuringItem}
+                onClose={() => setConfiguringItem(null)}
+                size="md"
+                layer="top"
+                backdropClassName="!z-[999999]"
+                ariaLabel={configuringItem?.name ?? 'Customize item'}
+                className="flex flex-col overflow-hidden max-h-[80vh]"
+            >
+                {configuringItem && (
+                    <>
                         <div className="px-5 py-3 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
                             <div>
                                 <h4 className="text-body font-black text-ink">{configuringItem.name}</h4>
@@ -608,6 +1100,7 @@ export default function QuickOrderModal({
                                         {configuringItem.variations.map(v => (
                                             <button
                                                 key={v.id}
+                                                type="button"
                                                 onClick={() => setSelectedVariation(v)}
                                                 className={`p-3 text-left rounded-xl border text-label transition-all ${
                                                     selectedVariation?.id === v.id
@@ -676,23 +1169,302 @@ export default function QuickOrderModal({
 
                         <div className="p-4 border-t border-hairline bg-surface-muted/20 flex gap-2">
                             <button
+                                type="button"
                                 onClick={() => setConfiguringItem(null)}
                                 className="flex-1 py-2.5 rounded-xl border border-hairline bg-surface hover:bg-surface-muted text-ink text-label font-bold transition"
                             >
                                 Cancel
                             </button>
                             <button
+                                type="button"
                                 onClick={handleAddConfiguredItem}
                                 className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-label font-bold transition shadow-sm"
                             >
                                 Add to Cart
                             </button>
                         </div>
+                    </>
+                )}
+            </Modal>
+
+            {/* Pre-submission confirmation — stops a misclick on "Place Order" from
+                sending a wrong order straight to the kitchen. */}
+            <Modal
+                open={showConfirmDialog}
+                onClose={() => setShowConfirmDialog(false)}
+                size="md"
+                layer="top"
+                backdropClassName="!z-[9999999]"
+                ariaLabel="Confirm order"
+                className="flex flex-col overflow-hidden max-h-[90vh]"
+            >
+                <div className="px-5 py-4 border-b border-hairline bg-surface-muted/50">
+                    <h4 className="text-body font-black text-ink">Confirm order</h4>
+                    <p className="text-[10px] text-ink-subtle mt-0.5">
+                        {isManualTakeoutDelivery
+                            ? `Sends to kitchen and creates manual ${orderType === 'delivery' ? 'Delivery' : 'Takeaway'} order.`
+                            : noKot
+                                // Says the opposite of the usual line, so nobody
+                                // confirms expecting a ticket that will never print.
+                                ? `Handed over at the counter — no ticket, nothing sent to the kitchen or bar. Adds to ${bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`}.`
+                                : `Sends to the kitchen and adds to ${bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`} (${orderType === 'takeout' ? 'Packing' : 'Dine In'}).`
+                        }
+                    </p>
+                </div>
+
+                <div className="p-5 overflow-y-auto space-y-4 flex-1">
+                    {isManualTakeoutDelivery && (
+                        <div className="space-y-3 bg-amber-50/40 p-4 border border-amber-200 rounded-2xl">
+                            <p className="text-xs font-black text-amber-800 uppercase tracking-wider font-mono">Customer Details</p>
+                            
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <label className="block text-[9px] font-black text-amber-700 uppercase">Customer Name (Optional)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Ram Bahadur"
+                                        value={takeoutCustomerName}
+                                        onChange={e => setTakeoutCustomerName(e.target.value)}
+                                        className="w-full px-3 py-2 border-2 border-amber-200 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white focus:outline-none"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="block text-[9px] font-black text-amber-700 uppercase">Phone Number (Optional)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. 98xxxxxxxx"
+                                        value={takeoutCustomerPhone}
+                                        onChange={e => setTakeoutCustomerPhone(e.target.value)}
+                                        className="w-full px-3 py-2 border-2 border-amber-200 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="block text-[9px] font-black text-amber-700 uppercase">
+                                    Delivery Address (Optional)
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Tinkune, Kathmandu (Optional)"
+                                    value={deliveryAddress}
+                                    onChange={e => setDeliveryAddress(e.target.value)}
+                                    className="w-full px-3 py-2 border-2 border-amber-200 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white focus:outline-none"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                        <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1">Items list</p>
+                        {cart.map(item => (
+                            <div key={item.id} className="flex justify-between text-caption text-ink-muted">
+                                <span>{item.name}{item.isPacking && !isManualTakeoutDelivery && ' (Packing)'} <span className="text-brand-500 font-bold">×{item.quantity}</span></span>
+                                <span className="font-semibold tabular-nums">
+                                    Rs. {(item.price + item.modifiers.reduce((s, m) => s + m.priceAdjustment, 0)) * item.quantity}
+                                </span>
+                            </div>
+                        ))}
                     </div>
                 </div>
-            )}
-        </div>,
-        document.body
+
+                <div className="px-5 py-3 border-t border-hairline flex justify-between items-center bg-surface-muted/20">
+                    <span className="text-caption font-bold text-ink-subtle uppercase">Total</span>
+                    <span className="text-h3 font-black text-ink">Rs. {cartTotal}</span>
+                </div>
+
+                <div className="p-4 border-t border-hairline bg-surface-muted/20 flex gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setShowConfirmDialog(false)}
+                        className="flex-1 py-2.5 rounded-xl border border-hairline bg-surface hover:bg-surface-muted text-ink text-label font-bold transition"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handlePlaceOrder}
+                        disabled={submitting}
+                        className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-label font-bold transition shadow-sm disabled:opacity-50 flex items-center justify-center gap-1.5"
+                    >
+                        {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
+                        Confirm &amp; Place Order
+                    </button>
+                </div>
+            </Modal>
+
+            {/* Outside Food Modal */}
+            <Modal
+                open={showOutsideFoodModal}
+                onClose={() => setShowOutsideFoodModal(false)}
+                size="lg"
+                layer="top"
+                backdropClassName="!z-[999999]"
+                ariaLabel="Add Outside Food"
+                className="flex flex-col overflow-hidden max-h-[85vh] w-full max-w-2xl"
+            >
+                <div className="px-5 py-4 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
+                    <div>
+                        <h4 className="text-body font-black text-ink">Add Outside Food Items</h4>
+                        <p className="text-[10px] text-ink-subtle">These items are temporary and added only to this customer's bill.</p>
+                    </div>
+                    <button 
+                        onClick={() => setShowOutsideFoodModal(false)}
+                        className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-surface-muted transition text-ink-subtle"
+                    >
+                        <X size={14} />
+                    </button>
+                </div>
+
+                <div className="p-5 overflow-y-auto space-y-4 flex-1">
+                    {outsideFoodRows.map((row, index) => (
+                        <div key={index} className="bg-surface bg-surface-muted/30 p-4 rounded-xl border border-hairline space-y-3 relative">
+                            {outsideFoodRows.length > 1 && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setOutsideFoodRows(prev => prev.filter((_, i) => i !== index))
+                                    }}
+                                    className="absolute top-2 right-2 p-1 text-ink-subtle hover:text-danger-fg hover:bg-danger/10 rounded-lg transition"
+                                    title="Remove item"
+                                >
+                                    <Trash2 size={14} />
+                                </button>
+                            )}
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 pt-1">
+                                <div className="md:col-span-6 space-y-1">
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase">Item Name</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Birthday Cake, Heineken Beer"
+                                        value={row.name}
+                                        onChange={e => {
+                                            const val = e.target.value
+                                            setOutsideFoodRows(prev => prev.map((r, i) => i === index ? { ...r, name: val } : r))
+                                        }}
+                                        className="w-full px-3 py-2 border border-hairline focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white text-ink focus:outline-none"
+                                        required
+                                    />
+                                </div>
+                                <div className="md:col-span-2 space-y-1">
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase">Qty</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={row.quantity === 0 ? '' : row.quantity}
+                                        onChange={e => {
+                                            const valStr = e.target.value
+                                            if (valStr === '') {
+                                                setOutsideFoodRows(prev => prev.map((r, i) => i === index ? { ...r, quantity: '' as any } : r))
+                                                return
+                                            }
+                                            const val = parseInt(valStr)
+                                            setOutsideFoodRows(prev => prev.map((r, i) => i === index ? { ...r, quantity: isNaN(val) ? 1 : val } : r))
+                                        }}
+                                        className="w-full px-3 py-2 border border-hairline focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white text-ink focus:outline-none text-center"
+                                        required
+                                    />
+                                </div>
+                                <div className="md:col-span-2 space-y-1">
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase">Rate (Rs.)</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        placeholder="Rate"
+                                        value={row.price === 0 ? '' : row.price}
+                                        onChange={e => {
+                                            const valStr = e.target.value
+                                            if (valStr === '') {
+                                                setOutsideFoodRows(prev => prev.map((r, i) => i === index ? { ...r, price: '' as any } : r))
+                                                return
+                                            }
+                                            const val = parseFloat(valStr)
+                                            setOutsideFoodRows(prev => prev.map((r, i) => i === index ? { ...r, price: isNaN(val) ? 0 : val } : r))
+                                        }}
+                                        className="w-full px-3 py-2 border border-hairline focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white text-ink focus:outline-none text-right"
+                                        required
+                                    />
+                                </div>
+                                <div className="md:col-span-2 flex flex-col justify-end text-right pb-2">
+                                    <span className="text-[9px] font-bold text-ink-subtle uppercase block mb-1">Total</span>
+                                    <span className="text-xs font-black text-ink">Rs. {row.quantity * row.price}</span>
+                                </div>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="block text-[10px] font-bold text-ink-subtle uppercase">Notes (Optional)</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Served by customer, keep in fridge"
+                                    value={row.note}
+                                    onChange={e => {
+                                        const val = e.target.value
+                                        setOutsideFoodRows(prev => prev.map((r, i) => i === index ? { ...r, note: val } : r))
+                                    }}
+                                    className="w-full px-3 py-1.5 border border-hairline focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl text-xs bg-white text-ink focus:outline-none"
+                                />
+                            </div>
+                        </div>
+                    ))}
+
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setOutsideFoodRows(prev => [...prev, { name: '', quantity: 1, price: 0, note: '' }])
+                        }}
+                        className="w-full py-2.5 rounded-xl border-2 border-dashed border-hairline hover:border-brand-500/50 hover:bg-brand-500/[0.02] text-brand-500 text-caption font-bold transition flex items-center justify-center gap-1.5"
+                    >
+                        <Plus size={14} />
+                        Add Another Outside Food Item
+                    </button>
+                </div>
+
+                <div className="p-4 border-t border-hairline bg-surface-muted/20 flex gap-2 shrink-0">
+                    <button
+                        type="button"
+                        onClick={() => setShowOutsideFoodModal(false)}
+                        className="flex-1 py-2.5 rounded-xl border border-hairline bg-surface hover:bg-surface-muted text-ink text-label font-bold transition"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            // Validate rows
+                            const invalidRow = outsideFoodRows.find(r => !r.name.trim())
+                            if (invalidRow) {
+                                toast.error('Please fill in the item name for all rows.')
+                                return
+                            }
+
+                            const newCartItems = outsideFoodRows.map((row, idx) => {
+                                const uniqueId = `outside-${Date.now()}-${idx}`
+                                const qty = Math.max(1, parseInt(row.quantity as any) || 1)
+                                const priceVal = Math.max(0, parseFloat(row.price as any) || 0)
+                                return {
+                                    id: uniqueId,
+                                    menuItemId: 'outside_food',
+                                    name: row.name.trim(),
+                                    price: priceVal,
+                                    quantity: qty,
+                                    specialRequest: row.note.trim(),
+                                    modifiers: [],
+                                    isOutsideFood: true
+                                }
+                            })
+
+                            setCart(prev => [...prev, ...newCartItems])
+                            toast.success('Outside food items added to basket')
+                            setShowOutsideFoodModal(false)
+                        }}
+                        className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-label font-bold transition shadow-sm"
+                    >
+                        Add to Basket
+                    </button>
+                </div>
+            </Modal>
+        </>
     )
 }
 

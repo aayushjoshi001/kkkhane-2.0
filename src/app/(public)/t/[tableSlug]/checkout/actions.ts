@@ -9,10 +9,10 @@ import { Redis } from '@upstash/redis'
 import { validateInput, OrderItemSchema } from '@/lib/validation'
 import { z } from 'zod'
 import { sendOrderConfirmationSms, sendLoyaltyPointsSms } from '@/lib/sms'
-import { checkAndAlertLowStock } from '@/app/(admin)/admin/ingredients/actions'
 import { getRestaurantFeatures } from '@/lib/features'
 import { verifyClientIp } from '@/lib/ip-check'
 import { getRoomContextForTable } from '@/lib/rooms'
+import { markTableDirtyForSession } from '@/lib/tableLifecycle'
 
 type PlaceOrderItemPayload = {
     menu_item_id: string
@@ -185,7 +185,10 @@ export async function placeOrder(
         }
     }
 
-    // Call the ACID-safe RPC (returns JSONB with breakdown)
+    // Call the ACID-safe RPC (returns JSONB with breakdown).
+    // Dine-in QR self-orders stay pending for cashier confirmation (needs_confirmation:true).
+    // In-room QR orders go straight to the kitchen — the cashier doesn't need to
+    // approve them; the stay folio will collect the charge at checkout.
     const { data, error } = await supabase.rpc('place_order', {
         p_session_id: sessionUuid,
         p_items: payload,
@@ -193,6 +196,7 @@ export async function placeOrder(
         p_promo_code: promoCode || null,
         p_loyalty_member_id: loyaltyMemberId || null,
         p_client_request_id: clientRequestId || null,
+        p_needs_confirmation: !isHotelRoom,
     })
 
     if (error) {
@@ -220,7 +224,8 @@ export async function placeOrder(
             loyaltyMemberId || null,
             promoCode || null,
             clientRequestId || null,
-            loyaltyDiscount
+            loyaltyDiscount,
+            !isHotelRoom
         )
 
         if (fallback) {
@@ -260,6 +265,15 @@ export async function placeOrder(
             if (bindError) {
                 console.error('[order]', result.order_id, 'failed to bind booking:', bindError)
             }
+
+            // Auto-close the table session: the bill is now on the room folio,
+            // so the table is free. This mirrors what placeStaffOrder does.
+            await supabase
+                .from('sessions')
+                .update({ status: 'closed', closed_at: new Date().toISOString() })
+                .eq('id', sessionUuid)
+                .eq('status', 'active')
+            await markTableDirtyForSession(supabase, sessionUuid)
         }
 
         // If there are variations, look up their prices and update order_items
@@ -275,22 +289,15 @@ export async function placeOrder(
 
         const { data: dbOrderItems } = await supabase
             .from('order_items')
-            .select('id, menu_item_id, quantity, special_request')
+            .select('id, menu_item_id, quantity, special_request, unit_price, station')
             .eq('order_id', result.order_id)
 
         let calculatedSubtotal = 0
+        let foodSubtotal = 0
         if (dbOrderItems && dbOrderItems.length > 0) {
             const matchedDbItemIds = new Set<string>()
 
             for (const item of items) {
-                let basePrice = item.price
-                if (item.variationId) {
-                    const v = variations.find(x => x.id === item.variationId)
-                    if (v) basePrice = Number(v.price)
-                }
-                const modifierTotal = (item.modifiers || []).reduce((sum, mod) => sum + mod.priceAdjustment, 0)
-                calculatedSubtotal += (basePrice + modifierTotal) * item.quantity
-
                 // Build the special request we sent to the DB
                 let expectedSpecialRequest = item.specialRequest || ''
                 if (item.variationName) {
@@ -298,7 +305,7 @@ export async function placeOrder(
                         ? `[${item.variationName}] ${expectedSpecialRequest}`
                         : `[${item.variationName}]`
                 }
-                
+
                 // Find matching row in the database, excluding already matched ones
                 const match = dbOrderItems.find(
                     x => !matchedDbItemIds.has(x.id) &&
@@ -306,6 +313,24 @@ export async function placeOrder(
                          x.quantity === item.quantity &&
                          (x.special_request || '') === expectedSpecialRequest
                 )
+
+                // place_order already set unit_price server-side (get_effective_price /
+                // menu_item_variations, never the client) — trust that row, not the
+                // client-supplied item.price, when rebuilding the order's totals below.
+                // A missing match fails closed (contributes 0) rather than falling back
+                // to whatever price the client claims.
+                let basePrice = match ? Number(match.unit_price) : 0
+                if (item.variationId) {
+                    const v = variations.find(x => x.id === item.variationId)
+                    if (v) basePrice = Number(v.price)
+                }
+                const modifierTotal = (item.modifiers || []).reduce((sum, mod) => sum + mod.priceAdjustment, 0)
+                const itemTotal = (basePrice + modifierTotal) * item.quantity
+                calculatedSubtotal += itemTotal
+
+                if (match && match.station === 'kitchen') {
+                    foodSubtotal += itemTotal
+                }
 
                 if (match) {
                     matchedDbItemIds.add(match.id)
@@ -353,23 +378,59 @@ export async function placeOrder(
 
             const discountAmount = Number(orderData?.discount_amount ?? 0)
             
-            const finalServiceCharge = scEnabled 
-                ? Math.round((calculatedSubtotal - discountAmount) * (scRate / 100) * 100) / 100 
-                : 0
+            const roomScEnabled = (featuresV2 as any)?.roomServiceChargeEnabled === true
+            const roomScRooms = Array.isArray((featuresV2 as any)?.roomServiceChargeRooms) ? (featuresV2 as any).roomServiceChargeRooms : []
+            const isRoomScApplicable = roomScEnabled && roomContext?.roomId && roomScRooms.includes(roomContext.roomId)
+
+            let finalServiceCharge = 0
+            if (isHotelRoom && isRoomScApplicable) {
+                // Room QR orders get 10% service charge on food items only
+                const foodRatio = calculatedSubtotal > 0 ? (foodSubtotal / calculatedSubtotal) : 0
+                const discountedFoodSubtotal = Math.max(0, foodSubtotal - (discountAmount * foodRatio))
+                finalServiceCharge = Math.round(discountedFoodSubtotal * 0.10 * 100) / 100
+            }
+            // Standard dine-in tables always get 0 service charge
 
             const finalTax = Math.round((calculatedSubtotal - discountAmount + finalServiceCharge) * (taxRate / 100) * 100) / 100
             const finalOrderTotal = Math.max(0, calculatedSubtotal - discountAmount + finalServiceCharge + finalTax)
 
-            // Update the order totals in the database
-            await supabase
-                .from('orders')
-                .update({
-                    subtotal_amount: calculatedSubtotal,
-                    service_charge_amount: finalServiceCharge,
-                    tax_amount: finalTax,
-                    total_amount: finalOrderTotal
-                })
-                .eq('id', result.order_id)
+            // Update the order totals in the database with schema fallback
+            try {
+                const { error: updateError } = await supabase
+                    .from('orders')
+                    .update({
+                        subtotal_amount: calculatedSubtotal,
+                        service_charge_amount: finalServiceCharge,
+                        tax_amount: finalTax,
+                        total_amount: finalOrderTotal
+                    })
+                    .eq('id', result.order_id)
+                
+                if (updateError) {
+                    if (updateError.message.includes('service_charge_amount') || updateError.code === 'PGRST204') {
+                        await supabase
+                            .from('orders')
+                            .update({
+                                subtotal_amount: calculatedSubtotal,
+                                tax_amount: finalTax,
+                                total_amount: finalOrderTotal
+                            })
+                            .eq('id', result.order_id)
+                    } else {
+                        console.error('[checkout] Update totals error:', updateError)
+                    }
+                }
+            } catch (err) {
+                console.error('[checkout] Catch block update totals:', err)
+                await supabase
+                    .from('orders')
+                    .update({
+                        subtotal_amount: calculatedSubtotal,
+                        tax_amount: finalTax,
+                        total_amount: finalOrderTotal
+                    })
+                    .eq('id', result.order_id)
+            }
 
             // Update local variables returned in action response
             result.subtotal = calculatedSubtotal
@@ -377,29 +438,13 @@ export async function placeOrder(
             result.total = finalOrderTotal
         }
 
-        // Pricing is always normalised. Stock deduction + kitchen visibility depend
-        // on the restaurant's order mode:
-        //   • Mode 1 (direct): deduct stock now; the kitchen sees the order immediately.
-        //   • Mode 2 (waiter confirmation): flag the order as needs_confirmation so the
-        //     kitchen hides it, and defer stock deduction until a waiter confirms.
-        const requireConfirmation = false
-
+        // Pricing is always normalised. Stock is NOT deducted yet — place_order()
+        // was called with p_needs_confirmation:true, so the order sits hidden
+        // from the kitchen until a cashier confirms it (Order Confirmation panel);
+        // deduction + checkAndAlertLowStock happen there instead, item by item.
         const pricingResult = await supabase.rpc('apply_pricing_rules_to_order', { p_order_id: result.order_id })
         if (pricingResult.error) {
             console.error('[order]', result.order_id, 'apply_pricing_rules failed:', pricingResult.error)
-        }
-
-        if (requireConfirmation) {
-            await supabase
-                .from('orders')
-                .update({ needs_confirmation: true })
-                .eq('id', result.order_id)
-        } else {
-            // place_order() already deducted stock/ingredients inline for every item —
-            // do not call deduct_ingredients_for_order here, it would double-deduct.
-            if (sessionData.restaurant_id) {
-                void checkAndAlertLowStock(sessionData.restaurant_id)
-            }
         }
 
         // SMS notifications — best-effort, never block the order
@@ -474,7 +519,8 @@ async function placeOrderFallback(
     loyaltyMemberId: string | null,
     promoCode: string | null = null,
     clientRequestId: string | null = null,
-    loyaltyDiscount?: number | null
+    loyaltyDiscount?: number | null,
+    needsConfirmation = true
 ): Promise<{
     orderId: string
     subtotal: number
@@ -516,7 +562,9 @@ async function placeOrderFallback(
         }
     }
 
-    // Create pending order first
+    // Create the order. For room QR orders (needsConfirmation:false) it goes
+    // straight to the kitchen; for dine-in self-orders it parks as pending
+    // until a cashier confirms it.
     const { data: orderRow, error: orderInsertError } = await supabase
         .from('orders')
         .insert({
@@ -524,9 +572,10 @@ async function placeOrderFallback(
             restaurant_id: restaurantId,
             customer_note: customerNote,
             loyalty_member_id: loyaltyMemberId,
-            status: 'pending',
+            status: needsConfirmation ? 'pending' : 'confirmed',
             payment_status: 'unpaid',
             client_request_id: clientRequestId,
+            needs_confirmation: needsConfirmation,
         })
         .select('id')
         .single()
@@ -574,6 +623,7 @@ async function placeOrderFallback(
                 quantity: item.quantity,
                 unit_price: unitPrice,
                 special_request: item.special_request,
+                needs_confirmation: needsConfirmation,
             })
             .select('id')
             .single()
@@ -640,6 +690,7 @@ async function placeOrderFallback(
                     await supabase.from('order_items').insert({
                         order_id: orderId, menu_item_id: promo.free_item_id,
                         quantity: 1, unit_price: 0, special_request: 'FREE (promo)',
+                        needs_confirmation: true,
                     })
                 } else if (promo.promo_type === 'bogo' && promo.bogo_buy_item_id && promo.bogo_get_item_id) {
                     // Customer gets bogo_get_item free for every bogo_buy_item ordered.
@@ -649,6 +700,7 @@ async function placeOrderFallback(
                         await supabase.from('order_items').insert({
                             order_id: orderId, menu_item_id: promo.bogo_get_item_id,
                             quantity: buyItemInOrder.quantity, unit_price: 0, special_request: 'BOGO FREE',
+                            needs_confirmation: true,
                         })
                     }
                 }
@@ -673,9 +725,9 @@ async function placeOrderFallback(
     const scEnabled = featuresV2?.serviceChargeEnabled === true
     const scRate = Number(featuresV2?.serviceChargeRate ?? 10)
 
-    const serviceCharge = scEnabled 
-        ? Math.round((subtotal - discount) * (scRate / 100) * 100) / 100 
-        : 0
+    // Standard dine-in table QR orders: no service charge.
+    // SC applies only to in-room food orders (hotel room QR, checked above).
+    const serviceCharge = 0
 
     const tax = Math.round((subtotal - discount + serviceCharge) * (taxRate / 100) * 100) / 100
     const total = Math.max(0, subtotal - discount + serviceCharge + tax)
@@ -696,13 +748,10 @@ async function placeOrderFallback(
         console.error('Fallback order totals update failed:', totalsUpdateError)
     }
 
-    const [pricingFb, deductFb] = await Promise.allSettled([
-        supabase.rpc('apply_pricing_rules_to_order', { p_order_id: orderId }),
-        supabase.rpc('deduct_ingredients_for_order',  { p_order_id: orderId }),
-    ])
-    if (pricingFb.status === 'rejected') console.error('[fallback]', orderId, 'apply_pricing failed:', pricingFb.reason)
-    if (deductFb.status === 'rejected') console.error('[fallback]', orderId, 'deduct_ingredients failed:', deductFb.reason)
-    else if (deductFb.status === 'fulfilled' && deductFb.value?.error) console.error('[fallback]', orderId, 'deduct_ingredients RPC error:', deductFb.value.error)
+    // Stock is deferred to cashier-confirm time (needs_confirmation:true above) —
+    // no deduct_ingredients_for_order call here, unlike the pre-confirmation version.
+    const pricingFb = await supabase.rpc('apply_pricing_rules_to_order', { p_order_id: orderId })
+    if (pricingFb.error) console.error('[fallback]', orderId, 'apply_pricing failed:', pricingFb.error)
 
     return {
         orderId,

@@ -1,9 +1,25 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { ShoppingBag, Search, X } from 'lucide-react'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import RefundOrderButton from './RefundOrderButton'
+import Select from '@/components/ui/Select'
+import { getItemDisplayName } from '@/lib/utils'
+import OrderDetailModal from '@/components/admin/OrderDetailModal'
+import DateCell from '@/components/ui/DateCell'
+
+export type AdminOrderItem = {
+    id: string
+    quantity: number
+    unit_price: number | null
+    special_request: string | null
+    status: string | null
+    menu_items: { name: string } | null
+    menu_item_variations: { name: string } | null
+    order_item_modifiers: { modifier_name: string; price_adjustment: number | null }[] | null
+}
 
 export type AdminOrder = {
     id: string
@@ -13,8 +29,24 @@ export type AdminOrder = {
     refunded_amount: number | null
     placed_at: string
     customer_note: string | null
-    sessions: { tables: { label: string } | null } | null
-    order_items: { id: string; quantity: number; menu_items: { name: string } | null }[]
+    subtotal_amount: number | null
+    service_charge_amount: number | null
+    tax_amount: number | null
+    tip_amount: number | null
+    discount_amount: number | null
+    payment_method: string | null
+    confirmed_at: string | null
+    ready_at: string | null
+    delivered_at: string | null
+    paid_at: string | null
+    cancellation_reason: string | null
+    order_type: string | null
+    customer_name: string | null
+    customer_phone: string | null
+    delivery_address: string | null
+    sessions: { seat_number: number | null; tables: { label: string } | null; bookings?: { guest_name: string | null; rooms: { room_number: string } | null } | null } | null
+    bookings?: { guest_name: string | null; rooms: { room_number: string } | null } | null
+    order_items: AdminOrderItem[]
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -39,6 +71,22 @@ const selectClass = 'h-10 rounded-[var(--r-md)] border border-hairline px-4 text
 
 export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder[]; canRefund: boolean }) {
     const [search, setSearch] = useState('')
+    const [detailOrder, setDetailOrder] = useState<AdminOrder | null>(null)
+    const searchParams = useSearchParams()
+
+    // Deep link from the dashboard's recent-orders row: /admin/orders?order=<id>
+    // opens straight onto that order. Only fires once, so closing the dialog
+    // does not immediately reopen it while the query string is still there.
+    const deepLinkedId = searchParams.get('order')
+    const consumedDeepLink = useRef(false)
+    useEffect(() => {
+        if (!deepLinkedId || consumedDeepLink.current) return
+        const match = orders.find((o) => o.id === deepLinkedId)
+        if (!match) return
+        consumedDeepLink.current = true
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setDetailOrder(match)
+    }, [deepLinkedId, orders])
     const money = useCurrency()
     const [status, setStatus] = useState('all')
     const [payment, setPayment] = useState('all')
@@ -100,20 +148,20 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                     />
                 </div>
                 <div className="grid grid-cols-3 sm:flex gap-3">
-                    <select value={status} onChange={e => setStatus(e.target.value)} className={selectClass} aria-label="Filter by status">
+                    <Select value={status} onChange={e => setStatus(e.target.value)} className={selectClass} aria-label="Filter by status">
                         <option value="all">All Status</option>
                         {STATUSES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
-                    </select>
-                    <select value={payment} onChange={e => setPayment(e.target.value)} className={selectClass} aria-label="Filter by payment">
+                    </Select>
+                    <Select value={payment} onChange={e => setPayment(e.target.value)} className={selectClass} aria-label="Filter by payment">
                         <option value="all">All Payment</option>
                         {PAYMENTS.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
-                    </select>
-                    <select value={dateRange} onChange={e => setDateRange(e.target.value)} className={selectClass} aria-label="Filter by date">
+                    </Select>
+                    <Select value={dateRange} onChange={e => setDateRange(e.target.value)} className={selectClass} aria-label="Filter by date">
                         <option value="all">All Time</option>
                         <option value="today">Today</option>
                         <option value="7d">Last 7 Days</option>
                         <option value="30d">Last 30 Days</option>
-                    </select>
+                    </Select>
                 </div>
                 {hasActiveFilters && (
                     <button onClick={clearFilters} className="h-10 px-4 inline-flex items-center justify-center gap-1.5 rounded-[var(--r-md)] text-sm font-bold text-ink-subtle hover:text-ink hover:bg-surface-muted transition-colors focus-ring">
@@ -141,11 +189,21 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                         {filtered.map((order) => {
                             const tableLabel = order.sessions?.tables?.label || '—'
                             const itemCount = order.order_items?.length || 0
-                            const itemNames = order.order_items?.map((i) => `${i.quantity}x ${i.menu_items?.name}`).join(', ') || '—'
+                            const itemNames = order.order_items?.map((i) => `${i.quantity}x ${getItemDisplayName(i)}`).join(', ') || '—'
                             const refundable = canRefund && ['paid', 'unpaid'].includes(order.payment_status) && order.status !== 'cancelled'
 
                             return (
-                                <tr key={order.id} className={`hover:bg-surface-muted/30 transition-colors ${order.payment_status === 'refunded' ? 'opacity-50' : ''}`}>
+                                <tr
+                                    key={order.id}
+                                    role="button"
+                                    tabIndex={0}
+                                    aria-label={`View details for order ${order.id.substring(0, 8).toUpperCase()}`}
+                                    onClick={() => setDetailOrder(order)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailOrder(order) }
+                                    }}
+                                    className={`cursor-pointer hover:bg-surface-muted/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 focus-visible:ring-inset ${order.payment_status === 'refunded' ? 'opacity-50' : ''}`}
+                                >
                                     <td className="px-6 py-4 font-mono font-bold text-ink text-xs tracking-wide">
                                         #{order.id.substring(0, 8).toUpperCase()}
                                     </td>
@@ -163,8 +221,8 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                                             {order.payment_status}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 text-ink-subtle text-xs whitespace-nowrap">
-                                        <span className="tabular-nums">{new Date(order.placed_at).toLocaleDateString()}</span> <span className="mx-1 opacity-50">·</span> <span className="tabular-nums">{new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                    <td className="px-6 py-4 text-ink-subtle text-xs">
+                                        <DateCell value={order.placed_at} time />
                                     </td>
                                     <td className="px-6 py-4 text-right font-bold text-ink whitespace-nowrap">
                                         <span className={`tabular-nums ${order.payment_status === 'refunded' ? 'line-through text-ink-subtle' : ''}`}>
@@ -172,7 +230,7 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                                         </span>
                                     </td>
                                     {canRefund && (
-                                        <td className="px-4 py-4 text-right">
+                                        <td className="px-4 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                                             {refundable && (
                                                 <RefundOrderButton orderId={order.id} paymentStatus={order.payment_status} totalAmount={order.total_amount ?? 0} refundedAmount={order.refunded_amount ?? 0} />
                                             )}
@@ -194,11 +252,21 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
             <div className="md:hidden divide-y divide-hairline">
                 {filtered.map((order) => {
                     const tableLabel = order.sessions?.tables?.label || '—'
-                    const itemNames = order.order_items?.map((i) => `${i.quantity}x ${i.menu_items?.name}`).join(', ') || ''
+                    const itemNames = order.order_items?.map((i) => `${i.quantity}x ${getItemDisplayName(i)}`).join(', ') || ''
                     const refundable = canRefund && ['paid', 'unpaid'].includes(order.payment_status) && order.status !== 'cancelled'
 
                     return (
-                        <div key={order.id} className={`p-5 space-y-3 ${order.payment_status === 'refunded' ? 'opacity-50' : ''}`}>
+                        <div
+                            key={order.id}
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`View details for order ${order.id.substring(0, 8).toUpperCase()}`}
+                            onClick={() => setDetailOrder(order)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailOrder(order) }
+                            }}
+                            className={`p-5 space-y-3 cursor-pointer active:bg-surface-muted/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 focus-visible:ring-inset ${order.payment_status === 'refunded' ? 'opacity-50' : ''}`}
+                        >
                             <div className="flex items-center justify-between">
                                 <div className="font-mono text-xs font-bold text-ink tracking-wide">#{order.id.substring(0, 8).toUpperCase()}</div>
                                 <div className="flex items-center gap-2">
@@ -219,9 +287,9 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                             {itemNames && <p className="text-xs text-ink-subtle/70 truncate">{itemNames}</p>}
                             <div className="flex items-center justify-between pt-1">
                                 <div className="text-[11px] text-ink-subtle tabular-nums font-medium">
-                                    {new Date(order.placed_at).toLocaleDateString()} <span className="opacity-50 mx-1">·</span> {new Date(order.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    <DateCell value={order.placed_at} time />
                                 </div>
-                                {refundable && <RefundOrderButton orderId={order.id} paymentStatus={order.payment_status} totalAmount={order.total_amount ?? 0} refundedAmount={order.refunded_amount ?? 0} />}
+                                {refundable && <span onClick={(e) => e.stopPropagation()}><RefundOrderButton orderId={order.id} paymentStatus={order.payment_status} totalAmount={order.total_amount ?? 0} refundedAmount={order.refunded_amount ?? 0} /></span>}
                             </div>
                         </div>
                     )
@@ -232,6 +300,8 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                     </div>
                 )}
             </div>
+
+            <OrderDetailModal order={detailOrder} onClose={() => setDetailOrder(null)} />
         </div>
     )
 }

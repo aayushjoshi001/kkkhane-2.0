@@ -356,7 +356,7 @@ export default function ItemDetailView({
                             )}
                         </div>
                         <div className="flex-1 min-w-0 pb-1">
-                            <div className="flex items-center gap-1.5 mb-0.5">
+                            <div className="flex items-center gap-1.5 mb-0.5 min-w-0">
                                 <span className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded border shrink-0 ${isVeg ? "border-green-600" : "border-red-600"}`}>
                                     <span className={`w-1.5 h-1.5 rounded-full ${isVeg ? "bg-green-600" : "bg-red-600"}`} />
                                 </span>
