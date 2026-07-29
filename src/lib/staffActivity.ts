@@ -19,6 +19,40 @@
 // on different days.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { NEPAL_TZ } from '@/lib/utils'
+
+/**
+ * The business day an instant belongs to, in Kathmandu.
+ *
+ * Read in the server's own zone this would be a day out for everything after
+ * 6:15pm local, which is most of a restaurant's trade.
+ */
+function nepalDay(ts: string | null | undefined): string | null {
+    if (!ts) return null
+    const d = new Date(ts)
+    if (Number.isNaN(d.getTime())) return null
+    return d.toLocaleDateString('en-CA', { timeZone: NEPAL_TZ })
+}
+
+/**
+ * One person's figures for a single business day.
+ *
+ * The range totals answer "how did the week go"; these answer "what happened on
+ * Tuesday", which is the question actually asked when something looks wrong.
+ * Only days on which the person did something appear — a fortnight of blanks
+ * buries the three days that matter.
+ */
+export interface StaffDayBreakdown {
+    /** Kathmandu calendar day, `YYYY-MM-DD`. */
+    day: string
+    ordersTaken: number
+    ordersValue: number
+    billsSettled: number
+    amountCollected: number
+    itemsPrepared: number
+    discountTotal: number
+    cancellations: number
+}
 
 /** Everything one person did in the window. Zeroed rather than absent, so the
  *  report can list a member of staff who did nothing without special-casing. */
@@ -56,6 +90,10 @@ export interface StaffActivity {
     discountTotal: number
     /** Orders or items they cancelled, and bills they reopened. */
     cancellations: number
+
+    /** The same figures split by business day, newest first. Days with nothing
+     *  on them are omitted. */
+    days: StaffDayBreakdown[]
 }
 
 export interface StaffActivityRange {
@@ -96,7 +134,7 @@ export async function getStaffActivity(
         // happened is not work done, and counting it would reward voiding.
         supabase
             .from('orders')
-            .select('id, waiter_id, waiter_id_inferred, total_amount, order_items(id, quantity, status)')
+            .select('id, waiter_id, waiter_id_inferred, total_amount, placed_at, order_items(id, quantity, status)')
             .eq('restaurant_id', restaurantId)
             .not('waiter_id', 'is', null)
             .neq('status', 'cancelled')
@@ -106,7 +144,7 @@ export async function getStaffActivity(
         // Bills they settled, on the moment the money was taken.
         supabase
             .from('orders')
-            .select('id, cashier_id, total_amount')
+            .select('id, cashier_id, total_amount, paid_at')
             .eq('restaurant_id', restaurantId)
             .not('cashier_id', 'is', null)
             .neq('status', 'cancelled')
@@ -125,7 +163,7 @@ export async function getStaffActivity(
 
         supabase
             .from('order_items')
-            .select('id, chef_id, quantity, orders!inner(restaurant_id)')
+            .select('id, chef_id, quantity, created_at, orders!inner(restaurant_id)')
             .not('chef_id', 'is', null)
             .eq('orders.restaurant_id', restaurantId)
             .neq('status', 'cancelled')
@@ -134,7 +172,7 @@ export async function getStaffActivity(
 
         supabase
             .from('audit_logs')
-            .select('id, user_id, action, new_value')
+            .select('id, user_id, action, new_value, created_at')
             .eq('restaurant_id', restaurantId)
             .gte('created_at', from)
             .lt('created_at', to),
@@ -146,7 +184,29 @@ export async function getStaffActivity(
         billsSettled: 0, amountCollected: 0, largestBill: 0,
         itemsPrepared: 0,
         discountsGiven: 0, discountTotal: 0, cancellations: 0,
+        days: [],
     })
+
+    // Per-person, per-day figures, keyed `${userId}|${day}`. Kept beside the
+    // range totals rather than derived from them: every source row is visited
+    // once and contributes to both, so the two can never disagree.
+    const byDay = new Map<string, StaffDayBreakdown>()
+    const dayBucket = (userId: string, ts: string | null | undefined): StaffDayBreakdown | null => {
+        const day = nepalDay(ts)
+        if (!day) return null
+        const key = `${userId}|${day}`
+        let bucket = byDay.get(key)
+        if (!bucket) {
+            bucket = {
+                day,
+                ordersTaken: 0, ordersValue: 0,
+                billsSettled: 0, amountCollected: 0,
+                itemsPrepared: 0, discountTotal: 0, cancellations: 0,
+            }
+            byDay.set(key, bucket)
+        }
+        return bucket
+    }
 
     const byUser = new Map<string, StaffActivity>()
     for (const u of staffRes.data || []) {
@@ -174,13 +234,20 @@ export async function getStaffActivity(
     for (const o of waiterRes.data || []) {
         const row = ensure(o.waiter_id as string)
         if (!row) continue
+        const value = Number(o.total_amount) || 0
         row.ordersTaken += 1
-        row.ordersValue += Number(o.total_amount) || 0
+        row.ordersValue += value
         if (o.waiter_id_inferred) row.ordersInferred += 1
         const items = (o.order_items as Array<{ quantity: number; status: string }> | null) || []
         row.itemsSold += items
             .filter(i => i.status !== 'cancelled')
             .reduce((s, i) => s + (Number(i.quantity) || 0), 0)
+
+        const bucket = dayBucket(row.userId, o.placed_at as string)
+        if (bucket) {
+            bucket.ordersTaken += 1
+            bucket.ordersValue += value
+        }
     }
 
     for (const o of cashierRes.data || []) {
@@ -190,6 +257,12 @@ export async function getStaffActivity(
         row.billsSettled += 1
         row.amountCollected += amount
         row.largestBill = Math.max(row.largestBill, amount)
+
+        const bucket = dayBucket(row.userId, o.paid_at as string)
+        if (bucket) {
+            bucket.billsSettled += 1
+            bucket.amountCollected += amount
+        }
     }
 
     // Bookings carry two possible settlement moments — an early settlement and
@@ -204,20 +277,31 @@ export async function getStaffActivity(
         row.billsSettled += 1
         row.amountCollected += amount
         row.largestBill = Math.max(row.largestBill, amount)
+
+        const bucket = dayBucket(row.userId, settledAt)
+        if (bucket) {
+            bucket.billsSettled += 1
+            bucket.amountCollected += amount
+        }
     }
 
     for (const it of chefRes.data || []) {
         const row = ensure(it.chef_id as string)
         if (!row) continue
-        row.itemsPrepared += Number(it.quantity) || 0
+        const qty = Number(it.quantity) || 0
+        row.itemsPrepared += qty
+        const bucket = dayBucket(row.userId, it.created_at as string)
+        if (bucket) bucket.itemsPrepared += qty
     }
 
     for (const log of auditRes.data || []) {
         const row = ensure(log.user_id as string)
         if (!row) continue
         const action = log.action as string
+        const bucket = dayBucket(row.userId, log.created_at as string)
         if (CANCELLATION_ACTIONS.has(action)) {
             row.cancellations += 1
+            if (bucket) bucket.cancellations += 1
             continue
         }
         if (DISCOUNT_ACTIONS.has(action)) {
@@ -226,8 +310,27 @@ export async function getStaffActivity(
             if (discount > 0) {
                 row.discountsGiven += 1
                 row.discountTotal += discount
+                if (bucket) bucket.discountTotal += discount
             }
         }
+    }
+
+    // Hand each person their own days, newest first — a manager checking on
+    // something reads back from the most recent, not forward from the oldest.
+    const daysFor = new Map<string, StaffDayBreakdown[]>()
+    for (const [key, bucket] of byDay) {
+        const userId = key.slice(0, key.indexOf('|'))
+        const list = daysFor.get(userId) ?? []
+        list.push({
+            ...bucket,
+            ordersValue: round2(bucket.ordersValue),
+            amountCollected: round2(bucket.amountCollected),
+            discountTotal: round2(bucket.discountTotal),
+        })
+        daysFor.set(userId, list)
+    }
+    for (const list of daysFor.values()) {
+        list.sort((a, b) => b.day.localeCompare(a.day))
     }
 
     return [...byUser.values()]
@@ -237,6 +340,7 @@ export async function getStaffActivity(
             amountCollected: round2(r.amountCollected),
             largestBill: round2(r.largestBill),
             discountTotal: round2(r.discountTotal),
+            days: daysFor.get(r.userId) ?? [],
         }))
         // Busiest first — a manager scanning the page wants the people who
         // handled the most money at the top, and the idle rows at the bottom.
