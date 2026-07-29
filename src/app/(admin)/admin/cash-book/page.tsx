@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import CashBookClient from './CashBookClient'
 import type { BankAccount, DayBookEntry, ExpenseCategory, Supplier } from '@/types/database'
 import { getNstDateString } from '@/lib/timezone'
-import { resolveActiveDayBookSession } from '@/lib/ledger'
+import { resolveActiveDayBookSession, attachCreatorNames } from '@/lib/ledger'
 
 import { getRestaurantFeatures } from '@/lib/features'
 
@@ -57,7 +57,7 @@ export default async function CashBookPage() {
         .order('name', { ascending: true })
 
     // Fetch today's entries (if session exists)
-    let entries: DayBookEntry[] = []
+    let entries: (DayBookEntry & { created_by_name: string | null })[] = []
     if (session) {
         const { data: entriesData } = await supabase
             .from('day_book_entries')
@@ -65,8 +65,14 @@ export default async function CashBookPage() {
             .eq('session_id', session.id)
             .in('type', ['cash_in', 'cash_out'])
             .order('created_at', { ascending: false })
-        entries = (entriesData as DayBookEntry[]) || []
+        entries = await attachCreatorNames(supabase, (entriesData as DayBookEntry[]) || [])
     }
+
+    // Stamped onto a newly-added entry client-side the instant it's created —
+    // the API response only carries created_by (a uuid) and it's always the
+    // acting user, so this is cheaper than a round-trip through
+    // attachCreatorNames just to show one name. staff already carries it.
+    const currentUserName = (staff || []).find(u => u.id === currentUser.id)?.full_name ?? null
 
     // Calculate cash totals
     const totalCashIn  = entries.filter(e => e.type === 'cash_in').reduce((s: number, e: DayBookEntry) => s + Number(e.amount), 0)
@@ -93,6 +99,7 @@ export default async function CashBookPage() {
             initialTotals={initialTotals}
             todayDate={todayDate}
             userRole={currentUser.role}
+            currentUserName={currentUserName}
             previousClosingBalance={previousClosingBalance}
             previousClosingBankBalance={previousClosingBankBalance}
             expenseCategories={(expenseCategories as ExpenseCategory[]) || []}

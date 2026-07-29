@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import BankLedgerManager from './BankLedgerManager'
 
 import { getRestaurantFeatures } from '@/lib/features'
+import { attachCreatorNames } from '@/lib/ledger'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,11 +45,12 @@ export default async function BankLedgerPage() {
         } catch {}
         return true
     })
+    const namedBankEntries = await attachCreatorNames(supabase, filteredBankEntries)
 
     return (
         <BankLedgerManager
             bankAccounts={bankAccounts || []}
-            bankEntries={filteredBankEntries}
+            bankEntries={namedBankEntries}
         />
     )
 }

@@ -9,6 +9,8 @@ import Select from '@/components/ui/Select'
 import { getItemDisplayName } from '@/lib/utils'
 import OrderDetailModal from '@/components/admin/OrderDetailModal'
 import DateCell from '@/components/ui/DateCell'
+import { DateRangePicker, type DateRange } from '@/components/ui/DateRangePicker'
+import { NST_OFFSET_MS } from '@/lib/timezone'
 
 export type AdminOrderItem = {
     id: string
@@ -90,22 +92,21 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
     const money = useCurrency()
     const [status, setStatus] = useState('all')
     const [payment, setPayment] = useState('all')
-    const [dateRange, setDateRange] = useState('all')
-    // Seeded once on mount so the filter memo stays a pure computation.
-    const [now] = useState(() => Date.now())
+    const [dateRange, setDateRange] = useState<DateRange>({ from: null, to: null })
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase()
         return orders.filter(o => {
             if (status !== 'all' && o.status !== status) return false
             if (payment !== 'all' && o.payment_status !== payment) return false
-            if (dateRange === 'today') {
-                const today = new Date(now); today.setHours(0, 0, 0, 0)
-                if (new Date(o.placed_at) < today) return false
-            } else if (dateRange === '7d') {
-                if (now - new Date(o.placed_at).getTime() > 7 * 24 * 3600 * 1000) return false
-            } else if (dateRange === '30d') {
-                if (now - new Date(o.placed_at).getTime() > 30 * 24 * 3600 * 1000) return false
+            if (dateRange.from || dateRange.to) {
+                // Compared as NST calendar dates, matching the preset buttons
+                // (Today/This Week/…), which are themselves resolved in NST —
+                // otherwise "Today" could exclude an order placed in the last
+                // few hours of the Nepali business day.
+                const placedDate = new Date(new Date(o.placed_at).getTime() + NST_OFFSET_MS).toISOString().slice(0, 10)
+                if (dateRange.from && placedDate < dateRange.from) return false
+                if (dateRange.to && placedDate > dateRange.to) return false
             }
             if (q) {
                 const idMatch = o.id.toLowerCase().includes(q)
@@ -115,12 +116,12 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
             }
             return true
         })
-    }, [orders, search, status, payment, dateRange, now])
+    }, [orders, search, status, payment, dateRange])
 
     const revenue = filtered.reduce((s, o) => s + (o.payment_status === 'refunded' ? 0 : (o.total_amount ?? 0)), 0)
-    const hasActiveFilters = search.trim() !== '' || status !== 'all' || payment !== 'all' || dateRange !== 'all'
+    const hasActiveFilters = search.trim() !== '' || status !== 'all' || payment !== 'all' || !!dateRange.from || !!dateRange.to
 
-    const clearFilters = () => { setSearch(''); setStatus('all'); setPayment('all'); setDateRange('all') }
+    const clearFilters = () => { setSearch(''); setStatus('all'); setPayment('all'); setDateRange({ from: null, to: null }) }
 
     return (
         <div className="bg-surface rounded-card shadow-sm border border-hairline overflow-hidden">
@@ -136,38 +137,35 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
             </div>
 
             {/* Filters */}
-            <div className="p-4 border-b border-hairline flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center bg-surface">
-                <div className="relative flex-1 min-w-[180px]">
-                    <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-subtle" />
-                    <input
-                        type="text"
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        placeholder="Search order #, table or item…"
-                        className="w-full h-10 pl-10 pr-4 rounded-[var(--r-md)] border border-hairline text-sm bg-surface outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
-                    />
+            <div className="p-4 border-b border-hairline space-y-3 bg-surface">
+                <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center">
+                    <div className="relative flex-1 min-w-[180px]">
+                        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-subtle" />
+                        <input
+                            type="text"
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            placeholder="Search order #, table or item…"
+                            className="w-full h-10 pl-10 pr-4 rounded-[var(--r-md)] border border-hairline text-sm bg-surface outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 sm:flex gap-3">
+                        <Select value={status} onChange={e => setStatus(e.target.value)} className={selectClass} aria-label="Filter by status">
+                            <option value="all">All Status</option>
+                            {STATUSES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+                        </Select>
+                        <Select value={payment} onChange={e => setPayment(e.target.value)} className={selectClass} aria-label="Filter by payment">
+                            <option value="all">All Payment</option>
+                            {PAYMENTS.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
+                        </Select>
+                    </div>
+                    {hasActiveFilters && (
+                        <button onClick={clearFilters} className="h-10 px-4 inline-flex items-center justify-center gap-1.5 rounded-[var(--r-md)] text-sm font-bold text-ink-subtle hover:text-ink hover:bg-surface-muted transition-colors focus-ring">
+                            <X size={14} /> Clear
+                        </button>
+                    )}
                 </div>
-                <div className="grid grid-cols-3 sm:flex gap-3">
-                    <Select value={status} onChange={e => setStatus(e.target.value)} className={selectClass} aria-label="Filter by status">
-                        <option value="all">All Status</option>
-                        {STATUSES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
-                    </Select>
-                    <Select value={payment} onChange={e => setPayment(e.target.value)} className={selectClass} aria-label="Filter by payment">
-                        <option value="all">All Payment</option>
-                        {PAYMENTS.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
-                    </Select>
-                    <Select value={dateRange} onChange={e => setDateRange(e.target.value)} className={selectClass} aria-label="Filter by date">
-                        <option value="all">All Time</option>
-                        <option value="today">Today</option>
-                        <option value="7d">Last 7 Days</option>
-                        <option value="30d">Last 30 Days</option>
-                    </Select>
-                </div>
-                {hasActiveFilters && (
-                    <button onClick={clearFilters} className="h-10 px-4 inline-flex items-center justify-center gap-1.5 rounded-[var(--r-md)] text-sm font-bold text-ink-subtle hover:text-ink hover:bg-surface-muted transition-colors focus-ring">
-                        <X size={14} /> Clear
-                    </button>
-                )}
+                <DateRangePicker from={dateRange.from} to={dateRange.to} onChange={setDateRange} className="max-w-xl" />
             </div>
 
             {/* Desktop Table */}

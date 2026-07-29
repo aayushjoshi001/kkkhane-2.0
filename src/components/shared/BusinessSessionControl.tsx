@@ -1,37 +1,28 @@
 'use client'
 
-import { useState } from 'react'
 import { Play, Power, AlertCircle, Calendar, Loader2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
+import { useBusinessSession } from '@/lib/contexts/BusinessSessionContext'
 
 interface BusinessSessionControlProps {
-    initialSession: {
+    initialSession?: {
         id: string
         date: string
         status: 'open' | 'closed'
         opening_balance: number
         opening_bank_balance: number
     } | null
-    userRole: string
-    todayDate: string
+    userRole?: string
+    todayDate?: string
     variant?: 'banner' | 'compact'
 }
 
 export default function BusinessSessionControl({
-    initialSession,
-    userRole,
-    todayDate,
     variant = 'banner',
 }: BusinessSessionControlProps) {
-    const router = useRouter()
     const { confirm } = useConfirmStore()
-    const [session, setSession] = useState(initialSession)
-    const [loading, setLoading] = useState(false)
-
-    const isClosed = !session || session.status === 'closed'
-    const canManage = ['manager', 'super_admin', 'cashier'].includes(userRole)
+    const { session, isClosed, canManage, todayDate, openBusiness, closeBusiness, loading } = useBusinessSession()
 
     async function handleOpenBusiness() {
         if (!canManage) {
@@ -47,24 +38,7 @@ export default function BusinessSessionControl({
         })
         if (!ok) return
 
-        setLoading(true)
-        try {
-            const res = await fetch('/api/day-book/session', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ date: todayDate }),
-            })
-            const data = await res.json()
-            if (!res.ok) throw new Error(data.error)
-            
-            setSession(data.data)
-            toast.success('Business day opened successfully! Cash book and bank books are now active.')
-            router.refresh()
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to open business day')
-        } finally {
-            setLoading(false)
-        }
+        await openBusiness(todayDate)
     }
 
     async function handleCloseBusiness() {
@@ -82,24 +56,7 @@ export default function BusinessSessionControl({
         })
         if (!ok) return
 
-        setLoading(true)
-        try {
-            const res = await fetch('/api/day-book/session', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id: session.id }),
-            })
-            const data = await res.json()
-            if (!res.ok) throw new Error(data.error)
-            
-            setSession(data.data)
-            toast.success('Business day closed successfully. All books are locked.')
-            router.refresh()
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to close business day')
-        } finally {
-            setLoading(false)
-        }
+        await closeBusiness()
     }
 
     if (variant === 'compact') {
@@ -124,7 +81,7 @@ export default function BusinessSessionControl({
                         onClick={handleCloseBusiness}
                         disabled={loading}
                         className="flex items-center gap-2 text-sm font-bold text-emerald-900 bg-emerald-100 hover:bg-rose-100 hover:text-rose-900 border border-emerald-300 hover:border-rose-300 px-4 py-2.5 rounded-xl transition-colors shadow-sm active:scale-95 shrink-0"
-                        title={`Business Day Active (${session.date}) — Click to Close`}
+                        title={`Business Day Active (${session?.date ?? todayDate}) — Click to Close`}
                     >
                         {loading ? (
                             <Loader2 size={15} className="animate-spin" />
@@ -134,7 +91,7 @@ export default function BusinessSessionControl({
                                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                             </span>
                         )}
-                        <span>Day Active ({session.date})</span>
+                        <span>Day Active ({session?.date ?? todayDate})</span>
                     </button>
                 )}
             </div>
@@ -182,7 +139,7 @@ export default function BusinessSessionControl({
                                 Business Day is Active
                             </h4>
                             <p className="text-xs text-emerald-700 font-semibold leading-relaxed">
-                                Active Business Date: <strong className="text-emerald-900">{session.date}</strong>. Cash books and bank books are open and ready for transactions.
+                                Active Business Date: <strong className="text-emerald-900">{session?.date ?? todayDate}</strong>. Cash books and bank books are open and ready for transactions.
                             </p>
                         </div>
                     </div>

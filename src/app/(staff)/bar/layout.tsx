@@ -9,6 +9,10 @@ import { verifyClientIp } from '@/lib/ip-check'
 import { getActiveShift } from '@/app/api/staff/actions'
 import { redirect } from 'next/navigation'
 
+import { BusinessSessionProvider } from '@/lib/contexts/BusinessSessionContext'
+import BusinessGuard from '@/components/shared/BusinessGuard'
+import { getNstDateString } from '@/lib/timezone'
+
 // The bar board reuses the kitchen shell and queue, parametrised by station.
 // Kitchen and bar are the same job shape — a display that streams incoming
 // order lines and advances them through prep — differing only in which lines
@@ -23,21 +27,44 @@ export default async function BarLayout({ children }: { children: ReactNode }) {
     }
 
     const adminSupabase = await createAdminClient()
+    const todayDate = getNstDateString()
 
-    const [{ data: user }, { data: restaurant }, features, mode] = await Promise.all([
+    const [{ data: user }, { data: restaurant }, features, mode, activeShift, { data: openSession }] = await Promise.all([
         adminSupabase.from('users').select('full_name').eq('id', userId).single(),
         adminSupabase.from('restaurants').select('name').eq('id', restaurantId).single(),
         getRestaurantFeatures(restaurantId),
         getRestaurantMode(restaurantId),
+        getActiveShift(userId),
+        adminSupabase
+            .from('day_book_sessions')
+            .select('id, date, status, opening_balance, opening_bank_balance')
+            .eq('restaurant_id', restaurantId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
     ])
 
     const notificationSoundUrl = (features as Record<string, unknown> | null)?.notificationSoundUrl as string | null | undefined
 
-    const onShift = !!(await getActiveShift(userId))
+    const onShift = !!activeShift
+
+    const sessionProp = openSession ? {
+        id: openSession.id,
+        date: openSession.date,
+        status: openSession.status as 'open' | 'closed',
+        opening_balance: Number(openSession.opening_balance),
+        opening_bank_balance: Number(openSession.opening_bank_balance)
+    } : null
 
     return (
         <FeatureProvider features={features}>
         <BusinessModeProvider mode={mode}>
+        <BusinessSessionProvider
+            initialSession={sessionProp}
+            userRole={role || 'bar'}
+            todayDate={todayDate}
+            restaurantId={restaurantId}
+        >
             <SessionSync userId={userId} />
             <KitchenLayoutClient
                 station="bar"
@@ -49,8 +76,11 @@ export default async function BarLayout({ children }: { children: ReactNode }) {
                 shiftsEnabled={(features as { staffShiftsEnabled?: boolean } | null)?.staffShiftsEnabled === true}
                 notificationSoundUrl={notificationSoundUrl || null}
             >
-                {children}
+                <BusinessGuard>
+                    {children}
+                </BusinessGuard>
             </KitchenLayoutClient>
+        </BusinessSessionProvider>
         </BusinessModeProvider>
         </FeatureProvider>
     )
