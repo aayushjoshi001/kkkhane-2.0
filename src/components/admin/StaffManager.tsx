@@ -18,6 +18,7 @@ import { formatCurrency } from '@/lib/utils'
 import PayPartyModal from '@/components/admin/PayPartyModal'
 import { computeStaffCurrentDue, type StaffLedgerEntryType } from '@/lib/staffLedger'
 import Select from '@/components/ui/Select'
+import StaffActivityPanel from '@/components/admin/StaffActivityPanel'
 
 // Ledger entry types that represent money actually paid out to staff (as opposed
 // to 'accrual', which only increases what's owed, or 'deduction', which reduces it)
@@ -159,7 +160,7 @@ export default function StaffManager({
     )
     const attendanceMap = attendanceData.attendance
 
-    const [activeTab, setActiveTab] = useState<'staff' | 'departments' | 'invitations' | 'salaries'>('staff')
+    const [activeTab, setActiveTab] = useState<'staff' | 'performance' | 'departments' | 'invitations' | 'salaries'>('staff')
     
     // Salaries & Ledger state
     const [salaryModal, setSalaryModal] = useState<{ isOpen: boolean, user: StaffMember | null, salary: string, saving: boolean }>({
@@ -951,7 +952,16 @@ export default function StaffManager({
                             </button>
                         </>
                     )}
-                    {activeTab === 'departments' && (
+                    {/* Per-person daily activity. Its own component and its own fetch —
+                the roster above is server-rendered, while this is driven by a
+                date range the manager changes. */}
+            {activeTab === 'performance' && (
+                <div className="p-5 md:p-6">
+                    <StaffActivityPanel />
+                </div>
+            )}
+
+            {activeTab === 'departments' && (
                         <button
                             onClick={() => setDepartmentModal({ isOpen: true, department: null, name: '', description: '', saving: false })}
                             className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 shrink-0 focus-ring"
@@ -970,6 +980,12 @@ export default function StaffManager({
                     className={`py-3.5 px-1 mr-6 text-sm font-bold border-b-2 transition-colors ${activeTab === 'staff' ? 'border-brand-500 text-brand-600' : 'border-transparent text-ink-subtle hover:text-ink'}`}
                 >
                     Team Roster ({staff.length})
+                </button>
+                <button
+                    onClick={() => setActiveTab('performance')}
+                    className={`py-3.5 px-1 mr-6 text-sm font-bold border-b-2 transition-colors ${activeTab === 'performance' ? 'border-brand-500 text-brand-600' : 'border-transparent text-ink-subtle hover:text-ink'}`}
+                >
+                    Performance
                 </button>
                 <button
                     onClick={() => setActiveTab('departments')}

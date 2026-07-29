@@ -113,15 +113,31 @@ export async function setOrderItemsStatus(
     //   • Mark Ready (→ready): only the owning chef (or an unclaimed dish) may
     //     advance it — enforced here so a non-owner's click changes nothing.
     //   • Anything else (e.g. served): plain prior-state guard.
-    const updateData: { status: OrderItemStatus; claimed_by?: string | null; claimed_at?: string | null } = {
+    // `claimed_by` is a lock, not a record: it exists so two cooks cannot start
+    // the same dish, and it is deliberately released when the dish is done. That
+    // left a finished dish remembering nobody, which is why the kitchen half of
+    // staff reporting had no data. `chef_id` is the durable counterpart — it is
+    // written alongside the lock and never cleared, so who cooked what survives
+    // the dish leaving the pass.
+    const updateData: {
+        status: OrderItemStatus
+        claimed_by?: string | null
+        claimed_at?: string | null
+        chef_id?: string | null
+    } = {
         status: nextStatus,
     }
     if (nextStatus === 'preparing') {
         updateData.claimed_by = actorUserId ?? null
         updateData.claimed_at = new Date().toISOString()
+        if (actorUserId) updateData.chef_id = actorUserId
     } else if (nextStatus === 'ready') {
         updateData.claimed_by = null
         updateData.claimed_at = null
+        // Safe to overwrite: only the owning chef may advance a claimed dish
+        // (guarded below), so the actor here either cooked it or picked up one
+        // nobody had claimed.
+        if (actorUserId) updateData.chef_id = actorUserId
     }
 
     let query = adminSupabase
