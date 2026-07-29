@@ -9,7 +9,11 @@ CREATE TABLE IF NOT EXISTS "public"."booking_payments" (
     "qr_amount" NUMERIC(12, 2) DEFAULT 0,
     "note" TEXT DEFAULT 'Advance',
     "created_at" TIMESTAMPTZ DEFAULT now(),
-    "created_by" UUID REFERENCES "auth"."users"("id") ON DELETE SET NULL
+    -- public.users, not auth.users: every route writing this passes
+    -- currentUser.id, which is the app user row (same id as the auth user, but
+    -- this is the table the rest of the schema points at — see
+    -- bookings_cashier_id_fkey).
+    "created_by" UUID REFERENCES "public"."users"("id") ON DELETE SET NULL
 );
 
 -- Index for fast lookup by booking_id and restaurant_id
@@ -19,17 +23,23 @@ CREATE INDEX IF NOT EXISTS "idx_booking_payments_restaurant_id" ON "public"."boo
 -- Enable RLS
 ALTER TABLE "public"."booking_payments" ENABLE ROW LEVEL SECURITY;
 
--- RLS policies
-CREATE POLICY "Users can view booking payments for their restaurant" ON "public"."booking_payments"
-    FOR SELECT USING (
-        "restaurant_id" IN (
-            SELECT "restaurant_id" FROM "public"."profiles" WHERE "id" = auth.uid()
-        )
+-- RLS policies.
+--
+-- These read the caller's tenant from current_restaurant_id()/current_app_role(),
+-- the helpers every other table in this schema uses. The original pair selected
+-- from a `public.profiles` table that does not exist here — that made the whole
+-- migration unapplyable, which is why this table was missing from production
+-- while the routes writing to it silently swallowed the failed inserts.
+DROP POLICY IF EXISTS "staff_manage_booking_payments" ON "public"."booking_payments";
+CREATE POLICY "staff_manage_booking_payments" ON "public"."booking_payments"
+    FOR ALL USING (
+        "public"."current_app_role"() = ANY (ARRAY['manager', 'super_admin', 'cashier', 'waiter'])
+        AND "restaurant_id" = "public"."current_restaurant_id"()
+    ) WITH CHECK (
+        "public"."current_app_role"() = ANY (ARRAY['manager', 'super_admin', 'cashier', 'waiter'])
+        AND "restaurant_id" = "public"."current_restaurant_id"()
     );
 
-CREATE POLICY "Users can insert booking payments for their restaurant" ON "public"."booking_payments"
-    FOR INSERT WITH CHECK (
-        "restaurant_id" IN (
-            SELECT "restaurant_id" FROM "public"."profiles" WHERE "id" = auth.uid()
-        )
-    );
+DROP POLICY IF EXISTS "staff_read_booking_payments" ON "public"."booking_payments";
+CREATE POLICY "staff_read_booking_payments" ON "public"."booking_payments"
+    FOR SELECT USING ("restaurant_id" = "public"."current_restaurant_id"());
