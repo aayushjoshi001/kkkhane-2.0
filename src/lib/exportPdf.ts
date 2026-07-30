@@ -34,16 +34,17 @@ function calculateColumnWidths(columns: PdfColumn[], contentWidth: number): numb
 }
 
 /**
- * Generates and downloads a clean, non-overlapping tabular PDF report in A4 size.
+ * Builds a clean, non-overlapping tabular PDF report in A4 size and returns the
+ * jsPDF document — shared by `downloadPdf` (single-file save) and callers that
+ * need the raw bytes instead, e.g. bundling several reports into one zip.
  */
-export function downloadPdf(
-    filename: string,
+export function buildPdfDoc(
     title: string,
     subtitle: string,
     columns: PdfColumn[],
     rows: Record<string, any>[],
     totalsRow?: Record<string, any>
-): void {
+): jsPDF {
     const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
     const margin = 12
     const pageWidth = doc.internal.pageSize.getWidth()
@@ -217,5 +218,20 @@ export function downloadPdf(
         doc.line(margin, y - 1, margin + contentWidth, y - 1)
     }
 
+    return doc
+}
+
+/**
+ * Generates and downloads a clean, non-overlapping tabular PDF report in A4 size.
+ */
+export function downloadPdf(
+    filename: string,
+    title: string,
+    subtitle: string,
+    columns: PdfColumn[],
+    rows: Record<string, any>[],
+    totalsRow?: Record<string, any>
+): void {
+    const doc = buildPdfDoc(title, subtitle, columns, rows, totalsRow)
     doc.save(filename.endsWith('.pdf') ? filename : `${filename}.pdf`)
 }

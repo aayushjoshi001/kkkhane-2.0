@@ -13,6 +13,7 @@ import { downloadPdf } from '@/lib/exportPdf'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import { useDates } from '@/lib/contexts/CalendarContext'
 import { formatDateParts, type Calendar } from '@/lib/calendar'
+import { DAY_BOOK_CATEGORY_LABELS, formatDayBookDescription, isDayBookSourceCash } from '@/lib/dayBookFormat'
 
 interface DayBookTotals {
     total_cash_in: number
@@ -55,18 +56,7 @@ interface DayBookClientProps {
     selectedDate: string
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-    order_payment:    'Order Payment',
-    room_deposit:     'Room Deposit',
-    booking_payment:  'Booking Payment',
-    expense:          'Expense',
-    refund:           'Refund',
-    salary:           'Salary / Wage',
-    advance:          'Advance',
-    bank_deposit:     'Bank Deposit',
-    withdrawal:       'Bank Withdrawal',
-    other:            'Other',
-}
+const CATEGORY_LABELS = DAY_BOOK_CATEGORY_LABELS
 
 const CATEGORY_COLORS: Record<string, string> = {
     order_payment:   'bg-emerald-50 text-emerald-700 border-emerald-100',
@@ -111,25 +101,9 @@ function entryDateStr(iso: string, calendar: Calendar) {
     return formatDateParts(iso, calendar, { withYear: false }).primary
 }
 
-function formatDescription(desc: string): string {
-    if (!desc) return ''
-    if (desc.trim().startsWith('{')) {
-        try {
-            const parsed = JSON.parse(desc)
-            if (parsed.voucher_type && parsed.voucher_number) {
-                const typeLabel = parsed.voucher_type === 'receipt' ? 'Receipt' : 'Payment'
-                const partyLabel = parsed.party_name ? ` (To: ${parsed.party_name})` : ''
-                const receivedFromLabel = parsed.party_name && parsed.voucher_type === 'receipt' ? ` (From: ${parsed.party_name})` : partyLabel
-                return `${typeLabel} ${parsed.voucher_number}${receivedFromLabel} - ${parsed.particulars || 'No details'}`
-            }
-        } catch {
-            // fallback
-        }
-    }
-    return desc
-}
+const formatDescription = formatDayBookDescription
 
-const isSourceCash = (type: DayBookEntry['type']) => type === 'cash_in' || type === 'cash_out'
+const isSourceCash = isDayBookSourceCash
 
 /**
  * The multi-day counterpart to the single-session view below — one combined

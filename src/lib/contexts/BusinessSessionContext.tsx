@@ -4,6 +4,8 @@ import { createContext, useContext, useState, useEffect, ReactNode, useCallback 
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
+import { getEodExportBundleAction } from '@/lib/eodExportActions'
+import { downloadEodZip } from '@/lib/eodExportZip'
 
 export interface BusinessSession {
     id: string
@@ -152,6 +154,23 @@ export function BusinessSessionProvider({
         }
     }, [restaurantId, refreshSession])
 
+    // Fire-and-forget: the close itself has already succeeded and shouldn't
+    // wait on report generation. Its own toast reports success/failure since
+    // this can finish well after closeBusiness has already returned.
+    const exportClosedDayZip = (date: string) => {
+        void (async () => {
+            const toastId = toast.loading('Preparing end-of-day export…')
+            try {
+                const { data, error } = await getEodExportBundleAction(date)
+                if (error || !data) throw new Error(error || 'Failed to build end-of-day export')
+                await downloadEodZip(data)
+                toast.success('End-of-day export downloaded.', { id: toastId })
+            } catch (e: unknown) {
+                toast.error(e instanceof Error ? e.message : 'Failed to download end-of-day export', { id: toastId })
+            }
+        })()
+    }
+
     const openBusiness = async (date = todayDate): Promise<boolean> => {
         if (!canManage) {
             toast.error('Only managers, cashiers, and admins can open the business day')
@@ -204,6 +223,7 @@ export function BusinessSessionProvider({
             await refreshOpenSession()
             toast.success('Business day closed. All panels are locked.')
             router.refresh()
+            if (data.data?.date) exportClosedDayZip(data.data.date)
             return true
         } catch (e: unknown) {
             toast.error(e instanceof Error ? e.message : 'Failed to close business day')

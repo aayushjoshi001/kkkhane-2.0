@@ -10,6 +10,7 @@ import Select from '@/components/ui/Select'
 import DateCell from '@/components/ui/DateCell'
 import { DateRangePicker, type DateRange } from '@/components/ui/DateRangePicker'
 import type { BookingBill, BookingBillOrder, BookingBillOrderKind } from '@/lib/bookingBill'
+import { bookingInvoiceNumber } from '@/lib/utils'
 
 interface BookingsClientProps {
     initialBookings: Booking[]
@@ -47,6 +48,38 @@ function BillLine({
                 {note && <div className="text-[10px] text-ink-subtle font-semibold mt-0.5">{note}</div>}
             </div>
             <div className={`shrink-0 tabular-nums text-xs ${strong ? 'font-black text-ink' : muted ? 'font-semibold text-ink-subtle' : 'font-extrabold text-ink'}`}>
+                {sign ? `${sign} ` : ''}{money(Math.abs(amount))}
+            </div>
+        </div>
+    )
+}
+
+/** One line of the bill's run-up, as its own card — so a stay with several
+ *  charge types (room, discount, food & drink, VAT…) reads as a grid of
+ *  distinct amounts instead of a single dense list. */
+function BillBox({
+    icon,
+    label,
+    note,
+    amount,
+    sign = '',
+    muted = false,
+}: {
+    icon?: React.ReactNode
+    label: React.ReactNode
+    note?: React.ReactNode
+    amount: number
+    sign?: '' | '+' | '-'
+    muted?: boolean
+}) {
+    return (
+        <div className={`rounded-xl border p-3.5 flex flex-col gap-1 min-w-0 ${muted ? 'border-dashed border-hairline bg-surface-muted/30' : 'border-hairline bg-surface'}`}>
+            <div className={`flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wide truncate ${muted ? 'text-ink-subtle' : 'text-ink-subtle'}`}>
+                {icon}
+                <span className="truncate">{label}</span>
+            </div>
+            {note && <div className="text-[10px] text-ink-subtle font-semibold leading-snug">{note}</div>}
+            <div className={`mt-1 tabular-nums font-black ${muted ? 'text-sm text-ink-subtle' : 'text-base text-ink'}`}>
                 {sign ? `${sign} ` : ''}{money(Math.abs(amount))}
             </div>
         </div>
@@ -304,10 +337,10 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
                             : 'Computed the same way checkout will compute it: room nights, manual charges, room-service orders, service charge and VAT.'}
                     </p>
 
-                    <div className="border border-hairline rounded-xl overflow-hidden divide-y divide-hairline bg-surface">
-                        {/* Room nights, one line per room on the bill */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                        {/* Room nights, one box per room on the bill */}
                         {rooms.map(room => (
-                            <BillLine
+                            <BillBox
                                 key={room.bookingId}
                                 label={`Room ${room.roomNumber}${room.roomType ? ` · ${room.roomType}` : ''}`}
                                 note={
@@ -325,11 +358,11 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
                             />
                         ))}
                         {rooms.length === 0 && (
-                            <BillLine label="Room stay" amount={totals.stayCost} />
+                            <BillBox label="Room stay" amount={totals.stayCost} />
                         )}
 
                         {totals.roomDiscount > 0 && (
-                            <BillLine
+                            <BillBox
                                 label="Room discount"
                                 note={(booking as { discount_reason?: string | null }).discount_reason || 'Bargain rate given at the desk'}
                                 amount={totals.roomDiscount}
@@ -339,7 +372,7 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
 
                         {/* Manual charges added during the stay */}
                         {charges.map(charge => (
-                            <BillLine
+                            <BillBox
                                 key={charge.id}
                                 label={charge.description}
                                 note={<span className="capitalize">{charge.chargeType.replace('_', ' ')}</span>}
@@ -348,19 +381,15 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
                         ))}
 
                         {/* Food and drink, itemized in full further down */}
-                        <BillLine
-                            label={
-                                <span className="flex items-center gap-1.5">
-                                    <UtensilsCrossed size={12} className="text-brand-500" />
-                                    Food &amp; drink
-                                </span>
-                            }
+                        <BillBox
+                            icon={<UtensilsCrossed size={12} className="text-brand-500" />}
+                            label="Food & drink"
                             note={`${billedOrders.length} order${billedOrders.length === 1 ? '' : 's'}${totals.serviceCharge > 0 ? ' · service charge included' : ''}`}
                             amount={totals.ordersTotal}
                         />
                         {totals.serviceCharge > 0 && (
-                            <BillLine
-                                label="— of which room service charge"
+                            <BillBox
+                                label="Room service charge"
                                 note={
                                     totals.serviceChargeOverridden
                                         ? `Cashier set this by hand — the rules produced ${money(totals.serviceChargeAuto)}`
@@ -371,8 +400,8 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
                             />
                         )}
                         {totals.foodDiscount > 0 && (
-                            <BillLine
-                                label="— of which discount already taken on the orders"
+                            <BillBox
+                                label="Order discount"
                                 note="Promo or loyalty, applied when the order was placed"
                                 amount={totals.foodDiscount}
                                 muted
@@ -380,24 +409,26 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
                         )}
 
                         {totals.vat > 0 && (
-                            <BillLine label="VAT" note="On the room and manual charges only" amount={totals.vat} sign="+" />
+                            <BillBox label="VAT" note="On the room and manual charges only" amount={totals.vat} sign="+" />
                         )}
 
                         {totals.extraHourCharge > 0 && (
-                            <BillLine label="Extra hour charge" note="Late departure, charged at the till" amount={totals.extraHourCharge} sign="+" />
+                            <BillBox label="Extra hour charge" note="Late departure, charged at the till" amount={totals.extraHourCharge} sign="+" />
                         )}
 
                         {/* Whatever the charged total exceeds these lines by, said
                             out loud instead of leaving a breakdown that doesn't add up. */}
                         {isIssued && Math.abs(totals.adjustment - totals.extraHourCharge) > 0.01 && (
-                            <BillLine
-                                label="Adjustment made at checkout"
-                                note="Charged on the bill but not attributable to a line above"
+                            <BillBox
+                                label="Adjustment at checkout"
+                                note="Charged on the bill but not attributable to a box above"
                                 amount={totals.adjustment - totals.extraHourCharge}
                                 sign={totals.adjustment - totals.extraHourCharge < 0 ? '-' : '+'}
                             />
                         )}
+                    </div>
 
+                    <div className="border border-hairline rounded-xl overflow-hidden bg-surface">
                         <BillLine
                             label={isIssued ? 'Total charged' : 'Total so far'}
                             amount={totals.total}
@@ -690,6 +721,7 @@ export default function BookingsClient({ initialBookings, restaurantName, rooms 
                             <thead>
                                 <tr className="text-[12px] uppercase tracking-wider font-semibold text-ink-subtle bg-surface-muted/50">
                                     <th className="px-6 py-4 border-b border-hairline">Guest Name</th>
+                                    <th className="px-6 py-4 border-b border-hairline">Bill No.</th>
                                     <th className="px-6 py-4 border-b border-hairline">Room</th>
                                     <th className="px-6 py-4 border-b border-hairline">Dates</th>
                                     <th className="px-6 py-4 border-b border-hairline">Status</th>
@@ -720,6 +752,9 @@ export default function BookingsClient({ initialBookings, restaurantName, rooms 
                                                         {isExpanded ? <ChevronUp size={14} className="text-brand-500" /> : <ChevronDown size={14} className="text-ink-subtle" />}
                                                     </div>
                                                     <div className="text-xs text-ink-subtle font-semibold mt-0.5">{b.guest_phone || 'No phone'}</div>
+                                                </td>
+                                                <td className="px-6 py-4 font-semibold text-ink-subtle">
+                                                    {b.bill_settled_at ? bookingInvoiceNumber(b.id) : '—'}
                                                 </td>
                                                 <td className="px-6 py-4 font-bold text-ink">
                                                     Room {roomNum}
@@ -788,7 +823,7 @@ export default function BookingsClient({ initialBookings, restaurantName, rooms 
                                             </tr>
                                             {isExpanded && (
                                                 <tr key={`${b.id}-expanded`} className="border-l-4 border-l-brand-500">
-                                                    <td colSpan={5} className="p-0">
+                                                    <td colSpan={6} className="p-0">
                                                         <BookingHistoryCard booking={b} />
                                                     </td>
                                                 </tr>

@@ -6,7 +6,7 @@ import { ShoppingBag, Search, X } from 'lucide-react'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
 import RefundOrderButton from './RefundOrderButton'
 import Select from '@/components/ui/Select'
-import { getItemDisplayName } from '@/lib/utils'
+import { getItemDisplayName, orderInvoiceNumber } from '@/lib/utils'
 import OrderDetailModal from '@/components/admin/OrderDetailModal'
 import DateCell from '@/components/ui/DateCell'
 import { DateRangePicker, type DateRange } from '@/components/ui/DateRangePicker'
@@ -46,7 +46,9 @@ export type AdminOrder = {
     customer_name: string | null
     customer_phone: string | null
     delivery_address: string | null
-    sessions: { seat_number: number | null; tables: { label: string } | null; bookings?: { guest_name: string | null; rooms: { room_number: string } | null } | null } | null
+    cashier_id?: string | null
+    staff_name?: string | null
+    sessions: { seat_number: number | null; opened_by?: string | null; tables: { label: string } | null; bookings?: { guest_name: string | null; rooms: { room_number: string } | null } | null } | null
     bookings?: { guest_name: string | null; rooms: { room_number: string } | null } | null
     order_items: AdminOrderItem[]
 }
@@ -109,10 +111,12 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                 if (dateRange.to && placedDate > dateRange.to) return false
             }
             if (q) {
-                const idMatch = o.id.toLowerCase().includes(q)
+                const billNo = orderInvoiceNumber(o.id).toLowerCase()
+                const idMatch = o.id.toLowerCase().includes(q) || billNo.includes(q)
+                const orderedByMatch = (o.staff_name || o.customer_name || o.bookings?.guest_name || '').toLowerCase().includes(q)
                 const tableMatch = (o.sessions?.tables?.label || '').toLowerCase().includes(q)
                 const itemMatch = o.order_items?.some(i => (i.menu_items?.name || '').toLowerCase().includes(q))
-                if (!idMatch && !tableMatch && !itemMatch) return false
+                if (!idMatch && !orderedByMatch && !tableMatch && !itemMatch) return false
             }
             return true
         })
@@ -173,8 +177,9 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                 <table className="w-full text-sm text-left">
                     <thead className="text-[10px] text-ink-subtle uppercase tracking-wider bg-surface-muted/50 border-b border-hairline font-bold sticky top-0 z-10 backdrop-blur-md">
                         <tr>
-                            <th className="px-6 py-4">Order</th>
-                            <th className="px-6 py-4">Table</th>
+                            <th className="px-6 py-4">Bill No.</th>
+                            <th className="px-6 py-4">Ordered By</th>
+                            <th className="px-6 py-4">Location</th>
                             <th className="px-6 py-4">Items</th>
                             <th className="px-6 py-4">Status</th>
                             <th className="px-6 py-4">Payment</th>
@@ -185,7 +190,9 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                     </thead>
                     <tbody className="divide-y divide-hairline">
                         {filtered.map((order) => {
-                            const tableLabel = order.sessions?.tables?.label || '—'
+                            const billNo = orderInvoiceNumber(order.id)
+                            const orderedBy = order.staff_name || order.customer_name || order.bookings?.guest_name || 'Staff'
+                            const tableLabel = order.sessions?.tables?.label ? `Table ${order.sessions.tables.label}` : order.bookings?.rooms?.room_number ? `Room ${order.bookings.rooms.room_number}` : '—'
                             const itemCount = order.order_items?.length || 0
                             const itemNames = order.order_items?.map((i) => `${i.quantity}x ${getItemDisplayName(i)}`).join(', ') || '—'
                             const refundable = canRefund && ['paid', 'unpaid'].includes(order.payment_status) && order.status !== 'cancelled'
@@ -195,17 +202,20 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                                     key={order.id}
                                     role="button"
                                     tabIndex={0}
-                                    aria-label={`View details for order ${order.id.substring(0, 8).toUpperCase()}`}
+                                    aria-label={`View details for ${billNo}`}
                                     onClick={() => setDetailOrder(order)}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailOrder(order) }
                                     }}
                                     className={`cursor-pointer hover:bg-surface-muted/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 focus-visible:ring-inset ${order.payment_status === 'refunded' ? 'opacity-50' : ''}`}
                                 >
-                                    <td className="px-6 py-4 font-mono font-bold text-ink text-xs tracking-wide">
-                                        #{order.id.substring(0, 8).toUpperCase()}
+                                    <td className="px-6 py-4 font-mono font-bold text-brand-600 text-xs tracking-wide">
+                                        {billNo}
                                     </td>
-                                    <td className="px-6 py-4 font-bold text-ink">{tableLabel}</td>
+                                    <td className="px-6 py-4 font-bold text-ink truncate max-w-[150px]" title={orderedBy}>
+                                        {orderedBy}
+                                    </td>
+                                    <td className="px-6 py-4 font-semibold text-ink-subtle">{tableLabel}</td>
                                     <td className="px-6 py-4 text-ink-subtle max-w-xs truncate" title={itemNames}>
                                         <span className="font-bold">{itemCount}</span> item{itemCount !== 1 ? 's' : ''}
                                     </td>
@@ -238,7 +248,7 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                             )
                         })}
                         {filtered.length === 0 && (
-                            <tr><td colSpan={canRefund ? 8 : 7} className="px-6 py-16 text-center text-ink-subtle font-bold">
+                            <tr><td colSpan={canRefund ? 9 : 8} className="px-6 py-16 text-center text-ink-subtle font-bold">
                                 {orders.length === 0 ? 'No orders found.' : 'No orders match your filters.'}
                             </td></tr>
                         )}
@@ -249,7 +259,9 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
             {/* Mobile Card List */}
             <div className="md:hidden divide-y divide-hairline">
                 {filtered.map((order) => {
-                    const tableLabel = order.sessions?.tables?.label || '—'
+                    const billNo = orderInvoiceNumber(order.id)
+                    const orderedBy = order.staff_name || order.customer_name || order.bookings?.guest_name || 'Staff'
+                    const tableLabel = order.sessions?.tables?.label ? `Table ${order.sessions.tables.label}` : order.bookings?.rooms?.room_number ? `Room ${order.bookings.rooms.room_number}` : '—'
                     const itemNames = order.order_items?.map((i) => `${i.quantity}x ${getItemDisplayName(i)}`).join(', ') || ''
                     const refundable = canRefund && ['paid', 'unpaid'].includes(order.payment_status) && order.status !== 'cancelled'
 
@@ -258,7 +270,7 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                             key={order.id}
                             role="button"
                             tabIndex={0}
-                            aria-label={`View details for order ${order.id.substring(0, 8).toUpperCase()}`}
+                            aria-label={`View details for ${billNo}`}
                             onClick={() => setDetailOrder(order)}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailOrder(order) }
@@ -266,7 +278,7 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                             className={`p-5 space-y-3 cursor-pointer active:bg-surface-muted/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 focus-visible:ring-inset ${order.payment_status === 'refunded' ? 'opacity-50' : ''}`}
                         >
                             <div className="flex items-center justify-between">
-                                <div className="font-mono text-xs font-bold text-ink tracking-wide">#{order.id.substring(0, 8).toUpperCase()}</div>
+                                <div className="font-mono text-xs font-bold text-brand-600 tracking-wide">{billNo}</div>
                                 <div className="flex items-center gap-2">
                                     <span className={`text-[10px] font-bold uppercase tracking-wide ${PAY_COLORS[order.payment_status] || 'text-ink-subtle'}`}>
                                         {order.payment_status}
@@ -277,7 +289,10 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                                 </div>
                             </div>
                             <div className="flex items-center justify-between text-sm">
-                                <span className="font-bold text-ink-subtle">Table {tableLabel}</span>
+                                <div>
+                                    <p className="font-bold text-ink">{orderedBy}</p>
+                                    <p className="text-xs text-ink-subtle font-medium">{tableLabel}</p>
+                                </div>
                                 <span className={`font-bold tabular-nums ${order.payment_status === 'refunded' ? 'line-through text-ink-subtle' : 'text-ink'}`}>
                                     {money(order.total_amount ?? 0)}
                                 </span>

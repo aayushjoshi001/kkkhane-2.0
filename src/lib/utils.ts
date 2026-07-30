@@ -38,6 +38,25 @@ export function getBookingCustomPrice(booking: { notes?: string | null } | null 
 }
 
 /**
+ * The bill/invoice number for a hotel stay — derived from the booking id
+ * rather than stored, so it's stable across every place that shows it
+ * (checkout's IRD filing, the bill's Ref line, the bookings list). Only
+ * meaningful once the stay has actually been billed (`bill_settled_at` set);
+ * callers decide whether to display it before then.
+ */
+export function bookingInvoiceNumber(bookingId: string): string {
+    return `INV-HOTEL-${bookingId.split('-')[0].toUpperCase()}`
+}
+
+/**
+ * The bill/invoice number for a service order — derived from the order id.
+ */
+export function orderInvoiceNumber(orderId: string): string {
+    if (!orderId) return ''
+    return `BILL-${orderId.substring(0, 8).toUpperCase()}`
+}
+
+/**
  * The KYC note a stay was registered with, without the [CUSTOM_RATE:x] tag that
  * shares the same field. Returns '' when there is no KYC on file.
  */

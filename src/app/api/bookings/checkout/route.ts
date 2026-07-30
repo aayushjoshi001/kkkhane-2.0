@@ -6,6 +6,7 @@ import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense } from '@/l
 import { computeFolioForStays } from '@/lib/folio'
 import { findOrCreateCustomerCreditAccount, postCreditCharge, settleLoyalty } from '@/lib/customerCredit'
 import { syncInvoiceToIrd } from '@/lib/irdSync'
+import { bookingInvoiceNumber } from '@/lib/utils'
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>
 
@@ -639,7 +640,7 @@ export async function POST(req: Request) {
         const discountVal = Number(discountAmount) || 0
         const vatVal = isVatRegistered ? (totalAmount - (totalAmount / 1.13)) : 0
         const taxableVal = totalAmount - vatVal
-        const invoiceNumber = `INV-HOTEL-${booking_id.split('-')[0].toUpperCase()}`
+        const invoiceNumber = bookingInvoiceNumber(booking_id)
 
         void syncInvoiceToIrd(booking.restaurant_id, {
             invoiceNumber,
