@@ -21,8 +21,21 @@ interface BusinessSessionContextType {
     userRole: string
     todayDate: string
     loading: boolean
+    /**
+     * A business day still open for an earlier date — yesterday's day nobody
+     * closed. Null in the normal case. It is tracked separately from `session`
+     * because `session` is today's: once it refreshes, a stale day disappears
+     * from view entirely, while it is still the thing blocking today from being
+     * opened at all (see the POST in /api/day-book/session).
+     */
+    staleOpenSession: BusinessSession | null
+    /** True while BusinessGuard's full-screen lock prompt is on top. */
+    guardActive: boolean
+    setGuardActive: (active: boolean) => void
     openBusiness: (date?: string, openingBalance?: number, openingBankBalance?: number) => Promise<boolean>
-    closeBusiness: () => Promise<boolean>
+    /** Closes today's day, or the one whose id is passed — a stale day is not
+     *  `session`, so the reminder has to name it. */
+    closeBusiness: (sessionId?: string) => Promise<boolean>
     refreshSession: () => Promise<void>
 }
 
@@ -44,11 +57,41 @@ export function BusinessSessionProvider({
     const router = useRouter()
     const [session, setSession] = useState<BusinessSession | null>(initialSession)
     const [loading, setLoading] = useState(false)
+    const [guardActive, setGuardActive] = useState(false)
+    // The newest open day whatever its date, which `session` stops telling us
+    // as soon as it refreshes to today's. Seeded from the server-rendered
+    // session — the layouts pass the most recently created one, and a newer day
+    // cannot exist while an older one is open (the POST refuses), so if that
+    // one is open it is *the* open day. No fetch needed until it changes.
+    const [openSessionAnyDate, setOpenSessionAnyDate] = useState<BusinessSession | null>(
+        initialSession && initialSession.status === 'open' ? initialSession : null
+    )
 
     // Derived states
     const isOpen = !!session && session.status === 'open'
     const isClosed = !isOpen
     const canManage = ['manager', 'super_admin', 'cashier'].includes(userRole)
+    const staleOpenSession = openSessionAnyDate && openSessionAnyDate.date !== todayDate
+        ? openSessionAnyDate
+        : null
+
+    const refreshOpenSession = useCallback(async () => {
+        try {
+            const res = await fetch('/api/day-book/session?open=1')
+            const data = await res.json()
+            if (!res.ok) return
+            const row = data.data?.session
+            setOpenSessionAnyDate(row ? {
+                id: row.id,
+                date: row.date,
+                status: row.status,
+                opening_balance: Number(row.opening_balance) || 0,
+                opening_bank_balance: Number(row.opening_bank_balance) || 0,
+            } : null)
+        } catch {
+            // keep current state on network failure
+        }
+    }, [])
 
     const refreshSession = useCallback(async () => {
         try {
@@ -62,7 +105,8 @@ export function BusinessSessionProvider({
         } catch {
             // keep current state on network failure
         }
-    }, [todayDate])
+        await refreshOpenSession()
+    }, [todayDate, refreshOpenSession])
 
     // Realtime listener for business day session status changes across all windows/devices
     useEffect(() => {
@@ -115,19 +159,21 @@ export function BusinessSessionProvider({
             if (!res.ok) throw new Error(data.error || 'Failed to open business day')
 
             setSession(data.data)
+            await refreshOpenSession()
             toast.success('Business day opened successfully! All panels are now active.')
             router.refresh()
             return true
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to open business day')
+        } catch (e: unknown) {
+            toast.error(e instanceof Error ? e.message : 'Failed to open business day')
             return false
         } finally {
             setLoading(false)
         }
     }
 
-    const closeBusiness = async (): Promise<boolean> => {
-        if (!session) return false
+    const closeBusiness = async (sessionId?: string): Promise<boolean> => {
+        const targetId = sessionId ?? session?.id
+        if (!targetId) return false
         if (!canManage) {
             toast.error('Only managers, cashiers, and admins can close the business day')
             return false
@@ -138,17 +184,18 @@ export function BusinessSessionProvider({
             const res = await fetch('/api/day-book/session', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id: session.id }),
+                body: JSON.stringify({ session_id: targetId }),
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || 'Failed to close business day')
 
-            setSession({ ...session, status: 'closed' })
+            if (session && targetId === session.id) setSession({ ...session, status: 'closed' })
+            await refreshOpenSession()
             toast.success('Business day closed. All panels are locked.')
             router.refresh()
             return true
-        } catch (e: any) {
-            toast.error(e.message || 'Failed to close business day')
+        } catch (e: unknown) {
+            toast.error(e instanceof Error ? e.message : 'Failed to close business day')
             return false
         } finally {
             setLoading(false)
@@ -165,6 +212,9 @@ export function BusinessSessionProvider({
                 userRole,
                 todayDate,
                 loading,
+                staleOpenSession,
+                guardActive,
+                setGuardActive,
                 openBusiness,
                 closeBusiness,
                 refreshSession,
@@ -187,6 +237,9 @@ export function useBusinessSession() {
             userRole: 'manager',
             todayDate: '',
             loading: false,
+            staleOpenSession: null,
+            guardActive: false,
+            setGuardActive: () => {},
             openBusiness: async () => false,
             closeBusiness: async () => false,
             refreshSession: async () => {},

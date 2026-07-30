@@ -11,6 +11,7 @@ import { redirect } from 'next/navigation'
 
 import { BusinessSessionProvider } from '@/lib/contexts/BusinessSessionContext'
 import BusinessGuard from '@/components/shared/BusinessGuard'
+import BusinessDayReminder from '@/components/shared/BusinessDayReminder'
 import { getNstDateString } from '@/lib/timezone'
 
 export default async function KitchenLayout({ children }: { children: ReactNode }) {
@@ -64,6 +65,9 @@ export default async function KitchenLayout({ children }: { children: ReactNode 
             restaurantId={restaurantId}
         >
             <SessionSync userId={userId} />
+            {/* Nags about a day left open for an earlier date, and about a day
+                not opened yet where the lock screen isn't already saying so. */}
+            <BusinessDayReminder />
             <KitchenLayoutClient
                 restaurantName={restaurant?.name || undefined}
                 staffName={user?.full_name || undefined}

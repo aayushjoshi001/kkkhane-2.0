@@ -11,6 +11,7 @@ import { redirect } from 'next/navigation'
 
 import { BusinessSessionProvider } from '@/lib/contexts/BusinessSessionContext'
 import BusinessGuard from '@/components/shared/BusinessGuard'
+import BusinessDayReminder from '@/components/shared/BusinessDayReminder'
 import { getNstDateString } from '@/lib/timezone'
 
 // The bar board reuses the kitchen shell and queue, parametrised by station.
@@ -66,6 +67,9 @@ export default async function BarLayout({ children }: { children: ReactNode }) {
             restaurantId={restaurantId}
         >
             <SessionSync userId={userId} />
+            {/* Nags about a day left open for an earlier date, and about a day
+                not opened yet where the lock screen isn't already saying so. */}
+            <BusinessDayReminder />
             <KitchenLayoutClient
                 station="bar"
                 restaurantName={restaurant?.name || undefined}

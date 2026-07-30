@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, ReactNode } from 'react'
+import { useEffect, useState, ReactNode } from 'react'
 import { useBusinessSession } from '@/lib/contexts/BusinessSessionContext'
 import { Play, Lock, AlertCircle, RefreshCw, LogOut, Loader2, Sparkles, Building2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -13,12 +13,20 @@ interface BusinessGuardProps {
 
 export default function BusinessGuard({ children }: BusinessGuardProps) {
     const router = useRouter()
-    const { isClosed, canManage, userRole, todayDate, openBusiness, refreshSession, loading } = useBusinessSession()
-    
+    const { isClosed, canManage, userRole, todayDate, openBusiness, refreshSession, loading, setGuardActive } = useBusinessSession()
+
     const [openingCash, setOpeningCash] = useState<string>('0')
     const [openingBank, setOpeningBank] = useState<string>('0')
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isRefreshing, setIsRefreshing] = useState(false)
+
+    // Announce the lock screen so the periodic reminder stays out of its way —
+    // a permanent prompt with the form on it beats a popup saying the same
+    // thing. Declared above the early return to keep the hook order stable.
+    useEffect(() => {
+        setGuardActive(isClosed)
+        return () => setGuardActive(false)
+    }, [isClosed, setGuardActive])
 
     if (!isClosed) {
         return <>{children}</>
