@@ -20,6 +20,7 @@ import { getNstDateString } from '@/lib/timezone'
 
 import { BusinessSessionProvider } from '@/lib/contexts/BusinessSessionContext'
 import BusinessGuard from '@/components/shared/BusinessGuard'
+import BusinessDayReminder from '@/components/shared/BusinessDayReminder'
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
     // requireRole() uses the React.cache-wrapped getCurrentUser — no duplicate DB call
@@ -89,6 +90,10 @@ export default async function AdminLayout({ children }: { children: ReactNode })
             <SidebarProvider>
                 <div className="h-screen bg-canvas flex overflow-hidden">
                     <SessionSync userId={currentUser.id} />
+                    {/* Nags about a day left open for an earlier date, and about a day
+                        not opened yet where the lock screen isn't already saying so.
+                        Super admins have no till of their own to open or close. */}
+                    {!isSuperAdmin && <BusinessDayReminder />}
                     {isSuperAdmin ? <SuperAdminSidebar userRole={roleNameRaw} userAvatar={userAvatar} /> : <AdminSidebar userRole={roleNameRaw} restaurantName={restaurantName} userAvatar={userAvatar} />}
                     {!isSuperAdmin && currentUser.restaurantId && (
                         <>

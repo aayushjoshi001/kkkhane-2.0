@@ -242,6 +242,29 @@ export async function GET(request: Request) {
 
     const supabase = await createAdminClient()
 
+    // ── 0. "Is any day still open?" ──────────────────────────────────────────
+    // Asked by the business-day reminder, which needs the newest OPEN session
+    // whatever its date — not today's. A day left open yesterday still lets
+    // every panel through the guard while its takings post to yesterday's
+    // books, and the POST above refuses to open today until it is closed. So
+    // the one thing worth nagging about is invisible to a per-date lookup.
+    if (searchParams.get('open') === '1') {
+        const { data: openSession, error: openError } = await supabase
+            .from('day_book_sessions')
+            .select('id, date, status, opening_balance, opening_bank_balance')
+            .eq('restaurant_id', restaurantId)
+            .eq('status', 'open')
+            .order('date', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+        if (openError) {
+            return NextResponse.json({ error: openError.message }, { status: 500 })
+        }
+        // No open day is a normal answer, not a 404 — the caller acts on it.
+        return NextResponse.json({ success: true, data: { session: openSession ?? null } })
+    }
+
     // ── 1. Fetch the session ─────────────────────────────────────────────────
     const { data: session, error: sessionError } = await supabase
         .from('day_book_sessions')
