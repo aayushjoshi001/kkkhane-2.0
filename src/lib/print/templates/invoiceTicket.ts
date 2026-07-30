@@ -76,6 +76,8 @@ export interface ActiveInvoice {
     balanceDue?: number
     paymentMethod?: 'cash' | 'qr_digital' | 'both' | 'credit' | 'none'
     cashPaid?: number
+    cashGiven?: number
+    changeReturned?: number
     qrPaid?: number
     creditPaid?: number
     discountAmount?: number
@@ -232,8 +234,22 @@ export function buildInvoiceTicket(
             : invoice.paymentMethod === 'none' ? 'NOT YET'
             : 'SPLIT'
         b.line(`Payment: ${label}`)
+        if (invoice.paymentMethod === 'cash') {
+            if (invoice.cashGiven && invoice.cashGiven > 0) {
+                b.line(`  Cash Given: ${money(invoice.cashGiven)}`)
+            }
+            if (invoice.changeReturned && invoice.changeReturned > 0.01) {
+                b.line(`  Change Return: ${money(invoice.changeReturned)}`)
+            }
+        }
         if (invoice.paymentMethod === 'both') {
             b.line(`  Cash: ${money(invoice.cashPaid ?? 0)}`)
+            if (invoice.cashGiven && invoice.cashGiven > 0) {
+                b.line(`  Cash Given: ${money(invoice.cashGiven)}`)
+            }
+            if (invoice.changeReturned && invoice.changeReturned > 0.01) {
+                b.line(`  Change Return: ${money(invoice.changeReturned)}`)
+            }
             b.line(`  QR/Digital: ${money(invoice.qrPaid ?? 0)}`)
         }
         // Credit is the guest leaving owing money, so it is spelled out on

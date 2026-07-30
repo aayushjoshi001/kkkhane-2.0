@@ -9,7 +9,7 @@ import { useDates } from '@/lib/contexts/CalendarContext'
 import Select from '@/components/ui/Select'
 import DateCell from '@/components/ui/DateCell'
 import { DateRangePicker, type DateRange } from '@/components/ui/DateRangePicker'
-import { getItemDisplayName } from '@/lib/utils'
+import { getBookingCustomPrice, getItemDisplayName } from '@/lib/utils'
 
 interface BookingSummary {
     checked_in_at: string | null
@@ -72,7 +72,9 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
         ? Math.max(1, Math.round((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 3600 * 24)))
         : 1
 
-    const rawNightlyRate = Number((booking as any).room_rate || (booking as any).rooms?.room_types?.base_price || 0)
+    // A rate agreed for this stay, if there was one, else the room type's price.
+    const rawNightlyRate = getBookingCustomPrice(booking)
+        || Number((booking as any).rooms?.room_types?.base_price || 0)
     const roomBill = rawNightlyRate > 0 ? rawNightlyRate * nights : Number(booking.total_amount || 0)
 
     // Food & Beverage Bill sum from all linked orders (QR, Waiter, Cashier)

@@ -126,7 +126,7 @@ function TransactionsTab({
     const formatDate = useDateFormatter()
     const [open, setOpen] = useState(false)
     const [saving, setSaving] = useState(false)
-    const [form, setForm] = useState({ customer_credit_account_id: '', type: 'charge' as ReceivableTransactionType, amount: '', description: '' })
+    const [form, setForm] = useState({ customer_credit_account_id: '', type: 'charge' as ReceivableTransactionType, amount: '', description: '', payment_method: 'cash' as 'cash' | 'bank_qr' })
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
@@ -136,13 +136,14 @@ function TransactionsTab({
             type: form.type,
             amount: parseFloat(form.amount) || 0,
             description: form.description,
+            payment_method: form.payment_method,
         })
         setSaving(false)
         if (result.error) { toast.error(result.error); return }
         setTransactions((prev) => [result.data as ReceivableTransaction, ...prev])
         toast.success('Transaction recorded')
         setOpen(false)
-        setForm({ customer_credit_account_id: '', type: 'charge', amount: '', description: '' })
+        setForm({ customer_credit_account_id: '', type: 'charge', amount: '', description: '', payment_method: 'cash' })
     }
 
     async function handleDelete(id: string) {
@@ -186,6 +187,12 @@ function TransactionsTab({
                     <option value="charge">Charge</option>
                     <option value="payment">Payment Collection</option>
                 </FormSelect>
+                {form.type === 'payment' && (
+                    <FormSelect label="Payment Method" required value={form.payment_method} onChange={(e) => setForm((f) => ({ ...f, payment_method: e.target.value as 'cash' | 'bank_qr' }))}>
+                        <option value="cash">Cash (Add to Cash In)</option>
+                        <option value="bank_qr">Bank / QR Digital (Add to Bank In)</option>
+                    </FormSelect>
+                )}
                 <FormInput label="Amount" type="number" min="0.01" step="0.01" required value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
                 <FormInput label="Description" required value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
             </FormModal>

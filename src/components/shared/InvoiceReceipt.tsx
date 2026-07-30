@@ -241,12 +241,40 @@ export default function InvoiceReceipt({
                                 : 'SPLIT'}
                         </span>
                     </div>
+                    {invoice.paymentMethod === 'cash' && (
+                        <>
+                            {!!invoice.cashGiven && invoice.cashGiven > 0 && (
+                                <div className="flex justify-between" style={{ color: '#000' }}>
+                                    <span>· Cash Given</span>
+                                    <span className="tabular-nums">{money(invoice.cashGiven)}</span>
+                                </div>
+                            )}
+                            {!!invoice.changeReturned && invoice.changeReturned > 0.01 && (
+                                <div className="flex justify-between font-bold" style={{ color: '#000' }}>
+                                    <span>· Change Return</span>
+                                    <span className="tabular-nums">{money(invoice.changeReturned)}</span>
+                                </div>
+                            )}
+                        </>
+                    )}
                     {invoice.paymentMethod === 'both' && (
                         <>
                             <div className="flex justify-between" style={{ color: '#000' }}>
                                 <span>· Cash</span>
                                 <span className="tabular-nums">{money(invoice.cashPaid ?? 0)}</span>
                             </div>
+                            {!!invoice.cashGiven && invoice.cashGiven > 0 && (
+                                <div className="flex justify-between" style={{ color: '#000' }}>
+                                    <span>· Cash Given</span>
+                                    <span className="tabular-nums">{money(invoice.cashGiven)}</span>
+                                </div>
+                            )}
+                            {!!invoice.changeReturned && invoice.changeReturned > 0.01 && (
+                                <div className="flex justify-between font-bold" style={{ color: '#000' }}>
+                                    <span>· Change Return</span>
+                                    <span className="tabular-nums">{money(invoice.changeReturned)}</span>
+                                </div>
+                            )}
                             <div className="flex justify-between" style={{ color: '#000' }}>
                                 <span>· QR / Digital</span>
                                 <span className="tabular-nums">{money(invoice.qrPaid ?? 0)}</span>

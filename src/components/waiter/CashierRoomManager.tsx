@@ -10,7 +10,7 @@ import Button from '@/components/ui/Button'
 import { useCurrency, useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { type TableWithSession } from './CashierTableManager'
 import { type GroupBill } from '@/lib/bookingGroup'
-import { calculateNights, advanceMethodLabel, getItemDisplayName, defaultStayWindowInputs } from '@/lib/utils'
+import { calculateNights, getBookingCustomPrice, getBookingKycNote, advanceMethodLabel, getItemDisplayName, defaultStayWindowInputs } from '@/lib/utils'
 import { describeGuestMix, totalGuests } from '@/lib/guests'
 import QuickOrderModal from './QuickOrderModal'
 import { openSession } from '@/app/(staff)/waiter/actions'
@@ -127,7 +127,7 @@ export default function CashierRoomManager({
         setMoveOpen(false)
         setMoveTargetId('')
         setMoveReason('')
-        setBookingForm({ guest_name: '', guest_phone: '', kyc: '', check_in: '', check_out: '', adult_male: '1', adult_female: '1', children: '0', parking_required: false, parking_vehicle_no: '', parking_fee: '' })
+        setBookingForm({ guest_name: '', guest_phone: '', kyc: '', check_in: '', check_out: '', custom_room_price: '', adult_male: '1', adult_female: '1', children: '0', parking_required: false, parking_vehicle_no: '', parking_fee: '' })
         setExtraRooms({})
         setLookupField(null)
         setGuestPicked(false)
@@ -145,6 +145,7 @@ export default function CashierRoomManager({
         kyc: '',
         check_in: '',
         check_out: '',
+        custom_room_price: '',
         adult_male: '1',
         adult_female: '1',
         children: '0',
@@ -291,14 +292,20 @@ export default function CashierRoomManager({
     }, [bookings])
 
     /** Nightly rate across every room on the reservation — what a "full"
-     * advance has to cover once more than one room is involved. */
+     * advance has to cover once more than one room is involved. A rate typed
+     * into the form replaces the catalog price on every room, matching the
+     * [CUSTOM_RATE:x] tag the API writes onto each booking. */
     const combinedNightlyRate = useMemo(() => {
+        const agreedRate = bookingForm.custom_room_price.trim() !== ''
+            ? (parseFloat(bookingForm.custom_room_price) || 0)
+            : 0
+        if (agreedRate > 0) return agreedRate * (selectedExtraIds.length + 1)
         const base = selectedRoom?.room_types?.base_price || 0
         return selectedExtraIds.reduce((sum, id) => {
             const room = rooms.find(r => r.id === id)
             return sum + (room?.room_types?.base_price || 0)
         }, base)
-    }, [selectedRoom, selectedExtraIds, rooms])
+    }, [selectedRoom, selectedExtraIds, rooms, bookingForm.custom_room_price])
 
     useEffect(() => {
         setMounted(true)
@@ -398,6 +405,11 @@ export default function CashierRoomManager({
             kyc: '',
             check_in: checkIn,
             check_out: checkOut,
+            // Left blank on purpose: the field shows the catalog price as its
+            // placeholder, and only a figure actually typed in gets tagged onto
+            // the booking as an agreed rate. Pre-filling it would freeze every
+            // booking at today's price and bypass the pricing rules.
+            custom_room_price: '',
             adult_male: '1',
             adult_female: '0',
             children: '0',
@@ -527,14 +539,19 @@ export default function CashierRoomManager({
     // folio, so the room charge here is every room's — priced server-side,
     // since the rooms can be of different types.
     const stayPriceDetails = useMemo(() => {
-        if (stayGroup) return { nights: stayGroup.nights, cost: stayGroup.stayCost }
-        if (!selectedRoom || !activeBooking) return { nights: 0, cost: 0 }
+        // A reservation's rooms are already priced per room server-side, so the
+        // group figures stand as they are; the nightly rate below is only shown
+        // for a single room.
+        if (stayGroup) return { nights: stayGroup.nights, cost: stayGroup.stayCost, price: 0, isCustom: false }
+        if (!selectedRoom || !activeBooking) return { nights: 0, cost: 0, price: 0, isCustom: false }
 
-        const price = selectedRoom.room_types?.base_price || 0
+        // A rate the desk agreed for this stay stands in for the catalog price.
+        const customPrice = getBookingCustomPrice(activeBooking)
+        const price = customPrice > 0 ? customPrice : (selectedRoom.room_types?.base_price || 0)
         const nights = calculateNights(activeBooking.check_in, activeBooking.check_out)
         const cost = price * nights
 
-        return { nights, cost }
+        return { nights, cost, price, isCustom: customPrice > 0 }
     }, [selectedRoom, activeBooking, stayGroup])
 
     // What the charge works out to before the cashier touches it. Gated on the
@@ -659,7 +676,9 @@ export default function CashierRoomManager({
         }
 
         // Calculate advance amount to send. A "full" advance covers every room
-        // on the reservation, not just the one that was clicked.
+        // on the reservation, not just the one that was clicked — priced at the
+        // agreed rate when the desk set one (see combinedNightlyRate).
+        const customPrice = bookingForm.custom_room_price.trim() !== '' ? (parseFloat(bookingForm.custom_room_price) || 0) : 0
         const inDate = new Date(bookingForm.check_in)
         const outDate = new Date(bookingForm.check_out)
         const diffMs = outDate.getTime() - inDate.getTime()
@@ -709,6 +728,7 @@ export default function CashierRoomManager({
                     kyc: bookingForm.kyc,
                     check_in: bookingForm.check_in,
                     check_out: bookingForm.check_out,
+                    custom_room_price: customPrice > 0 ? customPrice : undefined,
                     advance_amount: resolvedAdvance,
                     advance_payment_method: resolvedAdvance > 0 ? (irdSyncEnabled ? advancePayMethod : 'cash') : 'none',
                     advance_cash_amount: (irdSyncEnabled && isSplit) ? splitCash : undefined,
@@ -990,6 +1010,27 @@ export default function CashierRoomManager({
                                                     </div>
                                                 ))}
                                             </div>
+                                        </div>
+
+                                        <div className="col-span-2 border border-hairline rounded-2xl p-3 space-y-1.5 bg-surface">
+                                            <label className="block text-[10px] font-black text-ink-subtle uppercase tracking-wider flex items-center justify-between">
+                                                <span>Custom Room Price (Rs. / Night)</span>
+                                                <span className="text-[9px] text-amber-700 font-semibold normal-case">Session rate override</span>
+                                            </label>
+                                            <div className="relative">
+                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    placeholder={selectedRoom.room_types?.base_price?.toString() || '0'}
+                                                    value={bookingForm.custom_room_price}
+                                                    onChange={e => setBookingForm(b => ({ ...b, custom_room_price: e.target.value }))}
+                                                    className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-xl text-xs font-extrabold bg-surface focus:outline-none focus:border-brand-500"
+                                                />
+                                            </div>
+                                            <p className="text-[9px] text-ink-subtle">
+                                                Applies to this booking session only ({selectedRoom.room_types?.name || 'Room'} standard price Rs. {selectedRoom.room_types?.base_price || 0}/night remains unchanged).
+                                            </p>
                                         </div>
 
                                         {/* Parking. One question for the whole reservation — the guest
@@ -1529,9 +1570,9 @@ export default function CashierRoomManager({
                                         <p className="text-[10px] font-bold text-ink-subtle uppercase">Guest Information</p>
                                         <p className="font-extrabold text-ink text-sm">{activeBooking.guest_name}</p>
                                         <p className="font-semibold text-ink-muted">{activeBooking.guest_phone}</p>
-                                        {activeBooking.notes && activeBooking.notes.startsWith('KYC:') && (
+                                        {getBookingKycNote(activeBooking) && (
                                             <p className="text-[10px] bg-white border border-hairline px-2 py-0.5 rounded-md text-ink-muted inline-block">
-                                                {activeBooking.notes}
+                                                KYC: {getBookingKycNote(activeBooking)}
                                             </p>
                                         )}
                                         {/* Only worth a line when there is a car — a stay with
@@ -1585,11 +1626,16 @@ export default function CashierRoomManager({
                                         {/* Room Stay Row */}
                                         <div className="flex justify-between items-center p-4 text-xs">
                                             <div>
-                                                <p className="font-extrabold text-ink">Room Stay Charge</p>
+                                                <p className="font-extrabold text-ink flex items-center gap-1.5">
+                                                    <span>Room Stay Charge</span>
+                                                    {stayPriceDetails.isCustom && (
+                                                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">Custom Rate</span>
+                                                    )}
+                                                </p>
                                                 <p className="text-[10px] text-ink-subtle">
                                                     {stayGroup
                                                         ? `${stayGroup.rooms.length} rooms on this reservation`
-                                                        : `${money(selectedRoom.room_types?.base_price || 0)} / Night`}
+                                                        : `${money(stayPriceDetails.price || selectedRoom.room_types?.base_price || 0)} / Night`}
                                                 </p>
                                             </div>
                                             <span className="font-extrabold text-ink-muted tabular-nums">{money(stayPriceDetails.cost)}</span>

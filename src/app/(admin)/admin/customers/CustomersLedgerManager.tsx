@@ -48,6 +48,7 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
     const [txnType, setTxnType] = useState<ReceivableTransactionType>('charge')
     const [txnAmount, setTxnAmount] = useState('')
     const [txnDesc, setTxnDesc] = useState('')
+    const [txnPaymentMethod, setTxnPaymentMethod] = useState<'cash' | 'bank_qr'>('cash')
     const [submittingTxn, setSubmittingTxn] = useState(false)
     const [activeLinkedChargeId, setActiveLinkedChargeId] = useState<string | null>(null)
 
@@ -237,6 +238,7 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                 type: txnType,
                 amount,
                 description: txnDesc.trim(),
+                payment_method: txnPaymentMethod,
                 linked_charge_id: activeLinkedChargeId || undefined,
                 breakdown: showBreakdownFields ? {
                     subtotal: bdSubtotal ? parseFloat(bdSubtotal) : undefined,
@@ -876,6 +878,20 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                                         <option value="payment">Payment Collection (customer pays down)</option>
                                     </Select>
                                 </div>
+                                {txnType === 'payment' && (
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Payment Method *</label>
+                                        <Select
+                                            value={txnPaymentMethod}
+                                            onChange={e => setTxnPaymentMethod(e.target.value as 'cash' | 'bank_qr')}
+                                            required
+                                            className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                        >
+                                            <option value="cash">Cash (Add to Cash In)</option>
+                                            <option value="bank_qr">Bank / QR Digital (Add to Bank In)</option>
+                                        </Select>
+                                    </div>
+                                )}
                                 <div>
                                     <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Amount (Rs.) *</label>
                                     <input

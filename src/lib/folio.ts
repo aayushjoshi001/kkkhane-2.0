@@ -8,7 +8,7 @@
 
 import { SupabaseClient } from '@supabase/supabase-js'
 import { getRestaurantFeatures } from '@/lib/features'
-import { calculateNights, lateCheckoutNights, resolveDeparture, NEPAL_TZ } from '@/lib/utils'
+import { calculateNights, getBookingCustomPrice, lateCheckoutNights, resolveDeparture, NEPAL_TZ } from '@/lib/utils'
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
@@ -273,8 +273,9 @@ export async function computeFolioForStays(
         targetRestaurantIds.push(partnerRestaurantId)
     }
 
-    // Fetch dynamic pricing rules, total rooms, checked-in bookings count, and features
-    const [roomRes, bookingsCountRes, roomsCountRes, rulesRes, segmentsRes, features] = await Promise.all([
+    // Fetch dynamic pricing rules, total rooms, checked-in bookings count, the
+    // stays' own notes (a cashier's session rate lives in there), and features
+    const [roomRes, bookingsCountRes, roomsCountRes, rulesRes, segmentsRes, bookingRowsRes, features] = await Promise.all([
         supabase
             .from('rooms')
             .select('id, room_number, room_types:type_id(base_price)')
@@ -302,6 +303,13 @@ export async function computeFolioForStays(
             .select('booking_id, room_id, from_ts, rooms:room_id(room_types:type_id(base_price))')
             .in('booking_id', bookingIds)
             .order('from_ts', { ascending: true }),
+        // A rate the desk agreed for this stay only, tagged into the notes at
+        // booking time — read per stay, so a group can hold rooms at different
+        // negotiated rates.
+        supabase
+            .from('bookings')
+            .select('id, notes')
+            .in('id', bookingIds),
         getRestaurantFeatures(hotelId),
     ])
 
@@ -331,6 +339,12 @@ export async function computeFolioForStays(
         segmentsByBooking.set(bookingId, bucket)
     }
 
+    // Session rate per stay: overrides the room type's catalog price for these
+    // nights only, and leaves the catalog untouched.
+    const customRateByBooking = new Map<string, number>(
+        (bookingRowsRes.data || []).map((b) => [b.id as string, getBookingCustomPrice(b)])
+    )
+
     // Calculate current occupancy rate
     const totalRoomsCount = roomsCountRes.count || 1
     const activeBookingsCount = bookingsCountRes.count || 0
@@ -348,7 +362,10 @@ export async function computeFolioForStays(
 
     for (const stay of stays) {
         const info = roomInfo.get(stay.roomId)
-        const basePrice = info?.basePrice ?? 0
+        // A rate agreed for this stay stands in for the room type's price, so
+        // every night, segment fallback and pricing rule below works off it.
+        const customRate = customRateByBooking.get(stay.bookingId) || 0
+        const basePrice = customRate > 0 ? customRate : (info?.basePrice ?? 0)
         // Booked nights, plus any the guest owes for leaving late. The late
         // nights are appended to the booked window rather than folded into
         // calculateNights: that function ceilings the whole span, so passing it
@@ -362,10 +379,14 @@ export async function computeFolioForStays(
         }, now)
         const lateNights = lateCheckoutNights(stay.checkOut, departure)
         const stayNights = bookedNights + lateNights
-        const segments = (segmentsByBooking.get(stay.bookingId) ?? []).map(seg => ({
-            fromTs: seg.fromTs,
-            price: seg.price || basePrice,
-        }))
+        // A stay-level agreed rate is what the guest was quoted, so it holds
+        // even if they were moved to a room that lists for more or less.
+        const segments = customRate > 0
+            ? []
+            : (segmentsByBooking.get(stay.bookingId) ?? []).map(seg => ({
+                fromTs: seg.fromTs,
+                price: seg.price || basePrice,
+            }))
         const rateForNight = (nightStart: Date) => resolveNightlyRate(segments, nightStart, basePrice)
 
         const start = new Date(stay.checkIn)

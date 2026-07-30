@@ -16,6 +16,42 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * The nightly rate the desk agreed for one stay, or 0 when it is on the
+ * standard room type price.
+ *
+ * It lives as a [CUSTOM_RATE:X] tag in booking.notes rather than in a column of
+ * its own: it belongs to this check-in window only, and the room type's catalog
+ * price must stay untouched. Every billing path — folio, cashier preview,
+ * invoice, print — reads it back through here, so they cannot disagree about
+ * what the guest was quoted.
+ */
+export function getBookingCustomPrice(booking: { notes?: string | null } | null | undefined): number {
+    if (!booking) return 0
+    // e.g. "KYC: XYZ | [CUSTOM_RATE:2500]"
+    if (booking.notes && typeof booking.notes === 'string') {
+        const match = booking.notes.match(/\[CUSTOM_RATE:(\d+(?:\.\d+)?)\]/)
+        if (match && match[1]) {
+            return parseFloat(match[1]) || 0
+        }
+    }
+    return 0
+}
+
+/**
+ * The KYC note a stay was registered with, without the [CUSTOM_RATE:x] tag that
+ * shares the same field. Returns '' when there is no KYC on file.
+ */
+export function getBookingKycNote(booking: { notes?: string | null } | null | undefined): string {
+    const notes = booking?.notes
+    if (!notes || typeof notes !== 'string' || !notes.startsWith('KYC:')) return ''
+    return notes
+        .replace(/\[CUSTOM_RATE:[^\]]*\]/g, '')
+        .replace(/^KYC:/, '')
+        .replace(/\|\s*$/, '')
+        .trim()
+}
+
+/**
  * Format currency amount for display.
  *
  * The currency is configured per-restaurant in settings (features_v2.currency

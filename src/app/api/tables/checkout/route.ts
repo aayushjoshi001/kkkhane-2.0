@@ -87,7 +87,6 @@ export async function POST(req: Request) {
 
         const { getRestaurantFeatures } = await import('@/lib/features')
         const features = await getRestaurantFeatures(currentUser.restaurantId)
-        const isIrd = !!features?.irdSyncEnabled
 
         // A bargained table total — same audit-trail rule as the room checkout:
         // any staff can apply one, but a reason is mandatory.
@@ -113,13 +112,9 @@ export async function POST(req: Request) {
         // Rs.100 QR on a Rs.500 bill, remaining Rs.100 on credit) — the client
         // already confirmed this exact breakdown with the cashier before
         // sending it (see CashierClient's settlement confirmation popup).
-        const rawCash = round2(Number(cash_paid) || 0)
-        const rawQr = round2(Number(qr_paid) || 0)
-        const rawCredit = round2(Number(credit_amount) || 0)
-
-        const cashPaid = isIrd ? rawCash : (rawCash + rawQr + rawCredit)
-        const qrPaid = isIrd ? rawQr : 0
-        const creditAmount = isIrd ? rawCredit : 0
+        const cashPaid = round2(Number(cash_paid) || 0)
+        const qrPaid = round2(Number(qr_paid) || 0)
+        const creditAmount = round2(Number(credit_amount) || 0)
 
         if (cashPaid < 0 || qrPaid < 0 || creditAmount < 0) {
             return NextResponse.json({ error: 'Payment amounts cannot be negative' }, { status: 400 })
@@ -308,7 +303,8 @@ export async function POST(req: Request) {
                     await postCreditCharge(supabase, currentUser.restaurantId, currentUser.id, {
                         customerCreditAccountId: account.id,
                         amount: creditAmount,
-                        description: `Table ${tableLabel} bill on credit`,
+                        description: `Table ${tableLabel} bill on credit (${customerName || 'Customer'})`,
+                        incomeCategoryName: 'Restaurant Sales',
                     })
                 }
             }

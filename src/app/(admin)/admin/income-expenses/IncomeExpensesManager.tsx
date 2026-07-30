@@ -398,7 +398,7 @@ export default function IncomeExpensesManager({
         ? filteredIncomeEntries.map(item => ({
             date: formatDate(item.created_at),
             category: item.income_categories?.name || 'Uncategorized',
-            payment: item.bank_accounts ? item.bank_accounts.name : 'Cash',
+            payment: item.bank_accounts ? item.bank_accounts.name : (/on credit|credit/i.test(item.description || '') ? 'Credit' : 'Cash'),
             description: parseExpenseDescription(item.description).text_desc,
             amount: formatCurrency(item.amount),
             by: item.created_by_name || 'Unknown',
@@ -591,11 +591,20 @@ export default function IncomeExpensesManager({
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-3 border-r border-hairline">
-                                                    <span className={`inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase ${
-                                                        item.bank_accounts ? 'bg-indigo-50 border border-indigo-100 text-indigo-700' : 'bg-amber-50 border border-amber-100 text-amber-700'
-                                                    }`}>
-                                                        {item.bank_accounts ? item.bank_accounts.name : 'Cash'}
-                                                    </span>
+                                                    {(() => {
+                                                        const isCredit = !item.bank_accounts && /on credit|credit/i.test(item.description || '')
+                                                        const badgeStyle = item.bank_accounts
+                                                            ? 'bg-indigo-50 border border-indigo-100 text-indigo-700'
+                                                            : isCredit
+                                                            ? 'bg-orange-50 border border-orange-100 text-orange-700'
+                                                            : 'bg-amber-50 border border-amber-100 text-amber-700'
+                                                        const label = item.bank_accounts ? item.bank_accounts.name : (isCredit ? 'Credit' : 'Cash')
+                                                        return (
+                                                            <span className={`inline-flex px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase ${badgeStyle}`}>
+                                                                {label}
+                                                            </span>
+                                                        )
+                                                    })()}
                                                 </td>
                                                 <td className="px-4 py-3 border-r border-hairline font-bold text-ink">{parseExpenseDescription(item.description).text_desc}</td>
                                                 <td className="px-4 py-3 text-right font-black border-r border-hairline text-emerald-600 text-sm whitespace-nowrap">

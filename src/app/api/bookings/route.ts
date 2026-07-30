@@ -163,13 +163,23 @@ export async function POST(req: Request) {
             : Math.max(0, Number(advance_amount) || 0)
         const advMethod = paidAmount > 0 ? (isSplitAdvance ? 'split' : (advance_payment_method || 'cash')) : 'none'
 
+        // A rate the desk agreed for this stay is tagged into the notes rather
+        // than given a column of its own: it belongs to this check-in window
+        // only and must never touch the room type's catalog price. Every
+        // billing path reads it back through getBookingCustomPrice.
+        const customPriceNum = Number(body.custom_room_price)
+        const customRoomPrice = Number.isFinite(customPriceNum) && customPriceNum > 0 ? customPriceNum : undefined
+
         // One advance is collected for the whole reservation, but paid_amount
         // lives per booking. Spread it across the rooms in proportion to their
         // nightly rate so per-room revenue reporting stays honest, and give the
         // rounding remainder to the first room so the parts always sum to the
         // total the guest actually handed over.
+        //
+        // An agreed rate replaces the catalog price for every room on the
+        // reservation, so it is what the advance should be split against too.
         const roomPrices = roomRequests.map(r =>
-            Number((roomsById.get(r.roomId)?.room_types as { base_price?: number } | null)?.base_price) || 0
+            customRoomPrice ?? (Number((roomsById.get(r.roomId)?.room_types as { base_price?: number } | null)?.base_price) || 0)
         )
         const priceTotal = roomPrices.reduce((s, p) => s + p, 0)
         const advanceShares = roomRequests.map((_, i) => {
@@ -197,7 +207,11 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'parking_fee must be a number' }, { status: 400 })
         }
 
-        const notes = kyc ? `KYC: ${kyc.trim()}` : null
+        let notesStr = kyc ? `KYC: ${kyc.trim()}` : ''
+        if (customRoomPrice) {
+            notesStr = `${notesStr ? notesStr + ' | ' : ''}[CUSTOM_RATE:${customRoomPrice}]`
+        }
+        const notes = notesStr || null
         const guestName = String(guest_name).trim()
         const guestPhone = String(guest_phone).trim()
         const guestEmail = typeof guest_email === 'string' && guest_email.trim() ? guest_email.trim() : null

@@ -17,7 +17,7 @@ import DownloadAllQrsButton from '@/components/admin/DownloadAllQrsButton'
 import { useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
-import { defaultStayWindowInputs } from '@/lib/utils'
+import { defaultStayWindowInputs, getBookingKycNote } from '@/lib/utils'
 import { useDates } from '@/lib/contexts/CalendarContext'
 import { describeGuestMix } from '@/lib/guests'
 
@@ -85,6 +85,7 @@ export default function RoomsClient({
         kyc: '',
         check_in: '',
         check_out: '',
+        custom_room_price: '',
         adult_male: '1',
         adult_female: '1',
         children: '0',
@@ -333,6 +334,8 @@ export default function RoomsClient({
             kyc: '',
             check_in: checkIn,
             check_out: checkOut,
+            // Blank unless the desk types a rate — see CashierRoomManager.
+            custom_room_price: '',
             adult_male: '1',
             adult_female: roomType && roomType.capacity > 1 ? '1' : '0',
             children: '0',
@@ -399,6 +402,7 @@ export default function RoomsClient({
                     kyc: bookingForm.kyc,
                     check_in: bookingForm.check_in,
                     check_out: bookingForm.check_out,
+                    custom_room_price: bookingForm.custom_room_price.trim() !== '' ? (parseFloat(bookingForm.custom_room_price) || undefined) : undefined,
                     adult_male: maleCount,
                     adult_female: femaleCount,
                     children: childCount,
@@ -788,10 +792,10 @@ export default function RoomsClient({
                                             <span className="text-ink-subtle font-bold uppercase tracking-wide">Total Guests:</span>
                                             <span className="font-extrabold text-ink">{describeGuestMix(activeBooking)}</span>
                                         </div>
-                                        {activeBooking.notes && activeBooking.notes.startsWith('KYC:') && (
+                                        {getBookingKycNote(activeBooking) && (
                                             <div className="flex items-center justify-between">
                                                 <span className="text-ink-subtle font-bold uppercase tracking-wide">KYC details:</span>
-                                                <span className="font-extrabold text-ink">{activeBooking.notes.replace('KYC:', '').trim()}</span>
+                                                <span className="font-extrabold text-ink">{getBookingKycNote(activeBooking)}</span>
                                             </div>
                                         )}
                                         {/* Only worth a line when there is a car — a stay with
@@ -1048,6 +1052,24 @@ export default function RoomsClient({
                                 </div>
                                 <p className="text-[10px] text-ink-subtle font-semibold mt-1.5">
                                     Applied to each room on this reservation.
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="block text-small font-bold text-ink mb-1 flex items-center justify-between">
+                                    <span>Custom Room Price (Rs. / Night)</span>
+                                    <span className="text-[10px] text-amber-700 font-semibold">Session rate override</span>
+                                </label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    placeholder={selectedRoom?.room_types ? String(selectedRoom.room_types.base_price) : '0.00'}
+                                    value={bookingForm.custom_room_price}
+                                    onChange={e => setBookingForm(b => ({ ...b, custom_room_price: e.target.value }))}
+                                    className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all font-bold"
+                                />
+                                <p className="text-[10px] text-ink-subtle mt-1 mb-3">
+                                    Applies to this booking session only ({selectedRoom?.room_types ? `standard type price Rs. ${selectedRoom.room_types.base_price}/night` : ''} remains unchanged).
                                 </p>
                             </div>
 
