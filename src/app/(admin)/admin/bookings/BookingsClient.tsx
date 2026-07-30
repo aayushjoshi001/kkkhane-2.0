@@ -2,30 +2,14 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Filter, Calendar, ChevronUp, ChevronDown, ShoppingBag, Loader2, AlertTriangle, RotateCcw, X, LogIn, LogOut, Percent, Landmark, Banknote, QrCode, CreditCard } from 'lucide-react'
+import { Filter, Calendar, ChevronUp, ChevronDown, ShoppingBag, Loader2, AlertTriangle, RotateCcw, X, LogIn, LogOut, Banknote, QrCode, CreditCard, Receipt, Clock, UtensilsCrossed } from 'lucide-react'
 import type { Booking, Room, BookingStatus } from '@/types/database'
 import EmptyState from '@/components/ui/EmptyState'
 import { useDates } from '@/lib/contexts/CalendarContext'
 import Select from '@/components/ui/Select'
 import DateCell from '@/components/ui/DateCell'
 import { DateRangePicker, type DateRange } from '@/components/ui/DateRangePicker'
-import { getBookingCustomPrice, getItemDisplayName } from '@/lib/utils'
-
-interface BookingSummary {
-    checked_in_at: string | null
-    checked_in_by: string | null
-    checked_out_at: string | null
-    checked_out_by: string | null
-    room_discount_amount: number
-    room_discount_reason: string | null
-    food_discount_amount: number
-    service_charge_amount: number
-    cash_advance: number
-    cash_settlement: number
-    qr_advance: number
-    qr_settlement: number
-    credit_settlement: number
-}
+import type { BookingBill, BookingBillOrder, BookingBillOrderKind } from '@/lib/bookingBill'
 
 interface BookingsClientProps {
     initialBookings: Booking[]
@@ -36,151 +20,244 @@ interface BookingsClientProps {
     activeOrders?: any[]
 }
 
+const money = (amount: number) => `Rs. ${(Number(amount) || 0).toFixed(2)}`
+
+/** A single line in the run-up to the total, so every line reads the same. */
+function BillLine({
+    label,
+    note,
+    amount,
+    sign = '',
+    strong = false,
+    muted = false,
+}: {
+    label: React.ReactNode
+    note?: React.ReactNode
+    amount: number
+    sign?: '' | '+' | '-'
+    strong?: boolean
+    muted?: boolean
+}) {
+    return (
+        <div className={`flex items-start justify-between gap-3 px-4 py-2 ${strong ? 'bg-surface-muted/40' : ''}`}>
+            <div className="min-w-0">
+                <div className={`text-xs truncate ${strong ? 'font-extrabold text-ink' : muted ? 'font-semibold text-ink-subtle' : 'font-bold text-ink'}`}>
+                    {label}
+                </div>
+                {note && <div className="text-[10px] text-ink-subtle font-semibold mt-0.5">{note}</div>}
+            </div>
+            <div className={`shrink-0 tabular-nums text-xs ${strong ? 'font-black text-ink' : muted ? 'font-semibold text-ink-subtle' : 'font-extrabold text-ink'}`}>
+                {sign ? `${sign} ` : ''}{money(Math.abs(amount))}
+            </div>
+        </div>
+    )
+}
+
+const ORDER_KIND_BADGE: Record<BookingBillOrderKind, { label: string; className: string }> = {
+    room_qr: { label: 'Room QR', className: 'bg-blue-50 text-blue-700 border-blue-100' },
+    dining_table: { label: 'Dining table', className: 'bg-violet-50 text-violet-700 border-violet-100' },
+    direct: { label: 'Put on room', className: 'bg-amber-50 text-amber-800 border-amber-100' },
+}
+
+/** One service order, in full: how it arrived, what was in it, what it added. */
+function ServiceOrderCard({ order, formatDateTime }: { order: BookingBillOrder; formatDateTime: (v: string) => string }) {
+    const badge = ORDER_KIND_BADGE[order.kind]
+    return (
+        <div className={`border rounded-xl overflow-hidden ${order.billed ? 'border-hairline bg-surface' : 'border-dashed border-amber-300 bg-amber-50/30'}`}>
+            <div className="px-4 py-2.5 bg-surface-muted/50 flex flex-wrap items-center gap-2 justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-extrabold text-xs text-ink">{order.ref}</span>
+                    <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border ${badge.className}`}>
+                        {badge.label}
+                    </span>
+                    {order.tableLabel && (
+                        <span className="text-[10px] font-bold text-ink-subtle truncate">{order.tableLabel}</span>
+                    )}
+                </div>
+                <div className="flex items-center gap-2 text-[10px] font-semibold text-ink-subtle">
+                    <span className="whitespace-nowrap">{formatDateTime(order.placedAt)}</span>
+                    <span className="px-1.5 py-0.5 rounded bg-surface border border-hairline capitalize">{order.status}</span>
+                    <span className={`px-1.5 py-0.5 rounded border capitalize ${
+                        order.paymentStatus === 'paid'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                            : 'bg-surface text-ink-subtle border-hairline'
+                    }`}>
+                        {order.paymentStatus}
+                    </span>
+                </div>
+            </div>
+
+            <div className="divide-y divide-hairline">
+                {order.items.map(item => (
+                    <div key={item.id} className="grid grid-cols-12 px-4 py-2 text-xs items-baseline">
+                        <div className="col-span-6 min-w-0">
+                            <span className="font-bold text-ink">{item.name}</span>
+                            {item.variation && <span className="text-ink-subtle font-semibold"> · {item.variation}</span>}
+                            {item.station && (
+                                <span className="text-[9px] font-bold text-ink-subtle uppercase ml-1.5">{item.station}</span>
+                            )}
+                            {item.specialRequest && (
+                                <div className="text-[10px] text-amber-700 font-semibold truncate">“{item.specialRequest}”</div>
+                            )}
+                        </div>
+                        <div className="col-span-2 text-center font-extrabold text-brand-600">{item.quantity}×</div>
+                        <div className="col-span-2 text-right font-semibold text-ink-subtle tabular-nums">{money(item.unitPrice)}</div>
+                        <div className="col-span-2 text-right font-extrabold text-ink tabular-nums">{money(item.lineTotal)}</div>
+                    </div>
+                ))}
+                {order.items.length === 0 && (
+                    <div className="px-4 py-2 text-[11px] text-ink-subtle font-semibold">Every item on this order was cancelled.</div>
+                )}
+            </div>
+
+            <div className="px-4 py-2 bg-surface-muted/30 border-t border-hairline space-y-1">
+                <div className="flex justify-between text-[11px] font-bold text-ink-subtle">
+                    <span>Items</span>
+                    <span className="tabular-nums">{money(order.subtotal)}</span>
+                </div>
+                {order.serviceCharge > 0 && (
+                    <div className="flex justify-between text-[11px] font-bold text-ink-subtle">
+                        <span>Room service charge</span>
+                        <span className="tabular-nums">+ {money(order.serviceCharge)}</span>
+                    </div>
+                )}
+                {order.discountAtOrderTime > 0 && (
+                    <div className="flex justify-between text-[10px] font-semibold text-ink-subtle">
+                        <span>Discount taken on the order itself</span>
+                        <span className="tabular-nums">- {money(order.discountAtOrderTime)}</span>
+                    </div>
+                )}
+                {order.taxAtOrderTime > 0 && (
+                    <div className="flex justify-between text-[10px] font-semibold text-ink-subtle">
+                        <span>Tax priced in at order time</span>
+                        <span className="tabular-nums">{money(order.taxAtOrderTime)}</span>
+                    </div>
+                )}
+                <div className={`flex justify-between text-xs font-black pt-1 border-t border-hairline ${order.billed ? 'text-ink' : 'text-amber-800'}`}>
+                    <span>{order.billed ? 'On this bill' : 'Not billed on this stay'}</span>
+                    <span className="tabular-nums">{money(order.billedTotal)}</span>
+                </div>
+            </div>
+        </div>
+    )
+}
+
 function BookingHistoryCard({ booking }: { booking: Booking }) {
     const [loading, setLoading] = useState(true)
-    const [orderItems, setOrderItems] = useState<any[]>([])
-    const [summary, setSummary] = useState<BookingSummary | null>(null)
+    const [bill, setBill] = useState<BookingBill | null>(null)
+    const [error, setError] = useState<string | null>(null)
     const { formatDateTime } = useDates()
 
     useEffect(() => {
         let isMounted = true
-        async function loadDetails() {
+        async function loadBill() {
             try {
                 setLoading(true)
-                const res = await fetch(`/api/bookings/linked-orders?bookingId=${booking.id}&includeAll=true`)
-                if (res.ok) {
-                    const data = await res.json()
-                    if (isMounted) {
-                        setOrderItems(data.items || [])
-                        setSummary(data.booking || null)
-                    }
+                setError(null)
+                const res = await fetch(`/api/bookings/bill?bookingId=${booking.id}`)
+                const data = await res.json()
+                if (!isMounted) return
+                if (!res.ok) {
+                    setError(data.error || 'Could not load this bill')
+                    return
                 }
-            } catch (err) {
-                console.error('Failed to load linked orders:', err)
+                setBill(data.data as BookingBill)
+            } catch {
+                if (isMounted) setError('Could not load this bill')
             } finally {
                 if (isMounted) setLoading(false)
             }
         }
-        loadDetails()
+        loadBill()
         return () => { isMounted = false }
     }, [booking.id])
 
-    // Calculate stay duration
-    const checkInDate = booking.check_in ? new Date(booking.check_in) : null
-    const checkOutDate = booking.check_out ? new Date(booking.check_out) : null
-    const nights = checkInDate && checkOutDate 
-        ? Math.max(1, Math.round((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 3600 * 24)))
-        : 1
+    if (loading) {
+        return (
+            <div className="p-6 bg-brand-50/30 border-t-2 border-b-2 border-brand-200 animate-fade-down">
+                <div className="flex items-center justify-center py-8 text-xs text-ink-subtle gap-2">
+                    <Loader2 size={16} className="animate-spin text-brand-500" /> Building this stay&apos;s bill…
+                </div>
+            </div>
+        )
+    }
 
-    // A rate agreed for this stay, if there was one, else the room type's price.
-    const rawNightlyRate = getBookingCustomPrice(booking)
-        || Number((booking as any).rooms?.room_types?.base_price || 0)
-    const roomBill = rawNightlyRate > 0 ? rawNightlyRate * nights : Number(booking.total_amount || 0)
+    if (error || !bill) {
+        return (
+            <div className="p-6 bg-brand-50/30 border-t-2 border-b-2 border-brand-200 animate-fade-down">
+                <div className="flex items-center justify-center gap-2 py-8 text-xs font-bold text-rose-600">
+                    <AlertTriangle size={15} /> {error || 'Could not load this bill'}
+                </div>
+            </div>
+        )
+    }
 
-    // Food & Beverage Bill sum from all linked orders (QR, Waiter, Cashier)
-    const foodBill = orderItems.reduce((sum, item) => sum + (Number(item.unit_price || 0) * (item.quantity || 1)), 0)
-
-    // Subtotal is the raw room + food charge, before any discount is taken off
-    // or service charge added on top.
-    const subtotal = roomBill + foodBill
-    const isCheckedOut = booking.status === 'checked_out'
-    // Once checked out, booking.total_amount is the authoritative figure the
-    // checkout route computed (discount subtracted, service charge + tax
-    // added). Still in house, this is only an estimate from what's known so far.
-    const totalDiscount = (summary?.room_discount_amount ?? 0) + (summary?.food_discount_amount ?? 0)
-    const grandTotal = isCheckedOut
-        ? Number(booking.total_amount || subtotal)
-        : Math.max(0, subtotal - totalDiscount + (summary?.service_charge_amount ?? 0))
-    const totalPaid = Number(booking.paid_amount || 0)
-    const netBalance = isCheckedOut ? 0 : Math.max(0, grandTotal - totalPaid)
-    // Advance collected beyond the running bill — Math.max above floors this
-    // to 0 in netBalance itself, so it has to be tracked separately or an
-    // overpayment silently reads identically to an exact "Fully Paid".
-    const overpaid = isCheckedOut ? 0 : Math.max(0, totalPaid - grandTotal)
+    const { totals, payments, settlement, rooms, charges, orders } = bill
+    const isIssued = bill.mode === 'issued'
+    const billedOrders = orders.filter(o => o.billed)
+    const roomNumbers = rooms.map(r => r.roomNumber).filter(Boolean)
 
     return (
         <div className="p-6 bg-brand-50/30 border-t-2 border-b-2 border-brand-200 space-y-6 animate-fade-down">
-            {/* Unified Room & Order Detail Bill */}
             <div className="bg-surface rounded-2xl border-2 border-brand-200/70 shadow-lg overflow-hidden divide-y divide-hairline">
-                
-                {/* Header: Guest & Room Info */}
-                <div className="p-5 bg-surface-muted/50 flex flex-wrap items-center justify-between gap-4">
+
+                {/* Header: whose bill this is, and which of the two it is */}
+                <div className="p-5 bg-surface-muted/50 flex flex-wrap items-start justify-between gap-4">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center text-brand-600 font-black text-sm shrink-0">
-                            {booking.rooms?.room_number || '—'}
+                            {roomNumbers[0] || booking.rooms?.room_number || '—'}
                         </div>
                         <div>
-                            <h4 className="font-extrabold text-ink text-base flex items-center gap-2">
-                                {booking.guest_name}
+                            <h4 className="font-extrabold text-ink text-base flex items-center gap-2 flex-wrap">
+                                {bill.guestName}
                                 <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-surface border border-hairline text-ink-subtle">
-                                    Room {booking.rooms?.room_number || '—'}
+                                    {roomNumbers.length > 1 ? `Rooms ${roomNumbers.join(', ')}` : `Room ${roomNumbers[0] || '—'}`}
                                 </span>
+                                {bill.groupId && (
+                                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-100">
+                                        One reservation
+                                    </span>
+                                )}
                             </h4>
                             <p className="text-xs text-ink-subtle font-medium mt-0.5">
-                                Phone: <strong className="text-ink">{booking.guest_phone || 'N/A'}</strong> · {nights} Night{nights > 1 ? 's' : ''} ({booking.check_in ? new Date(booking.check_in).toLocaleDateString() : '—'} → {booking.check_out ? new Date(booking.check_out).toLocaleDateString() : '—'})
+                                Phone: <strong className="text-ink">{bill.guestPhone || 'N/A'}</strong> · {bill.nights} Night{bill.nights === 1 ? '' : 's'} ({new Date(bill.checkIn).toLocaleDateString()} → {new Date(bill.checkOut).toLocaleDateString()})
+                                {bill.customRatePerNight > 0 && (
+                                    <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                                        Agreed rate {money(bill.customRatePerNight)}/night
+                                    </span>
+                                )}
                             </p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
+
+                    <div className="flex flex-col items-end gap-1.5">
                         <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border bg-brand-50 text-brand-700 border-brand-200">
-                            {booking.status}
+                            {bill.status.replace('_', ' ')}
                         </span>
+                        {isIssued && settlement ? (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg flex items-center gap-1">
+                                <Receipt size={11} />
+                                Bill issued {formatDateTime(settlement.at)}{settlement.by ? ` · ${settlement.by}` : ''}
+                            </span>
+                        ) : (
+                            <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg flex items-center gap-1">
+                                <Clock size={11} />
+                                Running bill — as of {formatDateTime(bill.asOf)}
+                            </span>
+                        )}
+                        {isIssued && settlement && !settlement.closedStay && (
+                            <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-1 rounded-lg">
+                                Paid and kept the room
+                            </span>
+                        )}
+                        {isIssued && settlement && (
+                            <span className="text-[10px] font-semibold text-ink-subtle">Ref {settlement.invoiceNumber}</span>
+                        )}
                     </div>
                 </div>
 
-                {/* Financial Summary Breakdown */}
-                <div className="p-3.5 grid grid-cols-3 md:grid-cols-5 gap-2 bg-surface">
-                    <div className="p-2 rounded-lg bg-surface-muted/40 border border-hairline space-y-0.5">
-                        <span className="text-[9px] font-bold text-ink-subtle uppercase tracking-wider block truncate">Room Bill</span>
-                        <div className="text-xs font-extrabold text-ink tabular-nums">Rs. {roomBill.toFixed(2)}</div>
-                        <span className="text-[9px] text-ink-subtle block font-semibold truncate">{nights}n {rawNightlyRate > 0 ? `@ Rs.${rawNightlyRate}` : ''}</span>
-                    </div>
-
-                    <div className="p-2 rounded-lg bg-surface-muted/40 border border-hairline space-y-0.5">
-                        <span className="text-[9px] font-bold text-ink-subtle uppercase tracking-wider block truncate">Food & Drink</span>
-                        <div className="text-xs font-extrabold text-ink tabular-nums">Rs. {foodBill.toFixed(2)}</div>
-                        <span className="text-[9px] text-ink-subtle block font-semibold truncate">{orderItems.length} item(s)</span>
-                    </div>
-
-                    <div className="p-2 rounded-lg bg-surface-muted/40 border border-hairline space-y-0.5">
-                        <span className="text-[9px] font-bold text-ink-subtle uppercase tracking-wider block truncate">Subtotal</span>
-                        <div className="text-xs font-extrabold text-ink tabular-nums">Rs. {subtotal.toFixed(2)}</div>
-                        <span className="text-[9px] text-ink-subtle block font-semibold truncate">Room + Food</span>
-                    </div>
-
-                    <div className="p-2 rounded-lg bg-brand-50/60 border border-brand-100 space-y-0.5">
-                        <span className="text-[9px] font-bold text-brand-700 uppercase tracking-wider block truncate">Grand Total</span>
-                        <div className="text-xs font-black text-brand-700 tabular-nums">Rs. {grandTotal.toFixed(2)}</div>
-                        <span className="text-[9px] text-brand-600 block font-semibold truncate">After disc. + charge</span>
-                    </div>
-
-                    {(() => {
-                        const creditOutstanding = summary?.credit_settlement ?? 0
-                        // "Settled" alone would read as "nothing owed" right next to
-                        // the Credit box saying the opposite — this booking is closed
-                        // either way, but a credit portion is still real, uncollected
-                        // money on the Customers Ledger, not on this booking.
-                        const stillOnCredit = isCheckedOut && creditOutstanding > 0
-                        const isOverpaid = !isCheckedOut && netBalance === 0 && overpaid > 0
-                        return (
-                            <div className={`p-2 rounded-lg border space-y-0.5 ${netBalance > 0 ? 'bg-rose-50/50 border-rose-100' : stillOnCredit ? 'bg-amber-50/50 border-amber-100' : isOverpaid ? 'bg-blue-50/50 border-blue-100' : 'bg-emerald-50/50 border-emerald-100'}`}>
-                                <span className="text-[9px] font-bold uppercase tracking-wider text-ink-subtle block truncate">Net Due</span>
-                                <div className={`text-xs font-black tabular-nums ${netBalance > 0 ? 'text-rose-600' : stillOnCredit ? 'text-amber-700' : isOverpaid ? 'text-blue-700' : 'text-emerald-700'}`}>
-                                    Rs. {netBalance.toFixed(2)}
-                                </div>
-                                <span className="text-[9px] font-semibold block text-ink-subtle truncate">
-                                    {isCheckedOut
-                                        ? (stillOnCredit ? `Settled — Rs. ${creditOutstanding.toFixed(2)} on credit` : 'Settled')
-                                        : (netBalance > 0 ? 'Pending' : isOverpaid ? `Rs. ${overpaid.toFixed(2)} credit balance (overpaid)` : 'Fully Paid')}
-                                </span>
-                            </div>
-                        )
-                    })()}
-                </div>
-
-                {/* Check-In / Check-Out Attribution — automatic, never hand-typed.
-                    checked_in_by/at and checked_out_by(cashier_id)/at are stamped
-                    server-side the moment the status actually changes. */}
+                {/* Check-in / check-out attribution — stamped server-side when the
+                    status actually changed, never hand-typed. */}
                 <div className="p-3.5 grid grid-cols-1 sm:grid-cols-2 gap-2 bg-surface">
                     <div className="p-2 rounded-lg bg-blue-50/50 border border-blue-100 flex items-center gap-2">
                         <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
@@ -188,16 +265,12 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
                         </div>
                         <div className="min-w-0">
                             <span className="text-[9px] font-bold text-blue-800 uppercase tracking-wider block">Checked In — Cashier</span>
-                            {loading ? (
-                                <div className="text-[11px] text-ink-subtle font-semibold">Loading...</div>
-                            ) : (
-                                <div className="flex items-baseline gap-1.5 truncate">
-                                    <span className="text-xs font-extrabold text-ink truncate">{summary?.checked_in_by || 'Unknown'}</span>
-                                    <span className="text-[9px] text-ink-subtle font-semibold whitespace-nowrap">
-                                        {summary?.checked_in_at ? formatDateTime(summary.checked_in_at) : 'not yet'}
-                                    </span>
-                                </div>
-                            )}
+                            <div className="flex items-baseline gap-1.5 truncate">
+                                <span className="text-xs font-extrabold text-ink truncate">{bill.checkedInBy || 'Unknown'}</span>
+                                <span className="text-[9px] text-ink-subtle font-semibold whitespace-nowrap">
+                                    {bill.checkedInAt ? formatDateTime(bill.checkedInAt) : 'not yet'}
+                                </span>
+                            </div>
                         </div>
                     </div>
 
@@ -207,12 +280,10 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
                         </div>
                         <div className="min-w-0">
                             <span className="text-[9px] font-bold text-ink-subtle uppercase tracking-wider block">Checked Out — Cashier</span>
-                            {loading ? (
-                                <div className="text-[11px] text-ink-subtle font-semibold">Loading...</div>
-                            ) : summary?.checked_out_at ? (
+                            {bill.checkedOutAt ? (
                                 <div className="flex items-baseline gap-1.5 truncate">
-                                    <span className="text-xs font-extrabold text-ink truncate">{summary.checked_out_by || 'Unknown'}</span>
-                                    <span className="text-[9px] text-ink-subtle font-semibold whitespace-nowrap">{formatDateTime(summary.checked_out_at)}</span>
+                                    <span className="text-xs font-extrabold text-ink truncate">{bill.checkedOutBy || 'Unknown'}</span>
+                                    <span className="text-[9px] text-ink-subtle font-semibold whitespace-nowrap">{formatDateTime(bill.checkedOutAt)}</span>
                                 </div>
                             ) : (
                                 <span className="text-[11px] text-ink-subtle font-semibold">Still in house</span>
@@ -221,115 +292,220 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
                     </div>
                 </div>
 
-                {/* Payment & Charges Breakdown */}
-                <div className="p-3.5 grid grid-cols-2 md:grid-cols-5 gap-2 bg-surface">
-                    <div className="p-2 rounded-lg bg-surface-muted/40 border border-hairline space-y-0.5">
-                        <span className="text-[9px] font-bold text-ink-subtle uppercase tracking-wider flex items-center gap-1 truncate">
-                            <Percent size={10} /> Discount — Rs. {totalDiscount.toFixed(2)}
-                        </span>
-                        <div className="flex items-center justify-between text-[10px] font-bold text-ink">
-                            <span className="text-ink-subtle">Room</span>
-                            <span className="tabular-nums">Rs. {(summary?.room_discount_amount ?? 0).toFixed(2)}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-[10px] font-bold text-ink">
-                            <span className="text-ink-subtle">Food</span>
-                            <span className="tabular-nums">Rs. {(summary?.food_discount_amount ?? 0).toFixed(2)}</span>
-                        </div>
-                        <span className="text-[9px] text-ink-subtle block font-semibold truncate">{summary?.room_discount_reason || 'No room discount reason'}</span>
-                    </div>
-
-                    <div className="p-2 rounded-lg bg-surface-muted/40 border border-hairline space-y-0.5">
-                        <span className="text-[9px] font-bold text-ink-subtle uppercase tracking-wider flex items-center gap-1 truncate">
-                            <Landmark size={10} /> Service Charge
-                        </span>
-                        <div className="text-xs font-extrabold text-ink tabular-nums">Rs. {(summary?.service_charge_amount ?? 0).toFixed(2)}</div>
-                        <span className="text-[9px] text-ink-subtle block font-semibold truncate">Charged on stay</span>
-                    </div>
-
-                    <div className="p-2 rounded-lg bg-emerald-50/50 border border-emerald-100 space-y-0.5">
-                        <span className="text-[9px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1 truncate">
-                            <Banknote size={10} /> Cash — Rs. {((summary?.cash_advance ?? 0) + (summary?.cash_settlement ?? 0)).toFixed(2)}
-                        </span>
-                        <div className="flex items-center justify-between text-[10px] font-bold text-emerald-800">
-                            <span className="text-emerald-600">Advance</span>
-                            <span className="tabular-nums">Rs. {(summary?.cash_advance ?? 0).toFixed(2)}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-[10px] font-bold text-emerald-800">
-                            <span className="text-emerald-600">Checkout</span>
-                            <span className="tabular-nums">Rs. {(summary?.cash_settlement ?? 0).toFixed(2)}</span>
-                        </div>
-                    </div>
-
-                    <div className="p-2 rounded-lg bg-emerald-50/50 border border-emerald-100 space-y-0.5">
-                        <span className="text-[9px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1 truncate">
-                            <QrCode size={10} /> QR — Rs. {((summary?.qr_advance ?? 0) + (summary?.qr_settlement ?? 0)).toFixed(2)}
-                        </span>
-                        <div className="flex items-center justify-between text-[10px] font-bold text-emerald-800">
-                            <span className="text-emerald-600">Advance</span>
-                            <span className="tabular-nums">Rs. {(summary?.qr_advance ?? 0).toFixed(2)}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-[10px] font-bold text-emerald-800">
-                            <span className="text-emerald-600">Checkout</span>
-                            <span className="tabular-nums">Rs. {(summary?.qr_settlement ?? 0).toFixed(2)}</span>
-                        </div>
-                    </div>
-
-                    <div className="p-2 rounded-lg bg-amber-50/50 border border-amber-100 space-y-0.5">
-                        <span className="text-[9px] font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1 truncate">
-                            <CreditCard size={10} /> Credit
-                        </span>
-                        <div className="text-xs font-extrabold text-amber-700 tabular-nums">Rs. {(summary?.credit_settlement ?? 0).toFixed(2)}</div>
-                        <span className="text-[9px] text-amber-600 block font-semibold truncate">Put on guest&apos;s account</span>
-                    </div>
-                </div>
-
-                {/* Itemized Food & Drink Orders (QR, Waiter, Cashier) */}
+                {/* ── The bill itself ──────────────────────────────────────── */}
                 <div className="p-5 space-y-3">
                     <h5 className="text-xs font-extrabold uppercase tracking-wider text-ink-subtle flex items-center gap-2">
-                        <ShoppingBag size={14} className="text-brand-500" /> Itemized Room Food & Drink Orders ({orderItems.length})
+                        <Receipt size={14} className="text-brand-500" />
+                        {isIssued ? 'The bill the guest was given' : 'The bill so far'}
+                    </h5>
+                    <p className="text-[10px] text-ink-subtle font-semibold -mt-1">
+                        {isIssued
+                            ? 'Exactly as it stood when it was settled — the figures that were charged, not today’s prices.'
+                            : 'Computed the same way checkout will compute it: room nights, manual charges, room-service orders, service charge and VAT.'}
+                    </p>
+
+                    <div className="border border-hairline rounded-xl overflow-hidden divide-y divide-hairline bg-surface">
+                        {/* Room nights, one line per room on the bill */}
+                        {rooms.map(room => (
+                            <BillLine
+                                key={room.bookingId}
+                                label={`Room ${room.roomNumber}${room.roomType ? ` · ${room.roomType}` : ''}`}
+                                note={
+                                    <>
+                                        {room.nights} night{room.nights === 1 ? '' : 's'}
+                                        {room.nightlyRate > 0 ? ` @ ${money(room.nightlyRate)}` : ''}
+                                        {room.lateNights > 0 && (
+                                            <span className="text-amber-700 font-bold">
+                                                {' '}· includes {room.lateNights} late-checkout night{room.lateNights === 1 ? '' : 's'}
+                                            </span>
+                                        )}
+                                    </>
+                                }
+                                amount={room.stayCost}
+                            />
+                        ))}
+                        {rooms.length === 0 && (
+                            <BillLine label="Room stay" amount={totals.stayCost} />
+                        )}
+
+                        {totals.roomDiscount > 0 && (
+                            <BillLine
+                                label="Room discount"
+                                note={(booking as { discount_reason?: string | null }).discount_reason || 'Bargain rate given at the desk'}
+                                amount={totals.roomDiscount}
+                                sign="-"
+                            />
+                        )}
+
+                        {/* Manual charges added during the stay */}
+                        {charges.map(charge => (
+                            <BillLine
+                                key={charge.id}
+                                label={charge.description}
+                                note={<span className="capitalize">{charge.chargeType.replace('_', ' ')}</span>}
+                                amount={charge.amount}
+                            />
+                        ))}
+
+                        {/* Food and drink, itemized in full further down */}
+                        <BillLine
+                            label={
+                                <span className="flex items-center gap-1.5">
+                                    <UtensilsCrossed size={12} className="text-brand-500" />
+                                    Food &amp; drink
+                                </span>
+                            }
+                            note={`${billedOrders.length} order${billedOrders.length === 1 ? '' : 's'}${totals.serviceCharge > 0 ? ' · service charge included' : ''}`}
+                            amount={totals.ordersTotal}
+                        />
+                        {totals.serviceCharge > 0 && (
+                            <BillLine
+                                label="— of which room service charge"
+                                note={
+                                    totals.serviceChargeOverridden
+                                        ? `Cashier set this by hand — the rules produced ${money(totals.serviceChargeAuto)}`
+                                        : '10% on kitchen items, on rooms where it applies'
+                                }
+                                amount={totals.serviceCharge}
+                                muted
+                            />
+                        )}
+                        {totals.foodDiscount > 0 && (
+                            <BillLine
+                                label="— of which discount already taken on the orders"
+                                note="Promo or loyalty, applied when the order was placed"
+                                amount={totals.foodDiscount}
+                                muted
+                            />
+                        )}
+
+                        {totals.vat > 0 && (
+                            <BillLine label="VAT" note="On the room and manual charges only" amount={totals.vat} sign="+" />
+                        )}
+
+                        {totals.extraHourCharge > 0 && (
+                            <BillLine label="Extra hour charge" note="Late departure, charged at the till" amount={totals.extraHourCharge} sign="+" />
+                        )}
+
+                        {/* Whatever the charged total exceeds these lines by, said
+                            out loud instead of leaving a breakdown that doesn't add up. */}
+                        {isIssued && Math.abs(totals.adjustment - totals.extraHourCharge) > 0.01 && (
+                            <BillLine
+                                label="Adjustment made at checkout"
+                                note="Charged on the bill but not attributable to a line above"
+                                amount={totals.adjustment - totals.extraHourCharge}
+                                sign={totals.adjustment - totals.extraHourCharge < 0 ? '-' : '+'}
+                            />
+                        )}
+
+                        <BillLine
+                            label={isIssued ? 'Total charged' : 'Total so far'}
+                            amount={totals.total}
+                            strong
+                        />
+                    </div>
+
+                    {/* What was taken against it */}
+                    <div className="border border-hairline rounded-xl overflow-hidden divide-y divide-hairline bg-surface">
+                        <div className="px-4 py-2 bg-surface-muted/60 text-[10px] font-black uppercase tracking-wider text-ink-subtle">
+                            Money received
+                        </div>
+                        {/* The advance splits cash from QR only when something
+                            recorded the split; on a 'split' advance rebuilt from
+                            the booking record, the total is all that is known. */}
+                        {payments.advanceSplitKnown ? (
+                            <>
+                                {payments.advanceCash > 0 && (
+                                    <BillLine label={<span className="flex items-center gap-1.5"><Banknote size={12} className="text-emerald-600" /> Advance — cash</span>} amount={payments.advanceCash} sign="-" />
+                                )}
+                                {payments.advanceQr > 0 && (
+                                    <BillLine label={<span className="flex items-center gap-1.5"><QrCode size={12} className="text-emerald-600" /> Advance — QR / digital</span>} amount={payments.advanceQr} sign="-" />
+                                )}
+                            </>
+                        ) : (
+                            <BillLine
+                                label={<span className="flex items-center gap-1.5"><Banknote size={12} className="text-emerald-600" /> Advance taken</span>}
+                                note={`Method recorded as ${(payments.advanceMethod || 'unknown').replace('_', ' ')} — cash and QR were not recorded separately`}
+                                amount={payments.advanceTotal}
+                                sign="-"
+                            />
+                        )}
+                        {payments.settlementCash > 0 && (
+                            <BillLine label={<span className="flex items-center gap-1.5"><Banknote size={12} className="text-emerald-600" /> At checkout — cash</span>} amount={payments.settlementCash} sign="-" />
+                        )}
+                        {payments.settlementQr > 0 && (
+                            <BillLine label={<span className="flex items-center gap-1.5"><QrCode size={12} className="text-emerald-600" /> At checkout — QR / digital</span>} amount={payments.settlementQr} sign="-" />
+                        )}
+                        {payments.credit > 0 && (
+                            <BillLine
+                                label={<span className="flex items-center gap-1.5"><CreditCard size={12} className="text-amber-700" /> Left on credit</span>}
+                                note="Posted to the guest&rsquo;s ledger account at checkout"
+                                amount={payments.credit}
+                            />
+                        )}
+                        {payments.uncollected > 0.01 && (
+                            <BillLine
+                                label={<span className="flex items-center gap-1.5"><CreditCard size={12} className="text-amber-700" /> Not collected</span>}
+                                note="Charged but never handed over — taken onto the guest&rsquo;s account, or still owed"
+                                amount={payments.uncollected}
+                            />
+                        )}
+                        {payments.collectedTotal === 0 && payments.credit === 0 && payments.uncollected === 0 && (
+                            <div className="px-4 py-2.5 text-[11px] text-ink-subtle font-semibold">Nothing received against this stay yet.</div>
+                        )}
+
+                        {payments.returnToGuest > 0.01 ? (
+                            <BillLine label="Return to guest" note="Taken in advance beyond the bill" amount={payments.returnToGuest} strong />
+                        ) : (
+                            <BillLine
+                                label={
+                                    isIssued
+                                        ? (payments.credit > 0 || payments.uncollected > 0.01 ? 'Settled — part not collected' : 'Settled in full')
+                                        : 'Still to collect'
+                                }
+                                amount={payments.netDue}
+                                strong
+                            />
+                        )}
+
+                        {payments.detail === 'reconstructed' && (
+                            <div className="px-4 py-2 text-[10px] font-semibold text-ink-subtle bg-surface-muted/30">
+                                Rebuilt from the booking record and the checkout snapshot — this stay predates the
+                                payments table, so the cash/QR split is only as detailed as those could say.
+                            </div>
+                        )}
+                    </div>
+
+                    {bill.runningSinceSettlement != null && bill.runningSinceSettlement > 0.01 && (
+                        <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                            <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                            <p className="text-[11px] font-semibold text-amber-800 leading-relaxed">
+                                This stay has run up <strong>{money(bill.runningSinceSettlement)}</strong> more since the bill above was issued — it was settled while the guest kept the room.
+                            </p>
+                        </div>
+                    )}
+                </div>
+
+                {/* ── Service orders, in full ───────────────────────────────── */}
+                <div className="p-5 space-y-3">
+                    <h5 className="text-xs font-extrabold uppercase tracking-wider text-ink-subtle flex items-center gap-2">
+                        <ShoppingBag size={14} className="text-brand-500" />
+                        Service orders ({orders.length})
                     </h5>
 
-                    {loading ? (
-                        <div className="flex items-center justify-center py-6 text-xs text-ink-subtle gap-2">
-                            <Loader2 size={16} className="animate-spin text-brand-500" /> Loading food/drink order details...
-                        </div>
-                    ) : orderItems.length === 0 ? (
+                    {orders.length === 0 ? (
                         <div className="p-4 text-center border border-dashed border-hairline rounded-xl text-xs text-ink-subtle">
-                            No food/drink items ordered for this stay.
+                            No food or drink was ordered on this stay.
                         </div>
                     ) : (
-                        <div className="border border-hairline rounded-xl overflow-hidden divide-y divide-hairline bg-surface">
-                            <div className="grid grid-cols-12 px-4 py-2 bg-surface-muted/60 text-[11px] font-extrabold text-ink-subtle uppercase tracking-wider">
-                                <span className="col-span-5">Dish / Item Name</span>
-                                <span className="col-span-2 text-center">Qty</span>
-                                <span className="col-span-2 text-right">Unit Price</span>
-                                <span className="col-span-3 text-right">Total Price</span>
+                        <div className="space-y-2.5">
+                            {orders.map(order => (
+                                <ServiceOrderCard key={order.id} order={order} formatDateTime={formatDateTime} />
+                            ))}
+                            <div className="flex justify-between px-4 py-2.5 rounded-xl bg-surface-muted/60 border border-hairline text-xs font-black text-ink">
+                                <span>Food &amp; drink on this bill</span>
+                                <span className="tabular-nums">{money(totals.ordersTotal)}</span>
                             </div>
-                            {orderItems.map((item, itemIdx) => {
-                                const name = getItemDisplayName(item)
-                                const qty = item.quantity || 1
-                                const price = Number(item.unit_price || 0)
-                                const subtotal = qty * price
-                                const orderRef = item.order_id ? `#${item.order_id.slice(0, 5).toUpperCase()}` : ''
-                                return (
-                                    <div key={item.id || itemIdx} className="grid grid-cols-12 px-4 py-2.5 text-xs items-center hover:bg-surface-muted/30">
-                                        <div className="col-span-5 font-bold text-ink truncate pr-2">
-                                            {name}
-                                            {orderRef && <span className="text-[10px] font-normal text-ink-subtle ml-2">{orderRef}</span>}
-                                            {item.is_room_order && <span className="text-[9px] font-extrabold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded ml-1">Room QR</span>}
-                                        </div>
-                                        <div className="col-span-2 text-center font-extrabold text-brand-600">
-                                            {qty}×
-                                        </div>
-                                        <div className="col-span-2 text-right font-medium text-ink-subtle tabular-nums">
-                                            Rs. {price.toFixed(2)}
-                                        </div>
-                                        <div className="col-span-3 text-right font-extrabold text-ink tabular-nums">
-                                            Rs. {subtotal.toFixed(2)}
-                                        </div>
-                                    </div>
-                                )
-                            })}
                         </div>
                     )}
                 </div>

@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { playStatusUpdate } from '@/lib/audio'
 import { playVoice } from '@/lib/voice'
 import { toast } from 'react-hot-toast'
-import { timeAgo, getItemDisplayName } from '@/lib/utils'
+import { timeAgo, getItemDisplayName, round2 } from '@/lib/utils'
 import { useCurrency, useBusinessMode } from '@/lib/contexts/FeatureContext'
 import { CheckCircle, Clock, ChefHat, Package, PartyPopper, ChevronLeft, MapPin, Plus } from 'lucide-react'
 import type { Order, OrderItem, MenuItem, OrderItemModifier } from '@/types/database'
@@ -237,7 +237,10 @@ export default function OrderTracker({
                                     <PartyPopper size={24} className="text-white" />
                                 </div>
                                 <div className="flex-1">
-                                    <h4 className="font-bold text-sm">Claim {Math.floor(grandTotal * 0.1)} Points! 🎁</h4>
+                                    {/* round2 before the floor, so a total that
+                                        sums to 9,999.999… does not advertise 999
+                                        points for a Rs. 10,000 order. */}
+                                    <h4 className="font-bold text-sm">Claim {Math.floor(round2(grandTotal * 0.1))} Points! 🎁</h4>
                                     <p className="text-xs text-white/80 mt-0.5">Save your profile to earn loyalty rewards.</p>
                                 </div>
                                 <ChevronLeft size={20} className="rotate-180 text-white/50" />

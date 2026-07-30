@@ -61,10 +61,13 @@ export function BusinessSessionProvider({
     const [loading, setLoading] = useState(false)
     const [guardActive, setGuardActive] = useState(false)
     // The newest open day whatever its date, which `session` stops telling us
-    // as soon as it refreshes to today's. Seeded from the server-rendered
-    // session — the layouts pass the most recently created one, and a newer day
-    // cannot exist while an older one is open (the POST refuses), so if that
-    // one is open it is *the* open day. No fetch needed until it changes.
+    // as soon as it refreshes to today's.
+    //
+    // Seeded from the server-rendered session as a best guess, then confirmed
+    // against the database below. The seed alone is not enough: the layouts pick
+    // the most recently *created* session, and two sessions written in the same
+    // transaction (or a backfill) tie on created_at, so the closed one can win
+    // and hide an open day that is blocking today from being opened at all.
     const [openSessionAnyDate, setOpenSessionAnyDate] = useState<BusinessSession | null>(
         initialSession && initialSession.status === 'open' ? initialSession : null
     )
@@ -109,6 +112,19 @@ export function BusinessSessionProvider({
         }
         await refreshOpenSession()
     }, [todayDate, refreshOpenSession])
+
+    // Ask the database which day is open, rather than trusting the seed above.
+    // This cannot wait for a realtime event: the reminder that tells the till a
+    // day is still open for an earlier date is the only thing standing between
+    // the front desk and an "Open Business Day" button that refuses with an
+    // error they cannot act on, and a quiet day fires no events at all.
+    //
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetching the
+    // authoritative answer on mount is the point; the state lands in a promise
+    // callback, not synchronously in the effect body.
+    useEffect(() => {
+        refreshOpenSession()
+    }, [refreshOpenSession])
 
     // Realtime listener for business day session status changes across all windows/devices
     useEffect(() => {
