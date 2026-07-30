@@ -5,6 +5,7 @@ import type { Settings } from '@/types/database'
 import { formatCurrency } from '@/lib/utils'
 import { useDates } from '@/lib/contexts/CalendarContext'
 import type { BusinessMode } from '@/lib/businessMode'
+import { DEFAULT_ON_FEATURES, MODULE_DEFAULT_ON, type ModuleKey } from '@/lib/tiers'
 
 type Features = Settings['features_v2']
 
@@ -70,21 +71,14 @@ export function useFeatureEnabled(key: keyof Omit<Features, 'defaultTaxRate' | '
     const features = useFeatures()
     const val = features[key]
     if (val === undefined) {
-        const defaultTrueKeys: string[] = [
-            'promosEnabled',
-            'feedbackEnabled',
-            'dineInEnabled',
-            'serviceRequestsEnabled',
-            'splitBillingEnabled',
-            'printInvoiceEnabled',
-            'generateInvoiceEnabled',
-            'staffManagementEnabled',
-            'tableManagementEnabled',
-            'manualEntryEnabled',
-            'printBillEnabled',
-            'showInvoiceEnabled'
-        ]
-        return defaultTrueKeys.includes(key)
+        // Shared with the server (getRestaurantFeatures) so an absent flag can
+        // never mean "on" here and "off" in the page gate that guards the link
+        // this hook just rendered. The two module keys are tier-gated rather
+        // than plain default-on, and resolve in applyTierModuleDefaults.
+        return (
+            (DEFAULT_ON_FEATURES as readonly string[]).includes(key) ||
+            MODULE_DEFAULT_ON[key as ModuleKey] === true
+        )
     }
     return !!val
 }

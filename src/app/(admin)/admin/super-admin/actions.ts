@@ -5,7 +5,15 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { validateInput, CreateTenantSchema } from '@/lib/validation'
 import { ORDER_STATUS_TO_TAKEOUT, type OrderStatus } from '@/lib/takeout'
-import { TIER_LIMITS, applyTierModuleDefaults, MODULE_KEYS, type Tier } from '@/lib/tiers'
+import {
+    TIER_LIMITS,
+    applyTierModuleDefaults,
+    applyTierEntitlements,
+    MODULE_KEYS,
+    TIER_ENTITLEMENTS,
+    type Tier,
+} from '@/lib/tiers'
+import { getBusinessMode } from '@/lib/businessMode'
 import { provisionRestaurant } from '@/lib/provisioning'
 
 export interface CreateTenantInput {
@@ -105,7 +113,7 @@ export async function updateSubscriptionTier(
     // Define limits per tier
     const limits = TIER_LIMITS[tier]
 
-    const { error } = await supabase
+    const { data: restaurantRow, error } = await supabase
         .from('restaurants')
         .update({
             subscription_tier: tier,
@@ -114,6 +122,8 @@ export async function updateSubscriptionTier(
             max_tables: limits.max_tables,
         })
         .eq('id', restaurantId)
+        .select('business_type')
+        .maybeSingle()
 
     if (error) return { error: error.message }
 
@@ -129,6 +139,13 @@ export async function updateSubscriptionTier(
     // applyTierModuleDefaults grants what the plan includes (respecting a flag
     // the tenant has deliberately switched off) and revokes what it does not,
     // which keeps the old downgrade protection.
+    //
+    // It only ever covered the three module flags, though, so the paid
+    // capabilities — loyalty, inventory, shifts, dynamic pricing,
+    // multi-language — kept whatever the original provisioning tier had
+    // written. Every restaurant upgraded after signup was left with its old
+    // plan's features. applyTierEntitlements re-grants those too, with the
+    // business mode still winning (a hotel does not get takeout for upgrading).
     const { data: settingsRow } = await supabase
         .from('settings')
         .select('features_v2')
@@ -137,9 +154,12 @@ export async function updateSubscriptionTier(
 
     if (settingsRow) {
         const current = (settingsRow.features_v2 || {}) as Record<string, unknown>
-        const merged = applyTierModuleDefaults(current, tier)
+        const mode = getBusinessMode(restaurantRow?.business_type)
+        const merged = applyTierEntitlements(applyTierModuleDefaults(current, tier), tier, mode)
 
-        const changed = MODULE_KEYS.some(key => current[key] !== merged[key])
+        const changed = [...MODULE_KEYS, ...TIER_ENTITLEMENTS].some(
+            key => current[key] !== merged[key as keyof typeof merged],
+        )
         if (changed) {
             await supabase
                 .from('settings')

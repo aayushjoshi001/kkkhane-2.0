@@ -114,6 +114,82 @@ export function applyTierModuleDefaults<T extends Record<string, unknown>>(
     return resolved
 }
 
+/**
+ * Flags that mean "on" when the stored settings never wrote them.
+ *
+ * The same absent-key disagreement that made the staff page unreachable was
+ * live for every flag on this list: the sidebar and FeatureContext read an
+ * absent key as on (`?? true`), while the server page gates read it as off
+ * (`!features?.x`). A super admin would switch Manual Finance Entry on, see it
+ * green — the settings form seeds the same `true` default, so nothing was ever
+ * written — and the tenant would still bounce off /admin/manual-entry.
+ *
+ * MODULE_KEYS are deliberately absent here: those are plan-gated and resolved
+ * by applyTierModuleDefaults, which must be free to revoke them.
+ */
+export const DEFAULT_ON_FEATURES = [
+    'promosEnabled',
+    'feedbackEnabled',
+    'dineInEnabled',
+    'serviceRequestsEnabled',
+    'splitBillingEnabled',
+    'printInvoiceEnabled',
+    'generateInvoiceEnabled',
+    'manualEntryEnabled',
+    'printBillEnabled',
+    'showInvoiceEnabled',
+    'kdsEnabled',
+] as const
+
+export type DefaultOnFeature = typeof DEFAULT_ON_FEATURES[number]
+
+/**
+ * Fill in the default-on flags the stored settings never wrote.
+ *
+ * The single place an absent non-module flag is resolved, so the server and the
+ * client can no longer reach opposite conclusions about the same missing key.
+ * An explicitly stored value always wins.
+ */
+export function resolveFeatureDefaults<T extends Record<string, unknown>>(
+    features: T,
+): T & Record<DefaultOnFeature, boolean> {
+    const resolved = { ...features } as T & Record<DefaultOnFeature, boolean>
+    for (const key of DEFAULT_ON_FEATURES) {
+        const stored = features[key]
+        resolved[key] = stored === undefined ? true : !!stored
+    }
+    return resolved
+}
+
+/**
+ * The paid capabilities a plan grants — as opposed to the behavioural
+ * preferences that also live in TIER_FEATURES (waiter sessions, order
+ * confirmation, split billing…), which are the tenant's to set and must
+ * survive a plan change untouched.
+ *
+ * Only these are re-applied when a subscription tier changes.
+ */
+export const TIER_ENTITLEMENTS = [
+    'loyaltyEnabled',
+    'promosEnabled',
+    'takeoutEnabled',
+    'multiLanguageEnabled',
+    'dynamicPricingEnabled',
+    'ingredientTrackingEnabled',
+    'staffShiftsEnabled',
+] as const
+
+export type TierEntitlement = typeof TIER_ENTITLEMENTS[number]
+
+/** Does this plan include the given paid capability? Unknown tiers fall back to Free. */
+export function tierIncludesEntitlement(
+    tier: Tier | string | null | undefined,
+    key: TierEntitlement,
+): boolean {
+    const features = TIER_FEATURES[tier as Tier] ?? TIER_FEATURES.free
+    return !!features[key]
+}
+
 /** Every tier, cheapest first — the order admin pickers render them in. */
 export const TIERS: readonly Tier[] = ['free', 'basic', 'premium', 'platinum', 'enterprise']
 
@@ -284,4 +360,36 @@ export function buildFeaturesV2(tier: Tier, mode: BusinessMode) {
         // Phase 3: customers may request a waiter open their table session.
         selfOrderRequestEnabled: true,
     }
+}
+
+/**
+ * Re-apply a plan's paid capabilities to already-stored flags.
+ *
+ * Changing the subscription tier used to move the caps and the three module
+ * flags and nothing else, so a restaurant moved up to Enterprise kept the
+ * loyalty/inventory/shifts/dynamic-pricing flags its original Free
+ * provisioning had written `false` — the customer had paid for modules the app
+ * still refused to show, and no screen could turn them on.
+ *
+ * The business mode still wins over the tier: a hotel does not get takeout
+ * because it was upgraded. Behavioural preferences outside TIER_ENTITLEMENTS
+ * are never touched.
+ */
+export function applyTierEntitlements<T extends Record<string, unknown>>(
+    features: T,
+    tier: Tier | string | null | undefined,
+    mode: BusinessMode,
+): T & Record<TierEntitlement, boolean> {
+    const modeOverlay = MODE_FEATURES[mode] as Record<string, unknown>
+    const resolved = { ...features } as T & Record<TierEntitlement, boolean>
+    for (const key of TIER_ENTITLEMENTS) {
+        // A mode that has an opinion about this flag keeps it — the overlay is
+        // about what the business physically does, not what it has bought.
+        if (modeOverlay[key] !== undefined) {
+            resolved[key] = !!modeOverlay[key]
+            continue
+        }
+        resolved[key] = tierIncludesEntitlement(tier, key)
+    }
+    return resolved
 }
