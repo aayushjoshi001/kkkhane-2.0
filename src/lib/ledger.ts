@@ -58,15 +58,18 @@ export async function findOpenDayBookSessionId(
     return data?.id
 }
 
-// What a new day's opening cash/bank balance should be, carried over from the
-// most recently closed session (0/0 if there has never been a prior one) —
-// the same calculation /api/day-book/session's manual "open day" route uses,
-// shared here so auto-opening a session below can never drift from it.
-async function computeCarriedOverOpeningBalances(
+// What a new day's opening cash/bank balance should be: the closing cash and
+// bank balances of the most recently closed session, carried straight over.
+// Null when there has never been a prior session — the caller decides what a
+// first-ever day opens with, which is the only case a human gets to type an
+// amount. Shared by every path that opens a day (the manual "open day" route
+// in /api/day-book/session, and both auto-open helpers below) so none of them
+// can drift from the others.
+export async function computeCarriedOverOpeningBalances(
     supabase: SupabaseClient,
     restaurantId: string,
     beforeDate: string
-): Promise<{ openingBalance: number; openingBankBalance: number }> {
+): Promise<{ openingBalance: number; openingBankBalance: number } | null> {
     const { data: lastSession } = await supabase
         .from('day_book_sessions')
         .select('id, opening_balance, opening_bank_balance')
@@ -77,7 +80,7 @@ async function computeCarriedOverOpeningBalances(
         .limit(1)
         .maybeSingle()
 
-    if (!lastSession) return { openingBalance: 0, openingBankBalance: 0 }
+    if (!lastSession) return null
 
     const { data: totals } = await supabase
         .from('day_book_entries')
@@ -120,7 +123,9 @@ export async function getOrCreateOpenDayBookSessionId(
     if (anyOpen) return anyOpen.id
 
     const today = getNstDateString()
-    const { openingBalance, openingBankBalance } = await computeCarriedOverOpeningBalances(supabase, restaurantId, today)
+    const { openingBalance, openingBankBalance } =
+        (await computeCarriedOverOpeningBalances(supabase, restaurantId, today))
+        ?? { openingBalance: 0, openingBankBalance: 0 }
 
     const { data: session, error } = await supabase
         .from('day_book_sessions')
